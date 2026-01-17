@@ -1,0 +1,184 @@
+(footprint "DIN-6_Female_PCB"
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(layer "F.Cu")
+	(descr "6-pin DIN female connector, PCB mount, used for C64/C128 IEC serial bus")
+	(tags "connector din din6 iec c64 commodore serial")
+	(property "Reference" "J**"
+		(at 0 -12 0)
+		(layer "F.SilkS")
+		(uuid "ref-uuid")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "DIN-6"
+		(at 0 12 0)
+		(layer "F.Fab")
+		(uuid "val-uuid")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Footprint" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "fp-uuid")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "ds-uuid")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" "6-pin DIN female connector for C64 IEC serial bus"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "desc-uuid")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr through_hole)
+	(fp_circle
+		(center 0 0)
+		(end 8.5 0)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(fill none)
+		(layer "F.SilkS")
+		(uuid "silk-circle")
+	)
+	(fp_line
+		(start -9 -9)
+		(end -9 9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "crtyd1")
+	)
+	(fp_line
+		(start 9 -9)
+		(end 9 9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "crtyd2")
+	)
+	(fp_line
+		(start -9 -9)
+		(end 9 -9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "crtyd3")
+	)
+	(fp_line
+		(start -9 9)
+		(end 9 9)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "crtyd4")
+	)
+	(fp_line
+		(start 0 -8.5)
+		(end 0 -6)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "key-notch")
+	)
+	(pad "1" thru_hole circle
+		(at 0 -5.08)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad1")
+	)
+	(pad "2" thru_hole circle
+		(at -3.5 -2.54)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad2")
+	)
+	(pad "3" thru_hole circle
+		(at -5.08 2.54)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad3")
+	)
+	(pad "4" thru_hole circle
+		(at 5.08 2.54)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad4")
+	)
+	(pad "5" thru_hole circle
+		(at 3.5 -2.54)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad5")
+	)
+	(pad "6" thru_hole circle
+		(at 0 2.54)
+		(size 1.8 1.8)
+		(drill 1.2)
+		(layers "*.Cu" "*.Mask")
+		(uuid "pad6")
+	)
+	(pad "SH1" thru_hole circle
+		(at -6.35 -6.35)
+		(size 3.0 3.0)
+		(drill 2.4)
+		(layers "*.Cu" "*.Mask")
+		(uuid "padsh1")
+	)
+	(pad "SH2" thru_hole circle
+		(at 6.35 -6.35)
+		(size 3.0 3.0)
+		(drill 2.4)
+		(layers "*.Cu" "*.Mask")
+		(uuid "padsh2")
+	)
+)

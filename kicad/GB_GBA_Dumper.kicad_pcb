@@ -1,0 +1,525 @@
+(kicad_pcb
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(general
+		(thickness 1.6)
+		(legacy_teardrops no)
+	)
+	(paper "A4")
+	(title_block
+		(title "GB/GBA USB Dumper")
+		(date "2026-01-17")
+		(rev "1.0")
+		(company "UFI Project")
+		(comment 1 "Standalone Game Boy/GBA Cartridge Dumper")
+		(comment 2 "2-Layer PCB, 80x50mm, HASL")
+		(comment 3 "RP2040 + Level Shifters")
+	)
+	(layers
+		(0 "F.Cu" signal)
+		(31 "B.Cu" signal)
+		(32 "B.Adhes" user "B.Adhesive")
+		(33 "F.Adhes" user "F.Adhesive")
+		(34 "B.Paste" user)
+		(35 "F.Paste" user)
+		(36 "B.SilkS" user "B.Silkscreen")
+		(37 "F.SilkS" user "F.Silkscreen")
+		(38 "B.Mask" user)
+		(39 "F.Mask" user)
+		(40 "Dwgs.User" user "User.Drawings")
+		(44 "Edge.Cuts" user)
+		(46 "B.CrtYd" user "B.Courtyard")
+		(47 "F.CrtYd" user "F.Courtyard")
+		(48 "B.Fab" user)
+		(49 "F.Fab" user)
+	)
+	(setup
+		(pad_to_mask_clearance 0.05)
+		(allow_soldermask_bridges_in_footprints no)
+		(pcbplotparams
+			(layerselection 0x00010fc_ffffffff)
+			(usegerberextensions yes)
+			(usegerberattributes yes)
+			(creategerberjobfile yes)
+			(outputdirectory "gerber/")
+		)
+	)
+
+	; ============================================================================
+	; NET DEFINITIONS
+	; ============================================================================
+	(net 0 "")
+	(net 1 "GND")
+	(net 2 "+3V3")
+	(net 3 "+5V")
+	(net 4 "USB_DP")
+	(net 5 "USB_DM")
+	(net 6 "A0")
+	(net 7 "A1")
+	(net 8 "A2")
+	(net 9 "A3")
+	(net 10 "A4")
+	(net 11 "A5")
+	(net 12 "A6")
+	(net 13 "A7")
+	(net 14 "A8")
+	(net 15 "A9")
+	(net 16 "A10")
+	(net 17 "A11")
+	(net 18 "A12")
+	(net 19 "A13")
+	(net 20 "A14")
+	(net 21 "A15")
+	(net 22 "D0")
+	(net 23 "D1")
+	(net 24 "D2")
+	(net 25 "D3")
+	(net 26 "D4")
+	(net 27 "D5")
+	(net 28 "D6")
+	(net 29 "D7")
+	(net 30 "GB_RD")
+	(net 31 "GB_WR")
+	(net 32 "GB_CS")
+	(net 33 "GB_RST")
+	(net 34 "GBA_AD0")
+	(net 35 "GBA_AD1")
+	(net 36 "GBA_AD2")
+	(net 37 "GBA_AD3")
+	(net 38 "GBA_AD4")
+	(net 39 "GBA_AD5")
+	(net 40 "GBA_AD6")
+	(net 41 "GBA_AD7")
+	(net 42 "GBA_A16")
+	(net 43 "GBA_A17")
+	(net 44 "GBA_A18")
+	(net 45 "GBA_A19")
+	(net 46 "GBA_A20")
+	(net 47 "GBA_A21")
+	(net 48 "GBA_A22")
+	(net 49 "GBA_A23")
+	(net 50 "GBA_CS")
+	(net 51 "GBA_RD")
+	(net 52 "GBA_WR")
+
+	; ============================================================================
+	; NET CLASSES
+	; ============================================================================
+	(net_class "Default" ""
+		(clearance 0.2)
+		(trace_width 0.25)
+		(via_dia 0.6)
+		(via_drill 0.3)
+	)
+	(net_class "Power" ""
+		(clearance 0.3)
+		(trace_width 0.5)
+		(via_dia 0.8)
+		(via_drill 0.4)
+		(add_net "+3V3")
+		(add_net "+5V")
+		(add_net "GND")
+	)
+	(net_class "USB" ""
+		(clearance 0.2)
+		(trace_width 0.4)
+		(diff_pair_gap 0.15)
+		(diff_pair_width 0.4)
+		(add_net "USB_DM")
+		(add_net "USB_DP")
+	)
+
+	; ============================================================================
+	; BOARD OUTLINE - 80mm x 50mm
+	; ============================================================================
+	
+	(gr_line (start 2 0) (end 78 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 80 2) (end 80 48) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 78 50) (end 2 50) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 0 48) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	
+	; Rounded corners (r=2mm)
+	(gr_arc (start 2 2) (mid 0.586 0.586) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 78 0) (mid 79.414 0.586) (end 80 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 80 48) (mid 79.414 49.414) (end 78 50) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 0 48) (mid 0.586 49.414) (end 2 50) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+
+	; Mounting holes (M2.5)
+	(footprint "MountingHole:MountingHole_2.7mm_M2.5"
+		(layer "F.Cu") (uuid "mh1") (at 4 4)
+		(property "Reference" "H1" (at 0 -2.5 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 5.4 5.4) (drill 2.7) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_2.7mm_M2.5"
+		(layer "F.Cu") (uuid "mh2") (at 76 4)
+		(property "Reference" "H2" (at 0 -2.5 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 5.4 5.4) (drill 2.7) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_2.7mm_M2.5"
+		(layer "F.Cu") (uuid "mh3") (at 4 46)
+		(property "Reference" "H3" (at 0 -2.5 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 5.4 5.4) (drill 2.7) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_2.7mm_M2.5"
+		(layer "F.Cu") (uuid "mh4") (at 76 46)
+		(property "Reference" "H4" (at 0 -2.5 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 5.4 5.4) (drill 2.7) (layers "*.Cu" "*.Mask"))
+	)
+
+	; ============================================================================
+	; USB-C CONNECTOR (Bottom edge)
+	; ============================================================================
+
+	(footprint "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A"
+		(layer "F.Cu")
+		(uuid "usb-j1")
+		(at 40 47 180)
+		(property "Reference" "J1"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "USB-C"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; RP2040 MCU (Center)
+	; ============================================================================
+
+	(footprint "UFI:RP2040-QFN-56"
+		(layer "F.Cu")
+		(uuid "rp2040-u1")
+		(at 25 25)
+		(property "Reference" "U1"
+			(at 0 -6 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "RP2040"
+			(at 0 6 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; 12MHz Crystal
+	(footprint "Crystal:Crystal_SMD_3215-4Pin_3.2x1.5mm"
+		(layer "F.Cu")
+		(uuid "xtal-y1")
+		(at 15 20)
+		(property "Reference" "Y1"
+			(at 0 -2.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "12MHz"
+			(at 0 2.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; Flash (W25Q128)
+	(footprint "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+		(layer "F.Cu")
+		(uuid "flash-u2")
+		(at 15 30)
+		(property "Reference" "U2"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "W25Q128"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; ============================================================================
+	; LEVEL SHIFTERS (74LVC245)
+	; ============================================================================
+
+	; U3: Address bus low (A0-A7)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u3")
+		(at 45 15)
+		(property "Reference" "U3"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; U4: Address bus high (A8-A15)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u4")
+		(at 45 25)
+		(property "Reference" "U4"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; U5: Data bus (D0-D7)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u5")
+		(at 45 35)
+		(property "Reference" "U5"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; ============================================================================
+	; GAME BOY CARTRIDGE SLOT (Top edge)
+	; ============================================================================
+
+	(footprint "UFI:GameBoy_Cartridge_Slot"
+		(layer "F.Cu")
+		(uuid "gb-j2")
+		(at 65 5 180)
+		(property "Reference" "J2"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "GB_SLOT"
+			(at 0 10 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; GBA CARTRIDGE SLOT (Right edge)
+	; ============================================================================
+
+	(footprint "UFI:GBA_Cartridge_Slot"
+		(layer "F.Cu")
+		(uuid "gba-j3")
+		(at 75 25 90)
+		(property "Reference" "J3"
+			(at -8 0 90)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "GBA_SLOT"
+			(at 8 0 90)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; POWER REGULATOR (5V to 3.3V)
+	; ============================================================================
+
+	(footprint "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
+		(layer "F.Cu")
+		(uuid "vreg-u6")
+		(at 10 42)
+		(property "Reference" "U6"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "AMS1117-3.3"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; ============================================================================
+	; DECOUPLING CAPACITORS
+	; ============================================================================
+
+	; RP2040 decoupling
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c1") (at 21 21)
+		(property "Reference" "C1" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c2") (at 21 25)
+		(property "Reference" "C2" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c3") (at 21 29)
+		(property "Reference" "C3" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c4") (at 29 21)
+		(property "Reference" "C4" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c5") (at 29 29)
+		(property "Reference" "C5" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+
+	; Crystal load caps
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c6") (at 13 18)
+		(property "Reference" "C6" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "15p" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c7") (at 17 18)
+		(property "Reference" "C7" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "15p" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+
+	; Regulator caps
+	(footprint "Capacitor_SMD:C_0805_2012Metric"
+		(layer "F.Cu") (uuid "cap-c8") (at 6 42)
+		(property "Reference" "C8" (at 0 -1.8 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "10u" (at 0 1.8 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+	(footprint "Capacitor_SMD:C_0805_2012Metric"
+		(layer "F.Cu") (uuid "cap-c9") (at 14 42)
+		(property "Reference" "C9" (at 0 -1.8 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "10u" (at 0 1.8 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+
+	; ============================================================================
+	; STATUS LEDS
+	; ============================================================================
+
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu") (uuid "led1") (at 55 42)
+		(property "Reference" "LED1" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "PWR" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu") (uuid "led2") (at 55 45)
+		(property "Reference" "LED2" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "ACT" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+
+	; BOOTSEL Button
+	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
+		(layer "F.Cu")
+		(uuid "btn-sw1")
+		(at 25 40)
+		(property "Reference" "SW1" (at 0 -3.5 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(property "Value" "BOOT" (at 0 3.5 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
+	)
+
+	; ============================================================================
+	; TRACES - USB
+	; ============================================================================
+
+	; USB D+ from RP2040 to USB-C
+	(segment (start 29 27) (end 32 27) (width 0.4) (layer "F.Cu") (net 4))
+	(segment (start 32 27) (end 35 30) (width 0.4) (layer "F.Cu") (net 4))
+	(segment (start 35 30) (end 35 42) (width 0.4) (layer "F.Cu") (net 4))
+	(segment (start 35 42) (end 38 45) (width 0.4) (layer "F.Cu") (net 4))
+	
+	; USB D- (parallel)
+	(segment (start 29 27.5) (end 32 27.5) (width 0.4) (layer "F.Cu") (net 5))
+	(segment (start 32 27.5) (end 35.5 31) (width 0.4) (layer "F.Cu") (net 5))
+	(segment (start 35.5 31) (end 35.5 42) (width 0.4) (layer "F.Cu") (net 5))
+	(segment (start 35.5 42) (end 38.5 45) (width 0.4) (layer "F.Cu") (net 5))
+
+	; ============================================================================
+	; TRACES - ADDRESS BUS
+	; ============================================================================
+
+	; A0-A7 from RP2040 to level shifter U3
+	(segment (start 29 22) (end 40 22) (width 0.25) (layer "F.Cu") (net 6))
+	(segment (start 40 22) (end 40 12) (width 0.25) (layer "F.Cu") (net 6))
+	
+	; ============================================================================
+	; POWER DISTRIBUTION
+	; ============================================================================
+
+	; 5V from USB to regulator
+	(segment (start 40 47) (end 20 47) (width 0.5) (layer "F.Cu") (net 3))
+	(segment (start 20 47) (end 10 47) (width 0.5) (layer "F.Cu") (net 3))
+	(segment (start 10 47) (end 10 44) (width 0.5) (layer "F.Cu") (net 3))
+
+	; 3V3 from regulator to RP2040
+	(segment (start 10 40) (end 10 25) (width 0.5) (layer "F.Cu") (net 2))
+	(segment (start 10 25) (end 21 25) (width 0.5) (layer "F.Cu") (net 2))
+
+	; ============================================================================
+	; GND VIAS
+	; ============================================================================
+
+	(via (at 22 22) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 22 28) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 28 22) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 28 28) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 5 10) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 5 25) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 5 40) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+
+	; ============================================================================
+	; COPPER POURS
+	; ============================================================================
+
+	; GND on Bottom layer
+	(zone
+		(net 1)
+		(net_name "GND")
+		(layer "B.Cu")
+		(uuid "gnd-bottom")
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.25))
+		(min_thickness 0.2)
+		(fill yes (thermal_gap 0.25) (thermal_bridge_width 0.4))
+		(polygon (pts (xy 1 1) (xy 79 1) (xy 79 49) (xy 1 49)))
+	)
+
+	; ============================================================================
+	; SILKSCREEN
+	; ============================================================================
+
+	(gr_text "GB/GBA"
+		(at 25 10 0)
+		(layer "F.SilkS")
+		(effects (font (size 2.5 2.5) (thickness 0.4) (bold yes)) (justify left))
+	)
+
+	(gr_text "DUMPER"
+		(at 25 14 0)
+		(layer "F.SilkS")
+		(effects (font (size 1.5 1.5) (thickness 0.25)) (justify left))
+	)
+
+	(gr_text "v1.0"
+		(at 70 45 0)
+		(layer "F.SilkS")
+		(effects (font (size 1 1) (thickness 0.15)) (justify left))
+	)
+)

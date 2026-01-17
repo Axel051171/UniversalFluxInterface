@@ -1,0 +1,999 @@
+(kicad_pcb
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(general
+		(thickness 1.6)
+		(legacy_teardrops no)
+	)
+	(paper "A3")
+	(title_block
+		(title "UFI - Universal Flux Interface")
+		(date "2026-01-17")
+		(rev "0.2")
+		(company "UFT Project")
+		(comment 1 "CM5 Carrier + STM32H723 Flux Engine")
+		(comment 2 "4-Layer PCB, 160x100mm, ENIG")
+		(comment 3 "Author: Axel")
+	)
+	(layers
+		(0 "F.Cu" signal)
+		(1 "In1.Cu" power)
+		(2 "In2.Cu" power)
+		(31 "B.Cu" signal)
+		(32 "B.Adhes" user "B.Adhesive")
+		(33 "F.Adhes" user "F.Adhesive")
+		(34 "B.Paste" user)
+		(35 "F.Paste" user)
+		(36 "B.SilkS" user "B.Silkscreen")
+		(37 "F.SilkS" user "F.Silkscreen")
+		(38 "B.Mask" user)
+		(39 "F.Mask" user)
+		(40 "Dwgs.User" user "User.Drawings")
+		(41 "Cmts.User" user "User.Comments")
+		(42 "Eco1.User" user "User.Eco1")
+		(43 "Eco2.User" user "User.Eco2")
+		(44 "Edge.Cuts" user)
+		(45 "Margin" user)
+		(46 "B.CrtYd" user "B.Courtyard")
+		(47 "F.CrtYd" user "F.Courtyard")
+		(48 "B.Fab" user)
+		(49 "F.Fab" user)
+	)
+	(setup
+		(stackup
+			(layer "F.SilkS" (type "Top Silk Screen"))
+			(layer "F.Paste" (type "Top Solder Paste"))
+			(layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))
+			(layer "F.Cu" (type "copper") (thickness 0.035))
+			(layer "dielectric 1" (type "prepreg") (thickness 0.2) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "In1.Cu" (type "copper") (thickness 0.035))
+			(layer "dielectric 2" (type "core") (thickness 1.065) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "In2.Cu" (type "copper") (thickness 0.035))
+			(layer "dielectric 3" (type "prepreg") (thickness 0.2) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+			(layer "B.Cu" (type "copper") (thickness 0.035))
+			(layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))
+			(layer "B.Paste" (type "Bottom Solder Paste"))
+			(layer "B.SilkS" (type "Bottom Silk Screen"))
+			(copper_finish "ENIG")
+			(dielectric_constraints yes)
+		)
+		(pad_to_mask_clearance 0.05)
+		(allow_soldermask_bridges_in_footprints no)
+		(aux_axis_origin 0 0)
+		(grid_origin 0 0)
+		(pcbplotparams
+			(layerselection 0x00010fc_ffffffff)
+			(plot_on_all_layers_selection 0x0000000_00000000)
+			(disableapertmacros no)
+			(usegerberextensions yes)
+			(usegerberattributes yes)
+			(usegerberadvancedattributes yes)
+			(creategerberjobfile yes)
+			(dashed_line_dash_ratio 12.000000)
+			(dashed_line_gap_ratio 3.000000)
+			(svgprecision 4)
+			(plotframeref no)
+			(viasonmask no)
+			(mode 1)
+			(useauxorigin no)
+			(hpglpennumber 1)
+			(hpglpenspeed 20)
+			(hpglpendiameter 15.000000)
+			(pdf_front_fp_property_popups yes)
+			(pdf_back_fp_property_popups yes)
+			(dxfpolygonmode yes)
+			(dxfimperialunits no)
+			(dxfusepcbnewfont yes)
+			(psnegative no)
+			(psa4output no)
+			(plotreference yes)
+			(plotvalue yes)
+			(plotfptext yes)
+			(plotinvisibletext no)
+			(sketchpadsonfab no)
+			(subtractmaskfromsilk no)
+			(outputformat 1)
+			(mirror no)
+			(drillshape 0)
+			(scaleselection 1)
+			(outputdirectory "gerber/")
+		)
+	)
+
+	(net 0 "")
+	(net 1 "GND")
+	(net 2 "+3V3")
+	(net 3 "+5V")
+	(net 4 "+12V")
+	(net 5 "+1V8")
+	(net 6 "USB_HS_DP")
+	(net 7 "USB_HS_DM")
+	(net 8 "USB_FS_DP")
+	(net 9 "USB_FS_DM")
+	(net 10 "ETH_TXP")
+	(net 11 "ETH_TXN")
+	(net 12 "ETH_RXP")
+	(net 13 "ETH_RXN")
+	(net 14 "ETH_MDI0_P")
+	(net 15 "ETH_MDI0_N")
+	(net 16 "ETH_MDI1_P")
+	(net 17 "ETH_MDI1_N")
+	(net 18 "ETH_MDI2_P")
+	(net 19 "ETH_MDI2_N")
+	(net 20 "ETH_MDI3_P")
+	(net 21 "ETH_MDI3_N")
+	(net 22 "FLUX_IN")
+	(net 23 "FLUX_OUT")
+	(net 24 "INDEX")
+	(net 25 "TRACK0")
+	(net 26 "WPROT")
+	(net 27 "RDATA")
+	(net 28 "WDATA")
+	(net 29 "WGATE")
+	(net 30 "STEP")
+	(net 31 "DIR")
+	(net 32 "MOTOR_EN_A")
+	(net 33 "MOTOR_EN_B")
+	(net 34 "DRV_SEL_0")
+	(net 35 "DRV_SEL_1")
+	(net 36 "SIDE_SEL")
+	(net 37 "DSKCHG")
+	(net 38 "READY")
+	(net 39 "IEC_ATN")
+	(net 40 "IEC_CLK")
+	(net 41 "IEC_DATA")
+	(net 42 "IEC_SRQ")
+	(net 43 "IEC_RST")
+	(net 44 "I2C_SDA")
+	(net 45 "I2C_SCL")
+	(net 46 "SPI_MOSI")
+	(net 47 "SPI_MISO")
+	(net 48 "SPI_CLK")
+	(net 49 "SPI_CS_FLASH")
+	(net 50 "UART_TX")
+	(net 51 "UART_RX")
+	(net 52 "HDMI_D0P")
+	(net 53 "HDMI_D0N")
+	(net 54 "HDMI_D1P")
+	(net 55 "HDMI_D1N")
+	(net 56 "HDMI_D2P")
+	(net 57 "HDMI_D2N")
+	(net 58 "HDMI_CLKP")
+	(net 59 "HDMI_CLKN")
+	(net 60 "PCIE_TXP")
+	(net 61 "PCIE_TXN")
+	(net 62 "PCIE_RXP")
+	(net 63 "PCIE_RXN")
+	(net 64 "PCIE_REFCLKP")
+	(net 65 "PCIE_REFCLKN")
+	(net 66 "SYNC_A")
+	(net 67 "SYNC_B")
+	(net 68 "EXP_D0")
+	(net 69 "EXP_D1")
+	(net 70 "EXP_D2")
+	(net 71 "EXP_D3")
+	(net 72 "EXP_D4")
+	(net 73 "EXP_D5")
+	(net 74 "EXP_D6")
+	(net 75 "EXP_D7")
+	(net 76 "EXP_A0")
+	(net 77 "EXP_A1")
+	(net 78 "EXP_A2")
+	(net 79 "EXP_A3")
+	(net 80 "EXP_A4")
+	(net 81 "EXP_A5")
+	(net 82 "EXP_A6")
+	(net 83 "EXP_A7")
+	(net 84 "EXP_A8")
+	(net 85 "EXP_A9")
+	(net 86 "EXP_A10")
+	(net 87 "EXP_A11")
+	(net 88 "EXP_A12")
+	(net 89 "EXP_A13")
+	(net 90 "EXP_A14")
+	(net 91 "EXP_A15")
+	(net 92 "EXP_RD")
+	(net 93 "EXP_WR")
+	(net 94 "EXP_CS")
+	(net 95 "EXP_RST")
+	(net 96 "EXP_CLK")
+	(net 97 "EXP_INT")
+	(net 98 "NRST")
+	(net 99 "BOOT0")
+	(net 100 "HSE_IN")
+	(net 101 "HSE_OUT")
+	(net 102 "LSE_IN")
+	(net 103 "LSE_OUT")
+
+	(net_class "Default" ""
+		(clearance 0.2)
+		(trace_width 0.2)
+		(via_dia 0.6)
+		(via_drill 0.3)
+		(uvia_dia 0.3)
+		(uvia_drill 0.1)
+		(diff_pair_gap 0.2)
+		(diff_pair_width 0.2)
+	)
+	(net_class "Power" ""
+		(clearance 0.3)
+		(trace_width 0.5)
+		(via_dia 0.8)
+		(via_drill 0.4)
+		(uvia_dia 0.3)
+		(uvia_drill 0.1)
+		(add_net "+12V")
+		(add_net "+3V3")
+		(add_net "+5V")
+		(add_net "GND")
+	)
+	(net_class "USB_HS" ""
+		(clearance 0.2)
+		(trace_width 0.2)
+		(via_dia 0.6)
+		(via_drill 0.3)
+		(uvia_dia 0.3)
+		(uvia_drill 0.1)
+		(diff_pair_gap 0.15)
+		(diff_pair_width 0.2)
+		(add_net "USB_HS_DM")
+		(add_net "USB_HS_DP")
+	)
+	(net_class "Ethernet" ""
+		(clearance 0.2)
+		(trace_width 0.15)
+		(via_dia 0.6)
+		(via_drill 0.3)
+		(uvia_dia 0.3)
+		(uvia_drill 0.1)
+		(diff_pair_gap 0.15)
+		(diff_pair_width 0.15)
+		(add_net "ETH_MDI0_N")
+		(add_net "ETH_MDI0_P")
+		(add_net "ETH_MDI1_N")
+		(add_net "ETH_MDI1_P")
+		(add_net "ETH_MDI2_N")
+		(add_net "ETH_MDI2_P")
+		(add_net "ETH_MDI3_N")
+		(add_net "ETH_MDI3_P")
+	)
+	(net_class "HDMI" ""
+		(clearance 0.2)
+		(trace_width 0.15)
+		(via_dia 0.6)
+		(via_drill 0.3)
+		(diff_pair_gap 0.15)
+		(diff_pair_width 0.15)
+		(add_net "HDMI_CLKN")
+		(add_net "HDMI_CLKP")
+		(add_net "HDMI_D0N")
+		(add_net "HDMI_D0P")
+		(add_net "HDMI_D1N")
+		(add_net "HDMI_D1P")
+		(add_net "HDMI_D2N")
+		(add_net "HDMI_D2P")
+	)
+	(net_class "PCIe" ""
+		(clearance 0.2)
+		(trace_width 0.15)
+		(via_dia 0.6)
+		(via_drill 0.3)
+		(diff_pair_gap 0.15)
+		(diff_pair_width 0.15)
+		(add_net "PCIE_REFCLKN")
+		(add_net "PCIE_REFCLKP")
+		(add_net "PCIE_RXN")
+		(add_net "PCIE_RXP")
+		(add_net "PCIE_TXN")
+		(add_net "PCIE_TXP")
+	)
+
+	; ============================================================================
+	; BOARD OUTLINE - 160mm x 100mm with rounded corners
+	; ============================================================================
+	(gr_rect
+		(start 0 0)
+		(end 160 100)
+		(stroke (width 0.15) (type solid))
+		(fill none)
+		(layer "Edge.Cuts")
+		(uuid "board-outline")
+	)
+
+	; Mounting holes (M3, 4 corners)
+	(gr_circle (center 4 4) (end 5.6 4) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m1"))
+	(gr_circle (center 156 4) (end 157.6 4) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m2"))
+	(gr_circle (center 4 96) (end 5.6 96) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m3"))
+	(gr_circle (center 156 96) (end 157.6 96) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m4"))
+
+	; ============================================================================
+	; COMPONENT PLACEMENT - TOP SIDE (F.Cu)
+	; ============================================================================
+
+	; --- CM5 MODULE ZONE (Center-Left, 20-75mm X, 25-75mm Y) ---
+	
+	; CM5 Connector 1 (J6) - Position: X=25, Y=35
+	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
+		(layer "F.Cu")
+		(uuid "cm5-j6")
+		(at 25 40)
+		(property "Reference" "J6"
+			(at 0 -6 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "DF40C-100DP"
+			(at 0 6 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; CM5 Connector 2 (J7) - Position: X=25, Y=60
+	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
+		(layer "F.Cu")
+		(uuid "cm5-j7")
+		(at 25 60)
+		(property "Reference" "J7"
+			(at 0 -6 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "DF40C-100DP"
+			(at 0 6 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; --- STM32H723 ZONE (Center-Right, 85-130mm X, 35-65mm Y) ---
+
+	; STM32H723ZGT6 (U1) - Position: X=105, Y=50
+	(footprint "UFI:LQFP-144_20x20mm_P0.5mm"
+		(layer "F.Cu")
+		(uuid "stm32-u1")
+		(at 105 50)
+		(property "Reference" "U1"
+			(at 0 -14 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "STM32H723ZGT6"
+			(at 0 14 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; 25MHz Crystal (Y1) - near STM32 OSC pins
+	(footprint "Crystal:Crystal_SMD_3215-4Pin_3.2x1.5mm"
+		(layer "F.Cu")
+		(uuid "xtal-y1")
+		(at 92 42)
+		(property "Reference" "Y1"
+			(at 0 -2.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "25MHz"
+			(at 0 2.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; 32.768kHz Crystal (Y2) - near STM32 LSE pins
+	(footprint "Crystal:Crystal_SMD_2012-2Pin_2.0x1.2mm"
+		(layer "F.Cu")
+		(uuid "xtal-y2")
+		(at 92 58)
+		(property "Reference" "Y2"
+			(at 0 -2 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "32.768kHz"
+			(at 0 2 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; SPI Flash (U2) - near STM32 QSPI pins
+	(footprint "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
+		(layer "F.Cu")
+		(uuid "flash-u2")
+		(at 120 42)
+		(property "Reference" "U2"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "W25Q128"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; --- POWER ZONE (Bottom-Left, 10-50mm X, 75-95mm Y) ---
+
+	; DC Jack (J16) - Board edge
+	(footprint "Connector_BarrelJack:BarrelJack_Horizontal"
+		(layer "F.Cu")
+		(uuid "dcjack-j16")
+		(at 12 90 180)
+		(property "Reference" "J16"
+			(at 0 -8 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "DC_5.5x2.1"
+			(at 0 8 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; USB-C Power (J8)
+	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
+		(layer "F.Cu")
+		(uuid "usbc-pwr-j8")
+		(at 32 95 180)
+		(property "Reference" "J8"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "USB-C_PWR"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; Buck Regulator 12V→5V (U10)
+	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+		(layer "F.Cu")
+		(uuid "buck-u10")
+		(at 25 80)
+		(property "Reference" "U10"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "TPS54331"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Buck Regulator 5V→3.3V (U11)
+	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+		(layer "F.Cu")
+		(uuid "buck-u11")
+		(at 42 80)
+		(property "Reference" "U11"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "TPS54331"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Power Inductor L1
+	(footprint "Inductor_SMD:L_Bourns_SRN6045TA"
+		(layer "F.Cu")
+		(uuid "ind-l1")
+		(at 18 80)
+		(property "Reference" "L1"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "10uH"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Power Inductor L2
+	(footprint "Inductor_SMD:L_Bourns_SRN6045TA"
+		(layer "F.Cu")
+		(uuid "ind-l2")
+		(at 35 80)
+		(property "Reference" "L2"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "10uH"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; --- FDD CONNECTOR ZONE (Top Edge, 15-95mm X, 5-20mm Y) ---
+
+	; FDD Connector 1 (J1) - 34-pin Shugart
+	(footprint "UFI:FDD_Header_34pin"
+		(layer "F.Cu")
+		(uuid "fdd-j1")
+		(at 25 12 90)
+		(property "Reference" "J1"
+			(at -10 0 90)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "FDD_34pin"
+			(at 10 0 90)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; FDD Connector 2 (J2) - 34-pin Shugart
+	(footprint "UFI:FDD_Header_34pin"
+		(layer "F.Cu")
+		(uuid "fdd-j2")
+		(at 55 12 90)
+		(property "Reference" "J2"
+			(at -10 0 90)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "FDD_34pin"
+			(at 10 0 90)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; Apple Disk II Connector (J3) - 19-pin
+	(footprint "UFI:Apple_Disk_II_19pin"
+		(layer "F.Cu")
+		(uuid "apple-j3")
+		(at 80 12 90)
+		(property "Reference" "J3"
+			(at -8 0 90)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "Apple_19pin"
+			(at 8 0 90)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; --- AMIGA & IEC ZONE (Top-Right, 100-155mm X, 5-25mm Y) ---
+
+	; Amiga DB-23 (J4)
+	(footprint "UFI:DSUB-23_Female_Horizontal"
+		(layer "F.Cu")
+		(uuid "amiga-j4")
+		(at 115 15)
+		(property "Reference" "J4"
+			(at 0 -12 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "DB-23_Amiga"
+			(at 0 12 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; IEC DIN-6 (J5)
+	(footprint "UFI:DIN-6_Female_PCB"
+		(layer "F.Cu")
+		(uuid "iec-j5")
+		(at 145 15)
+		(property "Reference" "J5"
+			(at 0 -10 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "DIN-6_IEC"
+			(at 0 10 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; --- INTERFACE ZONE (Right Side, 130-155mm X, 40-95mm Y) ---
+
+	; RJ45 Ethernet (J10)
+	(footprint "UFI:RJ45_Magjack_Tab-Down"
+		(layer "F.Cu")
+		(uuid "rj45-j10")
+		(at 148 45)
+		(property "Reference" "J10"
+			(at 0 -14 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "RJ45_GbE"
+			(at 0 14 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; HDMI Connector (J11)
+	(footprint "Connector_HDMI:HDMI_A_Molex_208658-1001_Horizontal"
+		(layer "F.Cu")
+		(uuid "hdmi-j11")
+		(at 148 68)
+		(property "Reference" "J11"
+			(at 0 -10 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "HDMI_TypeA"
+			(at 0 10 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; USB-C Data (J9)
+	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
+		(layer "F.Cu")
+		(uuid "usbc-data-j9")
+		(at 148 85)
+		(property "Reference" "J9"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "USB-C_DATA"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; M.2 NVMe Slot (J12)
+	(footprint "UFI:M.2_Key_M_2280"
+		(layer "F.Cu")
+		(uuid "m2-j12")
+		(at 70 85 90)
+		(property "Reference" "J12"
+			(at 0 -8 90)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "M.2_KeyM"
+			(at 0 8 90)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; Expansion Header (J13) - 40-pin
+	(footprint "UFI:UFI_Expansion_Header_40pin"
+		(layer "F.Cu")
+		(uuid "exp-j13")
+		(at 55 50)
+		(property "Reference" "J13"
+			(at 0 -8 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "40pin_EXP"
+			(at 0 8 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; --- LEVEL SHIFTERS (Between STM32 and FDD/IEC) ---
+
+	; Level Shifter U20 (FDD Data)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u20")
+		(at 75 30)
+		(property "Reference" "U20"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Level Shifter U21 (FDD Control)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u21")
+		(at 85 30)
+		(property "Reference" "U21"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Level Shifter U22 (Apple II)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u22")
+		(at 95 30)
+		(property "Reference" "U22"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Level Shifter U23 (Expansion)
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u23")
+		(at 65 65)
+		(property "Reference" "U23"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; --- BUTTONS & LEDs ---
+
+	; Reset Button (SW1)
+	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
+		(layer "F.Cu")
+		(uuid "btn-sw1")
+		(at 135 75)
+		(property "Reference" "SW1"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "RESET"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; User Button (SW2)
+	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
+		(layer "F.Cu")
+		(uuid "btn-sw2")
+		(at 135 82)
+		(property "Reference" "SW2"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "USER"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; Status LEDs
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "led1")
+		(at 135 62)
+		(property "Reference" "LED1" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(property "Value" "PWR" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "led2")
+		(at 135 65)
+		(property "Reference" "LED2" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(property "Value" "ACT" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "led3")
+		(at 135 68)
+		(property "Reference" "LED3" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(property "Value" "FDD" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu")
+		(uuid "led4")
+		(at 135 71)
+		(property "Reference" "LED4" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(property "Value" "IEC" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
+	)
+
+	; --- DEBUG HEADER ---
+	(footprint "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical_SMD"
+		(layer "F.Cu")
+		(uuid "swd-j17")
+		(at 120 62)
+		(property "Reference" "J17"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "SWD"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; SILKSCREEN MARKINGS
+	; ============================================================================
+
+	(gr_text "UFI"
+		(at 80 50 0)
+		(layer "F.SilkS")
+		(uuid "logo-ufi")
+		(effects (font (size 8 8) (thickness 1.2) (bold yes)) (justify left))
+	)
+
+	(gr_text "Universal Flux Interface"
+		(at 80 60 0)
+		(layer "F.SilkS")
+		(uuid "title-text")
+		(effects (font (size 2 2) (thickness 0.3)) (justify left))
+	)
+
+	(gr_text "Rev 0.2"
+		(at 150 95 0)
+		(layer "F.SilkS")
+		(uuid "rev-text")
+		(effects (font (size 1.2 1.2) (thickness 0.2)) (justify right))
+	)
+
+	(gr_text "CM5 ZONE"
+		(at 25 25 0)
+		(layer "Dwgs.User")
+		(uuid "zone-cm5")
+		(effects (font (size 2 2) (thickness 0.3)) (justify left))
+	)
+
+	(gr_text "STM32 ZONE"
+		(at 105 32 0)
+		(layer "Dwgs.User")
+		(uuid "zone-stm32")
+		(effects (font (size 2 2) (thickness 0.3)) (justify left))
+	)
+
+	(gr_text "POWER"
+		(at 30 72 0)
+		(layer "Dwgs.User")
+		(uuid "zone-power")
+		(effects (font (size 2 2) (thickness 0.3)) (justify left))
+	)
+
+	; ============================================================================
+	; COPPER POURS - GND PLANE (In1.Cu)
+	; ============================================================================
+
+	(zone
+		(net 1)
+		(net_name "GND")
+		(layer "In1.Cu")
+		(uuid "gnd-plane")
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.3))
+		(min_thickness 0.2)
+		(filled_areas_thickness no)
+		(fill yes (thermal_gap 0.3) (thermal_bridge_width 0.4))
+		(polygon
+			(pts
+				(xy 1 1) (xy 159 1) (xy 159 99) (xy 1 99)
+			)
+		)
+	)
+
+	; ============================================================================
+	; COPPER POURS - POWER PLANES (In2.Cu) - Split into regions
+	; ============================================================================
+
+	; +5V Region (left half)
+	(zone
+		(net 3)
+		(net_name "+5V")
+		(layer "In2.Cu")
+		(uuid "5v-plane")
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.3))
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(fill yes (thermal_gap 0.3) (thermal_bridge_width 0.5))
+		(polygon
+			(pts
+				(xy 1 1) (xy 60 1) (xy 60 99) (xy 1 99)
+			)
+		)
+	)
+
+	; +3V3 Region (right half)
+	(zone
+		(net 2)
+		(net_name "+3V3")
+		(layer "In2.Cu")
+		(uuid "3v3-plane")
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.3))
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(fill yes (thermal_gap 0.3) (thermal_bridge_width 0.5))
+		(polygon
+			(pts
+				(xy 62 1) (xy 159 1) (xy 159 99) (xy 62 99)
+			)
+		)
+	)
+
+	; ============================================================================
+	; TOP/BOTTOM GND POURS
+	; ============================================================================
+
+	(zone
+		(net 1)
+		(net_name "GND")
+		(layer "F.Cu")
+		(uuid "gnd-top")
+		(hatch edge 0.5)
+		(priority 0)
+		(connect_pads yes (clearance 0.25))
+		(min_thickness 0.15)
+		(filled_areas_thickness no)
+		(fill yes (thermal_gap 0.25) (thermal_bridge_width 0.3))
+		(polygon
+			(pts
+				(xy 1 1) (xy 159 1) (xy 159 99) (xy 1 99)
+			)
+		)
+	)
+
+	(zone
+		(net 1)
+		(net_name "GND")
+		(layer "B.Cu")
+		(uuid "gnd-bottom")
+		(hatch edge 0.5)
+		(priority 0)
+		(connect_pads yes (clearance 0.25))
+		(min_thickness 0.15)
+		(filled_areas_thickness no)
+		(fill yes (thermal_gap 0.25) (thermal_bridge_width 0.3))
+		(polygon
+			(pts
+				(xy 1 1) (xy 159 1) (xy 159 99) (xy 1 99)
+			)
+		)
+	)
+)

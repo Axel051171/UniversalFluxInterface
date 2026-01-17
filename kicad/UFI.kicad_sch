@@ -1,0 +1,344 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f")
+  (paper "A3")
+  (title_block
+    (title "UFI - Universal Flux Interface")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFT Project")
+    (comment 1 "CM5 Carrier + STM32H723 Flux Engine")
+    (comment 2 "Floppy Disk Preservation Platform")
+    (comment 3 "Author: Axel")
+  )
+  
+  (lib_symbols)
+  
+  ;; Hierarchical Sheet: STM32H723 Core
+  (sheet
+    (at 25.4 38.1)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 255 255 194 1.0)
+    )
+    (uuid "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+    (property "Sheetname" "STM32H723_Core"
+      (at 25.4 37.3886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "STM32H723_Core.kicad_sch"
+      (at 25.4 64.2114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "2")
+        )
+      )
+    )
+  )
+  
+  ;; Hierarchical Sheet: Power Management
+  (sheet
+    (at 88.9 38.1)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 255 194 194 1.0)
+    )
+    (uuid "b2c3d4e5-f6a7-8901-bcde-f23456789012")
+    (property "Sheetname" "Power_Management"
+      (at 88.9 37.3886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "Power_Management.kicad_sch"
+      (at 88.9 64.2114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "3")
+        )
+      )
+    )
+  )
+  
+  ;; Hierarchical Sheet: Flux Interface
+  (sheet
+    (at 25.4 76.2)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 194 255 194 1.0)
+    )
+    (uuid "c3d4e5f6-a7b8-9012-cdef-345678901234")
+    (property "Sheetname" "Flux_Interface"
+      (at 25.4 75.4886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "Flux_Interface.kicad_sch"
+      (at 25.4 102.3114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "4")
+        )
+      )
+    )
+  )
+  
+  ;; Hierarchical Sheet: FDD Connectors
+  (sheet
+    (at 88.9 76.2)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 194 194 255 1.0)
+    )
+    (uuid "d4e5f6a7-b8c9-0123-defa-456789012345")
+    (property "Sheetname" "FDD_Connectors"
+      (at 88.9 75.4886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "FDD_Connectors.kicad_sch"
+      (at 88.9 102.3114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "5")
+        )
+      )
+    )
+  )
+  
+  ;; Hierarchical Sheet: IEC Bus (XUM1541)
+  (sheet
+    (at 25.4 114.3)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 255 194 255 1.0)
+    )
+    (uuid "e5f6a7b8-c9d0-1234-efab-567890123456")
+    (property "Sheetname" "IEC_Bus"
+      (at 25.4 113.5886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "IEC_Bus.kicad_sch"
+      (at 25.4 140.4114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "6")
+        )
+      )
+    )
+  )
+  
+  ;; Hierarchical Sheet: CM5 Interface
+  (sheet
+    (at 88.9 114.3)
+    (size 50.8 25.4)
+    (fields_autoplaced yes)
+    (stroke
+      (width 0.1524)
+      (type solid)
+    )
+    (fill
+      (color 194 255 255 1.0)
+    )
+    (uuid "f6a7b8c9-d0e1-2345-fabc-678901234567")
+    (property "Sheetname" "CM5_Interface"
+      (at 88.9 113.5886 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left bottom)
+      )
+    )
+    (property "Sheetfile" "CM5_Interface.kicad_sch"
+      (at 88.9 140.4114 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (justify left top)
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f"
+          (page "7")
+        )
+      )
+    )
+  )
+  
+  ;; Project Title Text
+  (text "UFI - Universal Flux Interface\n\nCM5 Carrier Board with STM32H723 Flux Engine\n\nFeatures:\n- Raspberry Pi CM5 Host\n- STM32H723 @ 550MHz Flux Capture\n- 2x 34-pin Shugart FDD\n- 1x 20-pin Apple Disk II\n- 1x DB-23 Amiga External\n- 1x DIN-6 IEC/C64 (XUM1541)\n- 2x Sync Sensor Ports\n- USB HS Internal Connection\n- Gigabit Ethernet\n- NVMe M.2 Slot"
+    (exclude_from_sim no)
+    (at 152.4 50.8 0)
+    (effects
+      (font
+        (size 2.0 2.0)
+      )
+      (justify left top)
+    )
+    (uuid "text-info-001")
+  )
+  
+  ;; Block Diagram Labels
+  (text "MCU Core\n550 MHz ARM Cortex-M7\n1MB Flash, 564KB RAM\nUSB HS Device"
+    (exclude_from_sim no)
+    (at 27.94 43.18 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-mcu-001")
+  )
+  
+  (text "Power Supply\n5V/12V Input\n3.3V/5V Rails\nDrive Power"
+    (exclude_from_sim no)
+    (at 91.44 43.18 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-pwr-001")
+  )
+  
+  (text "Flux Capture\n100+ MHz Sampling\nHardware Timer\nLevel Shifters"
+    (exclude_from_sim no)
+    (at 27.94 81.28 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-flux-001")
+  )
+  
+  (text "FDD Connectors\n2x 34-pin Shugart\n1x 20-pin Disk II\n1x DB-23 Amiga"
+    (exclude_from_sim no)
+    (at 91.44 81.28 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-fdd-001")
+  )
+  
+  (text "IEC Bus\nC64 1541/1571/1581\nXUM1541 Compatible\nOpen-Collector"
+    (exclude_from_sim no)
+    (at 27.94 119.38 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-iec-001")
+  )
+  
+  (text "CM5 Interface\n2x 100-pin Hirose\nUSB 3.0 Host\nGigabit Ethernet"
+    (exclude_from_sim no)
+    (at 91.44 119.38 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left top)
+    )
+    (uuid "text-cm5-001")
+  )
+)

@@ -1,0 +1,409 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "fdd-conn-uuid-12345678")
+  (paper "A3")
+  (title_block
+    (title "FDD Connectors")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFI Project")
+    (comment 1 "Floppy Drive Interfaces")
+    (comment 2 "Shugart, Apple Disk II, Amiga External")
+  )
+  
+  (lib_symbols
+    ;; 34-pin Shugart FDD Connector
+    (symbol "UFI:Conn_FDD_34pin"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 45.72 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "FDD_34"
+        (at 0 -45.72 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Connector_IDC:IDC-Header_2x17_P2.54mm_Vertical"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_FDD_34pin_0_1"
+        (rectangle
+          (start -7.62 43.18)
+          (end 7.62 -43.18)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "Conn_FDD_34pin_1_1"
+        ;; Odd pins (active low accent signals accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent)
+        (pin passive line (at -12.7 40.64 0) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "1" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 35.56 0) (length 5.08) (name "~{REDWC}" (effects (font (size 1.0 1.0)))) (number "3" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 30.48 0) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "5" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 25.4 0) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "7" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 20.32 0) (length 5.08) (name "~{INDEX}" (effects (font (size 1.0 1.0)))) (number "9" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 15.24 0) (length 5.08) (name "~{DS0}" (effects (font (size 1.0 1.0)))) (number "11" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 10.16 0) (length 5.08) (name "~{DS1}" (effects (font (size 1.0 1.0)))) (number "13" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 5.08 0) (length 5.08) (name "~{DS2}" (effects (font (size 1.0 1.0)))) (number "15" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 0 0) (length 5.08) (name "~{MOTOR}" (effects (font (size 1.0 1.0)))) (number "17" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -5.08 0) (length 5.08) (name "~{DIR}" (effects (font (size 1.0 1.0)))) (number "19" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -10.16 0) (length 5.08) (name "~{STEP}" (effects (font (size 1.0 1.0)))) (number "21" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -15.24 0) (length 5.08) (name "~{WDATA}" (effects (font (size 1.0 1.0)))) (number "23" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -20.32 0) (length 5.08) (name "~{WGATE}" (effects (font (size 1.0 1.0)))) (number "25" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -25.4 0) (length 5.08) (name "~{TRK00}" (effects (font (size 1.0 1.0)))) (number "27" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -30.48 0) (length 5.08) (name "~{WPT}" (effects (font (size 1.0 1.0)))) (number "29" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -35.56 0) (length 5.08) (name "~{RDATA}" (effects (font (size 1.0 1.0)))) (number "31" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -40.64 0) (length 5.08) (name "~{SIDE1}" (effects (font (size 1.0 1.0)))) (number "33" (effects (font (size 1.0 1.0)))))
+        ;; Even pins (accent mostly GND)
+        (pin passive line (at 12.7 40.64 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "2" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 35.56 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "4" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 30.48 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "6" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 25.4 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "8" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 20.32 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "10" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 15.24 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "12" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 10.16 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "14" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 5.08 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "16" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 0 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "18" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -5.08 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "20" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -10.16 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "22" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -15.24 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "24" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -20.32 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "26" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -25.4 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "28" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -30.48 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "30" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -35.56 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "32" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -40.64 180) (length 5.08) (name "~{DSKCHG}" (effects (font (size 1.0 1.0)))) (number "34" (effects (font (size 1.0 1.0)))))
+      )
+    )
+    
+    ;; 74LVC245 Level Shifter
+    (symbol "UFI:74LVC245"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at 0 15.24 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "74LVC245"
+        (at 0 12.7 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "74LVC245_0_1"
+        (rectangle
+          (start -7.62 10.16)
+          (end 7.62 -12.7)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "74LVC245_1_1"
+        (pin power_in line (at -2.54 15.24 270) (length 5.08) (name "VCCA" (effects (font (size 1.0 1.0)))) (number "1" (effects (font (size 1.0 1.0)))))
+        (pin power_in line (at 2.54 15.24 270) (length 5.08) (name "VCCB" (effects (font (size 1.0 1.0)))) (number "20" (effects (font (size 1.0 1.0)))))
+        (pin power_in line (at 0 -17.78 90) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "10" (effects (font (size 1.0 1.0)))))
+        (pin input line (at -12.7 7.62 0) (length 5.08) (name "DIR" (effects (font (size 1.0 1.0)))) (number "2" (effects (font (size 1.0 1.0)))))
+        (pin input line (at -12.7 5.08 0) (length 5.08) (name "~{OE}" (effects (font (size 1.0 1.0)))) (number "19" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at -12.7 2.54 0) (length 5.08) (name "A1" (effects (font (size 1.0 1.0)))) (number "3" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at -12.7 0 0) (length 5.08) (name "A2" (effects (font (size 1.0 1.0)))) (number "4" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at -12.7 -2.54 0) (length 5.08) (name "A3" (effects (font (size 1.0 1.0)))) (number "5" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at -12.7 -5.08 0) (length 5.08) (name "A4" (effects (font (size 1.0 1.0)))) (number "6" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at 12.7 2.54 180) (length 5.08) (name "B1" (effects (font (size 1.0 1.0)))) (number "18" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at 12.7 0 180) (length 5.08) (name "B2" (effects (font (size 1.0 1.0)))) (number "17" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at 12.7 -2.54 180) (length 5.08) (name "B3" (effects (font (size 1.0 1.0)))) (number "16" (effects (font (size 1.0 1.0)))))
+        (pin bidirectional line (at 12.7 -5.08 180) (length 5.08) (name "B4" (effects (font (size 1.0 1.0)))) (number "15" (effects (font (size 1.0 1.0)))))
+      )
+    )
+    
+    ;; DB-23 Amiga External
+    (symbol "UFI:Conn_Amiga_DB23"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 33.02 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "AMIGA_EXT"
+        (at 0 -33.02 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Connector_Dsub:DSUB-23_Female_Horizontal_P2.77x2.84mm"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_Amiga_DB23_0_1"
+        (rectangle
+          (start -7.62 30.48)
+          (end 7.62 -30.48)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "Conn_Amiga_DB23_1_1"
+        (pin passive line (at -12.7 27.94 0) (length 5.08) (name "~{CHNG}/~{RDY}" (effects (font (size 1.0 1.0)))) (number "1" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 22.86 0) (length 5.08) (name "~{INDEX}" (effects (font (size 1.0 1.0)))) (number "2" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 17.78 0) (length 5.08) (name "~{TK0}" (effects (font (size 1.0 1.0)))) (number "3" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 12.7 0) (length 5.08) (name "~{WPRO}" (effects (font (size 1.0 1.0)))) (number "4" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 7.62 0) (length 5.08) (name "~{RDATA}" (effects (font (size 1.0 1.0)))) (number "5" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 2.54 0) (length 5.08) (name "~{SIDE}" (effects (font (size 1.0 1.0)))) (number "6" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -2.54 0) (length 5.08) (name "~{DRVSEL}" (effects (font (size 1.0 1.0)))) (number "7" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -7.62 0) (length 5.08) (name "~{MTR}" (effects (font (size 1.0 1.0)))) (number "8" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -12.7 0) (length 5.08) (name "~{DIR}" (effects (font (size 1.0 1.0)))) (number "9" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -17.78 0) (length 5.08) (name "~{STEP}" (effects (font (size 1.0 1.0)))) (number "10" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -22.86 0) (length 5.08) (name "~{WDATA}" (effects (font (size 1.0 1.0)))) (number "11" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at -12.7 -27.94 0) (length 5.08) (name "~{WGATE}" (effects (font (size 1.0 1.0)))) (number "12" (effects (font (size 1.0 1.0)))))
+        (pin power_in line (at 12.7 27.94 180) (length 5.08) (name "+12V" (effects (font (size 1.0 1.0)))) (number "13" (effects (font (size 1.0 1.0)))))
+        (pin power_in line (at 12.7 22.86 180) (length 5.08) (name "+5V" (effects (font (size 1.0 1.0)))) (number "14" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 17.78 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "15" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 12.7 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "16" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 7.62 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "17" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 2.54 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "18" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -2.54 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "19" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -7.62 180) (length 5.08) (name "ID0" (effects (font (size 1.0 1.0)))) (number "20" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -12.7 180) (length 5.08) (name "ID1" (effects (font (size 1.0 1.0)))) (number "21" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -17.78 180) (length 5.08) (name "ID2" (effects (font (size 1.0 1.0)))) (number "22" (effects (font (size 1.0 1.0)))))
+        (pin passive line (at 12.7 -22.86 180) (length 5.08) (name "ID3" (effects (font (size 1.0 1.0)))) (number "23" (effects (font (size 1.0 1.0)))))
+      )
+    )
+  )
+  
+  ;; Notes
+  (text "FDD Interface Pinouts:\n\n34-pin Shugart (PC/Atari ST/Amiga internal):\n- Active Low signals\n- 74LVC245 level shift 3.3V ↔ 5V\n- Pin 3: Reduced Write Current (optional)\n\nDB-23 Amiga External:\n- Active Low signals  \n- ID pins for drive identification\n- Accent +12V/+5V power supply\n\n20-pin Apple Disk II:\n- Phase signals for stepper\n- Different pinout than Shugart\n\nSync Sensor Ports:\n- 3-pin connector (VCC, GND, Signal)\n- For Apple drives without index sensor"
+    (exclude_from_sim no)
+    (at 177.8 38.1 0)
+    (effects
+      (font
+        (size 1.5 1.5)
+      )
+      (justify left top)
+    )
+    (uuid "text-fdd-notes")
+  )
+  
+  ;; Hierarchical Labels
+  (hierarchical_label "FDD_RDATA"
+    (shape input)
+    (at 25.4 50.8 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-rdata")
+  )
+  
+  (hierarchical_label "FDD_WDATA"
+    (shape output)
+    (at 25.4 55.88 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-wdata")
+  )
+  
+  (hierarchical_label "FDD_WGATE"
+    (shape output)
+    (at 25.4 60.96 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-wgate")
+  )
+  
+  (hierarchical_label "FDD_STEP"
+    (shape output)
+    (at 25.4 66.04 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-step")
+  )
+  
+  (hierarchical_label "FDD_DIR"
+    (shape output)
+    (at 25.4 71.12 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-dir")
+  )
+  
+  (hierarchical_label "FDD_MOTOR"
+    (shape output)
+    (at 25.4 76.2 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-motor")
+  )
+  
+  (hierarchical_label "FDD_SEL0"
+    (shape output)
+    (at 25.4 81.28 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-sel0")
+  )
+  
+  (hierarchical_label "FDD_SEL1"
+    (shape output)
+    (at 25.4 86.36 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-sel1")
+  )
+  
+  (hierarchical_label "FDD_INDEX"
+    (shape input)
+    (at 25.4 91.44 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-index")
+  )
+  
+  (hierarchical_label "FDD_TRK00"
+    (shape input)
+    (at 25.4 96.52 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-trk00")
+  )
+  
+  (hierarchical_label "FDD_WPT"
+    (shape input)
+    (at 25.4 101.6 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-fdd-wpt")
+  )
+  
+  (hierarchical_label "SYNC_IN1"
+    (shape input)
+    (at 25.4 114.3 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-sync-in1")
+  )
+  
+  (hierarchical_label "SYNC_IN2"
+    (shape input)
+    (at 25.4 119.38 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-sync-in2")
+  )
+)

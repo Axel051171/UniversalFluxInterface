@@ -1,0 +1,1217 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "stm32-core-uuid-12345678")
+  (paper "A3")
+  (title_block
+    (title "STM32H723 Core")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFI Project")
+    (comment 1 "Flux Engine MCU")
+    (comment 2 "550 MHz ARM Cortex-M7")
+  )
+  
+  (lib_symbols
+    ;; STM32H723VGT6 Symbol Definition (LQFP100)
+    (symbol "UFI:STM32H723VGT6"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "STM32H723VGT6"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_QFP:LQFP-100_14x14mm_P0.5mm"
+        (at 0 -2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "https://www.st.com/resource/en/datasheet/stm32h723vg.pdf"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "MPN" "STM32H723VGT6"
+        (at 0 -7.62 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      
+      ;; Unit A - Power
+      (symbol "STM32H723VGT6_1_0"
+        (rectangle
+          (start -15.24 40.64)
+          (end 15.24 -40.64)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "STM32H723VGT6_1_1"
+        ;; VDD Pins
+        (pin power_in line
+          (at -20.32 38.1 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "11"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -20.32 35.56 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "19"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -20.32 33.02 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "28"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -20.32 30.48 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "50"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -20.32 27.94 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "75"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -20.32 25.4 0)
+          (length 5.08)
+          (name "VDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "100"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; VDDA
+        (pin power_in line
+          (at -20.32 20.32 0)
+          (length 5.08)
+          (name "VDDA"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "22"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; VBAT
+        (pin power_in line
+          (at -20.32 17.78 0)
+          (length 5.08)
+          (name "VBAT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; VCAP
+        (pin passive line
+          (at -20.32 12.7 0)
+          (length 5.08)
+          (name "VCAP"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "49"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; VSS (Ground)
+        (pin power_in line
+          (at -20.32 -38.1 0)
+          (length 5.08)
+          (name "VSS"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "10"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; NRST
+        (pin input line
+          (at -20.32 5.08 0)
+          (length 5.08)
+          (name "NRST"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "14"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; BOOT0
+        (pin input line
+          (at -20.32 2.54 0)
+          (length 5.08)
+          (name "BOOT0"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "94"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; HSE Oscillator
+        (pin input line
+          (at -20.32 -5.08 0)
+          (length 5.08)
+          (name "PH0-OSC_IN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "12"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at -20.32 -7.62 0)
+          (length 5.08)
+          (name "PH1-OSC_OUT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "13"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; USB HS
+        (pin bidirectional line
+          (at 20.32 38.1 180)
+          (length 5.08)
+          (name "PA11/USB_DM"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "70"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at 20.32 35.56 180)
+          (length 5.08)
+          (name "PA12/USB_DP"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "71"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; SWD Debug
+        (pin bidirectional line
+          (at 20.32 -30.48 180)
+          (length 5.08)
+          (name "PA13/SWDIO"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "72"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at 20.32 -33.02 180)
+          (length 5.08)
+          (name "PA14/SWCLK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "76"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 -35.56 180)
+          (length 5.08)
+          (name "PB3/SWO"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "89"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; Flux Capture Pins (Timer Inputs)
+        (pin input line
+          (at 20.32 25.4 180)
+          (length 5.08)
+          (name "PA0/TIM2_CH1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "23"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at 20.32 22.86 180)
+          (length 5.08)
+          (name "PA1/TIM2_CH2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "24"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; FDD Control Outputs
+        (pin output line
+          (at 20.32 15.24 180)
+          (length 5.08)
+          (name "PB0/FDD_STEP"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "35"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 12.7 180)
+          (length 5.08)
+          (name "PB1/FDD_DIR"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "36"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 10.16 180)
+          (length 5.08)
+          (name "PB2/FDD_MOTOR"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "37"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 7.62 180)
+          (length 5.08)
+          (name "PE7/FDD_SEL0"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "38"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; LED Outputs
+        (pin output line
+          (at 20.32 -10.16 180)
+          (length 5.08)
+          (name "PC0/LED_LINK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "15"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 -12.7 180)
+          (length 5.08)
+          (name "PC1/LED_READ"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "16"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 -15.24 180)
+          (length 5.08)
+          (name "PC2/LED_WRITE"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "17"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 20.32 -17.78 180)
+          (length 5.08)
+          (name "PC3/LED_ERR"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "18"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        
+        ;; IEC Bus
+        (pin bidirectional line
+          (at 20.32 0 180)
+          (length 5.08)
+          (name "PD0/IEC_ATN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "81"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at 20.32 -2.54 180)
+          (length 5.08)
+          (name "PD1/IEC_CLK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "82"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at 20.32 -5.08 180)
+          (length 5.08)
+          (name "PD2/IEC_DATA"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "83"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+    )
+    
+    ;; Crystal Symbol
+    (symbol "UFI:Crystal_25MHz"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "Y"
+        (at 0 3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "25MHz"
+        (at 0 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Crystal:Crystal_HC49-4H_Vertical"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Crystal_25MHz_0_1"
+        (rectangle
+          (start -1.27 2.54)
+          (end 1.27 -2.54)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -2.54 2.54)
+            (xy -2.54 -2.54)
+          )
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 2.54 2.54)
+            (xy 2.54 -2.54)
+          )
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "Crystal_25MHz_1_1"
+        (pin passive line
+          (at -5.08 0 0)
+          (length 2.54)
+          (name "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 0 180)
+          (length 2.54)
+          (name "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  
+  ;; Schematic Content
+  
+  ;; STM32H723 MCU Instance
+  (symbol
+    (lib_id "UFI:STM32H723VGT6")
+    (at 127 101.6 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (uuid "mcu-main-001")
+    (property "Reference" "U1"
+      (at 127 55.88 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "STM32H723VGT6"
+      (at 127 58.42 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Footprint" "Package_QFP:LQFP-100_14x14mm_P0.5mm"
+      (at 127 149.86 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (pin "11"
+      (uuid "pin-vdd-1")
+    )
+    (pin "19"
+      (uuid "pin-vdd-2")
+    )
+    (pin "28"
+      (uuid "pin-vdd-3")
+    )
+    (pin "50"
+      (uuid "pin-vdd-4")
+    )
+    (pin "75"
+      (uuid "pin-vdd-5")
+    )
+    (pin "100"
+      (uuid "pin-vdd-6")
+    )
+    (pin "22"
+      (uuid "pin-vdda")
+    )
+    (pin "6"
+      (uuid "pin-vbat")
+    )
+    (pin "49"
+      (uuid "pin-vcap")
+    )
+    (pin "10"
+      (uuid "pin-vss")
+    )
+    (pin "14"
+      (uuid "pin-nrst")
+    )
+    (pin "94"
+      (uuid "pin-boot0")
+    )
+    (pin "12"
+      (uuid "pin-osc-in")
+    )
+    (pin "13"
+      (uuid "pin-osc-out")
+    )
+    (pin "70"
+      (uuid "pin-usb-dm")
+    )
+    (pin "71"
+      (uuid "pin-usb-dp")
+    )
+    (pin "72"
+      (uuid "pin-swdio")
+    )
+    (pin "76"
+      (uuid "pin-swclk")
+    )
+    (pin "89"
+      (uuid "pin-swo")
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (reference "U1")
+          (unit 1)
+        )
+      )
+    )
+  )
+  
+  ;; 25MHz Crystal
+  (symbol
+    (lib_id "UFI:Crystal_25MHz")
+    (at 63.5 106.68 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (uuid "crystal-001")
+    (property "Reference" "Y1"
+      (at 63.5 99.06 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (property "Value" "25MHz"
+      (at 63.5 114.3 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+    (instances
+      (project "UFI"
+        (path "/e6e3bca3-1f3e-4c78-9b6f-5a7d2b8c9e0f/a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          (reference "Y1")
+          (unit 1)
+        )
+      )
+    )
+  )
+  
+  ;; Power symbols and nets
+  (power_symbol
+    (lib_id "power:+3V3")
+    (at 88.9 55.88 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (uuid "pwr-3v3-001")
+    (property "Reference" "#PWR01"
+      (at 88.9 59.69 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "+3V3"
+      (at 88.9 52.07 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+  )
+  
+  (power_symbol
+    (lib_id "power:GND")
+    (at 88.9 147.32 0)
+    (unit 1)
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (dnp no)
+    (uuid "pwr-gnd-001")
+    (property "Reference" "#PWR02"
+      (at 88.9 153.67 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+        (hide yes)
+      )
+    )
+    (property "Value" "GND"
+      (at 88.9 151.13 0)
+      (effects
+        (font
+          (size 1.27 1.27)
+        )
+      )
+    )
+  )
+  
+  ;; Notes
+  (text "STM32H723VGT6 - 550 MHz ARM Cortex-M7\n\nKey Features for Flux Capture:\n- 32-bit Timers with Input Capture\n- DMA for zero-copy transfers\n- 1MB Flash, 564KB SRAM\n- USB High-Speed (480 Mbit/s)\n\nClock: 25 MHz HSE → PLL → 550 MHz\nFlux Input: TIM2_CH1 (PA0)\nUSB: Internal HS PHY"
+    (exclude_from_sim no)
+    (at 177.8 63.5 0)
+    (effects
+      (font
+        (size 1.5 1.5)
+      )
+      (justify left top)
+    )
+    (uuid "text-notes-001")
+  )
+  
+  ;; Hierarchical Labels for inter-sheet connections
+  (hierarchical_label "VDD_3V3"
+    (shape input)
+    (at 25.4 63.5 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-vdd-001")
+  )
+  
+  (hierarchical_label "GND"
+    (shape input)
+    (at 25.4 139.7 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-gnd-001")
+  )
+  
+  (hierarchical_label "USB_DP"
+    (shape bidirectional)
+    (at 177.8 136.906 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-usb-dp")
+  )
+  
+  (hierarchical_label "USB_DM"
+    (shape bidirectional)
+    (at 177.8 139.446 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-usb-dm")
+  )
+  
+  (hierarchical_label "FLUX_IN"
+    (shape input)
+    (at 177.8 76.2 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-flux-in")
+  )
+  
+  (hierarchical_label "FDD_STEP"
+    (shape output)
+    (at 177.8 86.36 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-fdd-step")
+  )
+  
+  (hierarchical_label "FDD_DIR"
+    (shape output)
+    (at 177.8 88.9 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-fdd-dir")
+  )
+  
+  (hierarchical_label "FDD_MOTOR"
+    (shape output)
+    (at 177.8 91.44 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-fdd-motor")
+  )
+  
+  (hierarchical_label "IEC_ATN"
+    (shape bidirectional)
+    (at 177.8 101.6 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-iec-atn")
+  )
+  
+  (hierarchical_label "IEC_CLK"
+    (shape bidirectional)
+    (at 177.8 104.14 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-iec-clk")
+  )
+  
+  (hierarchical_label "IEC_DATA"
+    (shape bidirectional)
+    (at 177.8 106.68 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-iec-data")
+  )
+  
+  (hierarchical_label "LED_LINK"
+    (shape output)
+    (at 177.8 111.76 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-led-link")
+  )
+  
+  (hierarchical_label "LED_READ"
+    (shape output)
+    (at 177.8 114.3 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-led-read")
+  )
+  
+  (hierarchical_label "LED_WRITE"
+    (shape output)
+    (at 177.8 116.84 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-led-write")
+  )
+  
+  (hierarchical_label "LED_ERR"
+    (shape output)
+    (at 177.8 119.38 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-led-err")
+  )
+  
+  (hierarchical_label "SWDIO"
+    (shape bidirectional)
+    (at 177.8 127 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-swdio")
+  )
+  
+  (hierarchical_label "SWCLK"
+    (shape input)
+    (at 177.8 129.54 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-swclk")
+  )
+)

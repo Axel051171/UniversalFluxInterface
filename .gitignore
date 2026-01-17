@@ -1,0 +1,44 @@
+# Build outputs
+build/
+bin/
+obj/
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+
+# KiCad
+*-backups/
+*-bak
+*.kicad_prl
+fp-info-cache
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Archives
+*.zip
+*.tar.gz
+*.7z

@@ -1,0 +1,131 @@
+{
+  "board": {
+    "3dviewports": [],
+    "design_settings": {
+      "defaults": {
+        "board_outline_line_width": 0.15,
+        "copper_line_width": 0.2,
+        "copper_text_size_h": 1.5,
+        "copper_text_size_v": 1.5,
+        "copper_text_thickness": 0.3,
+        "other_line_width": 0.15,
+        "silk_line_width": 0.12,
+        "silk_text_size_h": 1.0,
+        "silk_text_size_v": 1.0,
+        "silk_text_thickness": 0.12
+      },
+      "diff_pair_dimensions": [
+        {"gap": 0.15, "via_gap": 0.25, "width": 0.2},
+        {"gap": 0.18, "via_gap": 0.25, "width": 0.15}
+      ],
+      "drc_exclusions": [],
+      "rules": {
+        "min_clearance": 0.15,
+        "min_connection_width": 0.15,
+        "min_copper_edge_clearance": 0.3,
+        "min_hole_clearance": 0.25,
+        "min_hole_to_hole": 0.25,
+        "min_track_width": 0.15,
+        "min_via_annular_width": 0.1,
+        "min_via_diameter": 0.4,
+        "solder_mask_clearance": 0.05,
+        "solder_mask_min_width": 0.1
+      },
+      "track_widths": [0.15, 0.2, 0.25, 0.3, 0.5, 0.8, 1.0],
+      "via_dimensions": [
+        {"diameter": 0.6, "drill": 0.3},
+        {"diameter": 0.8, "drill": 0.4}
+      ]
+    },
+    "layer_presets": [],
+    "viewports": []
+  },
+  "boards": [],
+  "cvpcb": {
+    "equivalence_files": []
+  },
+  "libraries": {
+    "pinned_footprint_libs": ["UFI"],
+    "pinned_symbol_libs": ["UFI_Symbols"]
+  },
+  "meta": {
+    "filename": "UFI_Headless.kicad_pro",
+    "version": 1
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "clearance": 0.2,
+        "track_width": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "diff_pair_gap": 0.2,
+        "diff_pair_width": 0.2
+      },
+      {
+        "name": "USB_HS",
+        "clearance": 0.2,
+        "track_width": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "diff_pair_gap": 0.15,
+        "diff_pair_width": 0.2
+      },
+      {
+        "name": "Ethernet",
+        "clearance": 0.2,
+        "track_width": 0.15,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "diff_pair_gap": 0.18,
+        "diff_pair_width": 0.15
+      },
+      {
+        "name": "Power",
+        "clearance": 0.3,
+        "track_width": 0.5,
+        "via_diameter": 0.8,
+        "via_drill": 0.4,
+        "diff_pair_gap": 0.25,
+        "diff_pair_width": 0.5
+      }
+    ],
+    "meta": {
+      "version": 3
+    },
+    "net_colors": null,
+    "netclass_assignments": null,
+    "netclass_patterns": [
+      {"netclass": "USB_HS", "pattern": "USB_HS*"},
+      {"netclass": "Ethernet", "pattern": "ETH_*"},
+      {"netclass": "Power", "pattern": "+*"},
+      {"netclass": "Power", "pattern": "GND"}
+    ]
+  },
+  "pcbnew": {
+    "last_paths": {
+      "gencad": "",
+      "idf": "",
+      "netlist": "",
+      "specctra_dsn": "",
+      "step": "",
+      "vrml": ""
+    },
+    "page_layout_descr_file": ""
+  },
+  "schematic": {
+    "legacy_lib_dir": "",
+    "legacy_lib_list": []
+  },
+  "sheets": [],
+  "text_variables": {
+    "AUTHOR": "Axel",
+    "COMPANY": "UFT Project",
+    "DATE": "2026-01-17",
+    "PROJECT": "UFI Headless - Universal Flux Interface",
+    "REVISION": "2.0",
+    "BOARD_SIZE": "110mm x 85mm",
+    "WEB_URL": "http://ufi.local"
+  }
+}

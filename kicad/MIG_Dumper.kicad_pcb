@@ -1,0 +1,453 @@
+(kicad_pcb
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(general
+		(thickness 1.6)
+		(legacy_teardrops no)
+	)
+	(paper "A4")
+	(title_block
+		(title "MIG Dumper - EPROM/Mask ROM Reader")
+		(date "2026-01-17")
+		(rev "1.0")
+		(company "UFI Project")
+		(comment 1 "Universal EPROM Dumper 2716-27C322")
+		(comment 2 "2-Layer PCB, 100x60mm, HASL")
+		(comment 3 "STM32G0B1 + ZIF-40 Socket")
+	)
+	(layers
+		(0 "F.Cu" signal)
+		(31 "B.Cu" signal)
+		(34 "B.Paste" user)
+		(35 "F.Paste" user)
+		(36 "B.SilkS" user "B.Silkscreen")
+		(37 "F.SilkS" user "F.Silkscreen")
+		(38 "B.Mask" user)
+		(39 "F.Mask" user)
+		(44 "Edge.Cuts" user)
+		(48 "B.Fab" user)
+		(49 "F.Fab" user)
+	)
+	(setup
+		(pad_to_mask_clearance 0.05)
+		(pcbplotparams
+			(layerselection 0x00010fc_ffffffff)
+			(usegerberextensions yes)
+			(outputdirectory "gerber/")
+		)
+	)
+
+	; ============================================================================
+	; NET DEFINITIONS
+	; ============================================================================
+	(net 0 "")
+	(net 1 "GND")
+	(net 2 "+3V3")
+	(net 3 "+5V")
+	(net 4 "USB_DP")
+	(net 5 "USB_DM")
+	; Address lines A0-A21
+	(net 6 "A0") (net 7 "A1") (net 8 "A2") (net 9 "A3")
+	(net 10 "A4") (net 11 "A5") (net 12 "A6") (net 13 "A7")
+	(net 14 "A8") (net 15 "A9") (net 16 "A10") (net 17 "A11")
+	(net 18 "A12") (net 19 "A13") (net 20 "A14") (net 21 "A15")
+	(net 22 "A16") (net 23 "A17") (net 24 "A18") (net 25 "A19")
+	(net 26 "A20") (net 27 "A21")
+	; Data lines D0-D15
+	(net 28 "D0") (net 29 "D1") (net 30 "D2") (net 31 "D3")
+	(net 32 "D4") (net 33 "D5") (net 34 "D6") (net 35 "D7")
+	(net 36 "D8") (net 37 "D9") (net 38 "D10") (net 39 "D11")
+	(net 40 "D12") (net 41 "D13") (net 42 "D14") (net 43 "D15")
+	; Control
+	(net 44 "CE")
+	(net 45 "OE")
+	(net 46 "VPP")
+
+	; ============================================================================
+	; NET CLASSES
+	; ============================================================================
+	(net_class "Default" ""
+		(clearance 0.25)
+		(trace_width 0.3)
+		(via_dia 0.6)
+		(via_drill 0.3)
+	)
+	(net_class "Power" ""
+		(clearance 0.3)
+		(trace_width 0.6)
+		(via_dia 0.8)
+		(via_drill 0.4)
+		(add_net "+3V3")
+		(add_net "+5V")
+		(add_net "GND")
+	)
+
+	; ============================================================================
+	; BOARD OUTLINE - 100mm x 60mm
+	; ============================================================================
+	
+	(gr_line (start 2 0) (end 98 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 100 2) (end 100 58) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 98 60) (end 2 60) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_line (start 0 58) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	
+	; Rounded corners
+	(gr_arc (start 2 2) (mid 0.586 0.586) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 98 0) (mid 99.414 0.586) (end 100 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 100 58) (mid 99.414 59.414) (end 98 60) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+	(gr_arc (start 0 58) (mid 0.586 59.414) (end 2 60) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts"))
+
+	; Mounting holes (M3)
+	(footprint "MountingHole:MountingHole_3.2mm_M3"
+		(layer "F.Cu") (uuid "mh1") (at 5 5)
+		(property "Reference" "H1" (at 0 -3 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 6 6) (drill 3.2) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_3.2mm_M3"
+		(layer "F.Cu") (uuid "mh2") (at 95 5)
+		(property "Reference" "H2" (at 0 -3 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 6 6) (drill 3.2) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_3.2mm_M3"
+		(layer "F.Cu") (uuid "mh3") (at 5 55)
+		(property "Reference" "H3" (at 0 -3 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 6 6) (drill 3.2) (layers "*.Cu" "*.Mask"))
+	)
+	(footprint "MountingHole:MountingHole_3.2mm_M3"
+		(layer "F.Cu") (uuid "mh4") (at 95 55)
+		(property "Reference" "H4" (at 0 -3 0) (layer "F.SilkS") (effects (font (size 0.6 0.6) (thickness 0.1))))
+		(pad "1" thru_hole circle (at 0 0) (size 6 6) (drill 3.2) (layers "*.Cu" "*.Mask"))
+	)
+
+	; ============================================================================
+	; ZIF-40 SOCKET (Center-Right, main component)
+	; ============================================================================
+
+	(footprint "Socket:DIP_Socket-40_W15.24mm_LongPads"
+		(layer "F.Cu")
+		(uuid "zif-u1")
+		(at 70 30)
+		(property "Reference" "U1"
+			(at 0 -28 0)
+			(layer "F.SilkS")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+		(property "Value" "ZIF-40"
+			(at 0 28 0)
+			(layer "F.Fab")
+			(effects (font (size 1 1) (thickness 0.15)))
+		)
+	)
+
+	; ============================================================================
+	; STM32G0B1 MCU (Left side)
+	; ============================================================================
+
+	(footprint "Package_QFP:LQFP-48_7x7mm_P0.5mm"
+		(layer "F.Cu")
+		(uuid "stm32-u2")
+		(at 25 30)
+		(property "Reference" "U2"
+			(at 0 -6 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "STM32G0B1"
+			(at 0 6 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; USB-C CONNECTOR (Bottom edge)
+	; ============================================================================
+
+	(footprint "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A"
+		(layer "F.Cu")
+		(uuid "usb-j1")
+		(at 25 57 180)
+		(property "Reference" "J1"
+			(at 0 -5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+		(property "Value" "USB-C"
+			(at 0 5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.8 0.8) (thickness 0.12)))
+		)
+	)
+
+	; ============================================================================
+	; LEVEL SHIFTERS (74LVC245)
+	; ============================================================================
+
+	; U3: Address A0-A7
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u3")
+		(at 45 15)
+		(property "Reference" "U3"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; U4: Address A8-A15
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u4")
+		(at 45 27)
+		(property "Reference" "U4"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; U5: Address A16-A19 + Control
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u5")
+		(at 45 39)
+		(property "Reference" "U5"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; U6: Data D0-D7
+	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+		(layer "F.Cu")
+		(uuid "ls-u6")
+		(at 45 51)
+		(property "Reference" "U6"
+			(at 0 -4.5 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "74LVC245"
+			(at 0 4.5 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; ============================================================================
+	; POWER REGULATOR
+	; ============================================================================
+
+	(footprint "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
+		(layer "F.Cu")
+		(uuid "vreg-u7")
+		(at 12 50)
+		(property "Reference" "U7"
+			(at 0 -4 0)
+			(layer "F.SilkS")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+		(property "Value" "AMS1117-3.3"
+			(at 0 4 0)
+			(layer "F.Fab")
+			(effects (font (size 0.6 0.6) (thickness 0.1)))
+		)
+	)
+
+	; ============================================================================
+	; DECOUPLING CAPACITORS
+	; ============================================================================
+
+	; STM32 decoupling
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c1") (at 20 27)
+		(property "Reference" "C1" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c2") (at 20 30)
+		(property "Reference" "C2" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c3") (at 20 33)
+		(property "Reference" "C3" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c4") (at 30 27)
+		(property "Reference" "C4" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c5") (at 30 33)
+		(property "Reference" "C5" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+
+	; Level shifter decoupling
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c6") (at 40 15)
+		(property "Reference" "C6" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c7") (at 40 27)
+		(property "Reference" "C7" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c8") (at 40 39)
+		(property "Reference" "C8" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+	(footprint "Capacitor_SMD:C_0402_1005Metric"
+		(layer "F.Cu") (uuid "cap-c9") (at 40 51)
+		(property "Reference" "C9" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
+		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
+	)
+
+	; Regulator caps
+	(footprint "Capacitor_SMD:C_0805_2012Metric"
+		(layer "F.Cu") (uuid "cap-c10") (at 8 50)
+		(property "Reference" "C10" (at 0 -1.8 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "10u" (at 0 1.8 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+	(footprint "Capacitor_SMD:C_0805_2012Metric"
+		(layer "F.Cu") (uuid "cap-c11") (at 16 50)
+		(property "Reference" "C11" (at 0 -1.8 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "10u" (at 0 1.8 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+
+	; ============================================================================
+	; STATUS LED
+	; ============================================================================
+
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu") (uuid "led1") (at 12 15)
+		(property "Reference" "LED1" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "PWR" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+	(footprint "LED_SMD:LED_0603_1608Metric"
+		(layer "F.Cu") (uuid "led2") (at 12 18)
+		(property "Reference" "LED2" (at 0 -2 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
+		(property "Value" "ACT" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
+	)
+
+	; ============================================================================
+	; TRACES
+	; ============================================================================
+
+	; USB D+
+	(segment (start 28 33) (end 28 52) (width 0.4) (layer "F.Cu") (net 4))
+	(segment (start 28 52) (end 23 57) (width 0.4) (layer "F.Cu") (net 4))
+
+	; USB D-
+	(segment (start 28.5 33) (end 28.5 52) (width 0.4) (layer "F.Cu") (net 5))
+	(segment (start 28.5 52) (end 23.5 57) (width 0.4) (layer "F.Cu") (net 5))
+
+	; Address bus to level shifters
+	(segment (start 29 27) (end 40 27) (width 0.3) (layer "F.Cu") (net 6))
+	(segment (start 40 27) (end 40 15) (width 0.3) (layer "F.Cu") (net 6))
+
+	; Power
+	(segment (start 25 57) (end 12 57) (width 0.6) (layer "F.Cu") (net 3))
+	(segment (start 12 57) (end 12 52) (width 0.6) (layer "F.Cu") (net 3))
+	(segment (start 12 48) (end 12 30) (width 0.6) (layer "F.Cu") (net 2))
+	(segment (start 12 30) (end 20 30) (width 0.6) (layer "F.Cu") (net 2))
+
+	; ============================================================================
+	; VIAS
+	; ============================================================================
+
+	(via (at 22 28) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 22 32) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 28 28) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+	(via (at 28 32) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+
+	; ============================================================================
+	; COPPER POUR
+	; ============================================================================
+
+	(zone
+		(net 1)
+		(net_name "GND")
+		(layer "B.Cu")
+		(uuid "gnd-bottom")
+		(hatch edge 0.5)
+		(connect_pads yes (clearance 0.25))
+		(min_thickness 0.2)
+		(fill yes (thermal_gap 0.25) (thermal_bridge_width 0.4))
+		(polygon (pts (xy 1 1) (xy 99 1) (xy 99 59) (xy 1 59)))
+	)
+
+	; ============================================================================
+	; SILKSCREEN
+	; ============================================================================
+
+	(gr_text "MIG"
+		(at 85 15 0)
+		(layer "F.SilkS")
+		(effects (font (size 3 3) (thickness 0.5) (bold yes)) (justify left))
+	)
+
+	(gr_text "DUMPER"
+		(at 85 20 0)
+		(layer "F.SilkS")
+		(effects (font (size 1.5 1.5) (thickness 0.25)) (justify left))
+	)
+
+	(gr_text "2716-27C322"
+		(at 85 25 0)
+		(layer "F.SilkS")
+		(effects (font (size 1 1) (thickness 0.15)) (justify left))
+	)
+
+	(gr_text "v1.0"
+		(at 85 55 0)
+		(layer "F.SilkS")
+		(effects (font (size 1 1) (thickness 0.15)) (justify left))
+	)
+
+	; ZIF socket pin markings
+	(gr_text "1"
+		(at 56 8 0)
+		(layer "F.SilkS")
+		(effects (font (size 1.2 1.2) (thickness 0.2)) (justify left))
+	)
+	(gr_text "40"
+		(at 56 52 0)
+		(layer "F.SilkS")
+		(effects (font (size 1.2 1.2) (thickness 0.2)) (justify left))
+	)
+
+	; ROM type labels
+	(gr_text "A0-A21"
+		(at 70 8 0)
+		(layer "F.SilkS")
+		(effects (font (size 0.8 0.8) (thickness 0.12)) (justify left))
+	)
+	(gr_text "D0-D15"
+		(at 70 52 0)
+		(layer "F.SilkS")
+		(effects (font (size 0.8 0.8) (thickness 0.12)) (justify left))
+	)
+)

@@ -1,0 +1,116 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "flux-interface-uuid-12345678")
+  (paper "A3")
+  (title_block
+    (title "Flux Capture Interface")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFI Project")
+    (comment 1 "High-Speed Flux Sampling")
+    (comment 2 "100+ MHz Resolution")
+  )
+  
+  (lib_symbols)
+  
+  ;; Notes
+  (text "Flux Capture Architecture\n\nSignal Flow:\n  FDD RDATA ──→ Level Shift ──→ Comparator ──→ TIM2_CH1 (Input Capture)\n                (74LVC245)     (LM311)        (STM32H723)\n\nTiming Resolution:\n- STM32H723 Timer Clock: 275 MHz (after prescaler)\n- Input Capture Resolution: ~3.6 ns\n- Effective Flux Resolution: ~100 MHz equivalent\n- Better than Greaseweazle (84 MHz) and KryoFlux (~72 MHz)\n\nLevel Shifting:\n- FDD signals: 5V TTL (active low)\n- MCU inputs: 3.3V LVCMOS\n- 74LVC245: Bidirectional, auto-direction sensing\n- Separate shifters for input/output paths\n\nAnalog Conditioning (Optional):\n- LM311 comparator for pulse shaping\n- Adjustable threshold via potentiometer\n- Low-pass filter for noise rejection\n\nDMA Configuration:\n- TIM2 Input Capture → DMA1 Stream\n- Circular buffer in DTCM RAM\n- Zero-copy transfer to USB\n\nWrite Path:\n- TIM3 Output Compare for WDATA generation\n- Precompensation via software timing adjustment\n- Hardware gate control (WGATE)"
+    (exclude_from_sim no)
+    (at 25.4 38.1 0)
+    (effects
+      (font
+        (size 1.5 1.5)
+      )
+      (justify left top)
+    )
+    (uuid "text-flux-notes")
+  )
+  
+  (text "Flux Timing Diagram:\n\n         ┌─┐ ┌──┐  ┌─┐   ┌───┐ ┌─┐\nRDATA ───┘ └─┘  └──┘ └───┘   └─┘ └───\n         │   │     │       │   │\n         ▼   ▼     ▼       ▼   ▼\n      ┌───────────────────────────────┐\n      │   TIM2 Input Capture (DMA)    │\n      │   t0  t1    t2      t3  t4    │\n      └───────────────────────────────┘\n                    │\n                    ▼\n      ┌───────────────────────────────┐\n      │  Δt = t(n+1) - t(n)           │\n      │  Flux transition timing       │\n      └───────────────────────────────┘"
+    (exclude_from_sim no)
+    (at 177.8 38.1 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+        (face "Monospace")
+      )
+      (justify left top)
+    )
+    (uuid "text-timing-diagram")
+  )
+  
+  ;; Hierarchical Labels
+  (hierarchical_label "FLUX_RDATA_5V"
+    (shape input)
+    (at 25.4 127 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-flux-rdata-5v")
+  )
+  
+  (hierarchical_label "FLUX_RDATA_3V3"
+    (shape output)
+    (at 228.6 127 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-flux-rdata-3v3")
+  )
+  
+  (hierarchical_label "FLUX_WDATA_3V3"
+    (shape input)
+    (at 25.4 139.7 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-flux-wdata-3v3")
+  )
+  
+  (hierarchical_label "FLUX_WDATA_5V"
+    (shape output)
+    (at 228.6 139.7 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-flux-wdata-5v")
+  )
+  
+  (hierarchical_label "FLUX_INDEX"
+    (shape input)
+    (at 25.4 152.4 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-flux-index")
+  )
+  
+  (hierarchical_label "SYNC_SENSOR"
+    (shape input)
+    (at 25.4 165.1 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-sync-sensor")
+  )
+)

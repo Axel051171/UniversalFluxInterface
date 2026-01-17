@@ -1,0 +1,709 @@
+(kicad_symbol_lib
+  (version 20231120)
+  (generator "kicad_symbol_editor")
+  (generator_version "8.0")
+
+  ;; ============================================================================
+  ;; STM32H723VGT6 - Main MCU (LQFP-100)
+  ;; ============================================================================
+  (symbol "STM32H723VGT6"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "U"
+      (at 0 53.34 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "STM32H723VGT6"
+      (at 0 50.8 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Package_QFP:LQFP-100_14x14mm_P0.5mm"
+      (at 0 -53.34 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "https://www.st.com/resource/en/datasheet/stm32h723vg.pdf"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "MPN" "STM32H723VGT6"
+      (at 0 -55.88 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Description" "ARM Cortex-M7 MCU, 550MHz, 1MB Flash, 564KB RAM, USB HS, LQFP-100"
+      (at 0 -58.42 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "STM32H723VGT6_0_1"
+      (rectangle
+        (start -25.4 48.26)
+        (end 25.4 -48.26)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "STM32H723VGT6_1_1"
+      ;; Power Pins - Left Side Top
+      (pin power_in line (at -30.48 45.72 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "11" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 43.18 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "19" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 40.64 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "28" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 38.1 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "50" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 35.56 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "75" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 33.02 0) (length 5.08)
+        (name "VDD" (effects (font (size 1.016 1.016))))
+        (number "100" (effects (font (size 1.016 1.016)))))
+      
+      ;; Analog Power
+      (pin power_in line (at -30.48 27.94 0) (length 5.08)
+        (name "VDDA" (effects (font (size 1.016 1.016))))
+        (number "22" (effects (font (size 1.016 1.016)))))
+      (pin passive line (at -30.48 25.4 0) (length 5.08)
+        (name "VREF+" (effects (font (size 1.016 1.016))))
+        (number "21" (effects (font (size 1.016 1.016)))))
+      
+      ;; Battery Backup
+      (pin power_in line (at -30.48 20.32 0) (length 5.08)
+        (name "VBAT" (effects (font (size 1.016 1.016))))
+        (number "6" (effects (font (size 1.016 1.016)))))
+      
+      ;; Voltage Regulator
+      (pin passive line (at -30.48 15.24 0) (length 5.08)
+        (name "VCAP" (effects (font (size 1.016 1.016))))
+        (number "49" (effects (font (size 1.016 1.016)))))
+      
+      ;; Reset and Boot
+      (pin input line (at -30.48 7.62 0) (length 5.08)
+        (name "~{NRST}" (effects (font (size 1.016 1.016))))
+        (number "14" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -30.48 5.08 0) (length 5.08)
+        (name "BOOT0" (effects (font (size 1.016 1.016))))
+        (number "94" (effects (font (size 1.016 1.016)))))
+      
+      ;; Oscillator
+      (pin input line (at -30.48 -2.54 0) (length 5.08)
+        (name "PH0/OSC_IN" (effects (font (size 1.016 1.016))))
+        (number "12" (effects (font (size 1.016 1.016)))))
+      (pin output line (at -30.48 -5.08 0) (length 5.08)
+        (name "PH1/OSC_OUT" (effects (font (size 1.016 1.016))))
+        (number "13" (effects (font (size 1.016 1.016)))))
+      
+      ;; LSE
+      (pin input line (at -30.48 -10.16 0) (length 5.08)
+        (name "PC14/OSC32_IN" (effects (font (size 1.016 1.016))))
+        (number "7" (effects (font (size 1.016 1.016)))))
+      (pin output line (at -30.48 -12.7 0) (length 5.08)
+        (name "PC15/OSC32_OUT" (effects (font (size 1.016 1.016))))
+        (number "8" (effects (font (size 1.016 1.016)))))
+      
+      ;; Ground - Bottom
+      (pin power_in line (at -30.48 -45.72 0) (length 5.08)
+        (name "VSS" (effects (font (size 1.016 1.016))))
+        (number "10" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 -43.18 0) (length 5.08)
+        (name "VSS" (effects (font (size 1.016 1.016))))
+        (number "27" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -30.48 -40.64 0) (length 5.08)
+        (name "VSSA" (effects (font (size 1.016 1.016))))
+        (number "20" (effects (font (size 1.016 1.016)))))
+      
+      ;; USB HS - Right Side Top
+      (pin bidirectional line (at 30.48 45.72 180) (length 5.08)
+        (name "PA11/USB_DM" (effects (font (size 1.016 1.016))))
+        (number "70" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 30.48 43.18 180) (length 5.08)
+        (name "PA12/USB_DP" (effects (font (size 1.016 1.016))))
+        (number "71" (effects (font (size 1.016 1.016)))))
+      
+      ;; Timer Inputs (Flux Capture)
+      (pin input line (at 30.48 35.56 180) (length 5.08)
+        (name "PA0/TIM2_CH1" (effects (font (size 1.016 1.016))))
+        (number "23" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 33.02 180) (length 5.08)
+        (name "PA1/TIM2_CH2" (effects (font (size 1.016 1.016))))
+        (number "24" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 30.48 180) (length 5.08)
+        (name "PA2/TIM2_CH3" (effects (font (size 1.016 1.016))))
+        (number "25" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 27.94 180) (length 5.08)
+        (name "PA3/TIM2_CH4" (effects (font (size 1.016 1.016))))
+        (number "26" (effects (font (size 1.016 1.016)))))
+      
+      ;; FDD Control
+      (pin output line (at 30.48 20.32 180) (length 5.08)
+        (name "PB0/STEP" (effects (font (size 1.016 1.016))))
+        (number "35" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 17.78 180) (length 5.08)
+        (name "PB1/DIR" (effects (font (size 1.016 1.016))))
+        (number "36" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 15.24 180) (length 5.08)
+        (name "PB2/MOTOR" (effects (font (size 1.016 1.016))))
+        (number "37" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 12.7 180) (length 5.08)
+        (name "PE7/SEL0" (effects (font (size 1.016 1.016))))
+        (number "38" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 10.16 180) (length 5.08)
+        (name "PE8/SEL1" (effects (font (size 1.016 1.016))))
+        (number "39" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 7.62 180) (length 5.08)
+        (name "PE9/SIDE" (effects (font (size 1.016 1.016))))
+        (number "40" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 5.08 180) (length 5.08)
+        (name "PE10/WGATE" (effects (font (size 1.016 1.016))))
+        (number "41" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 2.54 180) (length 5.08)
+        (name "PE11/WDATA" (effects (font (size 1.016 1.016))))
+        (number "42" (effects (font (size 1.016 1.016)))))
+      
+      ;; FDD Status Inputs
+      (pin input line (at 30.48 -5.08 180) (length 5.08)
+        (name "PE12/INDEX" (effects (font (size 1.016 1.016))))
+        (number "43" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 -7.62 180) (length 5.08)
+        (name "PE13/TRK00" (effects (font (size 1.016 1.016))))
+        (number "44" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 -10.16 180) (length 5.08)
+        (name "PE14/WPT" (effects (font (size 1.016 1.016))))
+        (number "45" (effects (font (size 1.016 1.016)))))
+      (pin input line (at 30.48 -12.7 180) (length 5.08)
+        (name "PE15/DSKCHG" (effects (font (size 1.016 1.016))))
+        (number "46" (effects (font (size 1.016 1.016)))))
+      
+      ;; IEC Bus
+      (pin bidirectional line (at 30.48 -20.32 180) (length 5.08)
+        (name "PD0/IEC_ATN" (effects (font (size 1.016 1.016))))
+        (number "81" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 30.48 -22.86 180) (length 5.08)
+        (name "PD1/IEC_CLK" (effects (font (size 1.016 1.016))))
+        (number "82" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 30.48 -25.4 180) (length 5.08)
+        (name "PD2/IEC_DATA" (effects (font (size 1.016 1.016))))
+        (number "83" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 30.48 -27.94 180) (length 5.08)
+        (name "PD3/IEC_SRQ" (effects (font (size 1.016 1.016))))
+        (number "84" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 -30.48 180) (length 5.08)
+        (name "PD4/IEC_RST" (effects (font (size 1.016 1.016))))
+        (number "85" (effects (font (size 1.016 1.016)))))
+      
+      ;; LEDs
+      (pin output line (at 30.48 -35.56 180) (length 5.08)
+        (name "PC0/LED_LINK" (effects (font (size 1.016 1.016))))
+        (number "15" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 -38.1 180) (length 5.08)
+        (name "PC1/LED_READ" (effects (font (size 1.016 1.016))))
+        (number "16" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 -40.64 180) (length 5.08)
+        (name "PC2/LED_WRITE" (effects (font (size 1.016 1.016))))
+        (number "17" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 30.48 -43.18 180) (length 5.08)
+        (name "PC3/LED_ERR" (effects (font (size 1.016 1.016))))
+        (number "18" (effects (font (size 1.016 1.016)))))
+      
+      ;; SWD Debug
+      (pin bidirectional line (at -30.48 -20.32 0) (length 5.08)
+        (name "PA13/SWDIO" (effects (font (size 1.016 1.016))))
+        (number "72" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -30.48 -22.86 0) (length 5.08)
+        (name "PA14/SWCLK" (effects (font (size 1.016 1.016))))
+        (number "76" (effects (font (size 1.016 1.016)))))
+      (pin output line (at -30.48 -25.4 0) (length 5.08)
+        (name "PB3/SWO" (effects (font (size 1.016 1.016))))
+        (number "89" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; 74LVC245 - Octal Bus Transceiver (Level Shifter)
+  ;; ============================================================================
+  (symbol "74LVC245APW"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "U"
+      (at 0 15.24 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "74LVC245APW"
+      (at 0 12.7 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc245a.pdf"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "74LVC245APW_0_1"
+      (rectangle
+        (start -10.16 10.16)
+        (end 10.16 -15.24)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "74LVC245APW_1_1"
+      ;; Power
+      (pin power_in line (at -5.08 15.24 270) (length 5.08)
+        (name "VCCA" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 5.08 15.24 270) (length 5.08)
+        (name "VCCB" (effects (font (size 1.016 1.016))))
+        (number "20" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 0 -20.32 90) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "10" (effects (font (size 1.016 1.016)))))
+      
+      ;; Control
+      (pin input line (at -15.24 7.62 0) (length 5.08)
+        (name "DIR" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -15.24 5.08 0) (length 5.08)
+        (name "~{OE}" (effects (font (size 1.016 1.016))))
+        (number "19" (effects (font (size 1.016 1.016)))))
+      
+      ;; A Side (VCCA voltage)
+      (pin bidirectional line (at -15.24 2.54 0) (length 5.08)
+        (name "A1" (effects (font (size 1.016 1.016))))
+        (number "3" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 0 0) (length 5.08)
+        (name "A2" (effects (font (size 1.016 1.016))))
+        (number "4" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -2.54 0) (length 5.08)
+        (name "A3" (effects (font (size 1.016 1.016))))
+        (number "5" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -5.08 0) (length 5.08)
+        (name "A4" (effects (font (size 1.016 1.016))))
+        (number "6" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -7.62 0) (length 5.08)
+        (name "A5" (effects (font (size 1.016 1.016))))
+        (number "7" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -10.16 0) (length 5.08)
+        (name "A6" (effects (font (size 1.016 1.016))))
+        (number "8" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -12.7 0) (length 5.08)
+        (name "A7" (effects (font (size 1.016 1.016))))
+        (number "9" (effects (font (size 1.016 1.016)))))
+      
+      ;; B Side (VCCB voltage)
+      (pin bidirectional line (at 15.24 2.54 180) (length 5.08)
+        (name "B1" (effects (font (size 1.016 1.016))))
+        (number "18" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 0 180) (length 5.08)
+        (name "B2" (effects (font (size 1.016 1.016))))
+        (number "17" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 -2.54 180) (length 5.08)
+        (name "B3" (effects (font (size 1.016 1.016))))
+        (number "16" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 -5.08 180) (length 5.08)
+        (name "B4" (effects (font (size 1.016 1.016))))
+        (number "15" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 -7.62 180) (length 5.08)
+        (name "B5" (effects (font (size 1.016 1.016))))
+        (number "14" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 -10.16 180) (length 5.08)
+        (name "B6" (effects (font (size 1.016 1.016))))
+        (number "13" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 -12.7 180) (length 5.08)
+        (name "B7" (effects (font (size 1.016 1.016))))
+        (number "12" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; SN7406 - Hex Inverter Open-Collector (30V/40mA)
+  ;; ============================================================================
+  (symbol "SN7406DR"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "U"
+      (at 0 12.7 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "SN7406DR"
+      (at 0 10.16 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Package_SO:SOIC-14_3.9x8.7mm_P1.27mm"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "SN7406DR_0_1"
+      (rectangle
+        (start -7.62 7.62)
+        (end 7.62 -10.16)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "SN7406DR_1_1"
+      ;; Power
+      (pin power_in line (at 0 12.7 270) (length 5.08)
+        (name "VCC" (effects (font (size 1.016 1.016))))
+        (number "14" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 0 -15.24 90) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "7" (effects (font (size 1.016 1.016)))))
+      
+      ;; Inverters
+      (pin input line (at -12.7 5.08 0) (length 5.08)
+        (name "1A" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 5.08 180) (length 5.08)
+        (name "1Y" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -12.7 2.54 0) (length 5.08)
+        (name "2A" (effects (font (size 1.016 1.016))))
+        (number "3" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 2.54 180) (length 5.08)
+        (name "2Y" (effects (font (size 1.016 1.016))))
+        (number "4" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -12.7 0 0) (length 5.08)
+        (name "3A" (effects (font (size 1.016 1.016))))
+        (number "5" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 0 180) (length 5.08)
+        (name "3Y" (effects (font (size 1.016 1.016))))
+        (number "6" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -12.7 -2.54 0) (length 5.08)
+        (name "4A" (effects (font (size 1.016 1.016))))
+        (number "9" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 -2.54 180) (length 5.08)
+        (name "4Y" (effects (font (size 1.016 1.016))))
+        (number "8" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -12.7 -5.08 0) (length 5.08)
+        (name "5A" (effects (font (size 1.016 1.016))))
+        (number "11" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 -5.08 180) (length 5.08)
+        (name "5Y" (effects (font (size 1.016 1.016))))
+        (number "10" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -12.7 -7.62 0) (length 5.08)
+        (name "6A" (effects (font (size 1.016 1.016))))
+        (number "13" (effects (font (size 1.016 1.016)))))
+      (pin open_collector line (at 12.7 -7.62 180) (length 5.08)
+        (name "6Y" (effects (font (size 1.016 1.016))))
+        (number "12" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; AMS1117-3.3 - 3.3V 1A LDO Regulator
+  ;; ============================================================================
+  (symbol "AMS1117-3.3"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "U"
+      (at 0 7.62 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "AMS1117-3.3"
+      (at 0 5.08 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "AMS1117-3.3_0_1"
+      (rectangle
+        (start -7.62 2.54)
+        (end 7.62 -5.08)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "AMS1117-3.3_1_1"
+      (pin power_in line (at -12.7 0 0) (length 5.08)
+        (name "VIN" (effects (font (size 1.016 1.016))))
+        (number "3" (effects (font (size 1.016 1.016)))))
+      (pin power_out line (at 12.7 0 180) (length 5.08)
+        (name "VOUT" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 0 -10.16 90) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; LM2596S-5.0 - 5V 3A Step-Down Regulator
+  ;; ============================================================================
+  (symbol "LM2596S-5.0"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "U"
+      (at 0 10.16 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "LM2596S-5.0"
+      (at 0 7.62 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Package_TO_SOT_SMD:TO-263-5_TabPin3"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "LM2596S-5.0_0_1"
+      (rectangle
+        (start -10.16 5.08)
+        (end 10.16 -7.62)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "LM2596S-5.0_1_1"
+      (pin power_in line (at -15.24 2.54 0) (length 5.08)
+        (name "VIN" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+      (pin power_out line (at 15.24 2.54 180) (length 5.08)
+        (name "OUT" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 0 -12.7 90) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "3" (effects (font (size 1.016 1.016)))))
+      (pin passive line (at 15.24 -2.54 180) (length 5.08)
+        (name "FB" (effects (font (size 1.016 1.016))))
+        (number "4" (effects (font (size 1.016 1.016)))))
+      (pin input line (at -15.24 -2.54 0) (length 5.08)
+        (name "~{ON}/OFF" (effects (font (size 1.016 1.016))))
+        (number "5" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; Crystal_25MHz
+  ;; ============================================================================
+  (symbol "Crystal_25MHz"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "Y"
+      (at 0 5.08 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "25MHz"
+      (at 0 -5.08 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "Crystal_25MHz_0_1"
+      (rectangle
+        (start -1.27 2.54)
+        (end 1.27 -2.54)
+        (stroke (width 0.254) (type default))
+        (fill (type none))
+      )
+      (polyline
+        (pts (xy -2.54 2.54) (xy -2.54 -2.54))
+        (stroke (width 0.254) (type default))
+        (fill (type none))
+      )
+      (polyline
+        (pts (xy 2.54 2.54) (xy 2.54 -2.54))
+        (stroke (width 0.254) (type default))
+        (fill (type none))
+      )
+    )
+    
+    (symbol "Crystal_25MHz_1_1"
+      (pin passive line (at -5.08 0 0) (length 2.54)
+        (name "1" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+      (pin passive line (at 5.08 0 180) (length 2.54)
+        (name "2" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; Conn_34pin_FDD - Shugart Floppy Connector
+  ;; ============================================================================
+  (symbol "Conn_34pin_FDD"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "J"
+      (at 0 45.72 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "FDD_34PIN"
+      (at 0 -45.72 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Connector_IDC:IDC-Header_2x17_P2.54mm_Vertical"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "Conn_34pin_FDD_0_1"
+      (rectangle
+        (start -7.62 43.18)
+        (end 7.62 -43.18)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "Conn_34pin_FDD_1_1"
+      ;; Signal pins
+      (pin passive line (at -12.7 40.64 0) (length 5.08) (name "GND" (effects (font (size 0.8 0.8)))) (number "1" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at 12.7 40.64 180) (length 5.08) (name "GND" (effects (font (size 0.8 0.8)))) (number "2" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 35.56 0) (length 5.08) (name "~{REDWC}" (effects (font (size 0.8 0.8)))) (number "3" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 20.32 0) (length 5.08) (name "~{INDEX}" (effects (font (size 0.8 0.8)))) (number "9" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 15.24 0) (length 5.08) (name "~{DS0}" (effects (font (size 0.8 0.8)))) (number "11" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 10.16 0) (length 5.08) (name "~{DS1}" (effects (font (size 0.8 0.8)))) (number "13" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 5.08 0) (length 5.08) (name "~{DS2}" (effects (font (size 0.8 0.8)))) (number "15" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 0 0) (length 5.08) (name "~{MOTOR}" (effects (font (size 0.8 0.8)))) (number "17" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -5.08 0) (length 5.08) (name "~{DIR}" (effects (font (size 0.8 0.8)))) (number "19" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -10.16 0) (length 5.08) (name "~{STEP}" (effects (font (size 0.8 0.8)))) (number "21" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -15.24 0) (length 5.08) (name "~{WDATA}" (effects (font (size 0.8 0.8)))) (number "23" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -20.32 0) (length 5.08) (name "~{WGATE}" (effects (font (size 0.8 0.8)))) (number "25" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -25.4 0) (length 5.08) (name "~{TRK00}" (effects (font (size 0.8 0.8)))) (number "27" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -30.48 0) (length 5.08) (name "~{WPT}" (effects (font (size 0.8 0.8)))) (number "29" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -35.56 0) (length 5.08) (name "~{RDATA}" (effects (font (size 0.8 0.8)))) (number "31" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at -12.7 -40.64 0) (length 5.08) (name "~{SIDE1}" (effects (font (size 0.8 0.8)))) (number "33" (effects (font (size 0.8 0.8)))))
+      (pin passive line (at 12.7 -40.64 180) (length 5.08) (name "~{DSKCHG}" (effects (font (size 0.8 0.8)))) (number "34" (effects (font (size 0.8 0.8)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; Conn_DIN6_IEC - C64 IEC Bus Connector
+  ;; ============================================================================
+  (symbol "Conn_DIN6_IEC"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "J"
+      (at 0 12.7 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "IEC_DIN6"
+      (at 0 -12.7 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Connector_DIN:DIN-6_Female_Vertical"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "Conn_DIN6_IEC_0_1"
+      (circle
+        (center 0 0)
+        (radius 10.16)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "Conn_DIN6_IEC_1_1"
+      (pin bidirectional line (at -15.24 5.08 0) (length 5.08)
+        (name "SRQ" (effects (font (size 1.016 1.016))))
+        (number "1" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at -15.24 0 0) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "2" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at -15.24 -5.08 0) (length 5.08)
+        (name "ATN" (effects (font (size 1.016 1.016))))
+        (number "3" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 5.08 180) (length 5.08)
+        (name "CLK" (effects (font (size 1.016 1.016))))
+        (number "4" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 15.24 0 180) (length 5.08)
+        (name "DATA" (effects (font (size 1.016 1.016))))
+        (number "5" (effects (font (size 1.016 1.016)))))
+      (pin output line (at 15.24 -5.08 180) (length 5.08)
+        (name "~{RESET}" (effects (font (size 1.016 1.016))))
+        (number "6" (effects (font (size 1.016 1.016)))))
+    )
+  )
+
+  ;; ============================================================================
+  ;; USB_C_Receptacle - USB-C Power/Data Connector
+  ;; ============================================================================
+  (symbol "USB_C_Receptacle"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no)
+    (in_bom yes)
+    (on_board yes)
+    (property "Reference" "J"
+      (at 0 17.78 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Value" "USB_C"
+      (at 0 15.24 0)
+      (effects (font (size 1.27 1.27)))
+    )
+    (property "Footprint" "Connector_USB:USB_C_Receptacle_GCT_USB4105"
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    
+    (symbol "USB_C_Receptacle_0_1"
+      (rectangle
+        (start -7.62 12.7)
+        (end 7.62 -12.7)
+        (stroke (width 0.254) (type default))
+        (fill (type background))
+      )
+    )
+    
+    (symbol "USB_C_Receptacle_1_1"
+      (pin power_out line (at 12.7 10.16 180) (length 5.08)
+        (name "VBUS" (effects (font (size 1.016 1.016))))
+        (number "A4" (effects (font (size 1.016 1.016)))))
+      (pin power_in line (at 12.7 -10.16 180) (length 5.08)
+        (name "GND" (effects (font (size 1.016 1.016))))
+        (number "A1" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 12.7 5.08 180) (length 5.08)
+        (name "CC1" (effects (font (size 1.016 1.016))))
+        (number "A5" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 12.7 2.54 180) (length 5.08)
+        (name "CC2" (effects (font (size 1.016 1.016))))
+        (number "B5" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 12.7 -2.54 180) (length 5.08)
+        (name "D+" (effects (font (size 1.016 1.016))))
+        (number "A6" (effects (font (size 1.016 1.016)))))
+      (pin bidirectional line (at 12.7 -5.08 180) (length 5.08)
+        (name "D-" (effects (font (size 1.016 1.016))))
+        (number "A7" (effects (font (size 1.016 1.016)))))
+      (pin passive line (at -12.7 -10.16 0) (length 5.08)
+        (name "SHIELD" (effects (font (size 1.016 1.016))))
+        (number "S1" (effects (font (size 1.016 1.016)))))
+    )
+  )
+)

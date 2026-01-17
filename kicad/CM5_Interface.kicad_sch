@@ -1,0 +1,205 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "cm5-interface-uuid-12345678")
+  (paper "A3")
+  (title_block
+    (title "CM5 Interface")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFI Project")
+    (comment 1 "Raspberry Pi Compute Module 5 Carrier")
+    (comment 2 "USB 3.0, Ethernet, NVMe")
+  )
+  
+  (lib_symbols
+    ;; CM5 Connector (2x 100-pin Hirose DF40)
+    (symbol "UFI:Conn_CM5_200pin"
+      (pin_names
+        (offset 0.508)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 55.88 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "CM5_CONN"
+        (at 0 -55.88 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Connector_Hirose:Hirose_DF40C-100DP-0.4V"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_CM5_200pin_0_1"
+        (rectangle
+          (start -12.7 53.34)
+          (end 12.7 -53.34)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "Conn_CM5_200pin_1_1"
+        ;; Power
+        (pin power_in line (at -17.78 50.8 0) (length 5.08) (name "5V_IN" (effects (font (size 0.8 0.8)))) (number "2" (effects (font (size 0.8 0.8)))))
+        (pin power_out line (at -17.78 45.72 0) (length 5.08) (name "3V3_OUT" (effects (font (size 0.8 0.8)))) (number "87" (effects (font (size 0.8 0.8)))))
+        (pin power_in line (at -17.78 -50.8 0) (length 5.08) (name "GND" (effects (font (size 0.8 0.8)))) (number "6" (effects (font (size 0.8 0.8)))))
+        
+        ;; USB 3.0 Port 0
+        (pin bidirectional line (at 17.78 50.8 180) (length 5.08) (name "USB0_DP" (effects (font (size 0.8 0.8)))) (number "111" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 48.26 180) (length 5.08) (name "USB0_DM" (effects (font (size 0.8 0.8)))) (number "113" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 45.72 180) (length 5.08) (name "USB0_TXDP" (effects (font (size 0.8 0.8)))) (number "115" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 43.18 180) (length 5.08) (name "USB0_TXDM" (effects (font (size 0.8 0.8)))) (number "117" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 40.64 180) (length 5.08) (name "USB0_RXDP" (effects (font (size 0.8 0.8)))) (number "121" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 38.1 180) (length 5.08) (name "USB0_RXDM" (effects (font (size 0.8 0.8)))) (number "123" (effects (font (size 0.8 0.8)))))
+        
+        ;; USB 2.0 OTG
+        (pin bidirectional line (at 17.78 30.48 180) (length 5.08) (name "USB_OTG_DP" (effects (font (size 0.8 0.8)))) (number "127" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 27.94 180) (length 5.08) (name "USB_OTG_DM" (effects (font (size 0.8 0.8)))) (number "129" (effects (font (size 0.8 0.8)))))
+        (pin input line (at 17.78 25.4 180) (length 5.08) (name "USB_OTG_ID" (effects (font (size 0.8 0.8)))) (number "131" (effects (font (size 0.8 0.8)))))
+        
+        ;; Ethernet
+        (pin bidirectional line (at 17.78 17.78 180) (length 5.08) (name "ETH_TXP" (effects (font (size 0.8 0.8)))) (number "159" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 15.24 180) (length 5.08) (name "ETH_TXM" (effects (font (size 0.8 0.8)))) (number "161" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 12.7 180) (length 5.08) (name "ETH_RXP" (effects (font (size 0.8 0.8)))) (number "165" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 10.16 180) (length 5.08) (name "ETH_RXM" (effects (font (size 0.8 0.8)))) (number "167" (effects (font (size 0.8 0.8)))))
+        (pin output line (at 17.78 7.62 180) (length 5.08) (name "ETH_LED0" (effects (font (size 0.8 0.8)))) (number "171" (effects (font (size 0.8 0.8)))))
+        (pin output line (at 17.78 5.08 180) (length 5.08) (name "ETH_LED1" (effects (font (size 0.8 0.8)))) (number "173" (effects (font (size 0.8 0.8)))))
+        
+        ;; HDMI 0
+        (pin bidirectional line (at 17.78 -5.08 180) (length 5.08) (name "HDMI0_TXC+" (effects (font (size 0.8 0.8)))) (number "67" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -7.62 180) (length 5.08) (name "HDMI0_TXC-" (effects (font (size 0.8 0.8)))) (number "69" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -10.16 180) (length 5.08) (name "HDMI0_TX0+" (effects (font (size 0.8 0.8)))) (number "73" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -12.7 180) (length 5.08) (name "HDMI0_TX0-" (effects (font (size 0.8 0.8)))) (number "75" (effects (font (size 0.8 0.8)))))
+        
+        ;; PCIe
+        (pin bidirectional line (at 17.78 -22.86 180) (length 5.08) (name "PCIE_TXP" (effects (font (size 0.8 0.8)))) (number "137" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -25.4 180) (length 5.08) (name "PCIE_TXM" (effects (font (size 0.8 0.8)))) (number "139" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -27.94 180) (length 5.08) (name "PCIE_RXP" (effects (font (size 0.8 0.8)))) (number "143" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -30.48 180) (length 5.08) (name "PCIE_RXM" (effects (font (size 0.8 0.8)))) (number "145" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -33.02 180) (length 5.08) (name "PCIE_CLKP" (effects (font (size 0.8 0.8)))) (number "149" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at 17.78 -35.56 180) (length 5.08) (name "PCIE_CLKM" (effects (font (size 0.8 0.8)))) (number "151" (effects (font (size 0.8 0.8)))))
+        
+        ;; GPIO
+        (pin bidirectional line (at -17.78 30.48 0) (length 5.08) (name "GPIO0" (effects (font (size 0.8 0.8)))) (number "27" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at -17.78 27.94 0) (length 5.08) (name "GPIO1" (effects (font (size 0.8 0.8)))) (number "28" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at -17.78 25.4 0) (length 5.08) (name "GPIO2/SDA1" (effects (font (size 0.8 0.8)))) (number "29" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at -17.78 22.86 0) (length 5.08) (name "GPIO3/SCL1" (effects (font (size 0.8 0.8)))) (number "30" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at -17.78 20.32 0) (length 5.08) (name "GPIO4" (effects (font (size 0.8 0.8)))) (number "31" (effects (font (size 0.8 0.8)))))
+        (pin bidirectional line (at -17.78 17.78 0) (length 5.08) (name "GPIO5" (effects (font (size 0.8 0.8)))) (number "32" (effects (font (size 0.8 0.8)))))
+        
+        ;; Control
+        (pin input line (at -17.78 -30.48 0) (length 5.08) (name "RUN" (effects (font (size 0.8 0.8)))) (number "91" (effects (font (size 0.8 0.8)))))
+        (pin output line (at -17.78 -33.02 0) (length 5.08) (name "GLOBAL_EN" (effects (font (size 0.8 0.8)))) (number "93" (effects (font (size 0.8 0.8)))))
+        (pin input line (at -17.78 -35.56 0) (length 5.08) (name "nRPIBOOT" (effects (font (size 0.8 0.8)))) (number "88" (effects (font (size 0.8 0.8)))))
+      )
+    )
+  )
+  
+  ;; Notes
+  (text "Raspberry Pi Compute Module 5 Interface\n\nConnector: 2x Hirose DF40C-100DP-0.4V (200 pins total)\n\nKey Interfaces routed:\n- USB 3.0 x2 (for internal STM32 connection)\n- USB 2.0 OTG (external port)\n- Gigabit Ethernet (RJ45 with MagJack)\n- PCIe Gen3 x1 (NVMe M.2 slot)\n- HDMI 2.0 (external display)\n- GPIO (directly accent accent accent accent accent accessible)\n\nPower:\n- 5V input from carrier board\n- 3.3V output for peripherals\n- GPIO_VREF configurable (1.8V/3.3V)\n\nCommunication with STM32H723:\n- USB HS internal connection\n- Optional I2C for configuration\n- Optional UART for debug\n\nStorage:\n- NVMe SSD via PCIe (for flux data storage)\n- microSD slot for OS (CM5 Lite)\n- eMMC on module (CM5 standard)"
+    (exclude_from_sim no)
+    (at 25.4 38.1 0)
+    (effects
+      (font
+        (size 1.5 1.5)
+      )
+      (justify left top)
+    )
+    (uuid "text-cm5-notes")
+  )
+  
+  ;; Hierarchical Labels
+  (hierarchical_label "CM5_USB_DP"
+    (shape bidirectional)
+    (at 228.6 50.8 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-cm5-usb-dp")
+  )
+  
+  (hierarchical_label "CM5_USB_DM"
+    (shape bidirectional)
+    (at 228.6 55.88 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-cm5-usb-dm")
+  )
+  
+  (hierarchical_label "CM5_I2C_SDA"
+    (shape bidirectional)
+    (at 228.6 76.2 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-cm5-i2c-sda")
+  )
+  
+  (hierarchical_label "CM5_I2C_SCL"
+    (shape bidirectional)
+    (at 228.6 81.28 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-cm5-i2c-scl")
+  )
+  
+  (hierarchical_label "CM5_5V"
+    (shape input)
+    (at 25.4 127 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-cm5-5v")
+  )
+  
+  (hierarchical_label "GND"
+    (shape passive)
+    (at 25.4 177.8 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-gnd")
+  )
+)

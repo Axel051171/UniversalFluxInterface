@@ -1,0 +1,85 @@
+(kicad_sch
+	(version 20231120)
+	(generator "eeschema")
+	(generator_version "8.0")
+	(uuid "gb-gba-module-complete")
+	(paper "A3")
+	(title_block
+		(title "UFI GB/GBA Cartridge Module - Complete")
+		(date "2026-01-17")
+		(rev "1.1")
+		(company "UFI Project")
+		(comment 1 "Game Boy / Game Boy Advance Cartridge Reader")
+		(comment 2 "Expansion Module for UFI Mainboard")
+		(comment 3 "40-pin Header Interface - BOM ~€6.50")
+	)
+
+	(lib_symbols
+	)
+
+	(text "╔══════════════════════════════════════════════════════════════════════════════════╗\n║                    UFI GB/GBA CARTRIDGE MODULE - SCHEMATIC                      ║\n╠══════════════════════════════════════════════════════════════════════════════════╣\n║                                                                                  ║\n║  OVERVIEW:                                                                       ║\n║  - Dual cartridge slot support: Game Boy (DMG/GBC) and Game Boy Advance          ║\n║  - Level shifting for 5V GB and 3.3V GBA cartridges                              ║\n║  - I2C EEPROM for module identification                                          ║\n║  - Directly interfaces with UFI 40-pin expansion header                          ║\n║                                                                                  ║\n║  PINOUT - 40-PIN EXPANSION HEADER (J1):                                          ║\n║  ┌────────────────────────────────────────────────────────────────────────┐      ║\n║  │ Pin │ Signal    │ Pin │ Signal    │ Description                       │      ║\n║  ├────────────────────────────────────────────────────────────────────────┤      ║\n║  │  1  │ +3.3V     │  2  │ +5V       │ Power supplies                    │      ║\n║  │  3  │ GND       │  4  │ GND       │ Ground                            │      ║\n║  │  5  │ D0        │  6  │ D1        │ Data bus [0:7]                    │      ║\n║  │  7  │ D2        │  8  │ D3        │                                   │      ║\n║  │  9  │ D4        │ 10  │ D5        │                                   │      ║\n║  │ 11  │ D6        │ 12  │ D7        │                                   │      ║\n║  │ 13  │ A0        │ 14  │ A1        │ Address bus [0:15]                │      ║\n║  │ 15  │ A2        │ 16  │ A3        │                                   │      ║\n║  │ 17  │ A4        │ 18  │ A5        │                                   │      ║\n║  │ 19  │ A6        │ 20  │ A7        │                                   │      ║\n║  │ 21  │ A8        │ 22  │ A9        │                                   │      ║\n║  │ 23  │ A10       │ 24  │ A11       │                                   │      ║\n║  │ 25  │ A12       │ 26  │ A13       │                                   │      ║\n║  │ 27  │ A14       │ 28  │ A15       │                                   │      ║\n║  │ 29  │ ~RD       │ 30  │ ~WR       │ Control signals                   │      ║\n║  │ 31  │ ~CS       │ 32  │ ~RST      │                                   │      ║\n║  │ 33  │ CLK       │ 34  │ AUDIO     │ Clock and Audio                   │      ║\n║  │ 35  │ I2C_SDA   │ 36  │ I2C_SCL   │ Module ID EEPROM                  │      ║\n║  │ 37  │ GPIO0     │ 38  │ GPIO1     │ Extra GPIO                        │      ║\n║  │ 39  │ SLOT_SEL  │ 40  │ GND       │ Slot select (0=GB, 1=GBA)         │      ║\n║  └────────────────────────────────────────────────────────────────────────┘      ║\n║                                                                                  ║\n╠══════════════════════════════════════════════════════════════════════════════════╣\n║                                                                                  ║\n║  GAME BOY CARTRIDGE PINOUT (J2 - 32 pins):                                       ║\n║  ┌────────────────────────────────────────────────────────────────────────┐      ║\n║  │ Pin │ Signal    │ Pin │ Signal    │ Notes                             │      ║\n║  ├────────────────────────────────────────────────────────────────────────┤      ║\n║  │  1  │ VCC (5V)  │  2  │ PHI       │ Clock                             │      ║\n║  │  3  │ ~WR       │  4  │ ~RD       │ Active low                        │      ║\n║  │  5  │ ~CS       │  6  │ A0        │                                   │      ║\n║  │  7  │ A1        │  8  │ A2        │                                   │      ║\n║  │  9  │ A3        │ 10  │ A4        │                                   │      ║\n║  │ 11  │ A5        │ 12  │ A6        │                                   │      ║\n║  │ 13  │ A7        │ 14  │ A8        │                                   │      ║\n║  │ 15  │ A9        │ 16  │ A10       │                                   │      ║\n║  │ 17  │ A11       │ 18  │ A12       │                                   │      ║\n║  │ 19  │ A13       │ 20  │ A14       │                                   │      ║\n║  │ 21  │ A15       │ 22  │ D0        │                                   │      ║\n║  │ 23  │ D1        │ 24  │ D2        │                                   │      ║\n║  │ 25  │ D3        │ 26  │ D4        │                                   │      ║\n║  │ 27  │ D5        │ 28  │ D6        │                                   │      ║\n║  │ 29  │ D7        │ 30  │ ~RST      │                                   │      ║\n║  │ 31  │ AUDIO     │ 32  │ GND       │                                   │      ║\n║  └────────────────────────────────────────────────────────────────────────┘      ║\n║                                                                                  ║\n╠══════════════════════════════════════════════════════════════════════════════════╣\n║                                                                                  ║\n║  GAME BOY ADVANCE CARTRIDGE PINOUT (J3 - 32 pins):                               ║\n║  ┌────────────────────────────────────────────────────────────────────────┐      ║\n║  │ Pin │ Signal    │ Pin │ Signal    │ Notes                             │      ║\n║  ├────────────────────────────────────────────────────────────────────────┤      ║\n║  │  1  │ VCC(3.3V) │  2  │ PHI       │ Clock                             │      ║\n║  │  3  │ ~WR       │  4  │ ~RD       │ Active low                        │      ║\n║  │  5  │ ~CS       │  6  │ AD0       │ Multiplexed Addr/Data             │      ║\n║  │  7  │ AD1       │  8  │ AD2       │                                   │      ║\n║  │  9  │ AD3       │ 10  │ AD4       │                                   │      ║\n║  │ 11  │ AD5       │ 12  │ AD6       │                                   │      ║\n║  │ 13  │ AD7       │ 14  │ AD8       │                                   │      ║\n║  │ 15  │ AD9       │ 16  │ AD10      │                                   │      ║\n║  │ 17  │ AD11      │ 18  │ AD12      │                                   │      ║\n║  │ 19  │ AD13      │ 20  │ AD14      │                                   │      ║\n║  │ 21  │ AD15      │ 22  │ A16       │ Upper address bits                │      ║\n║  │ 23  │ A17       │ 24  │ A18       │                                   │      ║\n║  │ 25  │ A19       │ 26  │ A20       │                                   │      ║\n║  │ 27  │ A21       │ 28  │ A22       │                                   │      ║\n║  │ 29  │ A23       │ 30  │ ~RST      │                                   │      ║\n║  │ 31  │ ~CS2      │ 32  │ GND       │ SRAM chip select                  │      ║\n║  └────────────────────────────────────────────────────────────────────────┘      ║\n║                                                                                  ║\n╠══════════════════════════════════════════════════════════════════════════════════╣\n║                                                                                  ║\n║  LEVEL SHIFTER CONFIGURATION:                                                    ║\n║                                                                                  ║\n║  U1 (74LVC245) - Address Low [A0:A7]:                                            ║\n║    - VCCA = 3.3V (UFI side)                                                      ║\n║    - VCCB = 5V/3.3V (Cartridge side, switched by SLOT_SEL)                       ║\n║    - DIR = 1 (A -> B, output to cartridge)                                       ║\n║    - ~OE = active during read/write                                              ║\n║                                                                                  ║\n║  U2 (74LVC245) - Address High [A8:A15]:                                          ║\n║    - Same configuration as U1                                                    ║\n║                                                                                  ║\n║  U3 (74LVC245) - Data [D0:D7]:                                                   ║\n║    - VCCA = 3.3V (UFI side)                                                      ║\n║    - VCCB = 5V/3.3V (Cartridge side, switched)                                   ║\n║    - DIR = controlled by ~RD/~WR                                                 ║\n║    - ~OE = active during data transfer                                           ║\n║                                                                                  ║\n╠══════════════════════════════════════════════════════════════════════════════════╣\n║                                                                                  ║\n║  BILL OF MATERIALS (BOM):                                                        ║\n║  ┌────────────────────────────────────────────────────────────────────────┐      ║\n║  │ Ref │ Value        │ Package      │ Qty │ Price   │ Total            │      ║\n║  ├────────────────────────────────────────────────────────────────────────┤      ║\n║  │ J1  │ 2x20 Header  │ 2.54mm       │  1  │ €0.30   │ €0.30            │      ║\n║  │ J2  │ GB Slot      │ Edge Conn    │  1  │ €1.50   │ €1.50            │      ║\n║  │ J3  │ GBA Slot     │ Edge Conn    │  1  │ €1.80   │ €1.80            │      ║\n║  │ U1-3│ 74LVC245     │ TSSOP-20     │  3  │ €0.35   │ €1.05            │      ║\n║  │ U4  │ 24LC02       │ SOIC-8       │  1  │ €0.25   │ €0.25            │      ║\n║  │ SW1 │ SPDT Switch  │ SMD          │  1  │ €0.30   │ €0.30            │      ║\n║  │ C1-6│ 100nF        │ 0402         │  6  │ €0.02   │ €0.12            │      ║\n║  │ R1-4│ 4.7kΩ        │ 0402         │  4  │ €0.01   │ €0.04            │      ║\n║  │ PCB │ 2-layer      │ 60x80mm      │  1  │ €1.00   │ €1.00            │      ║\n║  ├────────────────────────────────────────────────────────────────────────┤      ║\n║  │                                          TOTAL:    ~€6.36            │      ║\n║  └────────────────────────────────────────────────────────────────────────┘      ║\n║                                                                                  ║\n╚══════════════════════════════════════════════════════════════════════════════════╝"
+		(exclude_from_sim no)
+		(at 25.4 25.4 0)
+		(effects
+			(font
+				(size 1.5 1.5)
+			)
+			(justify left top)
+		)
+		(uuid "main-notes")
+	)
+
+	(text "BLOCK DIAGRAM:\n\n                    ┌─────────────────────────────────────────────────────────┐\n                    │                    GB/GBA MODULE                        │\n                    │                                                         │\n    UFI MAINBOARD   │   ┌─────────┐    ┌─────────┐    ┌─────────────────┐    │\n    40-PIN HEADER   │   │         │    │         │    │                 │    │\n         ══════════►│   │  U1     │    │  GB     │    │  Game Boy       │    │\n         A[0:7]     │   │ 74LVC245│═══►│  LEVEL  │═══►│  Cartridge      │    │\n         ══════════►│   │         │    │  SHIFT  │    │  Slot (J2)      │    │\n                    │   └─────────┘    └─────────┘    │  32-pin, 5V     │    │\n                    │                                  └─────────────────┘    │\n                    │   ┌─────────┐    ┌─────────┐                            │\n         ══════════►│   │         │    │         │    ┌─────────────────┐    │\n         A[8:15]    │   │  U2     │    │  GBA    │    │                 │    │\n         ══════════►│   │ 74LVC245│═══►│  LEVEL  │═══►│  GBA Cartridge  │    │\n                    │   │         │    │  SHIFT  │    │  Slot (J3)      │    │\n                    │   └─────────┘    └─────────┘    │  32-pin, 3.3V   │    │\n                    │                                  └─────────────────┘    │\n                    │   ┌─────────┐                                           │\n         ◄════════►│   │         │    ┌─────────┐                            │\n         D[0:7]     │   │  U3     │    │  SW1    │                            │\n         ◄════════►│   │ 74LVC245│◄───┤GB / GBA │                            │\n                    │   │  (BiDi) │    │ SELECT  │                            │\n                    │   └─────────┘    └─────────┘                            │\n                    │                                                         │\n         ─────────►│   ┌─────────┐                                           │\n         I2C        │   │  U4     │  Module ID: 0x02 (GB/GBA)                 │\n         ─────────►│   │ 24LC02  │  Contains: Type, Version, Serial          │\n                    │   │ EEPROM  │                                           │\n                    │   └─────────┘                                           │\n                    │                                                         │\n                    └─────────────────────────────────────────────────────────┘"
+		(exclude_from_sim no)
+		(at 330 25.4 0)
+		(effects
+			(font
+				(size 1.5 1.5)
+			)
+			(justify left top)
+		)
+		(uuid "block-diagram")
+	)
+
+	(text "OPERATION MODES:\n\n1. GAME BOY MODE (SLOT_SEL = 0):\n   - VCC_CART = 5V\n   - All level shifters translate 3.3V ↔ 5V\n   - Standard GB/GBC timing\n   - Support: DMG, GBC, MBC1-5 cartridges\n\n2. GAME BOY ADVANCE MODE (SLOT_SEL = 1):\n   - VCC_CART = 3.3V\n   - Level shifters in pass-through mode\n   - Multiplexed address/data bus\n   - Support: GBA cartridges up to 32MB\n\nTIMING CONSIDERATIONS:\n- GB CLK: 1 MHz (typical)\n- GBA CLK: 16.78 MHz\n- Level shifter propagation: <10ns (74LVC245)\n- No wait states needed for basic ROM reads"
+		(exclude_from_sim no)
+		(at 330 160 0)
+		(effects
+			(font
+				(size 1.5 1.5)
+			)
+			(justify left top)
+		)
+		(uuid "operation-modes")
+	)
+
+	(text "SOFTWARE INTERFACE:\n\nModule Detection:\n  1. UFI scans I2C bus for EEPROM at 0x50\n  2. Read module ID byte: 0x02 = GB/GBA\n  3. Initialize appropriate driver\n\nGB ROM Dump Sequence:\n  1. Set SLOT_SEL = 0\n  2. Power on cartridge (VCC = 5V)\n  3. Read header at 0x0100-0x014F\n  4. Detect MBC type from header\n  5. Dump ROM using MBC bank switching\n  6. Optionally dump SRAM\n\nGBA ROM Dump Sequence:\n  1. Set SLOT_SEL = 1\n  2. Power on cartridge (VCC = 3.3V)\n  3. Read header at 0x0000-0x00BF\n  4. Sequential read up to ROM size\n  5. Detect and dump save type\n\nSupported Cartridge Types:\n  GB:  Plain ROM, MBC1, MBC2, MBC3, MBC5\n  GBA: Standard ROM, EEPROM, Flash, SRAM"
+		(exclude_from_sim no)
+		(at 330 250 0)
+		(effects
+			(font
+				(size 1.5 1.5)
+			)
+			(justify left top)
+		)
+		(uuid "software-interface")
+	)
+
+	(text "NEXT STEPS FOR PCB LAYOUT:\n\n1. Board Dimensions: 60mm x 80mm (fits standard case)\n\n2. Layer Stackup (2-layer):\n   - Top: Components, signals\n   - Bottom: Ground plane, power\n\n3. Component Placement:\n   - J1 (40-pin header) at board edge\n   - J2 (GB slot) centered\n   - J3 (GBA slot) centered below J2\n   - Level shifters between header and slots\n   - EEPROM near I2C pins\n\n4. Critical Routing:\n   - Keep data lines short and matched\n   - Ground plane under all signal traces\n   - Decoupling caps close to IC power pins\n\n5. Silk Screen:\n   - Pin 1 markers\n   - Slot labels (GB/GBA)\n   - UFI logo\n   - Version number"
+		(exclude_from_sim no)
+		(at 540 25.4 0)
+		(effects
+			(font
+				(size 1.5 1.5)
+			)
+			(justify left top)
+		)
+		(uuid "pcb-layout-notes")
+	)
+
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+)

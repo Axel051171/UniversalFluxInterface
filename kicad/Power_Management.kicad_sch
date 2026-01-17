@@ -1,0 +1,459 @@
+(kicad_sch
+  (version 20231120)
+  (generator "eeschema")
+  (generator_version "8.0")
+  (uuid "power-mgmt-uuid-12345678")
+  (paper "A3")
+  (title_block
+    (title "Power Management")
+    (date "2026-01-16")
+    (rev "0.1")
+    (company "UFI Project")
+    (comment 1 "Multi-Rail Power Supply")
+    (comment 2 "12V Input, 5V/3.3V Rails")
+  )
+  
+  (lib_symbols
+    ;; LM2596 Buck Regulator
+    (symbol "UFI:LM2596-5.0"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at 0 7.62 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "LM2596-5.0"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_TO_SOT_THT:TO-220-5_Horizontal_TabDown"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "LM2596-5.0_0_1"
+        (rectangle
+          (start -10.16 3.81)
+          (end 10.16 -6.35)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "LM2596-5.0_1_1"
+        (pin power_in line
+          (at -15.24 1.27 0)
+          (length 5.08)
+          (name "VIN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_out line
+          (at 15.24 1.27 180)
+          (length 5.08)
+          (name "VOUT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -11.43 90)
+          (length 5.08)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -15.24 -3.81 0)
+          (length 5.08)
+          (name "FB"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -15.24 -1.27 0)
+          (length 5.08)
+          (name "~{ON}/OFF"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+    )
+    
+    ;; AMS1117-3.3 LDO
+    (symbol "UFI:AMS1117-3.3"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "AMS1117-3.3"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_TO_SOT_SMD:SOT-223-3_TabPin2"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "AMS1117-3.3_0_1"
+        (rectangle
+          (start -7.62 1.27)
+          (end 7.62 -5.08)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "AMS1117-3.3_1_1"
+        (pin power_in line
+          (at -12.7 -1.27 0)
+          (length 5.08)
+          (name "VIN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_out line
+          (at 12.7 -1.27 180)
+          (length 5.08)
+          (name "VOUT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -10.16 90)
+          (length 5.08)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+    )
+    
+    ;; Barrel Jack
+    (symbol "UFI:Barrel_Jack"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "DC_12V"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Connector_BarrelJack:BarrelJack_Horizontal"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Barrel_Jack_0_1"
+        (rectangle
+          (start -5.08 3.81)
+          (end 5.08 -3.81)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (arc
+          (start -2.54 1.27)
+          (mid -3.81 0)
+          (end -2.54 -1.27)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -2.54 1.27)
+            (xy 2.54 1.27)
+          )
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -2.54 -1.27)
+            (xy 2.54 -1.27)
+          )
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "Barrel_Jack_1_1"
+        (pin power_in line
+          (at 10.16 1.27 180)
+          (length 5.08)
+          (name "+12V"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 10.16 -1.27 180)
+          (length 5.08)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  
+  ;; Notes
+  (text "Power Architecture:\n\n┌─────────────┐\n│  12V DC IN  │ (Barrel Jack / CM5 Supply)\n└──────┬──────┘\n       │\n       ├──────────────────→ 12V Rail (FDD Motors)\n       │\n  ┌────▼────┐\n  │ LM2596  │\n  │  5.0V   │\n  └────┬────┘\n       │\n       ├──────────────────→ 5V Rail (FDD Logic, USB)\n       │\n  ┌────▼────┐\n  │AMS1117  │\n  │  3.3V   │\n  └────┬────┘\n       │\n       └──────────────────→ 3.3V Rail (MCU, Level Shifters)\n\nProtection:\n- Input polarity protection (P-FET)\n- Overcurrent fuses\n- TVS diodes on all rails"
+    (exclude_from_sim no)
+    (at 25.4 38.1 0)
+    (effects
+      (font
+        (size 1.5 1.5)
+      )
+      (justify left top)
+    )
+    (uuid "text-power-notes")
+  )
+  
+  ;; Hierarchical Labels
+  (hierarchical_label "VIN_12V"
+    (shape input)
+    (at 25.4 127 180)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify right)
+    )
+    (uuid "hlabel-vin-12v")
+  )
+  
+  (hierarchical_label "VDD_5V"
+    (shape output)
+    (at 228.6 88.9 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-vdd-5v")
+  )
+  
+  (hierarchical_label "VDD_3V3"
+    (shape output)
+    (at 228.6 139.7 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-vdd-3v3")
+  )
+  
+  (hierarchical_label "VDD_12V"
+    (shape output)
+    (at 228.6 63.5 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-vdd-12v")
+  )
+  
+  (hierarchical_label "GND"
+    (shape passive)
+    (at 228.6 177.8 0)
+    (effects
+      (font
+        (size 1.27 1.27)
+      )
+      (justify left)
+    )
+    (uuid "hlabel-gnd")
+  )
+)

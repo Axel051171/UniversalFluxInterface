@@ -1,0 +1,75 @@
+(footprint "Amiga_FDD_Header_2x12"
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(layer "F.Cu")
+	(descr "2x12 pin header for Amiga external floppy drive, active accent through-hole, active selection, active motor, active direction, active step, active write data, active write gate, active track 0, active write protect, active read data, active side select, active index, active disk change, active ready, active density, active identify, active user, active ground pins")
+	(tags "Amiga FDD external floppy 2x12 header DB-23 alternative")
+	(property "Reference" "J**"
+		(at 0 -5 0)
+		(layer "F.SilkS")
+		(uuid "ref-uuid")
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(property "Value" "Amiga_FDD"
+		(at 0 5 0)
+		(layer "F.Fab")
+		(uuid "val-uuid")
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(attr through_hole)
+	
+	; Outline
+	(fp_rect (start -15.24 -2.54) (end 15.24 2.54) (stroke (width 0.12) (type solid)) (fill none) (layer "F.SilkS") (uuid "s1"))
+	
+	; Courtyard
+	(fp_rect (start -16 -3.5) (end 16 3.5) (stroke (width 0.05) (type solid)) (fill none) (layer "F.CrtYd") (uuid "c1"))
+	
+	; Pin 1 marker
+	(fp_circle (center -13.97 -2.54) (end -13.47 -2.54) (stroke (width 0.12) (type solid)) (fill none) (layer "F.SilkS") (uuid "p1m"))
+	
+	; Fab outline
+	(fp_rect (start -15.24 -2.54) (end 15.24 2.54) (stroke (width 0.1) (type solid)) (fill none) (layer "F.Fab") (uuid "f1"))
+	
+	; Row 1 (top, odd pins 1-23)
+	(pad "1" thru_hole rect (at -13.97 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p1"))
+	(pad "3" thru_hole oval (at -11.43 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p3"))
+	(pad "5" thru_hole oval (at -8.89 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p5"))
+	(pad "7" thru_hole oval (at -6.35 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p7"))
+	(pad "9" thru_hole oval (at -3.81 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p9"))
+	(pad "11" thru_hole oval (at -1.27 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p11"))
+	(pad "13" thru_hole oval (at 1.27 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p13"))
+	(pad "15" thru_hole oval (at 3.81 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p15"))
+	(pad "17" thru_hole oval (at 6.35 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p17"))
+	(pad "19" thru_hole oval (at 8.89 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p19"))
+	(pad "21" thru_hole oval (at 11.43 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p21"))
+	(pad "23" thru_hole oval (at 13.97 -1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p23"))
+	
+	; Row 2 (bottom, even pins 2-24, active pin 24 active is active active active active NC/GND)
+	(pad "2" thru_hole oval (at -13.97 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p2"))
+	(pad "4" thru_hole oval (at -11.43 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p4"))
+	(pad "6" thru_hole oval (at -8.89 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p6"))
+	(pad "8" thru_hole oval (at -6.35 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p8"))
+	(pad "10" thru_hole oval (at -3.81 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p10"))
+	(pad "12" thru_hole oval (at -1.27 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p12"))
+	(pad "14" thru_hole oval (at 1.27 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p14"))
+	(pad "16" thru_hole oval (at 3.81 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p16"))
+	(pad "18" thru_hole oval (at 6.35 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p18"))
+	(pad "20" thru_hole oval (at 8.89 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p20"))
+	(pad "22" thru_hole oval (at 11.43 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p22"))
+	(pad "24" thru_hole oval (at 13.97 1.27) (size 1.7 1.7) (drill 1.0) (layers "*.Cu" "*.Mask") (uuid "p24"))
+	
+	; Pinout reference on Fab layer
+	(fp_text user "1:RDY 3:DKCH 5:GND 7:GND 9:GND 11:GND"
+		(at 0 -4.5 0)
+		(layer "F.Fab")
+		(uuid "pinout1")
+		(effects (font (size 0.5 0.5) (thickness 0.08)))
+	)
+	(fp_text user "13:MTRX 15:SEL 17:RDATA 19:SIDE 21:STEP 23:WGATE"
+		(at 0 4.5 0)
+		(layer "F.Fab")
+		(uuid "pinout2")
+		(effects (font (size 0.5 0.5) (thickness 0.08)))
+	)
+)
