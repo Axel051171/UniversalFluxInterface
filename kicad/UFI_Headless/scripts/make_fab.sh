@@ -26,10 +26,8 @@ powershell.exe -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$F/ger
 
 # CPL: KiCad position file and JLC column names
 "$CLI" pcb export pos --format csv --units mm --side both --exclude-dnp -o "$F/UFI_Headless-pos.csv" "$B" >/dev/null
-{
-  echo '"Designator","Mid X","Mid Y","Layer","Rotation"'
-  tail -n +2 "$F/UFI_Headless-pos.csv" | awk -F, '{gsub(/"/,"",$1); gsub(/"/,"",$7);
-      side = ($7 == "top") ? "Top" : "Bottom";
-      printf "\"%s\",\"%smm\",\"%smm\",\"%s\",\"%s\"\n", $1, $4, $5, side, $6}'
-} >"$F/UFI_Headless-cpl-jlc.csv"
+# JLC CPL (column names + package rotation offsets) and the pin-1 checklist for the JLC viewer
+w() { cygpath -w "$1"; }
+"/c/Program Files/KiCad/10.0/bin/python.exe" "$(w "$HERE/jlc_cpl.py")" "$(w "$B")" "$(w "$F/UFI_Headless-pos.csv")" \
+    "$(w "$F/UFI_Headless-cpl-jlc.csv")" "$(w "$F/JLC_Rotation_Check.md")" 2>&1 | grep -vi swig
 ls -1 "$F"

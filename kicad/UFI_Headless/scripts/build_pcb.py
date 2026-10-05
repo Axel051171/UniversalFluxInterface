@@ -305,10 +305,14 @@ def via(netname, x, y, d, drill):
 V = lambda x, y: pcbnew.VECTOR2I(MM(x), MM(y))  # noqa: E731
 jx = {p.GetNumber(): pcbnew.ToMM(p.GetPosition().x) for p in fps["J1"].Pads()}
 jy = pcbnew.ToMM(next(p for p in fps["J1"].Pads() if p.GetNumber() == "A6").GetPosition().y)
-# VBUS: via in each double pad, joined on B.Cu (plug carries VBUS on both sides)
-for pad in ("A4", "A9"):
-    via("VBUS", jx[pad], jy + 0.33, 0.6, 0.3)
-seg("VBUS", pcbnew.B_Cu, [(jx["A4"], jy + 0.33), (jx["A9"], jy + 0.33)], 0.5)
+# VBUS: via next to each double pad (no via-in-pad: the NPTH pegs sit right below A4/A9,
+# so the vias move inwards), joined on B.Cu (plug carries VBUS on both sides).
+# CC2 has to pass left of the A9 via (Freerouting finds that on its own).
+vb = {"A4": (jx["A4"] + 0.35, jy + 1.13), "A9": (jx["A9"] - 0.35, jy + 1.13)}
+for pad, (vx, vy) in vb.items():
+    seg("VBUS", pcbnew.F_Cu, [(jx[pad], jy), (jx[pad], jy + 0.425), (vx, vy)], 0.3)
+    via("VBUS", vx, vy, 0.5, 0.25)
+seg("VBUS", pcbnew.B_Cu, [vb["A4"], (vb["A4"][0], jy + 0.33), (vb["A9"][0], jy + 0.33), vb["A9"]], 0.5)
 # D-: B7 and A7 straight down to small vias, joined on B.Cu
 yv = jy + 1.48
 for pad in ("B7", "A7"):

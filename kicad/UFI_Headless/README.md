@@ -52,7 +52,7 @@ cd kicad/UFI_Headless
 
 - 110 × 85 mm, 4 Lagen, 100 Bauteile, 4× M3
 - DRC: **0 Fehler, 0 unverbundene Elemente, Schaltplan-Parität ok**; 4 Silkscreen-Warnungen (IDC-Kontur am Rand – Fertiger clippt)
-- Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen)
+- Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen + Gehäuse-Rotationsoffsets, `scripts/jlc_cpl.py`), `JLC_Rotation_Check.md` (Pin-1-Checkliste für den JLC-Viewer)
 
 ### Layout-Review (gemessen mit `scripts/layout_metrics.py`)
 
@@ -64,12 +64,12 @@ cd kicad/UFI_Headless
 | MCU | 100 nF ~2,8 mm vor jedem VDD-Pin, alle VSS-Pins per Stich + Via direkt auf die GND-Lage |
 | USB | D+/D− 43/44 mm (USB FS: Länge/Impedanz unkritisch), ESD U1 zwischen Buchse und MCU |
 
-Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von `make_pcb.sh`): IEC_RESET-Sackgasse an RN8 ersetzt, PWR_SRC auf B.Cu nach y = 48 mm verlegt, GND-Vias an C33 (VDDA) und am Buck-GND (U2.1/C3.2); nach dem Tausch J8 DIN-6 → Stiftleiste (`scripts/swap_footprint.py` + inkrementelles Freerouting) IEC_SRQ U9↔U10 auf In2 bei x = 87,07 mm. Ein neuer Pipeline-Lauf routet anders und kann andere Nacharbeit brauchen – **dieses Board ist der geprüfte Stand**.
+Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von `make_pcb.sh`): IEC_RESET-Sackgasse an RN8 ersetzt, PWR_SRC auf B.Cu nach y = 48 mm verlegt, GND-Vias an C33 (VDDA) und am Buck-GND (U2.1/C3.2); nach dem Tausch J8 DIN-6 → Stiftleiste (`scripts/swap_footprint.py` + inkrementelles Freerouting) IEC_SRQ U9↔U10 auf In2 bei x = 87,07 mm; CC2 an J1 links am VBUS-Via vorbei. Ein neuer Pipeline-Lauf routet anders und kann andere Nacharbeit brauchen – **dieses Board ist der geprüfte Stand**.
 
 ### Vor einer Bestellung noch offen
 
-1. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,23 mm (Dogbones, USB D−) – Aufpreis für < 0,3 mm Bohrung möglich. Alle Vias Restring ≥ 0,125 mm (DRC-Regel `min_via_annular_width`)
-2. **CPL-Rotationen** im JLC-Bestückungsviewer kontrollieren, besonders ICs (U2 SOT-23-6 um 180° gedreht, U3–U10), Y1, D1–D8, Elko-Polarität C1/C13, J1
+1. **Bestelloptionen**: kein Via-in-Pad mehr (VBUS-Vias neben A4/A9, 0,5/0,25 mm) → „Via Covering: Tented“ reicht; kleine Vias 0,48/0,23 bzw. 0,5/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich. Alle Vias Restring ≥ 0,125 mm (DRC-Regel `min_via_annular_width`)
+2. **Rotationen im JLC-Bestückungsviewer** gegen `fertigung/JLC_Rotation_Check.md` prüfen (22 gepolte Teile; Offsets nach kicad-jlcpcb-tools sind schon eingerechnet, SOT-583 U3, Y1, Dioden und J1 ohne Offset – dort besonders genau hinsehen)
 3. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1) und J7 (2×12 Wannenstecker) haben keine LCSC-Nummer
 4. **IEC-Kabel**: J8 (1×6, 2,54 mm) auf DIN-6-Buchse, 1:1 nach Pinnummer (Lötseite der Buchse beachten)
 5. Netzklassen (Power 0,8 mm nachträglich verbreitert) stehen nur im Board, nicht in `.kicad_pro`
@@ -87,7 +87,7 @@ TOOLS=<dir mit jdk-25*-jre + freerouting-2.4.1.jar> bash scripts/make_pcb.sh all
 5. `finish_pcb.py` – GND-Pours F/B, +3V3-Pour In2, GND-Stitching-Vias, Inseln anbinden, Zonen füllen, Via-Bohrungen auf Restring ≥ 0,125 mm verkleinern
 
 Lagenaufbau: F.Cu Signal + GND-Pour · In1.Cu GND-Plane · In2.Cu Signal + 3V3-Pour · B.Cu Signal + GND-Pour.
-Hinweis Fertigung: VBUS-Vias liegen im USB-C-Pad (Via-in-Pad) → bei JLC „Via Covering: Plugged/Epoxy filled“ wählen oder vor dem Bestellen manuell versetzen. D−-Vias an J1 sind 0,48/0,23 mm.
+Hinweis Fertigung: kein Via-in-Pad. VBUS-Vias sitzen neben den A4/A9-Pads (die NPTH-Stifte direkt darunter erzwingen den Versatz nach innen), CC2 läuft links am A9-Via vorbei. D−-Vias an J1 sind 0,48/0,23 mm.
 
 ## Stromversorgung
 
