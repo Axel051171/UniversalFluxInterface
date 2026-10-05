@@ -10,6 +10,7 @@
 
 /* System Clock Frequency */
 uint32_t SystemCoreClock = 64000000UL;  /* Initial HSI, updated by SystemClock_Config */
+uint32_t SystemD2Clock = 64000000UL;    /* AHB clock, required by the HAL */
 
 const uint8_t D1CorePrescTable[16] = {0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 8, 9};
 
@@ -163,4 +164,8 @@ void SystemCoreClockUpdate(void)
     /* System clock frequency */
     tmp = D1CorePrescTable[(RCC->D1CFGR & RCC_D1CFGR_D1CPRE) >> RCC_D1CFGR_D1CPRE_Pos];
     SystemCoreClock = common_system_clock >> tmp;
+
+    /* AHB (D2 domain) clock, used by the HAL for HCLK */
+    tmp = D1CorePrescTable[(RCC->D1CFGR & RCC_D1CFGR_HPRE) >> RCC_D1CFGR_HPRE_Pos] & 0x1FU;
+    SystemD2Clock = SystemCoreClock >> tmp;
 }

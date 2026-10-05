@@ -12,15 +12,8 @@
  * EXTERNE HANDLES (definiert in anderen Modulen)
  * ============================================================================ */
 
-/* Aus ufi_flux.c */
-extern TIM_HandleTypeDef htim2;
-extern DMA_HandleTypeDef hdma_tim2;
-
 /* Aus usbd_conf.c */
 extern PCD_HandleTypeDef hpcd_USB_OTG_HS;
-
-/* Aus ufi_main.c */
-extern void ufi_flux_index_handler(void);
 
 /* ============================================================================
  * CORTEX-M7 PROCESSOR EXCEPTIONS
@@ -73,31 +66,19 @@ void SysTick_Handler(void)
  * ============================================================================ */
 
 /**
- * @brief  TIM2 Global Interrupt (Flux Capture Timer)
+ * @brief  TIM2 Global Interrupt: INDEX capture on CH2 (PA1)
  */
 void TIM2_IRQHandler(void)
 {
-    HAL_TIM_IRQHandler(&htim2);
+    ufi_flux_tim2_irq();
 }
 
 /**
- * @brief  DMA1 Stream0 Interrupt (Flux Capture DMA)
+ * @brief  DMA1 Stream0 Interrupt (Flux Capture DMA, store full / error)
  */
 void DMA1_Stream0_IRQHandler(void)
 {
-    HAL_DMA_IRQHandler(&hdma_tim2);
-}
-
-/**
- * @brief  EXTI Line0 Interrupt (Index Pulse - PC0)
- */
-void EXTI0_IRQHandler(void)
-{
-    if (__HAL_GPIO_EXTI_GET_IT(GPIO_PIN_0))
-    {
-        __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_0);
-        ufi_flux_index_handler();
-    }
+    ufi_flux_dma_irq();
 }
 
 /**
@@ -106,12 +87,4 @@ void EXTI0_IRQHandler(void)
 void OTG_HS_IRQHandler(void)
 {
     HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
-}
-
-/**
- * @brief  USB OTG HS Wakeup Interrupt
- */
-void OTG_HS_WKUP_IRQHandler(void)
-{
-    __HAL_USB_OTG_HS_WAKEUP_EXTI_CLEAR_FLAG();
 }

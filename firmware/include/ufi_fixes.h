@@ -6,6 +6,9 @@
 #ifndef UFI_FIXES_H
 #define UFI_FIXES_H
 
+#include "stm32h7xx_hal.h"
+#include <stdint.h>
+
 /* Fix #4: __packed Definition */
 #ifndef __packed
   #ifdef __GNUC__
@@ -36,19 +39,7 @@ typedef enum {
 
 /* Fix #2: IEC Timeout Helpers */
 #define IEC_TIMEOUT_US      10000
-#define IEC_TIMEOUT_CYCLES  (IEC_TIMEOUT_US * (SYSCLK_FREQ / 1000000))
-
-static inline int iec_wait_with_timeout(
-    GPIO_TypeDef* port, uint16_t pin, GPIO_PinState expected
-) {
-    uint32_t start = DWT->CYCCNT;
-    while (HAL_GPIO_ReadPin(port, pin) != expected) {
-        if ((DWT->CYCCNT - start) > IEC_TIMEOUT_CYCLES) {
-            return UFI_ERR_TIMEOUT;
-        }
-    }
-    return UFI_OK;
-}
+#define IEC_TIMEOUT_CYCLES  (IEC_TIMEOUT_US * (SystemCoreClock / 1000000))
 
 /* Fix #6: DWT Init Macro */
 #define UFI_DWT_INIT() do { \
@@ -65,12 +56,13 @@ static inline uint32_t ring_buffer_free(uint32_t head, uint32_t tail, uint32_t s
 
 /* Fix #9: Watchdog */
 #ifdef USE_WATCHDOG
+extern IWDG_HandleTypeDef hiwdg;
 #define UFI_WATCHDOG_INIT() do { \
-    IWDG_HandleTypeDef h = { \
-        .Instance = IWDG1, \
-        .Init = {IWDG_PRESCALER_64, 4095, 4095} \
-    }; \
-    HAL_IWDG_Init(&h); \
+    hiwdg.Instance = IWDG1; \
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_64; \
+    hiwdg.Init.Reload = 4095; \
+    hiwdg.Init.Window = 4095; \
+    HAL_IWDG_Init(&hiwdg); \
 } while(0)
 #define UFI_WATCHDOG_FEED() HAL_IWDG_Refresh(&hiwdg)
 #else

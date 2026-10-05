@@ -5,18 +5,12 @@
  */
 
 #include "ufi_firmware.h"
-#include "stm32h7xx_hal.h"
+#include <stdio.h>
+#include <string.h>
 
-/* ============================================================================
- * GPIO DEFINITIONEN (Port D)
- * ============================================================================ */
-
-#define IEC_ATN_PIN         GPIO_PIN_0
-#define IEC_CLK_PIN         GPIO_PIN_1
-#define IEC_DATA_PIN        GPIO_PIN_2
-#define IEC_SRQ_PIN         GPIO_PIN_3
-#define IEC_RESET_PIN       GPIO_PIN_4
-#define IEC_PORT            GPIOD
+/* Board: each IEC line has a driver output (PD0-4 -> SN74LS07 open collector) and a
+ * receiver input (PF4-8 <- 74LVC14A).  "pull" asserts the line via bus_out(), reads
+ * use bus_in() (true = line low on the bus), see board.h. */
 
 /* ============================================================================
  * IEC TIMING KONSTANTEN (in µs)
@@ -47,67 +41,28 @@ static inline void iec_delay_us(uint32_t us) {
  * GPIO FUNKTIONEN (Open-Drain Emulation)
  * ============================================================================ */
 
-static inline void iec_release_clk(void) {
-    // High-Z = Release (Pull-up zieht hoch)
-    HAL_GPIO_WritePin(IEC_PORT, IEC_CLK_PIN, GPIO_PIN_SET);
-}
+static inline void iec_release_clk(void)  { bus_out(&PIN_IEC_CLK_OUT, false); }
+static inline void iec_pull_clk(void)     { bus_out(&PIN_IEC_CLK_OUT, true); }
+static inline void iec_release_data(void) { bus_out(&PIN_IEC_DATA_OUT, false); }
+static inline void iec_pull_data(void)    { bus_out(&PIN_IEC_DATA_OUT, true); }
+static inline void iec_release_atn(void)  { bus_out(&PIN_IEC_ATN_OUT, false); }
+static inline void iec_pull_atn(void)     { bus_out(&PIN_IEC_ATN_OUT, true); }
 
-static inline void iec_pull_clk(void) {
-    // Low = Pull down
-    HAL_GPIO_WritePin(IEC_PORT, IEC_CLK_PIN, GPIO_PIN_RESET);
-}
-
-static inline void iec_release_data(void) {
-    HAL_GPIO_WritePin(IEC_PORT, IEC_DATA_PIN, GPIO_PIN_SET);
-}
-
-static inline void iec_pull_data(void) {
-    HAL_GPIO_WritePin(IEC_PORT, IEC_DATA_PIN, GPIO_PIN_RESET);
-}
-
-static inline void iec_release_atn(void) {
-    HAL_GPIO_WritePin(IEC_PORT, IEC_ATN_PIN, GPIO_PIN_SET);
-}
-
-static inline void iec_pull_atn(void) {
-    HAL_GPIO_WritePin(IEC_PORT, IEC_ATN_PIN, GPIO_PIN_RESET);
-}
-
-static inline bool iec_read_clk(void) {
-    return HAL_GPIO_ReadPin(IEC_PORT, IEC_CLK_PIN) == GPIO_PIN_RESET;
-}
-
-static inline bool iec_read_data(void) {
-    return HAL_GPIO_ReadPin(IEC_PORT, IEC_DATA_PIN) == GPIO_PIN_RESET;
-}
+/* true = line held low by someone on the bus */
+static inline bool iec_read_clk(void)     { return bus_in(&PIN_IEC_CLK_IN); }
+static inline bool iec_read_data(void)    { return bus_in(&PIN_IEC_DATA_IN); }
 
 /* ============================================================================
  * INITIALISIERUNG
  * ============================================================================ */
 
 void ufi_iec_init(void) {
-    GPIO_InitTypeDef gpio = {0};
-    
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    
-    // Open-Drain Ausgänge mit Pull-up
-    gpio.Mode = GPIO_MODE_OUTPUT_OD;
-    gpio.Pull = GPIO_PULLUP;
-    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-    gpio.Pin = IEC_ATN_PIN | IEC_CLK_PIN | IEC_DATA_PIN | IEC_SRQ_PIN;
-    HAL_GPIO_Init(IEC_PORT, &gpio);
-    
-    // Alle Leitungen releasen
-    HAL_GPIO_WritePin(IEC_PORT, 
-        IEC_ATN_PIN | IEC_CLK_PIN | IEC_DATA_PIN | IEC_SRQ_PIN,
-        GPIO_PIN_SET);
-    
-    // Reset als Push-Pull
-    gpio.Mode = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull = GPIO_NOPULL;
-    gpio.Pin = IEC_RESET_PIN;
-    HAL_GPIO_Init(IEC_PORT, &gpio);
-    HAL_GPIO_WritePin(IEC_PORT, IEC_RESET_PIN, GPIO_PIN_SET);
+    /* GPIO modes are set by board_gpio_init(); release every line */
+    bus_out(&PIN_IEC_ATN_OUT, false);
+    bus_out(&PIN_IEC_CLK_OUT, false);
+    bus_out(&PIN_IEC_DATA_OUT, false);
+    bus_out(&PIN_IEC_SRQ_OUT, false);
+    bus_out(&PIN_IEC_RESET_OUT, false);
 }
 
 /* ============================================================================
@@ -116,9 +71,9 @@ void ufi_iec_init(void) {
 
 int ufi_iec_reset(void) {
     // Reset-Leitung Low für 20ms
-    HAL_GPIO_WritePin(IEC_PORT, IEC_RESET_PIN, GPIO_PIN_RESET);
+    bus_out(&PIN_IEC_RESET_OUT, true);
     HAL_Delay(20);
-    HAL_GPIO_WritePin(IEC_PORT, IEC_RESET_PIN, GPIO_PIN_SET);
+    bus_out(&PIN_IEC_RESET_OUT, false);
     
     // Warten bis 1541 bereit (~500ms Boot-Zeit)
     HAL_Delay(500);

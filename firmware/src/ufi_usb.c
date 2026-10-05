@@ -47,23 +47,54 @@ const uint8_t* USBD_Serial_String = (uint8_t*)"UFI-001";
 
 USBD_HandleTypeDef hUsbDevice;
 
-// TX/RX Buffers
-static uint8_t usb_rx_buffer[USB_HS_MAX_PACKET_SIZE];
-static uint8_t usb_tx_buffer[USB_HS_BUFFER_SIZE];
+/* Flux data is sent straight from the flux store in chunks (no copy buffer).
+ * One CDC transfer may span up to 1023 FS packets; 32 KB keeps well below that. */
+#define USB_TX_CHUNK        (32 * 1024)
+#define USB_TX_TIMEOUT_MS   500
 
 /* ============================================================================
  * HELPER FUNCTIONS
  * ============================================================================ */
 
+/* CDC class keeps TxState in its handle (1 = transfer in progress) */
+static uint32_t USBD_CDC_GetTxState(USBD_HandleTypeDef* pdev) {
+    USBD_CDC_HandleTypeDef* hcdc = (USBD_CDC_HandleTypeDef*)pdev->pClassData;
+    return hcdc ? hcdc->TxState : 0;
+}
+
 // ⚠️ FIX #8: Warte auf TX Complete statt HAL_Delay
 static inline void usb_wait_tx_complete(void) {
-    uint32_t timeout = HAL_GetTick() + 50;
+    const uint32_t start = HAL_GetTick();
     while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
-        if (HAL_GetTick() > timeout) break;
+        if (HAL_GetTick() - start > 50) break;
     }
 }
-static volatile uint32_t usb_tx_head = 0;
-static volatile uint32_t usb_tx_tail = 0;
+
+/* Blocking transmit of an arbitrary-length buffer; p must stay valid until return */
+static int usb_tx_blocking(const uint8_t* p, uint32_t len) {
+    while (len > 0) {
+        const uint32_t n = (len > USB_TX_CHUNK) ? USB_TX_CHUNK : len;
+        const uint32_t start = HAL_GetTick();
+        while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
+            if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
+                return UFI_ERR_USB;
+            }
+        }
+        USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)p, n);
+        if (USBD_CDC_TransmitPacket(&hUsbDevice) != USBD_OK) {
+            return UFI_ERR_USB;
+        }
+        p += n;
+        len -= n;
+    }
+    const uint32_t start = HAL_GetTick();
+    while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
+        if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
+            return UFI_ERR_USB;
+        }
+    }
+    return UFI_OK;
+}
 
 // Command Buffer
 static uint8_t cmd_buffer[64];
@@ -74,32 +105,11 @@ static volatile uint8_t cmd_ready = 0;
  * ============================================================================ */
 
 void ufi_usb_init(void) {
-    // USB GPIO konfigurieren
-    GPIO_InitTypeDef gpio = {0};
-    
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    
-    // PA11 = USB_DM, PA12 = USB_DP
-    gpio.Pin = GPIO_PIN_11 | GPIO_PIN_12;
-    gpio.Mode = GPIO_MODE_AF_PP;
-    gpio.Pull = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio.Alternate = GPIO_AF10_OTG1_FS;  // Oder OTG2_HS
-    HAL_GPIO_Init(GPIOA, &gpio);
-    
-    // USB Clock
-    __HAL_RCC_USB_OTG_HS_CLK_ENABLE();
-    __HAL_RCC_USB_OTG_HS_ULPI_CLK_ENABLE();
-    
-    // USB Device initialisieren
-    USBD_Init(&hUsbDevice, &USBD_Desc, 0);
+    /* PA11/PA12 AF10, OTG_HS clock and NVIC: HAL_PCD_MspInit() in usbd_conf.c */
+    USBD_Init(&hUsbDevice, &HS_Desc, 0);
     USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
-    USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_CDC_fops);
+    USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
     USBD_Start(&hUsbDevice);
-    
-    // NVIC
-    HAL_NVIC_SetPriority(OTG_HS_IRQn, 3, 0);
-    HAL_NVIC_EnableIRQ(OTG_HS_IRQn);
 }
 
 /* USB Interrupt ist in stm32h7xx_it.c */
@@ -121,61 +131,15 @@ void ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
  * FLUX-DATEN SENDEN
  * ============================================================================ */
 
+/* Packet = flux_packet_header_t followed by sample_count x uint32 timestamps */
 int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data) {
-    uint32_t total_size = sizeof(flux_packet_header_t) + header->sample_count * sizeof(flux_sample_t);
-    
-    // ⚠️ FIX #3: Korrekte Ring-Buffer Berechnung!
-    uint32_t free_space = ring_buffer_free(usb_tx_head, usb_tx_tail, USB_HS_BUFFER_SIZE);
-    
-    if (free_space < total_size + 4) {
-        return UFI_ERR_BUFFER_FULL;
+    static flux_packet_header_t hdr;    /* must outlive the transfer */
+    hdr = *header;
+    int ret = usb_tx_blocking((const uint8_t*)&hdr, sizeof(hdr));
+    if (ret == UFI_OK) {
+        ret = usb_tx_blocking((const uint8_t*)data, hdr.sample_count * sizeof(flux_sample_t));
     }
-    
-    // Header in Buffer kopieren
-    uint8_t* ptr = usb_tx_buffer + usb_tx_head;
-    memcpy(ptr, header, sizeof(flux_packet_header_t));
-    ptr += sizeof(flux_packet_header_t);
-    
-    // Flux-Daten in Buffer kopieren
-    memcpy(ptr, data, header->sample_count * sizeof(flux_sample_t));
-    
-    usb_tx_head = (usb_tx_head + total_size) % USB_HS_BUFFER_SIZE;
-    
-    // Übertragung starten
-    ufi_usb_flush();
-    
-    return UFI_OK;
-}
-
-// Gepufferte Daten senden
-void ufi_usb_flush(void) {
-    if (usb_tx_head == usb_tx_tail) {
-        return;  // Nichts zu senden
-    }
-    
-    // ⚠️ FIX #8: Warte auf vorherige Übertragung!
-    uint32_t timeout = HAL_GetTick() + 100;  // 100ms Timeout
-    while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
-        if (HAL_GetTick() > timeout) {
-            return;  // Timeout - nicht blockieren
-        }
-    }
-    
-    uint32_t len;
-    if (usb_tx_head > usb_tx_tail) {
-        len = usb_tx_head - usb_tx_tail;
-    } else {
-        len = USB_HS_BUFFER_SIZE - usb_tx_tail;
-    }
-    
-    // Max 512 Bytes pro Transfer (USB HS Bulk)
-    if (len > 512) len = 512;
-    
-    USBD_CDC_SetTxBuffer(&hUsbDevice, usb_tx_buffer + usb_tx_tail, len);
-    
-    if (USBD_CDC_TransmitPacket(&hUsbDevice) == USBD_OK) {
-        usb_tx_tail = (usb_tx_tail + len) % USB_HS_BUFFER_SIZE;
-    }
+    return ret;
 }
 
 /* ============================================================================
@@ -318,13 +282,16 @@ int ufi_usb_process_command(void) {
         }
         
         case UFI_CMD_IEC_RECEIVE: {
-            uint8_t byte;
-            if (ufi_iec_receive_byte(&byte) == 0) {
-                response.length = 1;
+            /* payload: [byte, eoi] */
+            static uint8_t rx[2];
+            bool eoi = false;
+            if (ufi_iec_receive_byte(&rx[0], &eoi) == 0) {
+                rx[1] = eoi ? 1 : 0;
+                response.length = 2;
                 USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
                 USBD_CDC_TransmitPacket(&hUsbDevice);
                 usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, &byte, 1);
+                USBD_CDC_SetTxBuffer(&hUsbDevice, rx, 2);
                 USBD_CDC_TransmitPacket(&hUsbDevice);
             } else {
                 response.status = 1;

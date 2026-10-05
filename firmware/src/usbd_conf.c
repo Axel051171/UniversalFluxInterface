@@ -41,14 +41,14 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef *hpcd)
         gpio.Mode = GPIO_MODE_AF_PP;
         gpio.Pull = GPIO_NOPULL;
         gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        gpio.Alternate = GPIO_AF10_OTG1_FS;  /* Note: AF10 for HS in FS mode */
+        gpio.Alternate = GPIO_AF10_OTG1_HS;  /* OTG_HS core, internal FS PHY on PA11/PA12 */
         HAL_GPIO_Init(GPIOA, &gpio);
 
         /* Enable USB HS Clock */
         __HAL_RCC_USB_OTG_HS_CLK_ENABLE();
 
-        /* Enable USB HS ULPI Clock (even if not using ULPI) */
-        __HAL_RCC_USB_OTG_HS_ULPI_CLK_ENABLE();
+        /* USB transceiver supply (VDD33USB) must be enabled explicitly on H7 */
+        HAL_PWREx_EnableUSBVoltageDetector();
 
         /* USB Interrupt Priority */
         HAL_NVIC_SetPriority(OTG_HS_IRQn, 5, 0);
@@ -61,7 +61,7 @@ void HAL_PCD_MspDeInit(PCD_HandleTypeDef *hpcd)
     if (hpcd->Instance == USB_OTG_HS)
     {
         __HAL_RCC_USB_OTG_HS_CLK_DISABLE();
-        __HAL_RCC_USB_OTG_HS_ULPI_CLK_DISABLE();
+
 
         HAL_GPIO_DeInit(GPIOA, GPIO_PIN_11 | GPIO_PIN_12);
 
@@ -154,9 +154,9 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
     /* Set HS PHY Interface */
     hpcd_USB_OTG_HS.Instance = USB_OTG_HS;
     hpcd_USB_OTG_HS.Init.dev_endpoints = 9;
-    hpcd_USB_OTG_HS.Init.speed = PCD_SPEED_HIGH;
+    hpcd_USB_OTG_HS.Init.speed = PCD_SPEED_FULL;           /* internal PHY is full speed only */
     hpcd_USB_OTG_HS.Init.dma_enable = DISABLE;
-    hpcd_USB_OTG_HS.Init.phy_itface = USB_OTG_HS_EMBEDDED_PHY;
+    hpcd_USB_OTG_HS.Init.phy_itface = USB_OTG_EMBEDDED_PHY;
     hpcd_USB_OTG_HS.Init.Sof_enable = DISABLE;
     hpcd_USB_OTG_HS.Init.low_power_enable = DISABLE;
     hpcd_USB_OTG_HS.Init.lpm_enable = DISABLE;
@@ -173,10 +173,10 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
     }
 
     /* FIFO Configuration for CDC */
-    HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_HS, 0x200);       /* RX FIFO: 512 */
-    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 0, 0x40);    /* EP0 TX: 64 */
-    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 1, 0x100);   /* EP1 TX: 256 (CDC CMD) */
-    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 2, 0x200);   /* EP2 TX: 512 (CDC Data) */
+    HAL_PCDEx_SetRxFiFo(&hpcd_USB_OTG_HS, 0x80);        /* RX FIFO: 128 words (FIFO RAM 1024 words) */
+    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 0, 0x40);     /* EP0 TX: 64 words */
+    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 1, 0x100);    /* EP1 TX: 256 words (CDC data IN 0x81) */
+    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 2, 0x20);     /* EP2 TX: 32 words (CDC cmd 0x82) */
 
     return USBD_OK;
 }
@@ -273,11 +273,12 @@ void USBD_LL_Delay(uint32_t Delay)
 
 void *USBD_static_malloc(uint32_t size)
 {
+    (void)size;
     static uint32_t mem[(sizeof(USBD_CDC_HandleTypeDef) / 4) + 1];
     return mem;
 }
 
 void USBD_static_free(void *p)
 {
-    /* Nothing to free - static allocation */
+    (void)p;    /* Nothing to free - static allocation */
 }

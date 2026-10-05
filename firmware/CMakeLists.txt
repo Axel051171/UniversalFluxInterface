@@ -45,7 +45,7 @@ set(CMAKE_ASM_FLAGS "${MCU_FLAGS} -x assembler-with-cpp")
 
 set(CMAKE_EXE_LINKER_FLAGS "${MCU_FLAGS} -specs=nosys.specs -specs=nano.specs")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -T${LINKER_SCRIPT}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections -Wl,-Map=${PROJECT_NAME}.map")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections -Wl,-Map=${PROJECT_NAME}.map -Wl,--no-warn-rwx-segments")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--print-memory-usage")
 
 # ============================================================================
@@ -95,6 +95,7 @@ set(STARTUP_SOURCE ${CMSIS_PATH}/Device/ST/STM32H7xx/Source/Templates/gcc/startu
 
 set(PROJECT_SOURCES
     src/ufi_main.c
+    src/board_headless.c
     src/ufi_usb.c
     src/ufi_flux.c
     src/ufi_drive.c

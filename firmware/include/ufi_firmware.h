@@ -9,6 +9,7 @@
 #define UFI_FIRMWARE_H
 
 #include "ufi_fixes.h"  /* MUSS zuerst! */
+#include "board.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -21,20 +22,13 @@
 #define FLUX_TIMER_FREQ     275000000UL  // TIM2/TIM5 @ 275 MHz
 #define FLUX_RESOLUTION_NS  3.6          // ~3.6ns pro Tick
 
-// Timer für Flux-Capture
-#define FLUX_TIMER          TIM2         // 32-bit Timer
-#define FLUX_TIMER_CH       TIM_CHANNEL_1
+// Timer für Flux-Capture (Pins/Kanäle in board.h)
+#define FLUX_TIMER          TIM2         // 32-bit Timer: CH1 = RDATA (DMA), CH2 = INDEX
 #define FLUX_DMA            DMA1_Stream0
 
 // USB High-Speed
 #define USB_HS_BUFFER_SIZE  (64 * 1024)  // 64 KB Ring-Buffer
 #define USB_BULK_EP_SIZE    512          // USB HS Bulk max
-
-// Laufwerk-Steuerung GPIOs
-typedef struct {
-    GPIO_TypeDef* port;
-    uint16_t pin;
-} gpio_pin_t;
 
 /* ============================================================================
  * FLUX CAPTURE
@@ -45,14 +39,18 @@ typedef struct __packed {
     uint32_t timestamp;     // Timer-Wert bei Flanke (32-bit)
 } flux_sample_t;
 
-// Track-Buffer
-#define MAX_FLUX_PER_REV    50000       // Max Flux-Übergänge pro Umdrehung
-#define REVOLUTIONS_BUFFER  5           // Puffer für 5 Umdrehungen
+// Flux store: one DMA-capable buffer in AXI SRAM, shared by capture and write.
+// 56k samples = 224 KB: >= 2 revolutions of HD (~50k flux/rev at 300 rpm worst case),
+// ~5 revolutions of typical DD media.
+#define FLUX_STORE_WORDS    (56 * 1024)
+#define REVOLUTIONS_BUFFER  8           // Max Umdrehungen pro Capture
 
+// One revolution = slice of the flux store between two index pulses.
+// Timestamps are TIM2 ticks relative to the index pulse that starts the revolution.
 typedef struct {
-    flux_sample_t samples[MAX_FLUX_PER_REV];
+    flux_sample_t* samples;
     uint32_t count;
-    uint32_t index_time;    // Zeitpunkt des Index-Pulses
+    uint32_t index_time;    // Dauer der Umdrehung (Ticks Index -> Index)
     uint8_t revolution;     // Umdrehungs-Nummer
 } flux_revolution_t;
 
@@ -185,18 +183,30 @@ typedef struct __packed {
 
 // Initialisierung
 void ufi_init(void);
-void ufi_gpio_init(void);
 void ufi_flux_init(void);  // Timer + DMA (in ufi_flux.c)
+void ufi_drive_init(void);
+void ufi_iec_init(void);
 void ufi_usb_init(void);
 
 // Hauptschleife
 void ufi_main_loop(void);
 
-// Flux-Capture
+// Flux-Capture (high level, ufi_main.c: seek + side + capture)
 int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions);
 int ufi_capture_abort(void);
 capture_state_t ufi_capture_get_state(void);
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution);
+
+// Flux engine (ufi_flux.c)
+int ufi_flux_capture_start(uint8_t revolutions);
+int ufi_flux_capture_stop(void);
+capture_state_t ufi_flux_poll(void);           // finalises a completed capture
+flux_revolution_t* ufi_flux_get_revolution(uint8_t index);
+uint8_t ufi_flux_get_revolution_count(void);
+uint32_t* ufi_flux_store(uint32_t* words);      // shared buffer (write path uses it too)
+uint32_t ufi_flux_now(void);                    // free-running TIM2 counter
+void ufi_flux_tim2_irq(void);
+void ufi_flux_dma_irq(void);
 
 // Laufwerk-Steuerung
 int ufi_drive_select(drive_type_t type);
@@ -206,11 +216,20 @@ int ufi_drive_seek(uint8_t track);
 int ufi_drive_recalibrate(void);
 int ufi_drive_select_side(uint8_t side);
 drive_status_t ufi_drive_get_status(void);
+drive_type_t ufi_drive_get_current(void);
+bool ufi_drive_at_track0(void);
+bool ufi_drive_write_protected(void);
+bool ufi_drive_disk_changed(void);
+bool ufi_drive_ready(void);
+int ufi_drive_density_line(bool assert);   // 34-pin pin 2; meaning is drive dependent
+#if BOARD_HAS_APPLE
+int ufi_drive_apple_step(int direction);
+#endif
 
 // IEC Bus (C64)
 int ufi_iec_reset(void);
 int ufi_iec_send_byte(uint8_t byte, bool eoi);
-int ufi_iec_receive_byte(uint8_t* byte);
+int ufi_iec_receive_byte(uint8_t* byte, bool* eoi);
 int ufi_iec_atn(bool state);
 
 // USB Kommunikation
@@ -238,7 +257,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
 int ufi_write_receive_chunk(uint8_t* data, uint32_t len);
 bool ufi_write_data_complete(void);
 int ufi_write_start(void);
-void ufi_write_index_handler(void);
+void ufi_write_index_handler(uint32_t index_time);
 void ufi_write_process(void);
 int ufi_erase_track(uint8_t track, uint8_t side);
 int ufi_write_verify(void);
@@ -291,14 +310,11 @@ uint8_t ufi_debug_selftest(void);
  * INTERRUPT HANDLER
  * ============================================================================ */
 
-// Flux-Timer Capture (höchste Priorität!)
+// Flux-Timer: Index-Capture CH2 (höchste Priorität!)
 void TIM2_IRQHandler(void);
 
-// DMA Transfer Complete
+// DMA Transfer Complete (Flux-Store voll)
 void DMA1_Stream0_IRQHandler(void);
-
-// Index-Puls Interrupt
-void EXTI0_IRQHandler(void);
 
 // USB High-Speed
 void OTG_HS_IRQHandler(void);

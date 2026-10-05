@@ -124,20 +124,16 @@ USB-C VBUS ──Polyfuse 1.5A──► VBUS_F ───────────
 | PWR_SRC | PG4 | TPS2116 Status |
 | HSE | PH0 / PH1 | 25 MHz |
 
-### Nötige Firmware-Anpassungen (`firmware/src/ufi_main.c`)
+### Firmware (`firmware/`) – an dieses Board angepasst
 
-Die alte Pintabelle ist mit dem H723 nicht umsetzbar (RDATA auf PC3 hat kein TIM2_CH1, PA0 war doppelt geplant). Zu ändern:
-
-- `PIN_FDD_RDATA` PC3 → **PA5** (AF1 TIM2_CH1), `PIN_FDD_INDEX` PC0 → **PA1** (TIM2_CH2)
-- `PIN_FDD_WDATA` PB4 → **PA6** (AF2 TIM3_CH1)
-- FDD-Ausgänge von GPIOA/GPIOB → **GPIOE 7–15**, FDD-Eingänge GPIOC → **GPIOF 0–3**
-- IEC: getrennte OUT (PD0–4) / IN (PF4–8) statt bidirektionaler Pins
-- LEDs GPIOE 0–3 → **GPIOG 0–3**; Power-LED ist fest an 3V3
-- Linker-Skript `STM32H723ZGTX_FLASH.ld` passt bereits (LQFP144)
+- Pintabelle + Polarität zentral in `firmware/include/board.h` / `src/board_headless.c`; alle Module nutzen `bus_out()` / `bus_in()` (logisch: true = Busleitung aktiv)
+- Flux lesen: RDATA TIM2_CH1 (PA5) + INDEX TIM2_CH2 (PA1), steigende Flanke, gleiche 32-bit-Zeitbasis; DMA schreibt linear in einen 224-KB-Flux-Speicher im AXI-SRAM, Umdrehungen sind Ausschnitte (Grenzen exakt per Zeitstempel)
+- IEC getrennt OUT (PD0–4) / IN (PF4–8); Amiga J7: Motor per Select-Latch (MTRXD = MOTOR_B, SEL1B = DRV_SEL_B); Apple-Code hinter `BOARD_HAS_APPLE` (hier 0)
+- WDATA auf PA6 noch per Bit-Banging (TIM3_CH1 + DMA folgt)
+- Build: `cmake -S firmware -B firmware/build -G Ninja -DSTM32CUBE_PATH=<STM32Cube_FW_H7_V1.11.0>` + `cmake --build firmware/build` → 0 Fehler, 0 Warnungen im Projektcode (36 KB Flash, 256 KB AXI-SRAM). **Auf Hardware ungetestet.**
 
 ## Sourcing-Notizen
 
 - LCSC-Nummern: per JLCPCB-API (05.10.2026, Lagerbestand geprüft) zugeordnet, Tabelle `LCSC` in `scripts/build_schematic.py`. Extended-Teile kosten bei JLC je ~3 $ Rüstgebühr; Spule SRN6045TA-150M (C1330797) hatte nur 189 Stück Lager
 - Quarz: YXC X322525MOB4SI (C9006, Basic), 25 MHz, CL 12 pF → Lastkondensatoren 2× 18 pF C0G (C1647); gm_crit ≈ 0,97 mA/V < 1,5 mA/V (H723 HSE)
-- IEC: Stiftleiste 1×6 (C37208) statt DIN-6 auf der Platine; DIN-6-Buchse sitzt extern (Gehäuse), Firmware unverändert (gleiche MCU-Pins)
-- Firmware ist noch nicht an Pintabelle + Polarität angepasst (siehe oben)
+- IEC: Stiftleiste 1×6 (C37208) statt DIN-6 auf der Platine; DIN-6-Buchse sitzt extern (Gehäuse)

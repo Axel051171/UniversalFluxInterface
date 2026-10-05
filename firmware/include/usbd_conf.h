@@ -21,6 +21,8 @@
 #define USBD_CDC_INTERVAL              2000
 
 /* Memory Management */
+#define USBD_memset               memset
+#define USBD_memcpy               memcpy
 #define USBD_malloc               (void *)USBD_static_malloc
 #define USBD_free                 USBD_static_free
 

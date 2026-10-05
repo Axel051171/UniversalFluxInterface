@@ -5,33 +5,19 @@
  */
 
 #include "ufi_firmware.h"
-#include "stm32h7xx_hal.h"
 #include <string.h>
 
 /* ============================================================================
  * EXTERNE VARIABLEN
  * ============================================================================ */
 
-extern TIM_HandleTypeDef htim2;
 extern capture_context_t g_capture;
 
 /* ============================================================================
  * WRITE KONFIGURATION
  * ============================================================================ */
 
-#define WRITE_BUFFER_SIZE   65536   // Max 64K Flux-Samples pro Track
 #define WRITE_PRECOMP_NS    140     // ns - Write Precompensation
-
-/* Write State Machine */
-typedef enum {
-    WRITE_IDLE,
-    WRITE_RECEIVING,        // Empfange Flux-Daten
-    WRITE_WAITING_INDEX,    // Warte auf Index für Sync
-    WRITE_ACTIVE,           // Schreibe Daten
-    WRITE_COMPLETE,
-    WRITE_VERIFYING,
-    WRITE_ERROR
-} write_state_t;
 
 typedef struct {
     write_state_t state;
@@ -48,24 +34,17 @@ typedef struct {
 
 static write_context_t g_write;
 
-/* Write Buffer im AXI SRAM */
-__attribute__((section(".axi_sram")))
-static uint32_t write_buffer[WRITE_BUFFER_SIZE];
-
-/* ============================================================================
- * GPIO PINS (Referenzen aus ufi_main.c)
- * ============================================================================ */
-
-extern const gpio_pin_t PIN_FDD_WGATE;
-extern const gpio_pin_t PIN_FDD_WDATA;
-extern const gpio_pin_t PIN_FDD_INDEX;
-extern const gpio_pin_t PIN_LED_FDD;
+/* Write data lives in the shared flux store (ufi_flux.c); capture and write never
+ * run at the same time.  A verify capture overwrites it (only counts are compared). */
+static uint32_t* write_buffer;
+static uint32_t write_buffer_words;
 
 /* ============================================================================
  * WRITE INITIALISIERUNG
  * ============================================================================ */
 
 void ufi_write_init(void) {
+    write_buffer = ufi_flux_store(&write_buffer_words);
     g_write.state = WRITE_IDLE;
     g_write.flux_count = 0;
     g_write.flux_index = 0;
@@ -101,10 +80,11 @@ static uint32_t apply_precomp(uint32_t timing, uint32_t prev_timing, uint32_t ne
  * ============================================================================ */
 
 int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool verify) {
-    if (g_write.state != WRITE_IDLE) {
+    if (g_write.state != WRITE_IDLE ||
+        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
         return UFI_ERR_BUSY;
     }
-    if (flux_count > WRITE_BUFFER_SIZE) {
+    if (flux_count > write_buffer_words) {
         return UFI_ERR_BUFFER_FULL;
     }
     
@@ -161,28 +141,25 @@ int ufi_write_start(void) {
     g_write.next_flux_time = 0;
     g_write.state = WRITE_WAITING_INDEX;
     
-    HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_SET);
-    
+    led_set(&PIN_LED_FDD, true);
+
     return UFI_OK;
 }
 
-void ufi_write_index_handler(void) {
+/* Called from the TIM2 index-capture interrupt; t = TIM2 timestamp of the index pulse */
+void ufi_write_index_handler(uint32_t t) {
     if (g_write.state == WRITE_WAITING_INDEX) {
         g_write.state = WRITE_ACTIVE;
         g_write.flux_index = 0;
-        g_write.next_flux_time = 0;
-        
-        HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_RESET);
-        __HAL_TIM_SET_COUNTER(&htim2, 0);
-        
-        if (g_write.flux_count > 0) {
-            g_write.next_flux_time = write_buffer[0];
-        }
+
+        bus_out(&PIN_FDD_WGATE, true);
+
+        g_write.next_flux_time = t + ((g_write.flux_count > 0) ? write_buffer[0] : 0);
     }
     else if (g_write.state == WRITE_ACTIVE) {
-        HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_SET);
+        bus_out(&PIN_FDD_WGATE, false);
         g_write.state = WRITE_COMPLETE;
-        HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_RESET);
+        led_set(&PIN_LED_FDD, false);
     }
 }
 
@@ -190,13 +167,14 @@ void ufi_write_process(void) {
     if (g_write.state != WRITE_ACTIVE || g_write.flux_index >= g_write.flux_count) {
         return;
     }
-    
-    uint32_t now = __HAL_TIM_GET_COUNTER(&htim2);
-    
-    if (now >= g_write.next_flux_time) {
-        HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, GPIO_PIN_RESET);
+
+    uint32_t now = ufi_flux_now();
+
+    if ((int32_t)(now - g_write.next_flux_time) >= 0) {
+        /* short write pulse (bus asserted = low); bit-banged until TIM3_CH1 takes over */
+        bus_out(&PIN_FDD_WDATA, true);
         for (volatile int i = 0; i < 140; i++) { __NOP(); }
-        HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, GPIO_PIN_SET);
+        bus_out(&PIN_FDD_WDATA, false);
         
         g_write.flux_index++;
         
@@ -226,28 +204,29 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
     ufi_drive_select_side(side);
     HAL_Delay(20);
     
-    HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_SET);
-    
-    uint32_t timeout = HAL_GetTick() + 500;
-    
-    while (HAL_GPIO_ReadPin(PIN_FDD_INDEX.port, PIN_FDD_INDEX.pin) == GPIO_PIN_RESET) {
-        if (HAL_GetTick() > timeout) {
-            HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_RESET);
+    led_set(&PIN_LED_FDD, true);
+
+    const uint32_t start = HAL_GetTick();
+
+    /* Wait for the start of an index pulse (INDEX pin stays readable in AF mode) */
+    while (bus_in(&PIN_FDD_INDEX)) {
+        if (HAL_GetTick() - start > 500) {
+            led_set(&PIN_LED_FDD, false);
             return UFI_ERR_NO_INDEX;
         }
     }
-    while (HAL_GPIO_ReadPin(PIN_FDD_INDEX.port, PIN_FDD_INDEX.pin) == GPIO_PIN_SET) {
-        if (HAL_GetTick() > timeout) {
-            HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_RESET);
+    while (!bus_in(&PIN_FDD_INDEX)) {
+        if (HAL_GetTick() - start > 500) {
+            led_set(&PIN_LED_FDD, false);
             return UFI_ERR_NO_INDEX;
         }
     }
-    
-    HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_RESET);
+
+    bus_out(&PIN_FDD_WGATE, true);
     HAL_Delay(220);
-    HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_SET);
-    
-    HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_RESET);
+    bus_out(&PIN_FDD_WGATE, false);
+
+    led_set(&PIN_LED_FDD, false);
     
     return UFI_OK;
 }
@@ -269,9 +248,9 @@ int ufi_write_verify(void) {
         return ret;
     }
     
-    uint32_t timeout = HAL_GetTick() + 1000;
+    const uint32_t start = HAL_GetTick();
     while (ufi_capture_get_state() != CAPTURE_COMPLETE) {
-        if (HAL_GetTick() > timeout) {
+        if (HAL_GetTick() - start > 1000 || g_capture.state == CAPTURE_ERROR) {
             g_write.state = WRITE_ERROR;
             return UFI_ERR_TIMEOUT;
         }
@@ -317,11 +296,11 @@ uint32_t ufi_write_get_progress(void) {
 }
 
 void ufi_write_abort(void) {
-    HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_SET);
+    bus_out(&PIN_FDD_WGATE, false);
     g_write.state = WRITE_IDLE;
     g_write.flux_count = 0;
     g_write.bytes_received = 0;
-    HAL_GPIO_WritePin(PIN_LED_FDD.port, PIN_LED_FDD.pin, GPIO_PIN_RESET);
+    led_set(&PIN_LED_FDD, false);
 }
 
 void ufi_write_set_precomp(bool enable) {
