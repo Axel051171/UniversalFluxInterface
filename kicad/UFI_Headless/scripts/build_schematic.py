@@ -46,8 +46,8 @@ LCSC = {
     "1.5A hold": "C32404", "15uH 3A": "C1330797", "600R@100MHz": "C1002", "25MHz CL=12pF": "C9006",
     # electromechanical
     "USB-C": "C165948", "RESET": "C2886898", "BOOT": "C2886898", "FDD_34PIN": "C20920",
-    "SWD": "C22438120", "FDD_PWR": "C32713270", "DBG_UART": "C49257",
-    # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack, IEC DIN-6
+    "SWD": "C22438120", "FDD_PWR": "C32713270", "DBG_UART": "C49257", "IEC_HDR": "C37208",
+    # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
 }
 
 
@@ -402,16 +402,17 @@ IEC_LINES = ["ATN", "CLK", "DATA", "SRQ", "RESET"]
 
 def build_iec() -> Sheet:
     sh = Sheet("UFI Headless - IEC Bus", PROJECT)
-    sh.text("IEC BUS (Commodore serial, DIN-6 240deg)\n"
+    sh.text("IEC BUS (Commodore serial) - 1x6 header, pin n = DIN-6 pin n, DIN socket external\n"
             "UFI acts as host: 1k pull-ups to +5V on all lines.\n"
             "IEC_x_OUT low = line pulled low (SN74LS07 open collector).\n"
             "IEC_x_IN high = line is low (74LVC14A inverter).", 20, 20, 1.5)
     hex_buffer(sh, "oc", 80, 60, [(f"G:IEC_{n}_OUT", f"IEC_{n}") for n in IEC_LINES], (140, 60))
     hex_buffer(sh, "st", 220, 60, [(f"IEC_{n}", f"G:IEC_{n}_IN") for n in IEC_LINES], (280, 60))
     pullups(sh, 80, 160, [f"IEC_{n}" for n in IEC_LINES])
-    sh.part("Connector", "DIN-6", ref("J"), "IEC", 300, 170, {
+    sh.part("Connector_Generic", "Conn_01x06", ref("J"), "IEC_HDR", 300, 170, {
         "1": "IEC_SRQ", "2": "GND", "3": "IEC_ATN", "4": "IEC_CLK", "5": "IEC_DATA", "6": "IEC_RESET"},
-        "UFI:DIN-6_Female_PCB", {"Note": "1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET; footprint to verify"})
+        "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
+        {"Note": "Pin n = DIN-6 pin n (1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET); DIN socket external"})
     return sh
 
 

@@ -26,7 +26,7 @@
 "DBG_UART","J5","Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical","C49257"
 "FDD_34PIN","J6","Connector_IDC:IDC-Header_2x17_P2.54mm_Vertical","C20920"
 "AMIGA_FDD","J7","Connector_IDC:IDC-Header_2x12_P2.54mm_Vertical",""
-"IEC","J8","UFI:DIN-6_Female_PCB",""
+"IEC_HDR","J8","Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical","C37208"
 "15uH 3A","L1","Inductor_SMD:L_Bourns_SRN6045TA","C1330797"
 "5.1k","R1,R2","Resistor_SMD:R_0603_1608Metric","C23186"
 "100k 1%","R3","Resistor_SMD:R_0603_1608Metric","C25803"

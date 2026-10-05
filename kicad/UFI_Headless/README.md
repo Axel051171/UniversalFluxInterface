@@ -8,7 +8,7 @@ Status: **Schaltplan + Layout v0.1** – ERC 0 Verstöße, alle 89 Netze per Net
 | MCU_Core | STM32H723ZGT6 (LQFP144), Entkopplung, VCAP, VDDA-Filter, HSE 25 MHz, Reset/Boot, SWD, Debug-UART, LEDs | ✅ |
 | Flux_Interface | 2× SN74LS07 Open-Collector (40 mA) für 10 Ausgänge, 74LVC14A Schmitt-Inverter für 6 Eingänge, 1k Pull-ups auf 5V | ✅ |
 | FDD_Connectors | 34-pol IBM-PC/Shugart, Amiga 2×12-Header (Pin n = DB23 Pin n) | ✅ (Amiga-Pinout prüfen, s.u.) |
-| IEC_Bus | SN74LS07 + 74LVC14A, 1k Pull-ups, DIN-6 | ✅ (Footprint prüfen) |
+| IEC_Bus | SN74LS07 + 74LVC14A, 1k Pull-ups, 1×6-Stiftleiste J8 (Pin n = DIN-6 Pin n: 1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET), DIN-6-Buchse extern per Kabel | ✅ |
 
 ## Signalpolarität (wichtig für Firmware)
 
@@ -51,7 +51,7 @@ cd kicad/UFI_Headless
 ![top](docs/top.png)
 
 - 110 × 85 mm, 4 Lagen, 100 Bauteile, 4× M3
-- DRC: **0 Fehler, 0 unverbundene Elemente, Schaltplan-Parität ok**; 7 Silkscreen-Warnungen (IDC-Kontur am Rand, DIN-6-Footprint-Silk über eigenen Pads – Fertiger clippt)
+- DRC: **0 Fehler, 0 unverbundene Elemente, Schaltplan-Parität ok**; 4 Silkscreen-Warnungen (IDC-Kontur am Rand – Fertiger clippt)
 - Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen)
 
 ### Layout-Review (gemessen mit `scripts/layout_metrics.py`)
@@ -64,15 +64,15 @@ cd kicad/UFI_Headless
 | MCU | 100 nF ~2,8 mm vor jedem VDD-Pin, alle VSS-Pins per Stich + Via direkt auf die GND-Lage |
 | USB | D+/D− 43/44 mm (USB FS: Länge/Impedanz unkritisch), ESD U1 zwischen Buchse und MCU |
 
-Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von `make_pcb.sh`): IEC_RESET-Sackgasse an RN8 ersetzt, PWR_SRC auf B.Cu nach y = 48 mm verlegt, GND-Vias an C33 (VDDA) und am Buck-GND (U2.1/C3.2). Ein neuer Pipeline-Lauf routet anders und kann andere Nacharbeit brauchen – **dieses Board ist der geprüfte Stand**.
+Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von `make_pcb.sh`): IEC_RESET-Sackgasse an RN8 ersetzt, PWR_SRC auf B.Cu nach y = 48 mm verlegt, GND-Vias an C33 (VDDA) und am Buck-GND (U2.1/C3.2); nach dem Tausch J8 DIN-6 → Stiftleiste (`scripts/swap_footprint.py` + inkrementelles Freerouting) IEC_SRQ U9↔U10 auf In2 bei x = 87,07 mm. Ein neuer Pipeline-Lauf routet anders und kann andere Nacharbeit brauchen – **dieses Board ist der geprüfte Stand**.
 
 ### Vor einer Bestellung noch offen
 
-1. **DIN-6-Buchse festlegen** und `UFI:DIN-6_Female_PCB` gegen deren Datenblatt prüfen (Pinzuordnung 1 SRQ … 6 RESET stimmt, Lochbild ungeprüft)
-2. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich
-3. **CPL-Rotationen** im JLC-Bestückungsviewer kontrollieren, besonders ICs (U2 SOT-23-6 um 180° gedreht, U3–U10), Y1, D1–D8, Elko-Polarität C1/C13, J1
-4. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1), J7 (2×12 Wannenstecker), J8 (DIN-6) haben keine LCSC-Nummer
-6. Netzklassen (Power 0,8 mm nachträglich verbreitert) stehen nur im Board, nicht in `.kicad_pro`
+1. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich
+2. **CPL-Rotationen** im JLC-Bestückungsviewer kontrollieren, besonders ICs (U2 SOT-23-6 um 180° gedreht, U3–U10), Y1, D1–D8, Elko-Polarität C1/C13, J1
+3. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1) und J7 (2×12 Wannenstecker) haben keine LCSC-Nummer
+4. **IEC-Kabel**: J8 (1×6, 2,54 mm) auf DIN-6-Buchse, 1:1 nach Pinnummer (Lötseite der Buchse beachten)
+5. Netzklassen (Power 0,8 mm nachträglich verbreitert) stehen nur im Board, nicht in `.kicad_pro`
 
 ## Layout-Pipeline (`scripts/make_pcb.sh`)
 
@@ -139,5 +139,5 @@ Die alte Pintabelle ist mit dem H723 nicht umsetzbar (RDATA auf PC3 hat kein TIM
 
 - LCSC-Nummern: per JLCPCB-API (05.10.2026, Lagerbestand geprüft) zugeordnet, Tabelle `LCSC` in `scripts/build_schematic.py`. Extended-Teile kosten bei JLC je ~3 $ Rüstgebühr; Spule SRN6045TA-150M (C1330797) hatte nur 189 Stück Lager
 - Quarz: YXC X322525MOB4SI (C9006, Basic), 25 MHz, CL 12 pF → Lastkondensatoren 2× 18 pF C0G (C1647); gm_crit ≈ 0,97 mA/V < 1,5 mA/V (H723 HSE)
-- DIN-6: eigener Footprint `UFI:DIN-6_Female_PCB` (Bibliothek per `fp-lib-table` → `../footprints`), Lochbild gegen die gewählte Buchse prüfen
+- IEC: Stiftleiste 1×6 (C37208) statt DIN-6 auf der Platine; DIN-6-Buchse sitzt extern (Gehäuse), Firmware unverändert (gleiche MCU-Pins)
 - Firmware ist noch nicht an Pintabelle + Polarität angepasst (siehe oben)

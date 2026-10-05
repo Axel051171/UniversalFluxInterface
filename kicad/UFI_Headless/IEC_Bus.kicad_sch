@@ -2074,9 +2074,10 @@
 		)
 		(embedded_fonts no)
 	)
-(symbol "Connector:DIN-6"
+(symbol "Connector_Generic:Conn_01x06"
 		(pin_names
 			(offset 1.016)
+			(hide yes)
 		)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -2084,7 +2085,7 @@
 		(in_pos_files yes)
 		(duplicate_pin_numbers_are_jumpers no)
 		(property "Reference" "J"
-			(at 3.175 5.715 0)
+			(at 0 7.62 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2093,15 +2094,14 @@
 				)
 			)
 		)
-		(property "Value" "DIN-6"
-			(at 4.445 -4.445 0)
+		(property "Value" "Conn_01x06"
+			(at 0 -10.16 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
 			)
 		)
 		(property "Footprint" ""
@@ -2115,7 +2115,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.mouser.com/ds/2/18/40_c091_abd_e-75918.pdf"
+		(property "Datasheet" ""
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2126,7 +2126,7 @@
 				)
 			)
 		)
-		(property "Description" "6-pin DIN connector"
+		(property "Description" "Generic connector, single row, 01x06, script generated (kicad-library-utils/schlib/autogen/connector/)"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2137,7 +2137,7 @@
 				)
 			)
 		)
-		(property "ki_keywords" "circular DIN connector"
+		(property "ki_keywords" "connector"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2148,7 +2148,7 @@
 				)
 			)
 		)
-		(property "ki_fp_filters" "DIN*"
+		(property "ki_fp_filters" "Connector*:*_1x??_*"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2159,212 +2159,88 @@
 				)
 			)
 		)
-		(symbol "DIN-6_0_1"
-			(polyline
-				(pts
-					(xy -5.08 2.54)
-					(xy -4.318 2.54)
-					(xy -3.175 1.905)
-				)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy -5.08 -2.54)
-					(xy -4.318 -2.54)
-					(xy -3.175 -1.905)
-				)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(circle
-				(center -2.794 1.524)
-				(radius 0.508)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(circle
-				(center -2.794 -1.524)
-				(radius 0.508)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy -0.762 -4.953)
-					(xy -0.762 -4.191)
-					(xy 0.762 -4.191)
-					(xy 0.762 -4.953)
-				)
+		(symbol "Conn_01x06_1_1"
+			(rectangle
+				(start -1.27 6.35)
+				(end 1.27 -8.89)
 				(stroke
 					(width 0.254)
 					(type default)
 				)
 				(fill
-					(type none)
+					(type background)
 				)
 			)
-			(arc
-				(start 5.08 0)
-				(mid 3.8673 -3.3444)
-				(end 0.762 -5.08)
+			(rectangle
+				(start -1.27 5.207)
+				(end 0 4.953)
 				(stroke
-					(width 0.254)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(polyline
-				(pts
-					(xy 0 5.08)
-					(xy 0 3.81)
-				)
+			(rectangle
+				(start -1.27 2.667)
+				(end 0 2.413)
 				(stroke
-					(width 0)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(circle
-				(center 0 3.302)
-				(radius 0.508)
+			(rectangle
+				(start -1.27 0.127)
+				(end 0 -0.127)
 				(stroke
-					(width 0)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(circle
-				(center 0 0)
-				(radius 0.508)
+			(rectangle
+				(start -1.27 -2.413)
+				(end 0 -2.667)
 				(stroke
-					(width 0)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(arc
-				(start -5.08 0)
-				(mid 0 5.0579)
-				(end 5.08 0)
+			(rectangle
+				(start -1.27 -4.953)
+				(end 0 -5.207)
 				(stroke
-					(width 0.254)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(polyline
-				(pts
-					(xy 0 -5.08)
-					(xy 0 -0.508)
-				)
+			(rectangle
+				(start -1.27 -7.493)
+				(end 0 -7.747)
 				(stroke
-					(width 0)
+					(width 0.1524)
 					(type default)
 				)
 				(fill
 					(type none)
 				)
 			)
-			(arc
-				(start -0.762 -5.08)
-				(mid -3.8597 -3.3379)
-				(end -5.08 0)
-				(stroke
-					(width 0.254)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(circle
-				(center 2.794 1.524)
-				(radius 0.508)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(circle
-				(center 2.794 -1.524)
-				(radius 0.508)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 5.08 2.54)
-					(xy 4.318 2.54)
-					(xy 3.175 1.905)
-				)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-			(polyline
-				(pts
-					(xy 5.08 -2.54)
-					(xy 4.318 -2.54)
-					(xy 3.175 -1.905)
-				)
-				(stroke
-					(width 0)
-					(type default)
-				)
-				(fill
-					(type none)
-				)
-			)
-		)
-		(symbol "DIN-6_1_1"
 			(pin passive line
-				(at -7.62 -2.54 0)
-				(length 2.54)
-				(name ""
+				(at -5.08 5.08 0)
+				(length 3.81)
+				(name "Pin_1"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2380,9 +2256,9 @@
 				)
 			)
 			(pin passive line
-				(at -7.62 2.54 0)
-				(length 2.54)
-				(name ""
+				(at -5.08 2.54 0)
+				(length 3.81)
+				(name "Pin_2"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2398,9 +2274,9 @@
 				)
 			)
 			(pin passive line
-				(at 0 7.62 270)
-				(length 2.54)
-				(name ""
+				(at -5.08 0 0)
+				(length 3.81)
+				(name "Pin_3"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2416,9 +2292,9 @@
 				)
 			)
 			(pin passive line
-				(at 7.62 2.54 180)
-				(length 2.54)
-				(name ""
+				(at -5.08 -2.54 0)
+				(length 3.81)
+				(name "Pin_4"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2434,9 +2310,9 @@
 				)
 			)
 			(pin passive line
-				(at 7.62 -2.54 180)
-				(length 2.54)
-				(name ""
+				(at -5.08 -5.08 0)
+				(length 3.81)
+				(name "Pin_5"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2452,9 +2328,9 @@
 				)
 			)
 			(pin passive line
-				(at 0 -7.62 90)
-				(length 2.54)
-				(name ""
+				(at -5.08 -7.62 0)
+				(length 3.81)
+				(name "Pin_6"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -2473,7 +2349,7 @@
 		(embedded_fonts no)
 	)
 )
-(text "IEC BUS (Commodore serial, DIN-6 240deg)\nUFI acts as host: 1k pull-ups to +5V on all lines.\nIEC_x_OUT low = line pulled low (SN74LS07 open collector).\nIEC_x_IN high = line is low (74LVC14A inverter)." (exclude_from_sim no) (at 20 20 0) (effects (font (size 1.5 1.5)) (justify left top)) (uuid "479c35f0-2138-50e2-916e-4fd8543a1906"))
+(text "IEC BUS (Commodore serial) - 1x6 header, pin n = DIN-6 pin n, DIN socket external\nUFI acts as host: 1k pull-ups to +5V on all lines.\nIEC_x_OUT low = line pulled low (SN74LS07 open collector).\nIEC_x_IN high = line is low (74LVC14A inverter)." (exclude_from_sim no) (at 20 20 0) (effects (font (size 1.5 1.5)) (justify left top)) (uuid "479c35f0-2138-50e2-916e-4fd8543a1906"))
 (wire (pts (xy 71.12 60.96) (xy 68.58 60.96)) (stroke (width 0) (type default)) (uuid "1b10105e-f928-552c-8c0b-2b9561fee217"))
 (global_label "IEC_ATN_OUT" (shape bidirectional) (at 68.58 60.96 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right)) (uuid "d49ed6eb-b289-5323-ad26-a33eea2dcd91") (property "Intersheetrefs" "${INTERSHEET_REFS}" (at 68.58 60.96 0) (effects (font (size 1.27 1.27)) (hide yes))))
 (wire (pts (xy 86.36 60.96) (xy 88.9 60.96)) (stroke (width 0) (type default)) (uuid "aca39a00-76f9-5828-b9ae-19af17d17450"))
@@ -2547,17 +2423,17 @@
 (no_connect (at 99.06 154.94) (uuid "52f2e433-ab96-529b-ade9-8060b9846fb8"))
 (no_connect (at 96.52 154.94) (uuid "934ba22b-6032-5bc5-8bf7-ae8206f17178"))
 (wire (pts (xy 93.98 154.94) (xy 93.98 152.4)) (stroke (width 0) (type default)) (uuid "954a8223-f794-5ad7-a162-d80efc75cd9d"))
-(wire (pts (xy 292.1 172.72) (xy 289.56 172.72)) (stroke (width 0) (type default)) (uuid "531745cb-80f1-5c10-ba60-f22859780077"))
-(label "IEC_SRQ" (at 289.56 172.72 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "a4283b71-3b65-5502-a333-66c5ee0f355d"))
-(wire (pts (xy 292.1 167.64) (xy 289.56 167.64)) (stroke (width 0) (type default)) (uuid "dcf67a7c-1757-557f-bdba-98d261512e78"))
-(wire (pts (xy 299.72 162.56) (xy 299.72 160.02)) (stroke (width 0) (type default)) (uuid "ba310074-821c-5a79-8919-f196b8037ce3"))
-(label "IEC_ATN" (at 299.72 160.02 90) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "018f142d-d301-5706-b9b7-3072ef0b48c1"))
-(wire (pts (xy 307.34 167.64) (xy 309.88 167.64)) (stroke (width 0) (type default)) (uuid "df94d74e-622f-5bf5-901a-848abfe630be"))
-(label "IEC_CLK" (at 309.88 167.64 0) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "4a2ee611-9ddc-5353-a73f-b6105e7e37ff"))
-(wire (pts (xy 307.34 172.72) (xy 309.88 172.72)) (stroke (width 0) (type default)) (uuid "5d6ae8b0-0b93-5727-9013-f4a2e0cadfa0"))
-(label "IEC_DATA" (at 309.88 172.72 0) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "c8e6c1a6-e477-5cf7-a384-876b95b0afaf"))
-(wire (pts (xy 299.72 177.8) (xy 299.72 180.34)) (stroke (width 0) (type default)) (uuid "d304c1d2-cb85-5bb0-995f-ea06cc14cfa5"))
-(label "IEC_RESET" (at 299.72 180.34 270) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "065eb3bf-733e-55de-becf-fa8ed75fc787"))
+(wire (pts (xy 294.64 165.1) (xy 292.1 165.1)) (stroke (width 0) (type default)) (uuid "531745cb-80f1-5c10-ba60-f22859780077"))
+(label "IEC_SRQ" (at 292.1 165.1 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "a4283b71-3b65-5502-a333-66c5ee0f355d"))
+(wire (pts (xy 294.64 167.64) (xy 292.1 167.64)) (stroke (width 0) (type default)) (uuid "dcf67a7c-1757-557f-bdba-98d261512e78"))
+(wire (pts (xy 294.64 170.18) (xy 292.1 170.18)) (stroke (width 0) (type default)) (uuid "ba310074-821c-5a79-8919-f196b8037ce3"))
+(label "IEC_ATN" (at 292.1 170.18 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "018f142d-d301-5706-b9b7-3072ef0b48c1"))
+(wire (pts (xy 294.64 172.72) (xy 292.1 172.72)) (stroke (width 0) (type default)) (uuid "df94d74e-622f-5bf5-901a-848abfe630be"))
+(label "IEC_CLK" (at 292.1 172.72 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "4a2ee611-9ddc-5353-a73f-b6105e7e37ff"))
+(wire (pts (xy 294.64 175.26) (xy 292.1 175.26)) (stroke (width 0) (type default)) (uuid "5d6ae8b0-0b93-5727-9013-f4a2e0cadfa0"))
+(label "IEC_DATA" (at 292.1 175.26 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "c8e6c1a6-e477-5cf7-a384-876b95b0afaf"))
+(wire (pts (xy 294.64 177.8) (xy 292.1 177.8)) (stroke (width 0) (type default)) (uuid "d304c1d2-cb85-5bb0-995f-ea06cc14cfa5"))
+(label "IEC_RESET" (at 292.1 177.8 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right bottom)) (uuid "065eb3bf-733e-55de-becf-fa8ed75fc787"))
 (symbol (lib_id "74xx:74LS07") (at 78.74 60.96 0) (unit 1)
 (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
 (uuid "ed5306d6-deeb-56cd-bf65-e2d34f9d3bad")
@@ -2917,23 +2793,24 @@
 (pin "7" (uuid "7b5a7b4e-f5e2-57f2-9cf1-14f518321580"))
 (pin "8" (uuid "6e424a90-533b-5432-ae51-8e07024223aa"))
 (instances (project "UFI_Headless" (path "/dc1b800d-cedf-5627-97f0-e6992ff33669/ed0b61ff-f6bd-56db-b8a4-25dbfb310cbc" (reference "RN8") (unit 1)))))
-(symbol (lib_id "power:GND") (at 289.56 167.64 270) (unit 1)
+(symbol (lib_id "power:GND") (at 292.1 167.64 270) (unit 1)
 (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
 (uuid "c312305e-b204-549a-934a-96253005b1f9")
-(property "Reference" "#PWR210" (at 289.56 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Value" "GND" (at 289.56 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Footprint" "" (at 289.56 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Datasheet" "" (at 289.56 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Reference" "#PWR210" (at 292.1 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Value" "GND" (at 292.1 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Footprint" "" (at 292.1 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Datasheet" "" (at 292.1 167.64 0) (effects (font (size 1.27 1.27)) (hide yes)))
 (pin "1" (uuid "79e15fe6-e0f1-5484-8627-ace2f5bb02e2"))
 (instances (project "UFI_Headless" (path "/dc1b800d-cedf-5627-97f0-e6992ff33669/ed0b61ff-f6bd-56db-b8a4-25dbfb310cbc" (reference "#PWR210") (unit 1)))))
-(symbol (lib_id "Connector:DIN-6") (at 299.72 170.18 0) (unit 1)
+(symbol (lib_id "Connector_Generic:Conn_01x06") (at 299.72 170.18 0) (unit 1)
 (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
 (uuid "270c3270-4158-57fc-bff1-7c33c367bc99")
-(property "Reference" "J8" (at 302.895 164.465 0) (effects (font (size 1.27 1.27))))
-(property "Value" "IEC" (at 304.165 174.625 0) (effects (font (size 1.27 1.27))))
-(property "Footprint" "UFI:DIN-6_Female_PCB" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Datasheet" "http://www.mouser.com/ds/2/18/40_c091_abd_e-75918.pdf" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Note" "1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET; footprint to verify" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Reference" "J8" (at 299.72 162.56 0) (effects (font (size 1.27 1.27))))
+(property "Value" "IEC_HDR" (at 299.72 180.34 0) (effects (font (size 1.27 1.27))))
+(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Datasheet" "" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "LCSC" "C37208" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Note" "Pin n = DIN-6 pin n (1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET); DIN socket external" (at 299.72 170.18 0) (effects (font (size 1.27 1.27)) (hide yes)))
 (pin "1" (uuid "a572583c-9400-55c0-a232-3b5037a771c2"))
 (pin "2" (uuid "cd03f897-e43a-5800-a73d-754441b5c30f"))
 (pin "3" (uuid "99ccf504-633c-5b28-9238-f7151c24c3c3"))

@@ -163,7 +163,7 @@ def refs_on(net_name, value=None, prefix="C"):
 # Edge connectors
 put_edge("J6", 90, "bottom", 31.0)        # FDD 34-pin
 put_edge("J7", 90, "bottom", 84.0)        # Amiga 2x12
-put_edge("J8", 0, "right", 40.0)          # IEC DIN-6
+put_edge("J8", 0, "right", 40.0)          # IEC 1x6 header (pin n = DIN-6 pin n), DIN socket external
 put_edge("J1", 0, "top", 72.0)            # USB-C
 put_edge("J2", 270, "top", 13.0)          # 12V barrel jack, opening towards top edge
 put_edge("J3", 0, "left", 52.0)           # FDD power out
@@ -434,7 +434,7 @@ def text(s, x, y, size=1.0, layer=pcbnew.F_SilkS):
 text("UFI Headless v0.1", 55.0, 26.0 - 2.0, 1.2, pcbnew.B_SilkS)
 text("FDD 34", 30.0, H - 11.5, 1.0)
 text("AMIGA", 84.0, H - 11.5, 1.0)
-text("IEC", W - 10.0, 62.0, 1.0)
+text("IEC 1=SRQ 6=RST", W - 9.5, 31.0, 0.8)
 text("12V DC", 24.0, 3.0, 1.0)
 text("FDD PWR", 6.0, 60.5, 0.8)
 
