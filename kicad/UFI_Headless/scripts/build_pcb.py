@@ -35,7 +35,7 @@ nc.SetViaDrill(MM(0.3))
 ds.m_TrackMinWidth = MM(0.127)
 ds.m_MinClearance = MM(0.127)
 ds.m_ViasMinSize = MM(0.45)
-ds.m_MinThroughDrill = MM(0.25)  # USB-C D- fan-out vias
+ds.m_MinThroughDrill = MM(0.2)  # 0.48 mm vias with AR 0.125 (finish_pcb.py)
 ds.m_CopperEdgeClearance = MM(0.3)
 
 # Net classes: wider tracks for supply / high-current nets (used by Freerouting via the DSN)

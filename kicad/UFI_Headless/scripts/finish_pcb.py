@@ -200,5 +200,17 @@ for _ in range(3):
     if not n:
         break
     pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+
+# Annular ring >= 0.125 mm on every via (Freerouting emits 0.6/0.4, dogbones are 0.48/0.25):
+# shrink the drill rather than grow the pad, so copper clearances stay unchanged.
+MIN_AR = 0.125
+shrunk = 0
+for t in board.GetTracks():
+    if t.GetClass() == "PCB_VIA":
+        w = pcbnew.ToMM(t.GetWidth(pcbnew.F_Cu))
+        if (w - pcbnew.ToMM(t.GetDrillValue())) / 2 < MIN_AR - 1e-6:
+            t.SetDrill(MM(round(w - 2 * MIN_AR, 3)))
+            shrunk += 1
+print("via drills shrunk", shrunk)
 board.Save(path)
 print("zones", len(list(board.Zones())), "tracks", len(board.GetTracks()))

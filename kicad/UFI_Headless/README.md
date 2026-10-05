@@ -68,7 +68,7 @@ Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von 
 
 ### Vor einer Bestellung noch offen
 
-1. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich
+1. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,23 mm (Dogbones, USB D−) – Aufpreis für < 0,3 mm Bohrung möglich. Alle Vias Restring ≥ 0,125 mm (DRC-Regel `min_via_annular_width`)
 2. **CPL-Rotationen** im JLC-Bestückungsviewer kontrollieren, besonders ICs (U2 SOT-23-6 um 180° gedreht, U3–U10), Y1, D1–D8, Elko-Polarität C1/C13, J1
 3. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1) und J7 (2×12 Wannenstecker) haben keine LCSC-Nummer
 4. **IEC-Kabel**: J8 (1×6, 2,54 mm) auf DIN-6-Buchse, 1:1 nach Pinnummer (Lötseite der Buchse beachten)
@@ -84,10 +84,10 @@ TOOLS=<dir mit jdk-25*-jre + freerouting-2.4.1.jar> bash scripts/make_pcb.sh all
 2. Freerouting 2.4.1 (Java 25) – F.Cu / In2.Cu / B.Cu als Signallagen, In1.Cu GND-Plane
 3. `drop_violations.py` – Freerouting-Leiterbahnen mit DRC-Verstoß löschen und neu routen (bis sauber)
 4. `widen_power.py` – Versorgungsnetze auf 0,8 mm (GND/3V3 0,5 mm) verbreitern, wo DRC es erlaubt
-5. `finish_pcb.py` – GND-Pours F/B, +3V3-Pour In2, GND-Stitching-Vias, Inseln anbinden, Zonen füllen
+5. `finish_pcb.py` – GND-Pours F/B, +3V3-Pour In2, GND-Stitching-Vias, Inseln anbinden, Zonen füllen, Via-Bohrungen auf Restring ≥ 0,125 mm verkleinern
 
 Lagenaufbau: F.Cu Signal + GND-Pour · In1.Cu GND-Plane · In2.Cu Signal + 3V3-Pour · B.Cu Signal + GND-Pour.
-Hinweis Fertigung: VBUS-Vias liegen im USB-C-Pad (Via-in-Pad) → bei JLC „Via Covering: Plugged/Epoxy filled“ wählen oder vor dem Bestellen manuell versetzen. D−-Vias an J1 sind 0,48/0,25 mm.
+Hinweis Fertigung: VBUS-Vias liegen im USB-C-Pad (Via-in-Pad) → bei JLC „Via Covering: Plugged/Epoxy filled“ wählen oder vor dem Bestellen manuell versetzen. D−-Vias an J1 sind 0,48/0,23 mm.
 
 ## Stromversorgung
 
