@@ -20,13 +20,13 @@ Status: **Schaltplan + Layout v0.1** – ERC 0 Verstöße, alle 89 Netze per Net
 Ungerade Pins GND. 2 DENSITY · 8 INDEX · 10 MOTOR_A · 12 DRVSEL_B · 14 DRVSEL_A · 16 MOTOR_B · 18 DIR · 20 STEP · 22 WDATA · 24 WGATE · 26 TRK0 · 28 WPROT · 30 RDATA · 32 SIDE · 34 DSKCHG/READY · 4, 6 frei.
 Shugart-Laufwerke: Pin 10/12/14 = DS0/DS1/DS2, Pin 16 = MOTOR ON – die Firmware wählt den Bustyp (wie Greaseweazle).
 
-## Amiga-Header (J7) – ⚠ bitte prüfen
+## Amiga-Header (J7) – gegen Amiga HRM verifiziert
 
 Belegung nach Amiga Hardware Reference Manual, Header-Pin n = DB23-Pin n:
 1 /RDY · 2 /DKRD · 3–7 GND · 8 /MTRXD · 9 /SEL2B · 10 /DRESB · 11 /CHNG · 12 +5V · 13 /SIDEB · 14 /WPRO · 15 /TK0 · 16 /DKWEB · 17 /DKWDB · 18 /STEPB · 19 /DIRB · 20 /SEL3B · 21 /SEL1B · 22 /INDEX · 23 +12V · 24 GND.
 SEL1B teilt sich DRVSEL_B, MTRXD teilt sich MOTOR_B mit dem 34-pol Bus → nur ein Laufwerk gleichzeitig betreiben. SEL2B/SEL3B/DRESB per 1k auf +5V inaktiv.
 
-**Widerspruch:** `docs/Amiga_DB23_Adapter_Cable.md` nennt eine andere Belegung (GND auf DB23 12/15/20/23, /DKRD doppelt) – die ist in sich inkonsistent. Vor dem Kabelbau gegen ein echtes Laufwerk/HRM verifizieren; die Zuordnung im Schaltplan ist nur eine Tabelle in `build_fdd_conn()`.
+Belegung bestätigt gegen Amiga Hardware Reference Manual, Appendix E „External Disk Interface Specification“ (alle 23 Pins). **`docs/Amiga_DB23_Adapter_Cable.md` ist falsch** (GND auf DB23 12/15/20/23, /DKRD doppelt) und sollte korrigiert werden, bevor danach ein Kabel gebaut wird.
 
 ## Stromaufnahme +5V (Abschätzung)
 
@@ -54,13 +54,24 @@ cd kicad/UFI_Headless
 - DRC: **0 Fehler, 0 unverbundene Elemente, Schaltplan-Parität ok**; 7 Silkscreen-Warnungen (IDC-Kontur am Rand, DIN-6-Footprint-Silk über eigenen Pads – Fertiger clippt)
 - Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen)
 
-### Vor einer Bestellung prüfen (Review durch Menschen nötig)
+### Layout-Review (gemessen mit `scripts/layout_metrics.py`)
 
-1. **Layout-Qualität** – Platzierung/Routing sind skriptgeneriert: Entkopplung (100 nF ~2,8 mm vor den Pins), Buck-Schleife U2/L1/C5/C6, Quarzleitungen und USB-D+/D− in KiCad ansehen und ggf. von Hand nachziehen
-2. **Via-in-Pad** an den USB-C-VBUS-Pads → „Plugged/Epoxy filled“ bestellen oder Vias versetzen
-3. **Kleine Vias** 0,48/0,25 mm (USB-C D−, MCU-VSS, einzelne GND-Dogbones) – Fertigerfähigkeit/Preis prüfen
-4. **DIN-6-Footprint** `UFI:DIN-6_Female_PCB` gegen Datenblatt der Buchse, **Amiga-Pinout** (s.u.)
-5. **CPL-Rotationen** im JLC-Bestückungsviewer prüfen (KiCad- und JLC-Nullrotation weichen bei manchen Gehäusen ab); LCSC-Nummern sind vollständig (`UFI_Headless-bom-jlc.csv`), außer J2 (Hohlbuchse), J7 (Amiga 2×12 Wannenstecker), J8 (DIN-6) → Handbestückung
+| Bereich | Ergebnis |
+|---|---|
+| Quarz Y1 | HSE_IN/HSE_OUT je 9,0 mm inkl. Lastkondensatoren, **keine Vias**, symmetrisch (vorgeroutet) |
+| Buck TPS54202 | Eingangs-C 100 nF 1,8 mm an VIN, SW-Knoten 2,8 mm gerade zu L1 (0,6 mm), FB-Teiler direkt an Pin 4 (vorgeroutet) |
+| Versorgung | Supply-Pours entlang der Routen (`power_pours.py`): +5V/+12V/VBUS ~0,85–1,8 mm effektiv, VBUS_F über In2 ~1,5 mm |
+| MCU | 100 nF ~2,8 mm vor jedem VDD-Pin, alle VSS-Pins per Stich + Via direkt auf die GND-Lage |
+| USB | D+/D− 43/44 mm (USB FS: Länge/Impedanz unkritisch), ESD U1 zwischen Buchse und MCU |
+
+Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von `make_pcb.sh`): IEC_RESET-Sackgasse an RN8 ersetzt, PWR_SRC auf B.Cu nach y = 48 mm verlegt, GND-Vias an C33 (VDDA) und am Buck-GND (U2.1/C3.2). Ein neuer Pipeline-Lauf routet anders und kann andere Nacharbeit brauchen – **dieses Board ist der geprüfte Stand**.
+
+### Vor einer Bestellung noch offen
+
+1. **DIN-6-Buchse festlegen** und `UFI:DIN-6_Female_PCB` gegen deren Datenblatt prüfen (Pinzuordnung 1 SRQ … 6 RESET stimmt, Lochbild ungeprüft)
+2. **Bestelloptionen**: VBUS-Vias liegen im USB-C-Pad → „Via Covering: Epoxy filled & capped“ (alternativ plugged); kleine Vias 0,48/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich
+3. **CPL-Rotationen** im JLC-Bestückungsviewer kontrollieren, besonders ICs (U2 SOT-23-6 um 180° gedreht, U3–U10), Y1, D1–D8, Elko-Polarität C1/C13, J1
+4. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1), J7 (2×12 Wannenstecker), J8 (DIN-6) haben keine LCSC-Nummer
 6. Netzklassen (Power 0,8 mm nachträglich verbreitert) stehen nur im Board, nicht in `.kicad_pro`
 
 ## Layout-Pipeline (`scripts/make_pcb.sh`)
@@ -124,10 +135,9 @@ Die alte Pintabelle ist mit dem H723 nicht umsetzbar (RDATA auf PC3 hat kein TIM
 - LEDs GPIOE 0–3 → **GPIOG 0–3**; Power-LED ist fest an 3V3
 - Linker-Skript `STM32H723ZGTX_FLASH.ld` passt bereits (LQFP144)
 
-## Offene Punkte vor Layout
+## Sourcing-Notizen
 
 - LCSC-Nummern: per JLCPCB-API (05.10.2026, Lagerbestand geprüft) zugeordnet, Tabelle `LCSC` in `scripts/build_schematic.py`. Extended-Teile kosten bei JLC je ~3 $ Rüstgebühr; Spule SRN6045TA-150M (C1330797) hatte nur 189 Stück Lager
 - Quarz: YXC X322525MOB4SI (C9006, Basic), 25 MHz, CL 12 pF → Lastkondensatoren 2× 18 pF C0G (C1647); gm_crit ≈ 0,97 mA/V < 1,5 mA/V (H723 HSE)
-- Amiga-Pinout verifizieren (s.o.)
-- Eigener Footprint `UFI:DIN-6_Female_PCB` gegen Datenblatt der gewählten Buchse prüfen (Bibliothek per `fp-lib-table` → `../footprints`)
-- Firmware auf neue Pintabelle + Polarität umstellen
+- DIN-6: eigener Footprint `UFI:DIN-6_Female_PCB` (Bibliothek per `fp-lib-table` → `../footprints`), Lochbild gegen die gewählte Buchse prüfen
+- Firmware ist noch nicht an Pintabelle + Polarität angepasst (siehe oben)

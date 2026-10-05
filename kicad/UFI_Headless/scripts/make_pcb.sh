@@ -37,6 +37,8 @@ if [ "$STEP" = route ] || [ "$STEP" = all ]; then
     [ "$out" = "removed 0" ] && break
     freeroute 10
   done
+  # fallback hand route (only applied if Freerouting left USB D+ open)
+  "$PY" "$HERE/manual_routes.py" "$(W "$B")" 2>&1 | grep -vi swig || true
   # widen supply tracks, then undo every widening that DRC flags until stable
   "$PY" "$HERE/widen_power.py" widen "$(W "$B")" "$(W "$WORK/widened.json")" 2>&1 | grep -vi swig
   for _ in 1 2 3 4 5 6; do
@@ -46,6 +48,7 @@ if [ "$STEP" = route ] || [ "$STEP" = all ]; then
     [ "$out" = "reverted 0" ] && break
   done
   "$PY" "$HERE/finish_pcb.py" "$(W "$B")" 2>&1 | grep -vi swig
+  "$PY" "$HERE/power_pours.py" "$(W "$B")" 2>&1 | grep -vi swig
 fi
 "$CLI" pcb drc --schematic-parity -o "$WORK/drc.rpt" "$B" 2>&1 | grep -E "Verst|Unverb|gefunden" || true
 grep -E '^\[' "$WORK/drc.rpt" | sed 's/:.*//' | sort | uniq -c || true

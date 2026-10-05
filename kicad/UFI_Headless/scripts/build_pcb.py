@@ -195,9 +195,9 @@ put("C31", 40.0, 24.0, 0)          # 4.7uF bulk
 put("C32", 70.0, 24.0, 0)          # 1uF
 
 # Crystal next to PH0/PH1 (pins 23/24, left side y~42.5)
-put("Y1", 34.0, 42.5, 90)
-put("C38", 30.5, 40.6, 0)
-put("C39", 30.5, 44.4, 0)
+put("Y1", 39.8, 42.6, 270)         # pin1 (HSE_IN) top-left, pin3 (HSE_OUT) bottom-right
+put("C38", 36.4, 41.4, 180)         # HSE pad towards the crystal
+put("C39", 36.4, 43.8, 180)
 
 # Reset / boot buttons on the top edge
 put("SW1", 38.0, 8.0, 0)
@@ -223,18 +223,18 @@ for i, (led, res) in enumerate((("D4", "R11"), ("D5", "R12"), ("D6", "R13"), ("D
 
 # Power section (left): 12V input -> buck -> mux -> LDO
 put("D2", 11.0, 21.0, 0)           # SS54 reverse protection
-put("C2", 19.0, 21.0, 90)          # 10uF/35V
-put("C3", 22.0, 21.0, 90)          # 100nF
+put("C2", 29.0, 25.2, 0)           # 10uF/35V input bulk
+put("C3", 25.0, 27.3, 180)          # 100nF input cap, +12V pad 1.8 mm from VIN
 put("D3", 5.0, 31.0, 90)           # SMAJ15CA
-put("C1", 14.0, 32.0, 0)           # 100uF/25V
-put("U2", 25.0, 30.0, 0)           # TPS54202
-put("C4", 25.0, 26.5, 0)           # bootstrap
-put("L1", 25.0, 38.0, 0)
-put("R3", 30.5, 31.0, 90)          # FB divider
-put("R4", 32.5, 31.0, 90)
-put("C5", 31.0, 36.0, 90)          # 22uF out
-put("C6", 34.0, 36.0, 90)
-put("C7", 36.5, 36.0, 90)
+put("C1", 13.5, 33.5, 0)           # 100uF/25V
+put("U2", 25.0, 30.0, 180)          # TPS54202: VIN/SW/GND face L1 (right)
+put("C4", 25.0, 32.8, 0)           # bootstrap below U2
+put("L1", 31.0, 30.0, 0)           # SW pad in line with U2 pin 2
+put("R3", 21.3, 26.9, 0)            # FB divider next to U2 pin 4 (pad 2 = FB on the right)
+put("R4", 21.3, 29.0, 180)
+put("C5", 36.6, 30.0, 90)          # 22uF out at L1 output
+put("C6", 39.2, 30.0, 90)
+put("C7", 36.6, 34.0, 90)
 put("U3", 27.0, 47.0, 0)           # TPS2116 mux
 put("C8", 23.5, 46.0, 90)
 put("C9", 23.5, 49.5, 90)
@@ -318,6 +318,35 @@ seg("USB_DM", pcbnew.B_Cu, [(jx["B7"], yv), (jx["A7"], yv)], 0.2)
 # D+: A6 passes between the D- vias, B6 joins below them on F.Cu
 yd = jy + 2.18
 seg("USB_DP", pcbnew.F_Cu, [(jx["A6"], jy), (jx["A6"], yd), (jx["B6"], yd), (jx["B6"], jy)], 0.2)
+
+# Buck converter hot paths, pre-routed and locked (U2 rotated: VIN/SW/GND face L1).
+def net_pad(ref, netname):
+    return next(pcbnew.ToMM(p.GetPosition().x) for p in fps[ref].Pads() if p.GetNetname() == netname), \
+        next(pcbnew.ToMM(p.GetPosition().y) for p in fps[ref].Pads() if p.GetNetname() == netname)
+
+
+u2_vin, u2_sw, u2_fb, u2_bst = (pad_pos("U2", n) for n in ("3", "2", "4", "6"))
+l1_sw = net_pad("L1", "/Power/BUCK_SW")
+seg("/Power/BUCK_SW", pcbnew.F_Cu, [u2_sw, (l1_sw[0], u2_sw[1])], 0.6)            # 2.8 mm SW node
+c4_sw, c4_bst = net_pad("C4", "/Power/BUCK_SW"), net_pad("C4", "/Power/BUCK_BST")
+seg("/Power/BUCK_SW", pcbnew.F_Cu, [c4_sw, (u2_sw[0] + 1.26, u2_sw[1] + 1.2), (u2_sw[0] + 1.26, u2_sw[1])], 0.4)
+seg("/Power/BUCK_BST", pcbnew.F_Cu, [u2_bst, c4_bst], 0.3)
+c3_vin, c2_vin = net_pad("C3", "+12V"), net_pad("C2", "+12V")
+seg("+12V", pcbnew.F_Cu, [c3_vin, u2_vin], 0.4)                                  # input cap 1.8 mm
+seg("+12V", pcbnew.F_Cu, [c2_vin, c3_vin], 0.4)
+r4_fb, r3_fb = net_pad("R4", "/Power/BUCK_FB"), net_pad("R3", "/Power/BUCK_FB")
+seg("/Power/BUCK_FB", pcbnew.F_Cu, [r3_fb, r4_fb, u2_fb], 0.2)
+
+# HSE crystal, pre-routed and locked: no vias, both lines a few mm long.
+y1_in, y1_out = pad_pos("Y1", "1"), pad_pos("Y1", "3")
+ph0, ph1 = pad_pos("U5", "23"), pad_pos("U5", "24")
+seg("/MCU_Core/HSE_IN", pcbnew.F_Cu, [net_pad("C38", "/MCU_Core/HSE_IN"), y1_in], 0.2)
+seg("/MCU_Core/HSE_IN", pcbnew.F_Cu,
+    [y1_in, (y1_in[0] + 0.5, 40.4), (42.2, 40.4), (43.2, ph0[1]), ph0], 0.2)
+seg("/MCU_Core/HSE_OUT", pcbnew.F_Cu, [y1_out, (41.6, ph1[1]), ph1], 0.2)
+c39_out = net_pad("C39", "/MCU_Core/HSE_OUT")
+seg("/MCU_Core/HSE_OUT", pcbnew.F_Cu,
+    [c39_out, (c39_out[0] + 0.425, 44.85), (y1_out[0] - 0.45, 44.85), y1_out], 0.2)
 
 # MCU VSS pins: short locked stub inwards under the LQFP body to a small GND via.
 # Pre-routed so the escape routing cannot box the ground pins in.
