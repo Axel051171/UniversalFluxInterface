@@ -1,6 +1,6 @@
 # UFI Headless – STM32H723 Flux Engine (ohne CM5)
 
-Status: **Schaltplan vollständig (v0.1)** – ERC 0 Verstöße, alle 89 Netze per Netlist-Export gegen die Soll-Verbindungen geprüft.
+Status: **Schaltplan + Layout v0.1** – ERC 0 Verstöße, alle 89 Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler (Details unten).
 
 | Sheet | Inhalt | Status |
 |---|---|---|
@@ -45,6 +45,38 @@ cd kicad/UFI_Headless
 "$CLI" sch export netlist -o headless.net UFI_Headless.kicad_sch
 "$PY" scripts/verify_netlist.py headless.net           # Soll/Ist-Vergleich aller Netze
 ```
+
+## Layout (v0.1, automatisch erzeugt)
+
+![top](docs/top.png)
+
+- 110 × 85 mm, 4 Lagen, 100 Bauteile, 4× M3
+- DRC: **0 Fehler, 0 unverbundene Elemente, Schaltplan-Parität ok**; 7 Silkscreen-Warnungen (IDC-Kontur am Rand, DIN-6-Footprint-Silk über eigenen Pads – Fertiger clippt)
+- Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen)
+
+### Vor einer Bestellung prüfen (Review durch Menschen nötig)
+
+1. **Layout-Qualität** – Platzierung/Routing sind skriptgeneriert: Entkopplung (100 nF ~2,8 mm vor den Pins), Buck-Schleife U2/L1/C5/C6, Quarzleitungen und USB-D+/D− in KiCad ansehen und ggf. von Hand nachziehen
+2. **Via-in-Pad** an den USB-C-VBUS-Pads → „Plugged/Epoxy filled“ bestellen oder Vias versetzen
+3. **Kleine Vias** 0,48/0,25 mm (USB-C D−, MCU-VSS, einzelne GND-Dogbones) – Fertigerfähigkeit/Preis prüfen
+4. **DIN-6-Footprint** `UFI:DIN-6_Female_PCB` gegen Datenblatt der Buchse, **Amiga-Pinout** (s.u.)
+5. **CPL-Rotationen** im JLC-Bestückungsviewer prüfen (KiCad- und JLC-Nullrotation weichen bei manchen Gehäusen ab); LCSC-Nummern sind vollständig (`UFI_Headless-bom-jlc.csv`), außer J2 (Hohlbuchse), J7 (Amiga 2×12 Wannenstecker), J8 (DIN-6) → Handbestückung
+6. Netzklassen (Power 0,8 mm nachträglich verbreitert) stehen nur im Board, nicht in `.kicad_pro`
+
+## Layout-Pipeline (`scripts/make_pcb.sh`)
+
+```bash
+TOOLS=<dir mit jdk-25*-jre + freerouting-2.4.1.jar> bash scripts/make_pcb.sh all   # place | route | all
+```
+
+1. `build_pcb.py` – Footprints aus der Schaltplan-Netlist (mit KIID-Pfaden → Schaltplan-Parität), Platzierung, 110×85 mm Outline, M3-Löcher, In1-GND-Plane, vorgeroutete USB-C-Auffächerung (gesperrt)
+2. Freerouting 2.4.1 (Java 25) – F.Cu / In2.Cu / B.Cu als Signallagen, In1.Cu GND-Plane
+3. `drop_violations.py` – Freerouting-Leiterbahnen mit DRC-Verstoß löschen und neu routen (bis sauber)
+4. `widen_power.py` – Versorgungsnetze auf 0,8 mm (GND/3V3 0,5 mm) verbreitern, wo DRC es erlaubt
+5. `finish_pcb.py` – GND-Pours F/B, +3V3-Pour In2, GND-Stitching-Vias, Inseln anbinden, Zonen füllen
+
+Lagenaufbau: F.Cu Signal + GND-Pour · In1.Cu GND-Plane · In2.Cu Signal + 3V3-Pour · B.Cu Signal + GND-Pour.
+Hinweis Fertigung: VBUS-Vias liegen im USB-C-Pad (Via-in-Pad) → bei JLC „Via Covering: Plugged/Epoxy filled“ wählen oder vor dem Bestellen manuell versetzen. D−-Vias an J1 sind 0,48/0,25 mm.
 
 ## Stromversorgung
 
@@ -94,8 +126,8 @@ Die alte Pintabelle ist mit dem H723 nicht umsetzbar (RDATA auf PC3 hat kein TIM
 
 ## Offene Punkte vor Layout
 
-- LCSC-Nummern für JLC-Bestückung zuordnen (bewusst noch leer – nicht geraten)
-- Quarz: konkretes Teil mit CL=8 pF wählen, Lastkondensatoren ggf. anpassen
+- LCSC-Nummern: per JLCPCB-API (05.10.2026, Lagerbestand geprüft) zugeordnet, Tabelle `LCSC` in `scripts/build_schematic.py`. Extended-Teile kosten bei JLC je ~3 $ Rüstgebühr; Spule SRN6045TA-150M (C1330797) hatte nur 189 Stück Lager
+- Quarz: YXC X322525MOB4SI (C9006, Basic), 25 MHz, CL 12 pF → Lastkondensatoren 2× 18 pF C0G (C1647); gm_crit ≈ 0,97 mA/V < 1,5 mA/V (H723 HSE)
 - Amiga-Pinout verifizieren (s.o.)
 - Eigener Footprint `UFI:DIN-6_Female_PCB` gegen Datenblatt der gewählten Buchse prüfen (Bibliothek per `fp-lib-table` → `../footprints`)
 - Firmware auf neue Pintabelle + Polarität umstellen

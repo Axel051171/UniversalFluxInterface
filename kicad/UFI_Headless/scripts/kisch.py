@@ -119,8 +119,12 @@ def symbol_pins(sym, unit: int | None = None) -> list[dict]:
     return pins
 
 
-def uid() -> str:
-    return str(_uuid.uuid4())
+_NS = _uuid.UUID("6f1c2b1e-5a4d-4e0f-9a51-7b0c3e2d9f10")
+
+
+def uid(key: str | None = None) -> str:
+    """Deterministic UUID for `key` (stable across regenerations), random without key."""
+    return str(_uuid.uuid5(_NS, key)) if key else str(_uuid.uuid4())
 
 
 def snap(v: float, grid: float = 2.54) -> float:
@@ -138,14 +142,29 @@ _OUT = {0: (-1, 0), 90: (0, 1), 180: (1, 0), 270: (0, -1)}
 
 
 class Sheet:
+    # optional callable(value, footprint) -> dict of extra symbol fields
+    field_hook = None
+
     def __init__(self, title: str, project: str, paper: str = "A3"):
         self.title, self.project, self.paper = title, project, paper
-        self.uuid = uid()
+        self._n = 0
+        self.uuid = self.uid("sheet")
         self.lib_syms: dict[str, list] = {}
         self.items: list[str] = []
         self.path = ""  # instance path, set by the root
         self._pending: list[tuple] = []  # (lib_id, ref, value, x, y, fp, props, pins)
         self.netlist: dict[str, set[str]] = {}
+
+    def uid(self, key: str | None = None) -> str:
+        """Deterministic per-sheet UUID: named key, else sequential counter.
+
+        Symbol UUIDs are keyed by reference so the PCB keeps its links to the
+        schematic when the generator is re-run.
+        """
+        if key is None:
+            self._n += 1
+            key = f"item|{self._n}"
+        return uid(f"{self.title}|{key}")
 
     # -- symbols ----------------------------------------------------------
     def _embed(self, lib: str, name: str):
@@ -161,6 +180,8 @@ class Sheet:
         """Place a symbol unit; `conn` maps pin number -> net ('NC' = no-connect)."""
         x, y = snap(x), snap(y)
         sym = self._embed(lib, name)
+        if Sheet.field_hook is not None:  # e.g. sourcing fields (LCSC) looked up centrally
+            props = {**Sheet.field_hook(value, fp), **(props or {})}
         pins = symbol_pins(sym, unit)
         groups: dict[tuple, list[dict]] = {}
         for p in pins:
@@ -175,7 +196,7 @@ class Sheet:
             net = nets.pop()
             ex, ey = x + px, y - py
             if net == "NC":
-                self.items.append(f'(no_connect (at {fmt(ex)} {fmt(ey)}) (uuid "{uid()}"))')
+                self.items.append(f'(no_connect (at {fmt(ex)} {fmt(ey)}) (uuid "{self.uid()}"))')
                 continue
             for p in grp:
                 self.netlist.setdefault(net.removeprefix("G:"), set()).add(f"{ref}.{p['number']}")
@@ -194,7 +215,7 @@ class Sheet:
         fields.update(props)
         out = [f'(symbol (lib_id "{lib}:{name}") (at {fmt(x)} {fmt(y)} {rot}) (unit {unit})',
                f'(exclude_from_sim no) (in_bom {"yes" if in_bom else "no"}) (on_board yes) (dnp no)',
-               f'(uuid "{uid()}")']
+               f'(uuid "{self.uid(f"sym|{ref}|{unit}")}")']
         for k, v in fields.items():
             hidden = k not in ("Reference", "Value") or ref.startswith("#")
             if k in lp:
@@ -208,12 +229,12 @@ class Sheet:
             out.append(f'(property "{k}" "{v}" (at {fmt(fx)} {fmt(fy)} {fa}) '
                        f'(effects (font (size 1.27 1.27)){hide}))')
         for num in sorted({p["number"] for p in pins}):
-            out.append(f'(pin "{num}" (uuid "{uid()}"))')
+            out.append(f'(pin "{num}" (uuid "{self.uid()}"))')
         self._pending.append((out, ref, unit))
 
     def wire(self, x1, y1, x2, y2):
         self.items.append(f'(wire (pts (xy {fmt(x1)} {fmt(y1)}) (xy {fmt(x2)} {fmt(y2)})) '
-                          f'(stroke (width 0) (type default)) (uuid "{uid()}"))')
+                          f'(stroke (width 0) (type default)) (uuid "{self.uid()}"))')
 
     _pwr_count = [0]
 
@@ -241,13 +262,13 @@ class Sheet:
         if glob:
             self.items.append(
                 f'(global_label "{text}" (shape bidirectional) (at {fmt(x)} {fmt(y)} {angle}) '
-                f'(fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify {just})) (uuid "{uid()}") '
+                f'(fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify {just})) (uuid "{self.uid()}") '
                 f'(property "Intersheetrefs" "${{INTERSHEET_REFS}}" (at {fmt(x)} {fmt(y)} 0) '
                 f'(effects (font (size 1.27 1.27)) (hide yes))))')
         else:
             self.items.append(
                 f'(label "{text}" (at {fmt(x)} {fmt(y)} {angle}) (fields_autoplaced yes) '
-                f'(effects (font (size 1.27 1.27)) (justify {just} bottom)) (uuid "{uid()}"))')
+                f'(effects (font (size 1.27 1.27)) (justify {just} bottom)) (uuid "{self.uid()}"))')
 
     def pwr_flag(self, net, x, y):
         """Place a PWR_FLAG connected to `net` (power symbol or label) at (x, y)."""
@@ -262,7 +283,7 @@ class Sheet:
     def text(self, s, x, y, size=1.27):
         s = s.replace('"', "'").replace("\n", "\\n")
         self.items.append(f'(text "{s}" (exclude_from_sim no) (at {fmt(x)} {fmt(y)} 0) '
-                          f'(effects (font (size {size} {size})) (justify left top)) (uuid "{uid()}"))')
+                          f'(effects (font (size {size} {size})) (justify left top)) (uuid "{self.uid()}"))')
 
     # -- output -------------------------------------------------------------
     def render(self, project, inst_path, extra="", is_root=False) -> str:

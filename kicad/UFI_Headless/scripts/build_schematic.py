@@ -22,6 +22,43 @@ LED0603 = "LED_SMD:LED_0603_1608Metric"
 BTN = "Button_Switch_SMD:SW_SPST_TL3342"
 
 
+# JLCPCB/LCSC part numbers, looked up 2026-10-05 via the JLCPCB parts API (in stock;
+# "basic" = no feeder fee).  Key: (value, footprint) or value alone.
+RPACK4_FP = "Resistor_SMD:R_Array_Convex_4x0603"
+CP_FP = "Capacitor_SMD:CP_Elec_8x10.5"
+LCSC = {
+    # resistors 0603 (all basic except 13.3k)
+    ("5.1k", R0603): "C23186", ("100k 1%", R0603): "C25803", ("13.3k 1%", R0603): "C25952",
+    ("33k 1%", R0603): "C4216", ("33k", R0603): "C4216", ("10k 1%", R0603): "C25804",
+    ("10k", R0603): "C25804", ("22k", R0603): "C31850", ("1k", R0603): "C21190",
+    ("2.2k", R0603): "C4190", ("1k", RPACK4_FP): "C20197",
+    # capacitors
+    ("100nF", C0603): "C14663", ("100nF/50V", C0603): "C14663", ("1uF", C0603): "C15849",
+    ("18pF C0G", C0603): "C1647", ("1uF", C0805): "C28323", ("2.2uF", C0805): "C87994",
+    ("4.7uF", C0805): "C1779", ("10uF", C0805): "C15850", ("22uF/10V", C0805): "C45783",
+    ("10uF/35V", C1206): "C454102", ("22uF/16V", C1206): "C90146", ("100uF/25V", CP_FP): "C5337554",
+    # semiconductors / ICs
+    "STM32H723ZGT6": "C730146", "USBLC6-2SC6": "C7519", "TPS54202DDC": "C191884",
+    "TPS2116DRL": "C3235557", "AP7361C-33E": "C500795", "SN74LS07D": "C371970",
+    "74LVC14AD": "C133541", "SS54": "C16103", "SMF5.0CA": "C2980402", "SMAJ15CA": "C110044",
+    "green": "C12624", "green PWR": "C12624", "red": "C2286",
+    # passives with specific parts
+    "1.5A hold": "C32404", "15uH 3A": "C1330797", "600R@100MHz": "C1002", "25MHz CL=12pF": "C9006",
+    # electromechanical
+    "USB-C": "C165948", "RESET": "C2886898", "BOOT": "C2886898", "FDD_34PIN": "C20920",
+    "SWD": "C22438120", "FDD_PWR": "C32713270", "DBG_UART": "C49257",
+    # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack, IEC DIN-6
+}
+
+
+def lcsc_field(value: str, fp: str | None) -> dict:
+    code = LCSC.get((value, fp)) or LCSC.get(value)
+    return {"LCSC": code} if code else {}
+
+
+Sheet.field_hook = staticmethod(lcsc_field)
+
+
 class Refs:
     def __init__(self):
         self.n: dict[str, int] = {}
@@ -71,8 +108,8 @@ def build_power() -> Sheet:
         "A5": "CC1", "B5": "CC2",
         "A6": "G:USB_DP", "B6": "G:USB_DP", "A7": "G:USB_DM", "B7": "G:USB_DM",
         "A8": "NC", "B8": "NC",
-    }, "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
-        {"MPN": "GCT USB4105-GF-A"})
+    }, "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+        {"MPN": "HRO TYPE-C-31-M-12"})
     R(sh, "5.1k", 80, 75, "CC1", "GND")
     R(sh, "5.1k", 90, 75, "CC2", "GND")
     sh.part("Power_Protection", "USBLC6-2SC6", ref("U"), "USBLC6-2SC6", 80, 110, {
@@ -81,7 +118,7 @@ def build_power() -> Sheet:
     sh.part("Device", "D_TVS", ref("D"), "SMF5.0CA", 110, 75, {"1": "VBUS", "2": "GND"},
             "Diode_SMD:D_SMF", {"MPN": "SMF5.0CA"})
     sh.part("Device", "Polyfuse", ref("F"), "1.5A hold", 110, 100, {"1": "VBUS", "2": "VBUS_F"},
-            "Fuse:Fuse_1812_4532Metric", {"MPN": "Polyfuse 1812 1.5A/6V"})
+            "Fuse:Fuse_1812_4532Metric", {"MPN": "SMD1812P150TF/24 (1.5A hold)"})
     sh.pwr_flag("VBUS", 130, 70)
     sh.pwr_flag("VBUS_F", 140, 70)
 
@@ -89,7 +126,7 @@ def build_power() -> Sheet:
     sh.part("Connector", "Barrel_Jack", ref("J"), "12V DC 5.5/2.1", 40, 170,
             {"1": "+12V_IN", "2": "GND"}, "Connector_BarrelJack:BarrelJack_Horizontal")
     sh.part("Device", "D_Schottky", ref("D"), "SS54", 70, 150, {"2": "+12V_IN", "1": "+12V"},
-            "Diode_SMD:D_SMC", {"MPN": "SS54 (40V/5A)"})
+            "Diode_SMD:D_SMC", {"MPN": "SS54C (40V/5A)"})
     sh.part("Device", "D_TVS", ref("D"), "SMAJ15CA", 90, 165, {"1": "+12V", "2": "GND"},
             "Diode_SMD:D_SMA", {"MPN": "SMAJ15CA"})
     CP(sh, "100uF/25V", 105, 165, "+12V", "GND")
@@ -121,7 +158,7 @@ def build_power() -> Sheet:
     cap_row(sh, ["1uF", "1uF"], 165, 125, "+5V_DRV", "GND")
     C(sh, "1uF", 185, 125, "VBUS_F", "GND")
     cap_row(sh, ["22uF/10V", "100nF"], 250, 95, "+5V", "GND", C0805)
-    CP(sh, "100uF/10V", 270, 95, "+5V", "GND")
+    CP(sh, "100uF/25V", 270, 95, "+5V", "GND")
 
     # 3.3V LDO
     sh.part("Regulator_Linear", "AP7361C-33E", ref("U"), "AP7361C-33E", 320, 95,
@@ -175,7 +212,7 @@ def build_core() -> Sheet:
     sh = Sheet("UFI Headless - STM32H723 Core", PROJECT)
     sh.text("STM32H723ZGT6 CORE (LQFP144)\n"
             "Decoupling per ST AN5419: 100nF per VDD pin + 4.7uF bulk, VCAP 2x2.2uF (LDO mode),\n"
-            "VDDA via ferrite with 1uF+100nF, VREF+ = VDDA. HSE 25 MHz (firmware PLL M=5 N=220 -> 550 MHz).\n"
+            "VDDA via ferrite with 1uF+100nF, VREF+ = VDDA. HSE 25 MHz, CL 12pF -> 2x 18pF (firmware PLL M=5 N=220 -> 550 MHz).\n"
             "FDD flux: RDATA=PA5 TIM2_CH1, INDEX=PA1 TIM2_CH2, WDATA=PA6 TIM3_CH1.", 20, 20, 1.5)
 
     mcu = lib_symbol("MCU_ST_STM32H7", "STM32H723ZGTx")
@@ -217,11 +254,11 @@ def build_core() -> Sheet:
     sh.part("Switch", "SW_Push", ref("SW"), "BOOT", 50, 120, {"1": "+3V3", "2": "BOOT0"}, BTN)
 
     # HSE 25 MHz
-    sh.part("Device", "Crystal_GND24", ref("Y"), "25MHz CL=8pF", 50, 150,
+    sh.part("Device", "Crystal_GND24", ref("Y"), "25MHz CL=12pF", 50, 150,
             {"1": "HSE_IN", "3": "HSE_OUT", "2": "GND", "4": "GND"},
-            "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm", {"MPN": "25MHz 3225 CL=8pF +-20ppm"})
-    C(sh, "10pF C0G", 30, 165, "HSE_IN", "GND")
-    C(sh, "10pF C0G", 70, 165, "HSE_OUT", "GND")
+            "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm", {"MPN": "YXC X322525MOB4SI (25MHz, CL 12pF, +-10ppm)"})
+    C(sh, "18pF C0G", 30, 165, "HSE_IN", "GND")
+    C(sh, "18pF C0G", 70, 165, "HSE_OUT", "GND")
 
     # VBUS sense divider (5V -> 3.0V on PA9)
     R(sh, "22k", 30, 195, "VBUS", "VBUS_SENSE")
@@ -266,10 +303,10 @@ def hex_buffer(sh, kind, x, y, lines, cap_xy):
     """
     if kind == "oc":
         lib_name, value, vcc, spare_in = "74LS07", "SN74LS07D", "+5V", "+5V"
-        props = {"MPN": "SN74LS07D (alt. SN7407D)"}
+        props = {"MPN": "SN74LS07DR (alt. SN7407DR)"}
     else:
         lib_name, value, vcc, spare_in = "74HC14", "74LVC14AD", "+3V3", "GND"
-        props = {"MPN": "SN74LVC14AD"}
+        props = {"MPN": "SN74LVC14ADR"}
     r = ref("U")
     for i, (gin, gout) in enumerate(HEX_GATES):
         a, b = lines[i] if i < len(lines) else (spare_in, "NC")
@@ -380,7 +417,7 @@ def build_iec() -> Sheet:
 
 # ----------------------------------------------------------------------------
 def sheet_block(name, file, x, y, w, h, page, root_uuid):
-    u = uid()
+    u = uid(f"sheetblock|{name}")
     return u, (
         f'(sheet (at {fmt(x)} {fmt(y)}) (size {fmt(w)} {fmt(h)}) (fields_autoplaced yes) '
         f'(stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid "{u}") '

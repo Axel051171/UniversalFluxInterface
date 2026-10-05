@@ -1,0 +1,7 @@
+(version 1)
+
+# THT ground pins of the IDC headers also connect to the In1 GND plane, so a single
+# thermal spoke on an outer pour is sufficient.
+(rule "tht_gnd_single_spoke"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.NetName == 'GND'")
+	(constraint min_resolved_spokes 1))
