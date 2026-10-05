@@ -11,7 +11,7 @@ Adapterkabel zum Anschluss von Amiga-externen Laufwerken (A1010, A1011, Cumana C
 │   ┌─────────────┐                        ┌─────────────────────┐                        │
 │   │             │                        │                     │                        │
 │   │  J4         │     Adapter-Kabel      │        DB-23        │                        │
-│   │  2x12 HDR   │◄────────────────────►│        Female       │                        │
+│   │  2x12 HDR   │◄────────────────────►│     DB-23 Male      │                        │
 │   │             │                        │                     │                        │
 │   └─────────────┘                        └─────────────────────┘                        │
 │                                                                                          │
@@ -41,40 +41,40 @@ Adapterkabel zum Anschluss von Amiga-externen Laufwerken (A1010, A1011, Cumana C
 
 ---
 
-## Amiga DB-23 Pinout (Female, Drive Side)
+## Amiga DB-23 Pinout (Amiga Hardware Reference Manual, Appendix E)
+
+Quelle: Amiga HRM, Appendix E „External Disk Interface Specification“, Pin Assignment (J7).
+Am Amiga ist der Floppy-Port eine **DB-23-Buchse**; externe Laufwerke (A1010 …) haben einen **DB-23-Stecker** am Kabel.
+Das Adapterkabel braucht daher eine **DB-23-Buchse** (wie der Amiga).
 
 ```
-          ┌─────────────────────────────────────┐
-          │  1   2   3   4   5   6   7   8   9  │
-          │   10  11  12  13  14  15  16  17    │
-          │     18  19  20  21  22  23          │
-          └─────────────────────────────────────┘
-
-Pin  Signal        Dir    Beschreibung
+Pin  Signal        Dir*   Beschreibung
 ───────────────────────────────────────────────
- 1   /RDY          ◄──    Drive Ready (active low)
- 2   /DKRD         ◄──    Disk Read Data
- 3   /WPR          ◄──    Write Protect
- 4   /TK0          ◄──    Track 00
- 5   /WGATE        ──►    Write Gate
- 6   /WDATA        ──►    Write Data
- 7   /STEP         ──►    Step Pulse
- 8   /DIR          ──►    Direction (High=Out)
- 9   /SEL2         ──►    Select Drive 2 (active low)
-10   /SEL0         ──►    Select Internal (not used)
-11   /SEL3         ──►    Select Drive 3 (active low)
-12   GND           ───    Ground
-13   /SEL1         ──►    Select Drive 1 (active low)
-14   /MTRX         ──►    Motor Control
-15   GND           ───    Ground
-16   /SIDE         ──►    Side Select
-17   /DKCHG        ◄──    Disk Change
-18   /INDEX        ◄──    Index Pulse
-19   +12V          ───    Power +12V
-20   GND           ───    Ground
-21   +5V           ───    Power +5V
-22   +5V           ───    Power +5V
-23   GND           ───    Ground
+ 1   /RDY          ◄──    Ready (bzw. ID-Datenstrom im Identification Mode)
+ 2   /DKRD         ◄──    MFM Read Data
+ 3   GND           ───    Ground
+ 4   GND           ───    Ground
+ 5   GND           ───    Ground
+ 6   GND           ───    Ground
+ 7   GND           ───    Ground
+ 8   /MTRXD        ──►    Motor-on Data (wird mit /SELxB ins Laufwerk getaktet)
+ 9   /SEL2B        ──►    Select Drive 2
+10   /DRESB        ──►    Reset (Laufwerk setzt Motor-FF zurück)
+11   /CHNG         ◄──    Disk Change
+12   +5V           ───    Power +5V (270 mA max, 410 mA Anlauf)
+13   /SIDEB        ──►    Side Select
+14   /WPRO         ◄──    Write Protect
+15   /TK0          ◄──    Track 0
+16   /DKWEB        ──►    Write Gate
+17   /DKWDB        ──►    MFM Write Data
+18   /STEPB        ──►    Step
+19   DIRB          ──►    Direction (inaktiv = Richtung Mitte)
+20   /SEL3B        ──►    Select Drive 3
+21   /SEL1B        ──►    Select Drive 1 (erstes externes Laufwerk)
+22   /INDEX        ◄──    Index
+23   +12V          ───    Power +12V (160 mA max, 540 mA Anlauf)
+
+* Richtung aus Sicht des Hosts (UFI): ──► Ausgang, ◄── Eingang
 ```
 
 ---
@@ -83,27 +83,28 @@ Pin  Signal        Dir    Beschreibung
 
 | UFI J4 Pin | Signal | DB-23 Pin | Signal |
 |------------|--------|-----------|--------|
-| 1 | GND | 12, 15, 20, 23 | GND |
-| 2 | +5V | 21, 22 | +5V |
+| 1, 19, 20 | GND | 3, 4, 5, 6, 7 | GND |
+| 2, 4, 21, 22 | +5V | 12 | +5V |
 | 3 | RDATA | 2 | /DKRD |
-| 4 | +5V | 21, 22 | +5V |
-| 5 | SIDE | 16 | /SIDE |
-| 6 | DKCHG | 17 | /DKCHG |
-| 7 | DIR | 8 | /DIR |
-| 8 | WPROT | 3 | /WPR |
-| 9 | STEP | 7 | /STEP |
-| 10 | TRK0 | 4 | /TK0 |
-| 11 | WDAT | 6 | /WDATA |
-| 12 | WGATE | 5 | /WGATE |
-| 13 | INDEX | 18 | /INDEX |
+| 5 | SIDE | 13 | /SIDEB |
+| 6 | DKCHG | 11 | /CHNG |
+| 7 | DIR | 19 | DIRB |
+| 8 | WPROT | 14 | /WPRO |
+| 9 | STEP | 18 | /STEPB |
+| 10 | TRK0 | 15 | /TK0 |
+| 11 | WDAT | 17 | /DKWDB |
+| 12 | WGATE | 16 | /DKWEB |
+| 13 | INDEX | 22 | /INDEX |
 | 14 | READY | 1 | /RDY |
-| 15 | SEL | 13 | /SEL1 |
-| 16 | DKRD | 2 | /DKRD |
-| 17 | MTRX | 14 | /MTRX |
-| 18 | /SEL1 | 13 | /SEL1 |
-| 19, 20 | GND | 12, 15, 20, 23 | GND |
-| 21, 22 | +5V | 21, 22 | +5V |
-| 24 | +12V | 19 | +12V |
+| 15 | SEL | 21 | /SEL1B |
+| 17 | MTRX | 8 | /MTRXD |
+| 24 | +12V | 23 | +12V |
+| – | – | 9, 10, 20 | /SEL2B, /DRESB, /SEL3B: im Stecker je 1 kΩ nach +5V (inaktiv) oder offen lassen |
+
+> ⚠ Die J4-Belegung der Modular-Platine führt RDATA doppelt (Pin 3 und 16 „DKRD“) und SEL doppelt (Pin 15 und 18 „/SEL1“).
+> Pin 16 und 18 hier **nicht** verdrahten, bis die J4-Belegung im Modular-Schaltplan geklärt ist.
+>
+> **UFI Headless (J7):** Header-Pin n = DB-23-Pin n (Pin 24 = GND), SEL2B/SEL3B/DRESB sind auf der Platine bereits per 1 kΩ inaktiv – das Kabel ist dort 1:1.
 
 ---
 
@@ -114,7 +115,7 @@ Pin  Signal        Dir    Beschreibung
 | Teil | Bezeichnung | Menge |
 |------|-------------|-------|
 | Stecker | 2x12 IDC Header Male | 1 |
-| Buchse | DB-23 Male (für Drive Female) | 1 |
+| Buchse | DB-23 Female (wie am Amiga; Laufwerkskabel hat Stecker) | 1 |
 | Kabel | 26-adriges Flachbandkabel | ~30cm |
 | Gehäuse | DB-23 Kunststoffgehäuse | 1 |
 
@@ -123,7 +124,7 @@ Pin  Signal        Dir    Beschreibung
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                          │
-│   IDC 2x12                    Flachbandkabel                    DB-23 Male              │
+│   IDC 2x12                    Flachbandkabel                    DB-23 Female            │
 │   ┌─────┐                     ════════════════                  ┌─────────────┐         │
 │   │█████│────────────────────────────────────────────────────►│             │         │
 │   │█████│                     ~30cm                             │  ●●●●●●●●●  │         │
@@ -139,13 +140,13 @@ Pin  Signal        Dir    Beschreibung
 ```
           ┌─────────────────────────────────────┐
           │  1   2   3   4   5   6   7   8   9  │
-          │   RDY RD WPR TK0 WG  WD STP DIR S2  │
+          │  RDY RD GND GND GND GND GND MTR S2  │
           │                                     │
           │   10  11  12  13  14  15  16  17    │
-          │   S0  S3 GND S1 MTR GND SID DCH     │
+          │   RES CHG +5V SID WPR TK0 WG  WD    │
           │                                     │
           │     18  19  20  21  22  23          │
-          │     IDX +12 GND +5V +5V GND         │
+          │     STP DIR S3  S1  IDX +12         │
           └─────────────────────────────────────┘
 ```
 
@@ -155,7 +156,7 @@ Pin  Signal        Dir    Beschreibung
 
 Alle Signale sind Active-Low (0V = Aktiv, 5V = Inaktiv).
 
-Der UFI Level-Shifter (74LVC245) konvertiert automatisch zwischen 3.3V (STM32) und 5V (Amiga).
+UFI Headless: Ausgänge über SN74LS07 (Open Collector, 40 mA), Eingänge über 74LVC14A mit 1 kΩ Pull-ups auf +5V (siehe `kicad/UFI_Headless/README.md`).
 
 ---
 
