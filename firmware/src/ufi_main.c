@@ -110,6 +110,7 @@ void ufi_main_loop(void)
 
         ufi_usb_process_command();
         ufi_write_process();
+        ufi_write_service();
 
         switch (ufi_capture_get_state()) {
             case CAPTURE_COMPLETE:

@@ -1,7 +1,9 @@
 /**
  * UFI Flux Engine - IEC Bus Module
- * 
- * Commodore IEC Serial Bus Protokoll für 1541/1571/1581 Laufwerke
+ *
+ * Commodore IEC Serial Bus Protokoll für 1541/1571/1581 Laufwerke.
+ * UFI ist immer Controller; Timing nach "How the VIC/64 Serial Bus Works"
+ * (J. Butterfield): Bits LSB first, Bit 1 = DATA released.
  */
 
 #include "ufi_firmware.h"
@@ -16,19 +18,17 @@
  * IEC TIMING KONSTANTEN (in µs)
  * ============================================================================ */
 
-#define IEC_T_AT    1000    // ATN Response (max 1000µs)
-#define IEC_T_NE    40      // Non-EOI Response to RFD
-#define IEC_T_S     70      // Bit Setup
-#define IEC_T_V     20      // Data Valid
-#define IEC_T_F     20      // Frame (after last bit)
-#define IEC_T_R     20      // Frame to Release
-#define IEC_T_BB    100     // Between Bytes
-#define IEC_T_EI    200     // EOI Response
-#define IEC_T_RY    60      // Talker Response Limit
-#define IEC_T_PR    30      // Byte-Acknowledge
+#define IEC_T_AT        1000    // ATN / frame response limit (listener must answer)
+#define IEC_T_S         70      // Bit Setup (talker, CLK asserted)
+#define IEC_T_V         20      // Data Valid (talker, CLK released)
+#define IEC_T_BB        100     // Between Bytes
+#define IEC_T_EI        200     // EOI: talker hold-off before the listener acknowledges
+#define IEC_T_EI_DETECT 250     // listener side: no CLK within this time = EOI
+#define IEC_T_EI_ACK    60      // EOI acknowledge pulse
+#define IEC_T_TALKER_US 100000  // talker may need long to fetch data (disk access)
 
 /* ============================================================================
- * DELAY FUNKTION
+ * LOW LEVEL
  * ============================================================================ */
 
 static inline void iec_delay_us(uint32_t us) {
@@ -36,10 +36,6 @@ static inline void iec_delay_us(uint32_t us) {
     uint32_t cycles = us * (SystemCoreClock / 1000000);
     while ((DWT->CYCCNT - start) < cycles);
 }
-
-/* ============================================================================
- * GPIO FUNKTIONEN (Open-Drain Emulation)
- * ============================================================================ */
 
 static inline void iec_release_clk(void)  { bus_out(&PIN_IEC_CLK_OUT, false); }
 static inline void iec_pull_clk(void)     { bus_out(&PIN_IEC_CLK_OUT, true); }
@@ -51,6 +47,18 @@ static inline void iec_pull_atn(void)     { bus_out(&PIN_IEC_ATN_OUT, true); }
 /* true = line held low by someone on the bus */
 static inline bool iec_read_clk(void)     { return bus_in(&PIN_IEC_CLK_IN); }
 static inline bool iec_read_data(void)    { return bus_in(&PIN_IEC_DATA_IN); }
+
+/* Wait until a line reaches the given state; false on timeout */
+static bool iec_wait(bool (*read)(void), bool asserted, uint32_t timeout_us) {
+    const uint32_t start = DWT->CYCCNT;
+    const uint32_t limit = timeout_us * (SystemCoreClock / 1000000);
+    while (read() != asserted) {
+        if ((DWT->CYCCNT - start) > limit) {
+            return false;
+        }
+    }
+    return true;
+}
 
 /* ============================================================================
  * INITIALISIERUNG
@@ -70,20 +78,16 @@ void ufi_iec_init(void) {
  * ============================================================================ */
 
 int ufi_iec_reset(void) {
-    // Reset-Leitung Low für 20ms
-    bus_out(&PIN_IEC_RESET_OUT, true);
+    bus_out(&PIN_IEC_RESET_OUT, true);      // RESET low for 20 ms
     HAL_Delay(20);
     bus_out(&PIN_IEC_RESET_OUT, false);
-    
-    // Warten bis 1541 bereit (~500ms Boot-Zeit)
-    HAL_Delay(500);
-    
-    // Bus releasen
+
+    HAL_Delay(500);                         // 1541 boot time
+
     iec_release_clk();
     iec_release_data();
     iec_release_atn();
-    
-    return 0;
+    return UFI_OK;
 }
 
 /* ============================================================================
@@ -93,145 +97,119 @@ int ufi_iec_reset(void) {
 int ufi_iec_atn(bool active) {
     if (active) {
         iec_pull_atn();
+        iec_pull_clk();                     // controller becomes talker under ATN
+        iec_release_data();
     } else {
         iec_release_atn();
     }
     iec_delay_us(100);
-    return 0;
+    return UFI_OK;
 }
 
 /* ============================================================================
- * BYTE SENDEN (als Controller)
+ * BYTE SENDEN (UFI = Talker)
  * ============================================================================ */
 
 int ufi_iec_send_byte(uint8_t byte, bool eoi) {
-    uint32_t timeout;
-    
-    // 1. CLK Low setzen (wir sind Talker)
     iec_pull_clk();
     iec_release_data();
-    
-    // 2. Warten bis Listener bereit (DATA Low)
-    timeout = 1000;
-    while (!iec_read_data() && timeout--) {
-        iec_delay_us(10);
+
+    // 1. A listener must be present: it holds DATA asserted
+    if (!iec_wait(iec_read_data, true, IEC_T_AT)) {
+        return UFI_ERR_IEC_NRFD;
     }
-    if (timeout == 0) {
-        return -1;  // Kein Listener
-    }
-    
-    // 3. EOI Handshake falls nötig
-    if (eoi) {
-        // EOI: CLK high lassen für >200µs
-        iec_release_clk();
-        iec_delay_us(IEC_T_EI);
-        
-        // Listener bestätigt EOI durch DATA High-Low-High
-        timeout = 100;
-        while (iec_read_data() && timeout--) {
-            iec_delay_us(10);
-        }
-        timeout = 100;
-        while (!iec_read_data() && timeout--) {
-            iec_delay_us(10);
-        }
-    }
-    
-    // 4. CLK Release = "Ready to Send"
+
+    // 2. Ready to send: release CLK, wait until all listeners release DATA
     iec_release_clk();
-    iec_delay_us(IEC_T_NE);
-    
-    // 5. 8 Bits senden (LSB first)
-    for (int i = 0; i < 8; i++) {
-        // CLK Low
-        iec_pull_clk();
-        
-        // Datenbit setzen (invertiert!)
-        if (byte & (1 << i)) {
-            iec_release_data();  // Bit = 1 -> DATA High
-        } else {
-            iec_pull_data();     // Bit = 0 -> DATA Low
+    if (!iec_wait(iec_read_data, false, IEC_T_TALKER_US)) {
+        return UFI_ERR_TIMEOUT;
+    }
+
+    // 3. EOI: hold off >200 us, listener acknowledges with a DATA pulse
+    if (eoi) {
+        if (!iec_wait(iec_read_data, true, IEC_T_EI + IEC_T_AT)) {
+            return UFI_ERR_TIMEOUT;
         }
-        
+        if (!iec_wait(iec_read_data, false, IEC_T_AT)) {
+            return UFI_ERR_TIMEOUT;
+        }
+    }
+
+    // 4. 8 bits, LSB first: CLK asserted = setup, CLK released = bit valid
+    for (int i = 0; i < 8; i++) {
+        iec_pull_clk();
+        if (byte & (1 << i)) {
+            iec_release_data();             // 1 = released
+        } else {
+            iec_pull_data();                // 0 = asserted
+        }
         iec_delay_us(IEC_T_S);
-        
-        // CLK High = Bit gültig
         iec_release_clk();
         iec_delay_us(IEC_T_V);
     }
-    
-    // 6. CLK Low, DATA Release
+
+    // 5. Frame end: CLK asserted, DATA released, listener acknowledges with DATA
     iec_pull_clk();
     iec_release_data();
-    iec_delay_us(IEC_T_F);
-    
-    // 7. Auf Acknowledge warten (DATA Low vom Listener)
-    timeout = 1000;
-    while (!iec_read_data() && timeout--) {
-        iec_delay_us(10);
+    if (!iec_wait(iec_read_data, true, IEC_T_AT)) {
+        return UFI_ERR_IEC_NOACK;
     }
-    
+
     iec_delay_us(IEC_T_BB);
-    
-    return 0;
+    return UFI_OK;
 }
 
 /* ============================================================================
- * BYTE EMPFANGEN (als Controller/Listener)
+ * BYTE EMPFANGEN (UFI = Listener, nach Turnaround)
  * ============================================================================ */
 
 int ufi_iec_receive_byte(uint8_t* byte, bool* eoi) {
-    uint32_t timeout;
     *byte = 0;
     *eoi = false;
-    
-    // 1. DATA Release = "Ready to Receive"
+
+    // 1. Talker ready to send: CLK released
+    if (!iec_wait(iec_read_clk, false, IEC_T_TALKER_US)) {
+        return UFI_ERR_TIMEOUT;
+    }
+
+    // 2. Ready for data: release DATA
     iec_release_data();
-    
-    // 2. Warten auf CLK Release vom Talker
-    timeout = 1000;
-    while (iec_read_clk() && timeout--) {
-        iec_delay_us(10);
-    }
-    if (timeout == 0) {
-        return -1;  // Timeout
-    }
-    
-    // 3. EOI Check: Wenn CLK länger als 200µs High bleibt
-    iec_delay_us(IEC_T_EI);
-    if (!iec_read_clk()) {
+
+    // 3. Talker asserts CLK within 200 us, otherwise this is the last byte (EOI)
+    if (!iec_wait(iec_read_clk, true, IEC_T_EI_DETECT)) {
         *eoi = true;
-        // EOI Acknowledge: DATA Low-High
         iec_pull_data();
-        iec_delay_us(60);
+        iec_delay_us(IEC_T_EI_ACK);
         iec_release_data();
+        if (!iec_wait(iec_read_clk, true, IEC_T_AT)) {
+            return UFI_ERR_TIMEOUT;
+        }
     }
-    
-    // 4. 8 Bits empfangen (LSB first)
+
+    // 4. 8 bits, LSB first: sample DATA while CLK is released
     for (int i = 0; i < 8; i++) {
-        // Warten auf CLK Low (Bit-Start)
-        timeout = 200;
-        while (!iec_read_clk() && timeout--) {
-            iec_delay_us(5);
+        if (!iec_wait(iec_read_clk, false, IEC_T_AT)) {
+            return UFI_ERR_TIMEOUT;
         }
-        
-        // Warten auf CLK High (Bit gültig)
-        timeout = 200;
-        while (iec_read_clk() && timeout--) {
-            iec_delay_us(5);
-        }
-        
-        // Bit lesen (invertiert!)
         if (!iec_read_data()) {
-            *byte |= (1 << i);
+            *byte |= (uint8_t)(1u << i);
+        }
+        if (!iec_wait(iec_read_clk, true, IEC_T_AT)) {
+            return UFI_ERR_TIMEOUT;
         }
     }
-    
-    // 5. Acknowledge senden (DATA Low)
+
+    // 5. Frame acknowledge: assert DATA
     iec_pull_data();
-    iec_delay_us(IEC_T_PR);
-    
-    return 0;
+    return UFI_OK;
+}
+
+/* Controller -> listener after TALK: hold DATA, release ATN + CLK, talker takes CLK */
+static int iec_turnaround(void) {
+    iec_pull_data();
+    iec_release_atn();
+    iec_release_clk();
+    return iec_wait(iec_read_clk, true, IEC_T_AT) ? UFI_OK : UFI_ERR_TIMEOUT;
 }
 
 /* ============================================================================
@@ -240,201 +218,157 @@ int ufi_iec_receive_byte(uint8_t* byte, bool* eoi) {
 
 int ufi_iec_listen(uint8_t device) {
     ufi_iec_atn(true);
-    iec_delay_us(100);
-    
-    // LISTEN Befehl: 0x20 + Device
-    int ret = ufi_iec_send_byte(0x20 | (device & 0x1F), false);
-    
-    return ret;
+    return ufi_iec_send_byte(0x20 | (device & 0x1F), false);
 }
 
 int ufi_iec_talk(uint8_t device) {
     ufi_iec_atn(true);
-    iec_delay_us(100);
-    
-    // TALK Befehl: 0x40 + Device
-    int ret = ufi_iec_send_byte(0x40 | (device & 0x1F), false);
-    
-    return ret;
+    return ufi_iec_send_byte(0x40 | (device & 0x1F), false);
 }
 
 int ufi_iec_secondary(uint8_t channel) {
-    // Secondary Address: 0x60 + Channel
-    return ufi_iec_send_byte(0x60 | (channel & 0x0F), false);
+    return ufi_iec_send_byte(0x60 | (channel & 0x0F), false);    // DATA / reopen
+}
+
+static int iec_open(uint8_t channel) {
+    return ufi_iec_send_byte(0xF0 | (channel & 0x0F), false);    // OPEN
+}
+
+static int iec_close(uint8_t channel) {
+    return ufi_iec_send_byte(0xE0 | (channel & 0x0F), false);    // CLOSE
 }
 
 int ufi_iec_unlisten(void) {
     ufi_iec_atn(true);
     int ret = ufi_iec_send_byte(0x3F, false);
     ufi_iec_atn(false);
+    iec_release_clk();
     return ret;
 }
 
 int ufi_iec_untalk(void) {
+    iec_release_data();                     // stop acknowledging as listener
     ufi_iec_atn(true);
     int ret = ufi_iec_send_byte(0x5F, false);
     ufi_iec_atn(false);
+    iec_release_clk();
     return ret;
+}
+
+/* Send bytes to an already listening device, last one with EOI */
+static int iec_send_bytes(const uint8_t* data, uint16_t len) {
+    for (uint16_t i = 0; i < len; i++) {
+        int ret = ufi_iec_send_byte(data[i], i == len - 1);
+        if (ret != UFI_OK) {
+            return ret;
+        }
+    }
+    return UFI_OK;
+}
+
+/* LISTEN device, OPEN channel with file name, UNLISTEN */
+static int iec_open_file(uint8_t device, uint8_t channel, const char* name) {
+    int ret = ufi_iec_listen(device);
+    if (ret == UFI_OK) ret = iec_open(channel);
+    if (ret == UFI_OK) {
+        ufi_iec_atn(false);
+        ret = iec_send_bytes((const uint8_t*)name, (uint16_t)strlen(name));
+    }
+    int ret2 = ufi_iec_unlisten();
+    return (ret != UFI_OK) ? ret : ret2;
+}
+
+static int iec_close_file(uint8_t device, uint8_t channel) {
+    int ret = ufi_iec_listen(device);
+    if (ret == UFI_OK) ret = iec_close(channel);
+    int ret2 = ufi_iec_unlisten();
+    return (ret != UFI_OK) ? ret : ret2;
+}
+
+/* TALK device on channel and read until EOI or max_len; returns bytes read or error */
+static int iec_read_channel(uint8_t device, uint8_t channel, uint8_t* buf, uint16_t max_len) {
+    int ret = ufi_iec_talk(device);
+    if (ret == UFI_OK) ret = ufi_iec_secondary(channel);
+    if (ret == UFI_OK) ret = iec_turnaround();
+
+    uint16_t n = 0;
+    if (ret == UFI_OK) {
+        bool eoi = false;
+        while (!eoi && n < max_len) {
+            ret = ufi_iec_receive_byte(&buf[n], &eoi);
+            if (ret != UFI_OK) break;
+            n++;
+        }
+    }
+    int ret2 = ufi_iec_untalk();
+    if (ret != UFI_OK) return ret;
+    if (ret2 != UFI_OK) return ret2;
+    return n;
 }
 
 /* ============================================================================
  * HIGH-LEVEL FUNKTIONEN
  * ============================================================================ */
 
-// Befehl an Laufwerk senden (z.B. "I0" für Initialize)
+// Befehl an Laufwerk senden (z.B. "I0" für Initialize), Kommandokanal 15
 int ufi_iec_command(uint8_t device, const char* cmd, uint8_t len) {
-    int ret;
-    
-    // LISTEN Device, Secondary 15 (Command Channel)
-    ret = ufi_iec_listen(device);
-    if (ret != 0) return ret;
-    
-    ret = ufi_iec_secondary(15);
-    if (ret != 0) return ret;
-    
-    ufi_iec_atn(false);
-    
-    // Befehl senden
-    for (uint8_t i = 0; i < len; i++) {
-        bool eoi = (i == len - 1);
-        ret = ufi_iec_send_byte(cmd[i], eoi);
-        if (ret != 0) return ret;
+    int ret = ufi_iec_listen(device);
+    if (ret == UFI_OK) ret = ufi_iec_secondary(15);
+    if (ret == UFI_OK) {
+        ufi_iec_atn(false);
+        ret = iec_send_bytes((const uint8_t*)cmd, len);
     }
-    
-    // UNLISTEN
-    ret = ufi_iec_unlisten();
-    
-    return ret;
+    int ret2 = ufi_iec_unlisten();
+    return (ret != UFI_OK) ? ret : ret2;
 }
 
-// Status vom Laufwerk lesen
+// Status vom Laufwerk lesen (Kommandokanal 15), nullterminiert
 int ufi_iec_read_status(uint8_t device, char* buffer, uint8_t max_len) {
-    int ret;
-    uint8_t idx = 0;
-    
-    // TALK Device, Secondary 15 (Status Channel)
-    ret = ufi_iec_talk(device);
-    if (ret != 0) return ret;
-    
-    ret = ufi_iec_secondary(15);
-    if (ret != 0) return ret;
-    
-    ufi_iec_atn(false);
-    
-    // Turnaround: Wir werden Listener
-    iec_release_clk();
-    iec_delay_us(100);
-    
-    // Bytes lesen bis EOI
-    bool eoi = false;
-    while (!eoi && idx < max_len - 1) {
-        uint8_t byte;
-        ret = ufi_iec_receive_byte(&byte, &eoi);
-        if (ret != 0) break;
-        
-        buffer[idx++] = byte;
+    if (max_len == 0) {
+        return UFI_ERR_BUFFER_FULL;
     }
-    buffer[idx] = '\0';
-    
-    // UNTALK
-    ret = ufi_iec_untalk();
-    
-    return idx;
+    int n = iec_read_channel(device, 15, (uint8_t*)buffer, max_len - 1);
+    buffer[(n > 0) ? n : 0] = '\0';
+    return n;
 }
 
-// Block lesen (z.B. für Raw Sector Access)
+// Block lesen: Puffer-Kanal 2 per "#" öffnen, U1 lesen lassen, 256 Bytes holen
 int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
                        uint8_t* buffer, uint16_t* len) {
     char cmd[20];
-    int ret;
-    
-    // U1 Befehl: "U1:channel drive track sector"
-    // Kanal 2 für Datenübertragung
-    snprintf(cmd, sizeof(cmd), "U1:2 0 %d %d", track, sector);
-    
-    // Buffer-Pointer setzen
-    ret = ufi_iec_command(device, "B-P:2 0", 7);
-    if (ret != 0) return ret;
-    
-    // Block lesen Befehl
-    ret = ufi_iec_command(device, cmd, strlen(cmd));
-    if (ret != 0) return ret;
-    
-    // TALK Device, Kanal 2
-    ret = ufi_iec_talk(device);
-    if (ret != 0) return ret;
-    
-    ret = ufi_iec_secondary(2);
-    if (ret != 0) return ret;
-    
-    ufi_iec_atn(false);
-    iec_release_clk();
-    iec_delay_us(100);
-    
-    // 256 Bytes lesen
     *len = 0;
-    for (int i = 0; i < 256; i++) {
-        bool eoi;
-        ret = ufi_iec_receive_byte(&buffer[i], &eoi);
-        if (ret != 0) break;
-        (*len)++;
-        if (eoi) break;
+
+    int ret = iec_open_file(device, 2, "#");
+    if (ret != UFI_OK) return ret;
+
+    int n = snprintf(cmd, sizeof(cmd), "U1:2 0 %u %u", track, sector);
+    ret = ufi_iec_command(device, cmd, (uint8_t)n);
+    if (ret == UFI_OK) {
+        int got = iec_read_channel(device, 2, buffer, 256);
+        if (got < 0) {
+            ret = got;
+        } else {
+            *len = (uint16_t)got;
+        }
     }
-    
-    ret = ufi_iec_untalk();
-    
-    return (*len == 256) ? 0 : -1;
+    int ret2 = iec_close_file(device, 2);
+    if (ret != UFI_OK) return ret;
+    if (ret2 != UFI_OK) return ret2;
+    return (*len == 256) ? UFI_OK : UFI_ERR_TIMEOUT;
 }
 
-// Directory lesen
+// Directory lesen: "$" auf Kanal 0 öffnen, bis EOI lesen, schließen
 int ufi_iec_read_directory(uint8_t device, uint8_t* buffer, uint16_t max_len,
                            uint16_t* len) {
-    int ret;
-    
-    // "$" öffnen
-    ret = ufi_iec_listen(device);
-    if (ret != 0) return ret;
-    
-    // Open mit Secondary 0
-    ret = ufi_iec_secondary(0xF0);  // OPEN Kanal 0
-    if (ret != 0) return ret;
-    
-    ufi_iec_atn(false);
-    
-    // "$" senden
-    ret = ufi_iec_send_byte('$', true);
-    if (ret != 0) return ret;
-    
-    ret = ufi_iec_unlisten();
-    if (ret != 0) return ret;
-    
-    // TALK Kanal 0
-    ret = ufi_iec_talk(device);
-    if (ret != 0) return ret;
-    
-    ret = ufi_iec_secondary(0x60);
-    if (ret != 0) return ret;
-    
-    ufi_iec_atn(false);
-    iec_release_clk();
-    iec_delay_us(100);
-    
-    // Directory-Daten lesen
     *len = 0;
-    bool eoi = false;
-    while (!eoi && *len < max_len) {
-        ret = ufi_iec_receive_byte(&buffer[*len], &eoi);
-        if (ret != 0) break;
-        (*len)++;
+    int ret = iec_open_file(device, 0, "$");
+    if (ret != UFI_OK) return ret;
+
+    int got = iec_read_channel(device, 0, buffer, max_len);
+    if (got > 0) {
+        *len = (uint16_t)got;
     }
-    
-    ret = ufi_iec_untalk();
-    
-    // Close Kanal 0
-    ret = ufi_iec_listen(device);
-    ret = ufi_iec_secondary(0xE0);  // CLOSE Kanal 0
-    ufi_iec_atn(false);
-    ret = ufi_iec_unlisten();
-    
-    return 0;
+    int ret2 = iec_close_file(device, 0);
+    if (got < 0) return got;
+    return ret2;
 }

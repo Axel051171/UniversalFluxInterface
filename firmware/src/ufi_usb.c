@@ -1,15 +1,15 @@
 /**
  * UFI Flux Engine - USB Communication
- * 
- * USB High-Speed Bulk Transfer für Flux-Daten zum CM5
+ *
+ * USB CDC (Full Speed, internal PHY) for commands and flux data.
+ * Every reply = ufi_response_header_t + payload, sent blocking from static memory.
  */
 
-#include "ufi_fixes.h"  /* MUSS zuerst für Error Codes! */
 #include "ufi_firmware.h"
 #include "usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_cdc_if.h"
-#include <string.h>  /* für memcpy */
+#include <string.h>
 
 /* ============================================================================
  * USB DESCRIPTORS
@@ -42,7 +42,7 @@ const uint8_t* USBD_Product_String = (uint8_t*)"UFI Flux Engine";
 const uint8_t* USBD_Serial_String = (uint8_t*)"UFI-001";
 
 /* ============================================================================
- * USB HANDLES
+ * USB HANDLES / BUFFERS
  * ============================================================================ */
 
 USBD_HandleTypeDef hUsbDevice;
@@ -51,34 +51,38 @@ USBD_HandleTypeDef hUsbDevice;
  * One CDC transfer may span up to 1023 FS packets; 32 KB keeps well below that. */
 #define USB_TX_CHUNK        (32 * 1024)
 #define USB_TX_TIMEOUT_MS   500
+#define REPLY_MAX_PAYLOAD   64
+
+// Command Buffer (filled from the CDC receive callback)
+static uint8_t cmd_buffer[64];
+static volatile uint8_t cmd_ready = 0;
 
 /* ============================================================================
  * HELPER FUNCTIONS
  * ============================================================================ */
 
 /* CDC class keeps TxState in its handle (1 = transfer in progress) */
-static uint32_t USBD_CDC_GetTxState(USBD_HandleTypeDef* pdev) {
-    USBD_CDC_HandleTypeDef* hcdc = (USBD_CDC_HandleTypeDef*)pdev->pClassData;
+static uint32_t cdc_tx_busy(void) {
+    USBD_CDC_HandleTypeDef* hcdc = (USBD_CDC_HandleTypeDef*)hUsbDevice.pClassData;
     return hcdc ? hcdc->TxState : 0;
 }
 
-// ⚠️ FIX #8: Warte auf TX Complete statt HAL_Delay
-static inline void usb_wait_tx_complete(void) {
+static bool cdc_wait_idle(void) {
     const uint32_t start = HAL_GetTick();
-    while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
-        if (HAL_GetTick() - start > 50) break;
+    while (cdc_tx_busy() != 0) {
+        if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
+            return false;
+        }
     }
+    return true;
 }
 
 /* Blocking transmit of an arbitrary-length buffer; p must stay valid until return */
 static int usb_tx_blocking(const uint8_t* p, uint32_t len) {
     while (len > 0) {
         const uint32_t n = (len > USB_TX_CHUNK) ? USB_TX_CHUNK : len;
-        const uint32_t start = HAL_GetTick();
-        while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
-            if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
-                return UFI_ERR_USB;
-            }
+        if (!cdc_wait_idle()) {
+            return UFI_ERR_USB;
         }
         USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)p, n);
         if (USBD_CDC_TransmitPacket(&hUsbDevice) != USBD_OK) {
@@ -87,18 +91,28 @@ static int usb_tx_blocking(const uint8_t* p, uint32_t len) {
         p += n;
         len -= n;
     }
-    const uint32_t start = HAL_GetTick();
-    while (USBD_CDC_GetTxState(&hUsbDevice) != 0) {
-        if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
-            return UFI_ERR_USB;
-        }
-    }
-    return UFI_OK;
+    return cdc_wait_idle() ? UFI_OK : UFI_ERR_USB;
 }
 
-// Command Buffer
-static uint8_t cmd_buffer[64];
-static volatile uint8_t cmd_ready = 0;
+/* Reply = header + optional payload in one transfer (static: outlives the transfer) */
+static int reply(uint8_t cmd, uint8_t status, const void* payload, uint16_t len) {
+    static uint8_t buf[sizeof(ufi_response_header_t) + REPLY_MAX_PAYLOAD];
+    if (len > REPLY_MAX_PAYLOAD) {
+        len = 0;
+        status = 0xFE;
+    }
+    ufi_response_header_t hdr = {.command = cmd, .status = status, .length = len};
+    memcpy(buf, &hdr, sizeof(hdr));
+    if (len) {
+        memcpy(buf + sizeof(hdr), payload, len);
+    }
+    return usb_tx_blocking(buf, sizeof(hdr) + len);
+}
+
+/* UFI error code (negative) -> wire status byte */
+static uint8_t st(int ret) {
+    return (ret < 0) ? (uint8_t)(-ret) : 0;
+}
 
 /* ============================================================================
  * USB INITIALISIERUNG
@@ -112,16 +126,17 @@ void ufi_usb_init(void) {
     USBD_Start(&hUsbDevice);
 }
 
-/* USB Interrupt ist in stm32h7xx_it.c */
-
 /* ============================================================================
- * USB CALLBACK (aufgerufen von usbd_cdc_if.c)
+ * USB CALLBACK (aufgerufen von usbd_cdc_if.c, Interrupt-Kontext)
  * ============================================================================ */
 
-// Daten empfangen (von CM5)
 void ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
-    // Befehl in Command-Buffer kopieren
-    if (len <= sizeof(cmd_buffer)) {
+    // While a write is being prepared, every OUT packet is flux data
+    if (ufi_write_get_state() == WRITE_RECEIVING) {
+        ufi_write_receive_chunk(buf, len);
+        return;
+    }
+    if (len > 0 && len <= sizeof(cmd_buffer) && !cmd_ready) {
         memcpy(cmd_buffer, buf, len);
         cmd_ready = 1;
     }
@@ -142,307 +157,184 @@ int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data) {
     return ret;
 }
 
+/* Unsolicited completion notice (e.g. write finished) */
+int ufi_usb_send_event(uint8_t command, int result) {
+    return reply(command, st(result), NULL, 0);
+}
+
 /* ============================================================================
  * BEFEHLE VERARBEITEN
  * ============================================================================ */
+
+static void cmd_debug_gpio(uint8_t cmd) {
+    switch (cmd_buffer[1]) {
+        case 0: {
+            gpio_status_t s = ufi_debug_gpio_read();
+            reply(cmd, 0, &s, sizeof(s));
+            break;
+        }
+        case 1:
+            reply(cmd, st(ufi_debug_gpio_set(cmd_buffer[2], cmd_buffer[3])), NULL, 0);
+            break;
+        case 2:
+            ufi_debug_led_test();
+            reply(cmd, 0, NULL, 0);
+            break;
+        case 3: {
+            uint8_t r = ufi_debug_selftest();
+            reply(cmd, 0, &r, 1);
+            break;
+        }
+        default:
+            reply(cmd, 0xFF, NULL, 0);
+            break;
+    }
+}
+
+static void cmd_debug_timer(uint8_t cmd) {
+    switch (cmd_buffer[1]) {
+        case 0: {
+            timer_status_t s = ufi_debug_timer_read();
+            reply(cmd, 0, &s, sizeof(s));
+            break;
+        }
+        case 1: {
+            uint32_t ticks = ufi_debug_measure_index();
+            reply(cmd, 0, &ticks, sizeof(ticks));
+            break;
+        }
+        case 2: {
+            uint16_t rpm = ufi_debug_measure_rpm();
+            reply(cmd, 0, &rpm, sizeof(rpm));
+            break;
+        }
+        case 3: {
+            memory_info_t info = ufi_debug_memory_read();
+            reply(cmd, 0, &info, sizeof(info));
+            break;
+        }
+        default:
+            reply(cmd, 0xFF, NULL, 0);
+            break;
+    }
+}
 
 int ufi_usb_process_command(void) {
     if (!cmd_ready) {
         return 0;
     }
-    
-    cmd_ready = 0;
-    
-    uint8_t cmd = cmd_buffer[0];
-    ufi_response_header_t response = {
-        .command = cmd,
-        .status = 0,
-        .length = 0
-    };
-    
+
+    const uint8_t cmd = cmd_buffer[0];
+
     switch (cmd) {
         case UFI_CMD_NOP:
-            // Nichts tun
+            reply(cmd, 0, NULL, 0);
             break;
-            
+
         case UFI_CMD_GET_INFO: {
-            // Geräte-Info senden
-            static const char info[] = "UFI Flux Engine v1.0\0STM32H723\0";
-            response.length = sizeof(info);
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
-            usb_wait_tx_complete();
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)info, sizeof(info));
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            static const char info[] = "UFI Flux Engine v1.1\0" BOARD_NAME "\0STM32H723\0";
+            reply(cmd, 0, info, sizeof(info));
             break;
         }
-        
+
         case UFI_CMD_GET_STATUS: {
-            // Aktuellen Status senden
-            drive_status_t status = ufi_drive_get_status();
-            response.length = sizeof(status);
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
-            usb_wait_tx_complete();
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&status, sizeof(status));
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            drive_status_t s = ufi_drive_get_status();
+            reply(cmd, 0, &s, sizeof(s));
             break;
         }
-        
-        case UFI_CMD_SELECT_DRIVE: {
-            drive_type_t type = (drive_type_t)cmd_buffer[1];
-            if (ufi_drive_select(type) != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+
+        case UFI_CMD_SELECT_DRIVE:
+            reply(cmd, st(ufi_drive_select((drive_type_t)cmd_buffer[1])), NULL, 0);
             break;
-        }
-        
         case UFI_CMD_MOTOR_ON:
-            if (ufi_drive_motor(true) != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            reply(cmd, st(ufi_drive_motor(true)), NULL, 0);
             break;
-            
         case UFI_CMD_MOTOR_OFF:
-            ufi_drive_motor(false);
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            reply(cmd, st(ufi_drive_motor(false)), NULL, 0);
             break;
-            
-        case UFI_CMD_SEEK: {
-            uint8_t track = cmd_buffer[1];
-            if (ufi_drive_seek(track) != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+        case UFI_CMD_SEEK:
+            reply(cmd, st(ufi_drive_seek(cmd_buffer[1])), NULL, 0);
             break;
-        }
-        
         case UFI_CMD_RECALIBRATE:
-            if (ufi_drive_recalibrate() != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            reply(cmd, st(ufi_drive_recalibrate()), NULL, 0);
             break;
-            
-        case UFI_CMD_SELECT_SIDE: {
-            uint8_t side = cmd_buffer[1];
-            ufi_drive_select_side(side);
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+        case UFI_CMD_SELECT_SIDE:
+            reply(cmd, st(ufi_drive_select_side(cmd_buffer[1])), NULL, 0);
             break;
-        }
-        
+
         case UFI_CMD_READ_TRACK:
         case UFI_CMD_READ_TRACK_RAW: {
-            uint8_t track = cmd_buffer[1];
-            uint8_t side = cmd_buffer[2];
+            // [CMD, track, side, revolutions]; flux packets follow from ufi_main_loop
             uint8_t revolutions = cmd_buffer[3];
-            
             if (revolutions == 0) revolutions = 1;
-            if (revolutions > 5) revolutions = 5;
-            
-            // Capture starten (asynchron)
-            if (ufi_capture_start(track, side, revolutions) != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
-            // Daten werden in ufi_main_loop gesendet wenn fertig
+            if (revolutions > REVOLUTIONS_BUFFER) revolutions = REVOLUTIONS_BUFFER;
+            reply(cmd, st(ufi_capture_start(cmd_buffer[1], cmd_buffer[2], revolutions)), NULL, 0);
             break;
         }
-        
+
         case UFI_CMD_ABORT_READ:
             ufi_capture_abort();
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            ufi_write_abort();
+            reply(cmd, 0, NULL, 0);
             break;
-            
+
         case UFI_CMD_IEC_RESET:
-            ufi_iec_reset();
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            reply(cmd, st(ufi_iec_reset()), NULL, 0);
             break;
-            
-        case UFI_CMD_IEC_SEND: {
-            uint8_t byte = cmd_buffer[1];
-            bool eoi = cmd_buffer[2] != 0;
-            if (ufi_iec_send_byte(byte, eoi) != 0) {
-                response.status = 1;
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+
+        case UFI_CMD_IEC_SEND:
+            reply(cmd, st(ufi_iec_send_byte(cmd_buffer[1], cmd_buffer[2] != 0)), NULL, 0);
             break;
-        }
-        
+
         case UFI_CMD_IEC_RECEIVE: {
-            /* payload: [byte, eoi] */
-            static uint8_t rx[2];
+            uint8_t rx[2] = {0, 0};             // payload: [byte, eoi]
             bool eoi = false;
-            if (ufi_iec_receive_byte(&rx[0], &eoi) == 0) {
-                rx[1] = eoi ? 1 : 0;
-                response.length = 2;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, rx, 2);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else {
-                response.status = 1;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            }
+            int ret = ufi_iec_receive_byte(&rx[0], &eoi);
+            rx[1] = eoi ? 1 : 0;
+            reply(cmd, st(ret), rx, (ret == UFI_OK) ? 2 : 0);
             break;
         }
-        
-        case UFI_CMD_RESET:
-            // Software Reset
-            NVIC_SystemReset();
-            break;
-            
-        case UFI_CMD_BOOTLOADER:
-            // In DFU Bootloader springen
-            // Setze Magic Word und Reset
-            *((uint32_t*)0x20000000) = 0xDEADBEEF;
-            NVIC_SystemReset();
-            break;
-        
-        /* Fix #11: Write-Support Stub */
+
         case UFI_CMD_WRITE_TRACK:
         case UFI_CMD_WRITE_TRACK_VERIFY: {
-            // Format: [CMD, track, side, flux_count_lo, flux_count_hi, flux_count_hi2, flux_count_hi3]
-            uint8_t track = cmd_buffer[1];
-            uint8_t side = cmd_buffer[2];
-            uint32_t flux_count = cmd_buffer[3] | (cmd_buffer[4] << 8) | 
-                                  (cmd_buffer[5] << 16) | (cmd_buffer[6] << 24);
-            bool verify = (cmd_buffer[0] == UFI_CMD_WRITE_TRACK_VERIFY);
-            
-            int ret = ufi_write_prepare(track, side, flux_count, verify);
-            if (ret != 0) {
-                response.status = (uint8_t)(-ret);
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
-            // Danach werden Flux-Daten in Chunks gesendet
+            // [CMD, track, side, flux_count (u32 LE)]; then flux_count x u32 deltas as
+            // raw OUT data; completion is reported by an event with the same command
+            uint32_t flux_count = (uint32_t)cmd_buffer[3] | ((uint32_t)cmd_buffer[4] << 8) |
+                                  ((uint32_t)cmd_buffer[5] << 16) | ((uint32_t)cmd_buffer[6] << 24);
+            int ret = ufi_write_prepare(cmd_buffer[1], cmd_buffer[2], flux_count,
+                                        cmd == UFI_CMD_WRITE_TRACK_VERIFY);
+            reply(cmd, st(ret), NULL, 0);
             break;
         }
-        
-        case UFI_CMD_ERASE_TRACK: {
-            uint8_t track = cmd_buffer[1];
-            uint8_t side = cmd_buffer[2];
-            
-            int ret = ufi_erase_track(track, side);
-            if (ret != 0) {
-                response.status = (uint8_t)(-ret);
-            }
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+
+        case UFI_CMD_ERASE_TRACK:
+            reply(cmd, st(ufi_erase_track(cmd_buffer[1], cmd_buffer[2])), NULL, 0);
             break;
-        }
-        
-        case UFI_CMD_DEBUG_GPIO: {
-            uint8_t subcmd = cmd_buffer[1];
-            
-            if (subcmd == 0) {
-                // Read all GPIO
-                gpio_status_t status = ufi_debug_gpio_read();
-                response.length = sizeof(gpio_status_t);
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&status, sizeof(status));
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 1) {
-                // Set single GPIO
-                uint8_t gpio_id = cmd_buffer[2];
-                uint8_t state = cmd_buffer[3];
-                int ret = ufi_debug_gpio_set(gpio_id, state);
-                if (ret != 0) response.status = (uint8_t)(-ret);
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 2) {
-                // LED Test
-                ufi_debug_led_test();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 3) {
-                // Selftest
-                uint8_t result = ufi_debug_selftest();
-                response.length = 1;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, &result, 1);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else {
-                response.status = 0xFF;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            }
+
+        case UFI_CMD_DEBUG_GPIO:
+            cmd_debug_gpio(cmd);
             break;
-        }
-        
-        case UFI_CMD_DEBUG_TIMER: {
-            uint8_t subcmd = cmd_buffer[1];
-            
-            if (subcmd == 0) {
-                // Read timer status
-                timer_status_t status = ufi_debug_timer_read();
-                response.length = sizeof(timer_status_t);
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&status, sizeof(status));
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 1) {
-                // Measure index timing
-                uint32_t ticks = ufi_debug_measure_index();
-                response.length = 4;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&ticks, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 2) {
-                // Measure RPM
-                uint16_t rpm = ufi_debug_measure_rpm();
-                response.length = 2;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&rpm, 2);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else if (subcmd == 3) {
-                // Memory info
-                memory_info_t info = ufi_debug_memory_read();
-                response.length = sizeof(memory_info_t);
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-                usb_wait_tx_complete();
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&info, sizeof(info));
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            } else {
-                response.status = 0xFF;
-                USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-                USBD_CDC_TransmitPacket(&hUsbDevice);
-            }
+        case UFI_CMD_DEBUG_TIMER:
+            cmd_debug_timer(cmd);
             break;
-        }
-            
+
+        case UFI_CMD_RESET:
+            reply(cmd, 0, NULL, 0);
+            NVIC_SystemReset();
+            break;
+
+        case UFI_CMD_BOOTLOADER:
+            // Magic word for the DFU jump, then reset
+            *((volatile uint32_t*)0x20000000) = 0xDEADBEEF;
+            reply(cmd, 0, NULL, 0);
+            NVIC_SystemReset();
+            break;
+
         default:
-            response.status = 0xFF;  // Unbekannter Befehl
-            USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)&response, 4);
-            USBD_CDC_TransmitPacket(&hUsbDevice);
+            reply(cmd, 0xFF, NULL, 0);  // Unbekannter Befehl
             break;
     }
-    
+
+    cmd_ready = 0;  // release the command buffer only after it was fully used
     return 1;
 }
-
-/* USB CDC Interface ist in usbd_cdc_if.c definiert */

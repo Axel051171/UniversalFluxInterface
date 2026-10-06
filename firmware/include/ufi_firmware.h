@@ -235,6 +235,7 @@ int ufi_iec_atn(bool state);
 // USB Kommunikation
 int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data);
 int ufi_usb_process_command(void);
+int ufi_usb_send_event(uint8_t command, int result);
 
 /* ============================================================================
  * WRITE SUPPORT (ufi_write.c)
@@ -265,6 +266,9 @@ write_state_t ufi_write_get_state(void);
 uint32_t ufi_write_get_progress(void);
 void ufi_write_abort(void);
 void ufi_write_set_precomp(bool enable);
+void ufi_write_service(void);
+void ufi_write_tim3_irq(void);
+void ufi_write_dma_irq(void);
 
 /* ============================================================================
  * DEBUG FUNKTIONEN (ufi_debug.c)

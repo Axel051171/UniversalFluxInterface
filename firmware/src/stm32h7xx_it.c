@@ -82,6 +82,22 @@ void DMA1_Stream0_IRQHandler(void)
 }
 
 /**
+ * @brief  TIM3 Update (WDATA write timer: end of the last flux interval)
+ */
+void TIM3_IRQHandler(void)
+{
+    ufi_write_tim3_irq();
+}
+
+/**
+ * @brief  DMA1 Stream1 Interrupt (WDATA intervals -> TIM3 ARR)
+ */
+void DMA1_Stream1_IRQHandler(void)
+{
+    ufi_write_dma_irq();
+}
+
+/**
  * @brief  USB OTG HS Global Interrupt
  */
 void OTG_HS_IRQHandler(void)

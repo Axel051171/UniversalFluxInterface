@@ -37,7 +37,7 @@ extern const gpio_pin_t PIN_FDD_DIR;        /* PE12 */
 extern const gpio_pin_t PIN_FDD_SIDE_SEL;   /* PE13 */
 extern const gpio_pin_t PIN_FDD_WGATE;      /* PE14 */
 extern const gpio_pin_t PIN_FDD_DENSITY;    /* PE15 */
-extern const gpio_pin_t PIN_FDD_WDATA;      /* PA6, TIM3_CH1 (AF2) - bit-banged GPIO for now */
+extern const gpio_pin_t PIN_FDD_WDATA;      /* PA6, TIM3_CH1 (AF2) write pulses */
 
 /* ---- FDD inputs ---------------------------------------------------------- */
 extern const gpio_pin_t PIN_FDD_RDATA;      /* PA5, TIM2_CH1 (AF1) input capture */
@@ -49,6 +49,7 @@ extern const gpio_pin_t PIN_FDD_READY;      /* PF3 */
 
 #define FDD_RDATA_AF            GPIO_AF1_TIM2
 #define FDD_INDEX_AF            GPIO_AF1_TIM2
+#define FDD_WDATA_AF            GPIO_AF2_TIM3   /* TIM3_CH1 */
 #define FLUX_RDATA_CHANNEL      TIM_CHANNEL_1
 #define FLUX_INDEX_CHANNEL      TIM_CHANNEL_2
 
