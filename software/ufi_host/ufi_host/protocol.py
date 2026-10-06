@@ -20,7 +20,7 @@ MAX_REVOLUTIONS = 20                 # firmware REVOLUTIONS_BUFFER
 # command codes (ufi_command_t)
 NOP, GET_INFO, GET_STATUS = 0x00, 0x01, 0x02
 SELECT_DRIVE, MOTOR_ON, MOTOR_OFF, SEEK, RECALIBRATE, SELECT_SIDE = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15
-CHECK_DISK, DRIVE_TIMING, AMIGA_ID = 0x16, 0x17, 0x18
+CHECK_DISK, DRIVE_TIMING, AMIGA_ID, USB_POWER = 0x16, 0x17, 0x18, 0x19
 TIMING_FIELDS = ("step_pulse_us", "step_rate_us", "settle_us", "dir_change_us",
                  "side_settle_us", "spinup_ms", "select_settle_us")
 TIMING = struct.Struct("<7H")
@@ -168,6 +168,10 @@ class Device:
             cur = dict(zip(TIMING_FIELDS, TIMING.unpack(
                 self.command(DRIVE_TIMING, *TIMING.pack(*(cur[f] for f in TIMING_FIELDS))))))
         return cur
+
+    def usb_power(self) -> tuple[int, int, int]:
+        """-> (CC1 mV, CC2 mV, allowed USB-C source current in mA; 0 = no Type-C source)."""
+        return struct.unpack("<3H", self.command(USB_POWER))
 
     def amiga_id(self) -> tuple[int, str]:
         (v,) = struct.unpack("<I", self.command(AMIGA_ID))

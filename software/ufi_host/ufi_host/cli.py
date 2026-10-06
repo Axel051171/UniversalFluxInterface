@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("info", "status", "selftest", "rpm", "recal", "abort", "iec-reset", "iec-recv",
-                 "reset", "bootloader", "check-disk", "amiga-id"):
+                 "reset", "bootloader", "check-disk", "amiga-id", "usb-power"):
         sub.add_parser(name)
     sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000").add_argument(
         "set", nargs="*", metavar="FIELD=VALUE")
@@ -134,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "check-disk":
             changed, present = dev.check_disk()
             print(f"disk {'present' if present else 'MISSING'}" + (", changed" if changed else ""))
+        elif a.cmd == "usb-power":
+            cc1, cc2, ma = dev.usb_power()
+            print(f"CC1 {cc1} mV, CC2 {cc2} mV -> " + (f"{ma} mA allowed" if ma else "no Type-C source"))
         elif a.cmd == "amiga-id":
             v, name = dev.amiga_id()
             print(f"0x{v:08X}  {name}")

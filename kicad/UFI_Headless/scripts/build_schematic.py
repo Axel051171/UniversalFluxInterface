@@ -126,13 +126,13 @@ def build_power() -> Sheet:
     sh.part("Connector", "USB_C_Receptacle_USB2.0_16P", ref("J"), "USB-C", 40, 90, {
         "A4": "VBUS", "A9": "VBUS", "B4": "VBUS", "B9": "VBUS",
         "A1": "GND", "A12": "GND", "B1": "GND", "B12": "GND", "SH": "GND",
-        "A5": "CC1", "B5": "CC2",
+        "A5": "G:CC1", "B5": "G:CC2",
         "A6": "G:USB_DP", "B6": "G:USB_DP", "A7": "G:USB_DM", "B7": "G:USB_DM",
         "A8": "NC", "B8": "NC",
     }, "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
         {"MPN": "HRO TYPE-C-31-M-12"})
-    R(sh, "5.1k", 80, 75, "CC1", "GND")
-    R(sh, "5.1k", 90, 75, "CC2", "GND")
+    R(sh, "5.1k", 80, 75, "G:CC1", "GND")
+    R(sh, "5.1k", 90, 75, "G:CC2", "GND")
     sh.part("Power_Protection", "USBLC6-2SC6", ref("U"), "USBLC6-2SC6", 80, 110, {
         "1": "G:USB_DP", "6": "G:USB_DP", "3": "G:USB_DM", "4": "G:USB_DM",
         "5": "VBUS", "2": "GND"}, None, {"MPN": "USBLC6-2SC6"})
@@ -239,6 +239,8 @@ GPIO = {
     # v0.2: 8 MB QSPI PSRAM on OCTOSPIM port 1 (AF9; PB13 = IO2 is AF4), memory-mapped flux store
     "PB2": "PSRAM_CLK", "PB10": "PSRAM_CS",
     "PD11": "PSRAM_IO0", "PD12": "PSRAM_IO1", "PB13": "PSRAM_IO2", "PD13": "PSRAM_IO3",
+    # v0.3: USB-C CC voltage (across Rd 5.1k) on ADC1 INP16 / INP15 -> source current 0.5/1.5/3 A
+    "PA0": "G:CC1", "PA3": "G:CC2",
 }
 
 

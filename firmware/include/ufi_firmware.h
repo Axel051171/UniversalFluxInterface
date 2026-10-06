@@ -136,6 +136,7 @@ typedef enum {
     UFI_CMD_CHECK_DISK      = 0x16, // -> [changed, present]
     UFI_CMD_DRIVE_TIMING    = 0x17, // no args: get; + drive_timing_t (14 bytes): set
     UFI_CMD_AMIGA_ID        = 0x18, // -> u32 drive ID
+    UFI_CMD_USB_POWER       = 0x19, // -> usb_power_t (CC1/CC2 mV, allowed source mA)
     
     // Flux-Capture
     UFI_CMD_READ_TRACK      = 0x20,
@@ -180,6 +181,14 @@ typedef struct __packed {
     uint16_t spinup_ms;
     uint16_t select_settle_us;
 } drive_timing_t;
+
+// USB_POWER payload (6 bytes); current_ma 0 = no Type-C source detected
+typedef struct __packed {
+    uint16_t cc1_mv;
+    uint16_t cc2_mv;
+    uint16_t current_ma;
+} usb_power_t;
+int ufi_usb_power(usb_power_t* p);   // ufi_power.c
 
 // GET_STATUS payload (wire format, 10 bytes)
 typedef struct __packed {

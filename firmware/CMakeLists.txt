@@ -74,6 +74,8 @@ set(HAL_SOURCES
     ${HAL_PATH}/Src/stm32h7xx_hal_tim_ex.c
     ${HAL_PATH}/Src/stm32h7xx_hal_ospi.c
     ${HAL_PATH}/Src/stm32h7xx_hal_mdma.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_adc.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_adc_ex.c
     ${HAL_PATH}/Src/stm32h7xx_hal_uart.c
     ${HAL_PATH}/Src/stm32h7xx_hal_pcd.c
     ${HAL_PATH}/Src/stm32h7xx_hal_pcd_ex.c
@@ -100,6 +102,7 @@ set(PROJECT_SOURCES
     src/board_headless.c
     src/ufi_psram.c
     src/syscalls.c
+    src/ufi_power.c
     src/ufi_usb.c
     src/ufi_flux.c
     src/ufi_drive.c

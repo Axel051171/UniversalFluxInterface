@@ -55,6 +55,8 @@ class FakeDevice:
             self._reply(cmd, 0, bytes([0x42, 1]))
         elif cmd == P.CHECK_DISK:
             self._reply(cmd, 0, bytes([1, 1]))
+        elif cmd == P.USB_POWER:
+            self._reply(cmd, 0, struct.pack("<3H", 0, 1350, 3000))
         elif cmd == P.AMIGA_ID:
             self._reply(cmd, 0, struct.pack("<I", 0xAAAAAAAA))
         elif cmd == P.DRIVE_TIMING:
@@ -124,6 +126,7 @@ def test_check_disk_and_amiga_id():
     dev = P.Device(FakeDevice())
     assert dev.check_disk() == (True, True)
     assert dev.amiga_id() == (0xAAAAAAAA, '3.5" HD (HD media)')
+    assert dev.usb_power() == (0, 1350, 3000)
 
 
 def test_timing_get_and_set():

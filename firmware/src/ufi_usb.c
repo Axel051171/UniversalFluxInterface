@@ -295,6 +295,12 @@ int ufi_usb_process_command(void) {
             reply(cmd, 0, &cur, sizeof(cur));
             break;
         }
+        case UFI_CMD_USB_POWER: {
+            usb_power_t p = {0};
+            int ret = ufi_usb_power(&p);
+            reply(cmd, st(ret), &p, ret == UFI_OK ? sizeof(p) : 0);
+            break;
+        }
         case UFI_CMD_AMIGA_ID: {
             uint32_t id = 0;
             int ret = ufi_drive_amiga_id(&id);

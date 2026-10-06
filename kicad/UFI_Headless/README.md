@@ -1,6 +1,6 @@
 # UFI Headless – STM32H723 Flux Engine (ohne CM5)
 
-Status: **Schaltplan + Layout v0.2** – ERC 0 Verstöße, alle 97 Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen (Details unten).
+Status: **Schaltplan + Layout v0.3** – ERC 0 Verstöße, alle 97 Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen (Details unten).
 
 | Sheet | Inhalt | Status |
 |---|---|---|
@@ -127,6 +127,8 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_IN | PF4–PF8 | GPIO in |
 | USB D− / D+ | PA11 / PA12 | OTG_HS mit internem FS-PHY |
 | VBUS_SENSE | PA9 | Teiler 22k/33k (5V → 3,0V) |
+| CC1 / CC2 | PA0 / PA3 | ADC1 INP16/INP15: Spannung an Rd 5,1k → USB-C-Quellenstrom 0,5/1,5/3 A (`ufi usb-power`), v0.3 |
+| (Atari SIO, optional) | PD1 / PF6 / PD0 | UART4_TX → DATA OUT (über IEC_CLK_OUT), UART7_RX ← DATA IN (IEC_DATA_IN, RXINV wegen LVC14), COMMAND = IEC_ATN_OUT – nur Firmware + DIN-6→SIO-13-Kabel, keine Platinenänderung |
 | SWDIO / SWCLK / SWO | PA13 / PA14 / PB3 | Debug |
 | DBG_TX / DBG_RX | PD8 / PD9 | USART3 (AF7) |
 | LED_ACT / FDD / USB / ERR | PG0–PG3 | High = an |

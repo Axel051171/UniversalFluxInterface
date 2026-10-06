@@ -24,7 +24,7 @@ ROUTES = {
 
 conn = board.GetConnectivity()
 conn.RecalculateRatsnest()
-MM_EPS = 0.01
+MM_EPS = 1.0   # any via of this net near the fallback start = D+ already fanned out
 
 
 def has_via(netname, xy):
