@@ -48,6 +48,10 @@ static volatile uint32_t idx_pos[REVOLUTIONS_BUFFER + 1];
 static volatile uint8_t idx_count;      /* index pulses seen since capture start */
 static volatile uint32_t end_pos;       /* samples written when the capture stopped */
 static bool finalised;
+static volatile uint32_t last_index_ms;  /* HAL tick of capture start / last index pulse */
+
+/* No disk or motor off: no index within this time ends the capture (error_code 3) */
+#define INDEX_TIMEOUT_MS    600     /* > 1 revolution at 300 rpm (200 ms) with margin */
 
 #define INDEX_FILTER    0x3     /* fCK_INT, N=8: ~30 ns glitch filter, index pulses are >1 us */
 
@@ -196,6 +200,7 @@ int ufi_flux_capture_start(uint8_t revolutions)
     idx_count = 0;
     end_pos = 0;
     finalised = false;
+    last_index_ms = HAL_GetTick();
 
     /* Dirty lines (write path, earlier finalise) must not be evicted over fresh DMA data */
     SCB_CleanInvalidateDCache();
@@ -246,11 +251,13 @@ void ufi_flux_tim2_irq(void)
         idx_time[0] = t;
         idx_pos[0] = 0;
         idx_count = 1;
+        last_index_ms = HAL_GetTick();
         TIM2->DIER |= TIM_DIER_CC1DE;       /* start streaming RDATA timestamps */
         g_capture.state = CAPTURE_RUNNING;
     } else if (g_capture.state == CAPTURE_RUNNING) {
         idx_time[idx_count] = t;
         idx_pos[idx_count] = dma_pos();
+        last_index_ms = HAL_GetTick();
         idx_count++;
         if (idx_count > g_capture.revolutions_requested) {
             capture_halt();
@@ -324,6 +331,12 @@ static uint32_t align_boundary(uint32_t pos, uint32_t t, uint32_t lo, uint32_t h
 
 capture_state_t ufi_flux_poll(void)
 {
+    if ((g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) &&
+        HAL_GetTick() - last_index_ms > INDEX_TIMEOUT_MS) {
+        capture_halt();
+        g_capture.error_code = 3;           /* no index pulse: no disk / motor off */
+        g_capture.state = CAPTURE_ERROR;
+    }
     if (g_capture.state != CAPTURE_COMPLETE || finalised) {
         return g_capture.state;
     }

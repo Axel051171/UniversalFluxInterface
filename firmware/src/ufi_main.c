@@ -166,7 +166,8 @@ void ufi_main_loop(void)
                 led_set(&PIN_LED_FDD, false);
                 break;
             case CAPTURE_ERROR:
-                ufi_usb_send_read_done(g_capture.error_code == 2 ? UFI_ERR_DMA : UFI_ERR_BUFFER_FULL, 0);
+                ufi_usb_send_read_done(g_capture.error_code == 2 ? UFI_ERR_DMA :
+                                       g_capture.error_code == 3 ? UFI_ERR_NO_INDEX : UFI_ERR_BUFFER_FULL, 0);
                 g_capture.state = CAPTURE_IDLE;
                 led_set(&PIN_LED_FDD, false);
                 led_set(&PIN_LED_ERR, true);
