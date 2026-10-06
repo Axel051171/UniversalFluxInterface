@@ -137,6 +137,7 @@ typedef enum {
     UFI_CMD_DRIVE_TIMING    = 0x17, // no args: get; + drive_timing_t (14 bytes): set
     UFI_CMD_AMIGA_ID        = 0x18, // -> u32 drive ID
     UFI_CMD_USB_POWER       = 0x19, // -> usb_power_t (CC1/CC2 mV, allowed source mA)
+    UFI_CMD_SET_LINES       = 0x1A, // [density, drate]: assert J6 pin 2 / pin 6 (drive dependent)
     
     // Flux-Capture
     UFI_CMD_READ_TRACK      = 0x20,

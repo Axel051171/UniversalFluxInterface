@@ -295,6 +295,11 @@ int ufi_usb_process_command(void) {
             reply(cmd, 0, &cur, sizeof(cur));
             break;
         }
+        case UFI_CMD_SET_LINES:             // [density, drate]; meaning is drive dependent
+            ufi_drive_density_line(cmd_buffer[1] != 0);
+            bus_out(&PIN_FDD_DRATE, cmd_buffer[2] != 0);
+            reply(cmd, 0, NULL, 0);
+            break;
         case UFI_CMD_USB_POWER: {
             usb_power_t p = {0};
             int ret = ufi_usb_power(&p);
