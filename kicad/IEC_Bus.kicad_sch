@@ -14,7 +14,6 @@
   )
   
   (lib_symbols
-    ;; DIN-6 IEC Connector
     (symbol "UFI:Conn_IEC_DIN6"
       (pin_names
         (offset 1.016)
@@ -70,7 +69,6 @@
       )
     )
     
-    ;; SN7406 Open-Collector Inverter
     (symbol "UFI:SN7406"
       (pin_names
         (offset 1.016)
@@ -131,7 +129,6 @@
     )
   )
   
-  ;; Notes
   (text "IEC Bus (C64 Serial Bus) Interface\n\nSignals:\n- ATN (Attention): Active Low, Open-Collector\n- CLK (Clock): Active Low, Open-Collector  \n- DATA: Active Low, Open-Collector\n- SRQ (Service Request): Active Low\n- RESET: Active Low\n\nElectrical:\n- 5V tolerant with 1kΩ pull-ups\n- SN7406 for open-collector drive (30V/40mA sink)\n- SN7407 alternative (non-inverting)\n\nXUM1541 Compatibility:\n- Same protocol as OpenCBM/xu1541\n- Supports nibbler/parallel protocols\n- Works with 1541, 1571, 1581, FD-2000/4000\n\nConnection:\n  MCU (3.3V)          7406           IEC Bus (5V)\n  ─────────────────────────────────────────────\n  PD0/IEC_ATN_OUT ──→ 1A ─→ 1Y ──→ ATN (pin 3)\n  PD1/IEC_CLK_OUT ──→ 2A ─→ 2Y ──→ CLK (pin 4)\n  PD2/IEC_DATA_OUT ─→ 3A ─→ 3Y ──→ DATA (pin 5)\n  \n  ATN_IN ←───────── Schmitt ←───── ATN\n  CLK_IN ←───────── Schmitt ←───── CLK\n  DATA_IN ←──────── Schmitt ←───── DATA"
     (exclude_from_sim no)
     (at 25.4 38.1 0)
@@ -144,7 +141,6 @@
     (uuid "text-iec-notes")
   )
   
-  ;; Hierarchical Labels
   (hierarchical_label "IEC_ATN_OUT"
     (shape output)
     (at 25.4 139.7 180)

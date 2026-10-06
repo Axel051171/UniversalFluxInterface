@@ -98,9 +98,6 @@
 		)
 	)
 
-	; ============================================================================
-	; NET DEFINITIONS
-	; ============================================================================
 	(net 0 "")
 	(net 1 "GND")
 	(net 2 "+3V3")
@@ -155,9 +152,6 @@
 	(net 51 "HSE_IN")
 	(net 52 "HSE_OUT")
 
-	; ============================================================================
-	; NET CLASSES
-	; ============================================================================
 	(net_class "Default" ""
 		(clearance 0.2)
 		(trace_width 0.2)
@@ -219,22 +213,17 @@
 		(add_net "PCIE_TXP")
 	)
 
-	; ============================================================================
-	; BOARD OUTLINE - 110mm x 85mm with rounded corners (r=2mm)
-	; ============================================================================
 	
 	(gr_line (start 2 0) (end 108 0) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "e1"))
 	(gr_line (start 110 2) (end 110 83) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "e2"))
 	(gr_line (start 108 85) (end 2 85) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "e3"))
 	(gr_line (start 0 83) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "e4"))
 	
-	; Rounded corners
 	(gr_arc (start 2 2) (mid 0.586 0.586) (end 0 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "c1"))
 	(gr_arc (start 108 0) (mid 109.414 0.586) (end 110 2) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "c2"))
 	(gr_arc (start 110 83) (mid 109.414 84.414) (end 108 85) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "c3"))
 	(gr_arc (start 0 83) (mid 0.586 84.414) (end 2 85) (stroke (width 0.15) (type solid)) (layer "Edge.Cuts") (uuid "c4"))
 
-	; Mounting holes (M3) - 4 corners
 	(footprint "MountingHole:MountingHole_3.2mm_M3"
 		(layer "F.Cu")
 		(uuid "mh1")
@@ -268,11 +257,7 @@
 		(pad "1" thru_hole circle (at 0 0) (size 6 6) (drill 3.2) (layers "*.Cu" "*.Mask"))
 	)
 
-	; ============================================================================
-	; TOP EDGE - DRIVE CONNECTORS (Y = 0-18mm)
-	; ============================================================================
 
-	; FDD Connector 1 (J1) - 34-pin Shugart
 	(footprint "UFI:FDD_Header_34pin"
 		(layer "F.Cu")
 		(uuid "fdd-j1")
@@ -289,7 +274,6 @@
 		)
 	)
 
-	; FDD Connector 2 (J2) - 34-pin Shugart
 	(footprint "UFI:FDD_Header_34pin"
 		(layer "F.Cu")
 		(uuid "fdd-j2")
@@ -306,7 +290,6 @@
 		)
 	)
 
-	; Apple Disk II Connector (J3) - 19-pin
 	(footprint "UFI:Apple_Disk_II_19pin"
 		(layer "F.Cu")
 		(uuid "apple-j3")
@@ -323,7 +306,6 @@
 		)
 	)
 
-	; Amiga DB-23 (J4)
 	(footprint "UFI:DSUB-23_Female_Horizontal"
 		(layer "F.Cu")
 		(uuid "amiga-j4")
@@ -340,7 +322,6 @@
 		)
 	)
 
-	; IEC DIN-6 (J5) - C64 serial bus
 	(footprint "UFI:DIN-6_Female_PCB"
 		(layer "F.Cu")
 		(uuid "iec-j5")
@@ -357,11 +338,7 @@
 		)
 	)
 
-	; ============================================================================
-	; CM5 MODULE ZONE (Left, 5-55mm X, 22-62mm Y)
-	; ============================================================================
 
-	; CM5 Connector 1 (J6) - Hirose DF40C-100DP
 	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
 		(layer "F.Cu")
 		(uuid "cm5-j6")
@@ -378,7 +355,6 @@
 		)
 	)
 
-	; CM5 Connector 2 (J7) - Hirose DF40C-100DP
 	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
 		(layer "F.Cu")
 		(uuid "cm5-j7")
@@ -395,11 +371,7 @@
 		)
 	)
 
-	; ============================================================================
-	; EXPANSION HEADER (Center)
-	; ============================================================================
 
-	; 40-pin Expansion Header (J13)
 	(footprint "UFI:UFI_Expansion_Header_40pin"
 		(layer "F.Cu")
 		(uuid "exp-j13")
@@ -416,11 +388,7 @@
 		)
 	)
 
-	; ============================================================================
-	; STM32H723 ZONE (Center-Right, 55-95mm X, 25-55mm Y)
-	; ============================================================================
 
-	; STM32H723ZGT6 (U1) - Main MCU
 	(footprint "UFI:LQFP-144_20x20mm_P0.5mm"
 		(layer "F.Cu")
 		(uuid "stm32-u1")
@@ -437,7 +405,6 @@
 		)
 	)
 
-	; 25MHz Crystal (Y1)
 	(footprint "Crystal:Crystal_SMD_3215-4Pin_3.2x1.5mm"
 		(layer "F.Cu")
 		(uuid "xtal-y1")
@@ -454,7 +421,6 @@
 		)
 	)
 
-	; 32.768kHz Crystal (Y2)
 	(footprint "Crystal:Crystal_SMD_2012-2Pin_2.0x1.2mm"
 		(layer "F.Cu")
 		(uuid "xtal-y2")
@@ -471,7 +437,6 @@
 		)
 	)
 
-	; SPI Flash (U2)
 	(footprint "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "flash-u2")
@@ -488,7 +453,6 @@
 		)
 	)
 
-	; Level Shifters (U20-U23)
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "ls-u20")
@@ -550,11 +514,7 @@
 		)
 	)
 
-	; ============================================================================
-	; RIGHT EDGE - NETWORK & USB (X = 95-110mm)
-	; ============================================================================
 
-	; RJ45 Ethernet (J10) - Primary Interface
 	(footprint "UFI:RJ45_Magjack_Tab-Down"
 		(layer "F.Cu")
 		(uuid "rj45-j10")
@@ -571,7 +531,6 @@
 		)
 	)
 
-	; USB-C Data (J9) - STM32 USB HS
 	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 		(layer "F.Cu")
 		(uuid "usbc-data-j9")
@@ -588,11 +547,7 @@
 		)
 	)
 
-	; ============================================================================
-	; BOTTOM ZONE - POWER & M.2 (Y = 60-85mm)
-	; ============================================================================
 
-	; DC Jack (J16)
 	(footprint "Connector_BarrelJack:BarrelJack_Horizontal"
 		(layer "F.Cu")
 		(uuid "dcjack-j16")
@@ -609,7 +564,6 @@
 		)
 	)
 
-	; USB-C Power (J8)
 	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 		(layer "F.Cu")
 		(uuid "usbc-pwr-j8")
@@ -626,7 +580,6 @@
 		)
 	)
 
-	; Buck Regulator 12V→5V (U10)
 	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "buck-u10")
@@ -643,7 +596,6 @@
 		)
 	)
 
-	; Buck Regulator 5V→3.3V (U11)
 	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "buck-u11")
@@ -660,7 +612,6 @@
 		)
 	)
 
-	; Power Inductors
 	(footprint "Inductor_SMD:L_Bourns_SRN6045TA"
 		(layer "F.Cu")
 		(uuid "ind-l1")
@@ -676,7 +627,6 @@
 		(property "Value" "10uH" (at 0 4 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
 	)
 
-	; M.2 2242 Slot (J12)
 	(footprint "UFI:M.2_Key_M_2242"
 		(layer "F.Cu")
 		(uuid "m2-j12")
@@ -693,9 +643,6 @@
 		)
 	)
 
-	; ============================================================================
-	; STATUS LEDs & BUTTONS (Right side)
-	; ============================================================================
 
 	(footprint "LED_SMD:LED_0603_1608Metric"
 		(layer "F.Cu")
@@ -726,7 +673,6 @@
 		(property "Value" "IEC" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
 	)
 
-	; Buttons
 	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
 		(layer "F.Cu")
 		(uuid "btn-sw1")
@@ -742,7 +688,6 @@
 		(property "Value" "USR" (at 0 4 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
 	)
 
-	; SWD Debug Header (J17)
 	(footprint "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical_SMD"
 		(layer "F.Cu")
 		(uuid "swd-j17")
@@ -759,9 +704,6 @@
 		)
 	)
 
-	; ============================================================================
-	; SILKSCREEN
-	; ============================================================================
 
 	(gr_text "UFI"
 		(at 55 42 0)
@@ -791,11 +733,7 @@
 		(effects (font (size 0.8 0.8) (thickness 0.12)) (justify left))
 	)
 
-	; ============================================================================
-	; DECOUPLING CAPACITORS (STM32 VDD pins)
-	; ============================================================================
 
-	; C1-C10: 100nF decoupling for STM32 (placed around the chip)
 	(footprint "Capacitor_SMD:C_0402_1005Metric"
 		(layer "F.Cu") (uuid "cap-c1") (at 62 38)
 		(property "Reference" "C1" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
@@ -841,14 +779,12 @@
 		(property "Reference" "C9" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
 		(property "Value" "100n" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
 	)
-	; 4.7uF bulk cap near STM32
 	(footprint "Capacitor_SMD:C_0805_2012Metric"
 		(layer "F.Cu") (uuid "cap-c10") (at 58 42)
 		(property "Reference" "C10" (at 0 -1.8 0) (layer "F.SilkS") (effects (font (size 0.5 0.5) (thickness 0.08))))
 		(property "Value" "4.7u" (at 0 1.8 0) (layer "F.Fab") (effects (font (size 0.5 0.5) (thickness 0.08))))
 	)
 
-	; Crystal load caps
 	(footprint "Capacitor_SMD:C_0402_1005Metric"
 		(layer "F.Cu") (uuid "cap-c11") (at 56 34)
 		(property "Reference" "C11" (at 0 -1.5 0) (layer "F.SilkS") (effects (font (size 0.4 0.4) (thickness 0.06))))
@@ -860,11 +796,7 @@
 		(property "Value" "20p" (at 0 1.5 0) (layer "F.Fab") (effects (font (size 0.4 0.4) (thickness 0.06))))
 	)
 
-	; ============================================================================
-	; USB HIGH-SPEED ROUTING (90 ohm differential, length matched)
-	; ============================================================================
 
-	; USB HS DP (from STM32 to USB connector J14)
 	(segment (start 82 42.5) (end 84 42.5) (width 0.2) (layer "F.Cu") (net 6) (uuid "usb-dp1"))
 	(segment (start 84 42.5) (end 86 44) (width 0.2) (layer "F.Cu") (net 6) (uuid "usb-dp2"))
 	(segment (start 86 44) (end 86 58) (width 0.2) (layer "F.Cu") (net 6) (uuid "usb-dp3"))
@@ -873,7 +805,6 @@
 	(segment (start 100 60) (end 100 66) (width 0.2) (layer "F.Cu") (net 6) (uuid "usb-dp6"))
 	(segment (start 100 66) (end 102 68) (width 0.2) (layer "F.Cu") (net 6) (uuid "usb-dp7"))
 	
-	; USB HS DM (parallel to DP, 0.15mm gap)
 	(segment (start 82 42.35) (end 84 42.35) (width 0.2) (layer "F.Cu") (net 7) (uuid "usb-dm1"))
 	(segment (start 84 42.35) (end 86 43.85) (width 0.2) (layer "F.Cu") (net 7) (uuid "usb-dm2"))
 	(segment (start 86 43.85) (end 86 57.85) (width 0.2) (layer "F.Cu") (net 7) (uuid "usb-dm3"))
@@ -882,11 +813,7 @@
 	(segment (start 100 59.85) (end 100 65.85) (width 0.2) (layer "F.Cu") (net 7) (uuid "usb-dm6"))
 	(segment (start 100 65.85) (end 102 67.85) (width 0.2) (layer "F.Cu") (net 7) (uuid "usb-dm7"))
 
-	; ============================================================================
-	; ETHERNET DIFFERENTIAL PAIRS (100 ohm, length matched)
-	; ============================================================================
 
-	; ETH MDI0 (TX+/TX-)
 	(segment (start 25 34) (end 25 22) (width 0.15) (layer "F.Cu") (net 10) (uuid "eth-mdi0p-1"))
 	(segment (start 25 22) (end 8 22) (width 0.15) (layer "F.Cu") (net 10) (uuid "eth-mdi0p-2"))
 	(segment (start 8 22) (end 8 70) (width 0.15) (layer "F.Cu") (net 10) (uuid "eth-mdi0p-3"))
@@ -895,57 +822,37 @@
 	(segment (start 25 22.18) (end 8.18 22.18) (width 0.15) (layer "F.Cu") (net 11) (uuid "eth-mdi0n-2"))
 	(segment (start 8.18 22.18) (end 8.18 70) (width 0.15) (layer "F.Cu") (net 11) (uuid "eth-mdi0n-3"))
 
-	; ============================================================================
-	; FLUX SIGNAL ROUTING (controlled impedance, 50 ohm)
-	; ============================================================================
 
-	; FLUX_IN from FDD connectors to STM32
 	(segment (start 15 10) (end 15 18) (width 0.25) (layer "F.Cu") (net 18) (uuid "flux-in1"))
 	(segment (start 15 18) (end 62 18) (width 0.25) (layer "F.Cu") (net 18) (uuid "flux-in2"))
 	(segment (start 62 18) (end 62 32) (width 0.25) (layer "F.Cu") (net 18) (uuid "flux-in3"))
 	
-	; INDEX signal
 	(segment (start 17 10) (end 17 19) (width 0.2) (layer "F.Cu") (net 20) (uuid "index1"))
 	(segment (start 17 19) (end 64 19) (width 0.2) (layer "F.Cu") (net 20) (uuid "index2"))
 	(segment (start 64 19) (end 64 32) (width 0.2) (layer "F.Cu") (net 20) (uuid "index3"))
 
-	; ============================================================================
-	; IEC BUS ROUTING (directly from DIN-6 to STM32)
-	; ============================================================================
 
-	; IEC_ATN
 	(segment (start 98 10) (end 98 20) (width 0.25) (layer "F.Cu") (net 33) (uuid "iec-atn1"))
 	(segment (start 98 20) (end 80 20) (width 0.25) (layer "F.Cu") (net 33) (uuid "iec-atn2"))
 	(segment (start 80 20) (end 80 32) (width 0.25) (layer "F.Cu") (net 33) (uuid "iec-atn3"))
 
-	; IEC_CLK
 	(segment (start 96 10) (end 96 21) (width 0.25) (layer "F.Cu") (net 34) (uuid "iec-clk1"))
 	(segment (start 96 21) (end 78 21) (width 0.25) (layer "F.Cu") (net 34) (uuid "iec-clk2"))
 	(segment (start 78 21) (end 78 32) (width 0.25) (layer "F.Cu") (net 34) (uuid "iec-clk3"))
 
-	; IEC_DATA
 	(segment (start 100 10) (end 100 22) (width 0.25) (layer "F.Cu") (net 35) (uuid "iec-data1"))
 	(segment (start 100 22) (end 82 22) (width 0.25) (layer "F.Cu") (net 35) (uuid "iec-data2"))
 	(segment (start 82 22) (end 82 32) (width 0.25) (layer "F.Cu") (net 35) (uuid "iec-data3"))
 
-	; ============================================================================
-	; POWER DISTRIBUTION
-	; ============================================================================
 
-	; +3V3 from regulator to STM32 area
 	(segment (start 20 72) (end 20 55) (width 0.5) (layer "F.Cu") (net 2) (uuid "3v3-1"))
 	(segment (start 20 55) (end 58 55) (width 0.5) (layer "F.Cu") (net 2) (uuid "3v3-2"))
 	(segment (start 58 55) (end 58 46) (width 0.5) (layer "F.Cu") (net 2) (uuid "3v3-3"))
 	
-	; +5V distribution
 	(segment (start 20 75) (end 20 60) (width 0.5) (layer "F.Cu") (net 3) (uuid "5v-1"))
 	(segment (start 20 60) (end 45 60) (width 0.5) (layer "F.Cu") (net 3) (uuid "5v-2"))
 
-	; ============================================================================
-	; VIA STITCHING (for thermal and EMI)
-	; ============================================================================
 
-	; GND vias around STM32
 	(via (at 60 36) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "gnd-via1"))
 	(via (at 60 40) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "gnd-via2"))
 	(via (at 60 44) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "gnd-via3"))
@@ -963,7 +870,6 @@
 	(via (at 74 52) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "gnd-via15"))
 	(via (at 78 52) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "gnd-via16"))
 
-	; GND vias along board edges
 	(via (at 5 15) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "edge-via1"))
 	(via (at 5 30) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "edge-via2"))
 	(via (at 5 45) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "edge-via3"))
@@ -975,17 +881,12 @@
 	(via (at 105 60) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "edge-via9"))
 	(via (at 105 75) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "edge-via10"))
 
-	; Power vias (3V3 to inner layer)
 	(via (at 59 46) (size 0.8) (drill 0.4) (layers "F.Cu" "In2.Cu") (net 2) (uuid "3v3-via1"))
 	(via (at 63 38) (size 0.8) (drill 0.4) (layers "F.Cu" "In2.Cu") (net 2) (uuid "3v3-via2"))
 	(via (at 81 38) (size 0.8) (drill 0.4) (layers "F.Cu" "In2.Cu") (net 2) (uuid "3v3-via3"))
 	(via (at 81 46) (size 0.8) (drill 0.4) (layers "F.Cu" "In2.Cu") (net 2) (uuid "3v3-via4"))
 
-	; ============================================================================
-	; CM5 to STM32 USB HS CONNECTION (via PCIe lanes)
-	; ============================================================================
 
-	; CM5 USB to STM32 routing on bottom layer for isolation
 	(segment (start 15 44) (end 28 44) (width 0.2) (layer "B.Cu") (net 6) (uuid "cm5-usb-dp1"))
 	(segment (start 28 44) (end 50 44) (width 0.2) (layer "B.Cu") (net 6) (uuid "cm5-usb-dp2"))
 	(via (at 50 44) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 6) (uuid "cm5-usb-via1"))
@@ -994,11 +895,7 @@
 	(segment (start 28 44.18) (end 50 44.18) (width 0.2) (layer "B.Cu") (net 7) (uuid "cm5-usb-dm2"))
 	(via (at 50 44.18) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 7) (uuid "cm5-usb-via2"))
 
-	; ============================================================================
-	; COPPER POURS
-	; ============================================================================
 
-	; GND Plane (In1.Cu)
 	(zone
 		(net 1)
 		(net_name "GND")
@@ -1012,7 +909,6 @@
 		(polygon (pts (xy 1 1) (xy 109 1) (xy 109 84) (xy 1 84)))
 	)
 
-	; +5V Region (In2.Cu, left half)
 	(zone
 		(net 3)
 		(net_name "+5V")
@@ -1026,7 +922,6 @@
 		(polygon (pts (xy 1 1) (xy 45 1) (xy 45 84) (xy 1 84)))
 	)
 
-	; +3V3 Region (In2.Cu, right half)
 	(zone
 		(net 2)
 		(net_name "+3V3")
@@ -1040,7 +935,6 @@
 		(polygon (pts (xy 47 1) (xy 109 1) (xy 109 84) (xy 47 84)))
 	)
 
-	; Top/Bottom GND pours
 	(zone
 		(net 1)
 		(net_name "GND")

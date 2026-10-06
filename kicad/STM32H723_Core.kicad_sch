@@ -14,7 +14,6 @@
   )
   
   (lib_symbols
-    ;; STM32H723VGT6 Symbol Definition (LQFP100)
     (symbol "UFI:STM32H723VGT6"
       (pin_names
         (offset 1.016)
@@ -66,7 +65,6 @@
         )
       )
       
-      ;; Unit A - Power
       (symbol "STM32H723VGT6_1_0"
         (rectangle
           (start -15.24 40.64)
@@ -81,7 +79,6 @@
         )
       )
       (symbol "STM32H723VGT6_1_1"
-        ;; VDD Pins
         (pin power_in line
           (at -20.32 38.1 0)
           (length 5.08)
@@ -191,7 +188,6 @@
           )
         )
         
-        ;; VDDA
         (pin power_in line
           (at -20.32 20.32 0)
           (length 5.08)
@@ -211,7 +207,6 @@
           )
         )
         
-        ;; VBAT
         (pin power_in line
           (at -20.32 17.78 0)
           (length 5.08)
@@ -231,7 +226,6 @@
           )
         )
         
-        ;; VCAP
         (pin passive line
           (at -20.32 12.7 0)
           (length 5.08)
@@ -251,7 +245,6 @@
           )
         )
         
-        ;; VSS (Ground)
         (pin power_in line
           (at -20.32 -38.1 0)
           (length 5.08)
@@ -271,7 +264,6 @@
           )
         )
         
-        ;; NRST
         (pin input line
           (at -20.32 5.08 0)
           (length 5.08)
@@ -291,7 +283,6 @@
           )
         )
         
-        ;; BOOT0
         (pin input line
           (at -20.32 2.54 0)
           (length 5.08)
@@ -311,7 +302,6 @@
           )
         )
         
-        ;; HSE Oscillator
         (pin input line
           (at -20.32 -5.08 0)
           (length 5.08)
@@ -349,7 +339,6 @@
           )
         )
         
-        ;; USB HS
         (pin bidirectional line
           (at 20.32 38.1 180)
           (length 5.08)
@@ -387,7 +376,6 @@
           )
         )
         
-        ;; SWD Debug
         (pin bidirectional line
           (at 20.32 -30.48 180)
           (length 5.08)
@@ -443,7 +431,6 @@
           )
         )
         
-        ;; Flux Capture Pins (Timer Inputs)
         (pin input line
           (at 20.32 25.4 180)
           (length 5.08)
@@ -481,7 +468,6 @@
           )
         )
         
-        ;; FDD Control Outputs
         (pin output line
           (at 20.32 15.24 180)
           (length 5.08)
@@ -555,7 +541,6 @@
           )
         )
         
-        ;; LED Outputs
         (pin output line
           (at 20.32 -10.16 180)
           (length 5.08)
@@ -629,7 +614,6 @@
           )
         )
         
-        ;; IEC Bus
         (pin bidirectional line
           (at 20.32 0 180)
           (length 5.08)
@@ -687,7 +671,6 @@
       )
     )
     
-    ;; Crystal Symbol
     (symbol "UFI:Crystal_25MHz"
       (pin_names
         (offset 1.016)
@@ -800,9 +783,7 @@
     )
   )
   
-  ;; Schematic Content
   
-  ;; STM32H723 MCU Instance
   (symbol
     (lib_id "UFI:STM32H723VGT6")
     (at 127 101.6 0)
@@ -904,7 +885,6 @@
     )
   )
   
-  ;; 25MHz Crystal
   (symbol
     (lib_id "UFI:Crystal_25MHz")
     (at 63.5 106.68 0)
@@ -940,7 +920,6 @@
     )
   )
   
-  ;; Power symbols and nets
   (power_symbol
     (lib_id "power:+3V3")
     (at 88.9 55.88 0)
@@ -997,7 +976,6 @@
     )
   )
   
-  ;; Notes
   (text "STM32H723VGT6 - 550 MHz ARM Cortex-M7\n\nKey Features for Flux Capture:\n- 32-bit Timers with Input Capture\n- DMA for zero-copy transfers\n- 1MB Flash, 564KB SRAM\n- USB High-Speed (480 Mbit/s)\n\nClock: 25 MHz HSE → PLL → 550 MHz\nFlux Input: TIM2_CH1 (PA0)\nUSB: Internal HS PHY"
     (exclude_from_sim no)
     (at 177.8 63.5 0)
@@ -1010,7 +988,6 @@
     (uuid "text-notes-001")
   )
   
-  ;; Hierarchical Labels for inter-sheet connections
   (hierarchical_label "VDD_3V3"
     (shape input)
     (at 25.4 63.5 180)

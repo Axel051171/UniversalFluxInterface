@@ -289,9 +289,6 @@
 		(add_net "PCIE_TXP")
 	)
 
-	; ============================================================================
-	; BOARD OUTLINE - 160mm x 100mm with rounded corners
-	; ============================================================================
 	(gr_rect
 		(start 0 0)
 		(end 160 100)
@@ -301,19 +298,13 @@
 		(uuid "board-outline")
 	)
 
-	; Mounting holes (M3, 4 corners)
 	(gr_circle (center 4 4) (end 5.6 4) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m1"))
 	(gr_circle (center 156 4) (end 157.6 4) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m2"))
 	(gr_circle (center 4 96) (end 5.6 96) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m3"))
 	(gr_circle (center 156 96) (end 157.6 96) (stroke (width 0.15) (type solid)) (fill none) (layer "Edge.Cuts") (uuid "m4"))
 
-	; ============================================================================
-	; COMPONENT PLACEMENT - TOP SIDE (F.Cu)
-	; ============================================================================
 
-	; --- CM5 MODULE ZONE (Center-Left, 20-75mm X, 25-75mm Y) ---
 	
-	; CM5 Connector 1 (J6) - Position: X=25, Y=35
 	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
 		(layer "F.Cu")
 		(uuid "cm5-j6")
@@ -330,7 +321,6 @@
 		)
 	)
 
-	; CM5 Connector 2 (J7) - Position: X=25, Y=60
 	(footprint "UFI:Hirose_DF40C-100DP-0.4V"
 		(layer "F.Cu")
 		(uuid "cm5-j7")
@@ -347,9 +337,7 @@
 		)
 	)
 
-	; --- STM32H723 ZONE (Center-Right, 85-130mm X, 35-65mm Y) ---
 
-	; STM32H723ZGT6 (U1) - Position: X=105, Y=50
 	(footprint "UFI:LQFP-144_20x20mm_P0.5mm"
 		(layer "F.Cu")
 		(uuid "stm32-u1")
@@ -366,7 +354,6 @@
 		)
 	)
 
-	; 25MHz Crystal (Y1) - near STM32 OSC pins
 	(footprint "Crystal:Crystal_SMD_3215-4Pin_3.2x1.5mm"
 		(layer "F.Cu")
 		(uuid "xtal-y1")
@@ -383,7 +370,6 @@
 		)
 	)
 
-	; 32.768kHz Crystal (Y2) - near STM32 LSE pins
 	(footprint "Crystal:Crystal_SMD_2012-2Pin_2.0x1.2mm"
 		(layer "F.Cu")
 		(uuid "xtal-y2")
@@ -400,7 +386,6 @@
 		)
 	)
 
-	; SPI Flash (U2) - near STM32 QSPI pins
 	(footprint "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "flash-u2")
@@ -417,9 +402,7 @@
 		)
 	)
 
-	; --- POWER ZONE (Bottom-Left, 10-50mm X, 75-95mm Y) ---
 
-	; DC Jack (J16) - Board edge
 	(footprint "Connector_BarrelJack:BarrelJack_Horizontal"
 		(layer "F.Cu")
 		(uuid "dcjack-j16")
@@ -436,7 +419,6 @@
 		)
 	)
 
-	; USB-C Power (J8)
 	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 		(layer "F.Cu")
 		(uuid "usbc-pwr-j8")
@@ -453,7 +435,6 @@
 		)
 	)
 
-	; Buck Regulator 12V→5V (U10)
 	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "buck-u10")
@@ -470,7 +451,6 @@
 		)
 	)
 
-	; Buck Regulator 5V→3.3V (U11)
 	(footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 		(layer "F.Cu")
 		(uuid "buck-u11")
@@ -487,7 +467,6 @@
 		)
 	)
 
-	; Power Inductor L1
 	(footprint "Inductor_SMD:L_Bourns_SRN6045TA"
 		(layer "F.Cu")
 		(uuid "ind-l1")
@@ -504,7 +483,6 @@
 		)
 	)
 
-	; Power Inductor L2
 	(footprint "Inductor_SMD:L_Bourns_SRN6045TA"
 		(layer "F.Cu")
 		(uuid "ind-l2")
@@ -521,9 +499,7 @@
 		)
 	)
 
-	; --- FDD CONNECTOR ZONE (Top Edge, 15-95mm X, 5-20mm Y) ---
 
-	; FDD Connector 1 (J1) - 34-pin Shugart
 	(footprint "UFI:FDD_Header_34pin"
 		(layer "F.Cu")
 		(uuid "fdd-j1")
@@ -540,7 +516,6 @@
 		)
 	)
 
-	; FDD Connector 2 (J2) - 34-pin Shugart
 	(footprint "UFI:FDD_Header_34pin"
 		(layer "F.Cu")
 		(uuid "fdd-j2")
@@ -557,7 +532,6 @@
 		)
 	)
 
-	; Apple Disk II Connector (J3) - 19-pin
 	(footprint "UFI:Apple_Disk_II_19pin"
 		(layer "F.Cu")
 		(uuid "apple-j3")
@@ -574,9 +548,7 @@
 		)
 	)
 
-	; --- AMIGA & IEC ZONE (Top-Right, 100-155mm X, 5-25mm Y) ---
 
-	; Amiga DB-23 (J4)
 	(footprint "UFI:DSUB-23_Female_Horizontal"
 		(layer "F.Cu")
 		(uuid "amiga-j4")
@@ -593,7 +565,6 @@
 		)
 	)
 
-	; IEC DIN-6 (J5)
 	(footprint "UFI:DIN-6_Female_PCB"
 		(layer "F.Cu")
 		(uuid "iec-j5")
@@ -610,9 +581,7 @@
 		)
 	)
 
-	; --- INTERFACE ZONE (Right Side, 130-155mm X, 40-95mm Y) ---
 
-	; RJ45 Ethernet (J10)
 	(footprint "UFI:RJ45_Magjack_Tab-Down"
 		(layer "F.Cu")
 		(uuid "rj45-j10")
@@ -629,7 +598,6 @@
 		)
 	)
 
-	; HDMI Connector (J11)
 	(footprint "Connector_HDMI:HDMI_A_Molex_208658-1001_Horizontal"
 		(layer "F.Cu")
 		(uuid "hdmi-j11")
@@ -646,7 +614,6 @@
 		)
 	)
 
-	; USB-C Data (J9)
 	(footprint "UFI:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
 		(layer "F.Cu")
 		(uuid "usbc-data-j9")
@@ -663,7 +630,6 @@
 		)
 	)
 
-	; M.2 NVMe Slot (J12)
 	(footprint "UFI:M.2_Key_M_2280"
 		(layer "F.Cu")
 		(uuid "m2-j12")
@@ -680,7 +646,6 @@
 		)
 	)
 
-	; Expansion Header (J13) - 40-pin
 	(footprint "UFI:UFI_Expansion_Header_40pin"
 		(layer "F.Cu")
 		(uuid "exp-j13")
@@ -697,9 +662,7 @@
 		)
 	)
 
-	; --- LEVEL SHIFTERS (Between STM32 and FDD/IEC) ---
 
-	; Level Shifter U20 (FDD Data)
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "ls-u20")
@@ -716,7 +679,6 @@
 		)
 	)
 
-	; Level Shifter U21 (FDD Control)
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "ls-u21")
@@ -733,7 +695,6 @@
 		)
 	)
 
-	; Level Shifter U22 (Apple II)
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "ls-u22")
@@ -750,7 +711,6 @@
 		)
 	)
 
-	; Level Shifter U23 (Expansion)
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "ls-u23")
@@ -767,9 +727,7 @@
 		)
 	)
 
-	; --- BUTTONS & LEDs ---
 
-	; Reset Button (SW1)
 	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
 		(layer "F.Cu")
 		(uuid "btn-sw1")
@@ -786,7 +744,6 @@
 		)
 	)
 
-	; User Button (SW2)
 	(footprint "Button_Switch_SMD:SW_SPST_TL3342"
 		(layer "F.Cu")
 		(uuid "btn-sw2")
@@ -803,7 +760,6 @@
 		)
 	)
 
-	; Status LEDs
 	(footprint "LED_SMD:LED_0603_1608Metric"
 		(layer "F.Cu")
 		(uuid "led1")
@@ -833,7 +789,6 @@
 		(property "Value" "IEC" (at 0 2 0) (layer "F.Fab") (effects (font (size 0.6 0.6) (thickness 0.1))))
 	)
 
-	; --- DEBUG HEADER ---
 	(footprint "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical_SMD"
 		(layer "F.Cu")
 		(uuid "swd-j17")
@@ -850,9 +805,6 @@
 		)
 	)
 
-	; ============================================================================
-	; SILKSCREEN MARKINGS
-	; ============================================================================
 
 	(gr_text "UFI"
 		(at 80 50 0)
@@ -896,9 +848,6 @@
 		(effects (font (size 2 2) (thickness 0.3)) (justify left))
 	)
 
-	; ============================================================================
-	; COPPER POURS - GND PLANE (In1.Cu)
-	; ============================================================================
 
 	(zone
 		(net 1)
@@ -917,11 +866,7 @@
 		)
 	)
 
-	; ============================================================================
-	; COPPER POURS - POWER PLANES (In2.Cu) - Split into regions
-	; ============================================================================
 
-	; +5V Region (left half)
 	(zone
 		(net 3)
 		(net_name "+5V")
@@ -939,7 +884,6 @@
 		)
 	)
 
-	; +3V3 Region (right half)
 	(zone
 		(net 2)
 		(net_name "+3V3")
@@ -957,9 +901,6 @@
 		)
 	)
 
-	; ============================================================================
-	; TOP/BOTTOM GND POURS
-	; ============================================================================
 
 	(zone
 		(net 1)

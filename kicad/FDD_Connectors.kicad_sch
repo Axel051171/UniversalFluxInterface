@@ -14,7 +14,6 @@
   )
   
   (lib_symbols
-    ;; 34-pin Shugart FDD Connector
     (symbol "UFI:Conn_FDD_34pin"
       (pin_names
         (offset 1.016)
@@ -61,7 +60,6 @@
         )
       )
       (symbol "Conn_FDD_34pin_1_1"
-        ;; Odd pins (active low accent signals accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent accent)
         (pin passive line (at -12.7 40.64 0) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "1" (effects (font (size 1.0 1.0)))))
         (pin passive line (at -12.7 35.56 0) (length 5.08) (name "~{REDWC}" (effects (font (size 1.0 1.0)))) (number "3" (effects (font (size 1.0 1.0)))))
         (pin passive line (at -12.7 30.48 0) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "5" (effects (font (size 1.0 1.0)))))
@@ -79,7 +77,6 @@
         (pin passive line (at -12.7 -30.48 0) (length 5.08) (name "~{WPT}" (effects (font (size 1.0 1.0)))) (number "29" (effects (font (size 1.0 1.0)))))
         (pin passive line (at -12.7 -35.56 0) (length 5.08) (name "~{RDATA}" (effects (font (size 1.0 1.0)))) (number "31" (effects (font (size 1.0 1.0)))))
         (pin passive line (at -12.7 -40.64 0) (length 5.08) (name "~{SIDE1}" (effects (font (size 1.0 1.0)))) (number "33" (effects (font (size 1.0 1.0)))))
-        ;; Even pins (accent mostly GND)
         (pin passive line (at 12.7 40.64 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "2" (effects (font (size 1.0 1.0)))))
         (pin passive line (at 12.7 35.56 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "4" (effects (font (size 1.0 1.0)))))
         (pin passive line (at 12.7 30.48 180) (length 5.08) (name "GND" (effects (font (size 1.0 1.0)))) (number "6" (effects (font (size 1.0 1.0)))))
@@ -100,7 +97,6 @@
       )
     )
     
-    ;; 74LVC245 Level Shifter
     (symbol "UFI:74LVC245"
       (pin_names
         (offset 1.016)
@@ -163,7 +159,6 @@
       )
     )
     
-    ;; DB-23 Amiga External
     (symbol "UFI:Conn_Amiga_DB23"
       (pin_names
         (offset 1.016)
@@ -237,7 +232,6 @@
     )
   )
   
-  ;; Notes
   (text "FDD Interface Pinouts:\n\n34-pin Shugart (PC/Atari ST/Amiga internal):\n- Active Low signals\n- 74LVC245 level shift 3.3V ↔ 5V\n- Pin 3: Reduced Write Current (optional)\n\nDB-23 Amiga External:\n- Active Low signals  \n- ID pins for drive identification\n- Accent +12V/+5V power supply\n\n20-pin Apple Disk II:\n- Phase signals for stepper\n- Different pinout than Shugart\n\nSync Sensor Ports:\n- 3-pin connector (VCC, GND, Signal)\n- For Apple drives without index sensor"
     (exclude_from_sim no)
     (at 177.8 38.1 0)
@@ -250,7 +244,6 @@
     (uuid "text-fdd-notes")
   )
   
-  ;; Hierarchical Labels
   (hierarchical_label "FDD_RDATA"
     (shape input)
     (at 25.4 50.8 180)

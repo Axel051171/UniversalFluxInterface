@@ -14,7 +14,6 @@
   )
   
   (lib_symbols
-    ;; LM2596 Buck Regulator
     (symbol "UFI:LM2596-5.0"
       (pin_names
         (offset 1.016)
@@ -154,7 +153,6 @@
       )
     )
     
-    ;; AMS1117-3.3 LDO
     (symbol "UFI:AMS1117-3.3"
       (pin_names
         (offset 1.016)
@@ -258,7 +256,6 @@
       )
     )
     
-    ;; Barrel Jack
     (symbol "UFI:Barrel_Jack"
       (pin_names
         (offset 1.016)
@@ -383,7 +380,6 @@
     )
   )
   
-  ;; Notes
   (text "Power Architecture:\n\n┌─────────────┐\n│  12V DC IN  │ (Barrel Jack / CM5 Supply)\n└──────┬──────┘\n       │\n       ├──────────────────→ 12V Rail (FDD Motors)\n       │\n  ┌────▼────┐\n  │ LM2596  │\n  │  5.0V   │\n  └────┬────┘\n       │\n       ├──────────────────→ 5V Rail (FDD Logic, USB)\n       │\n  ┌────▼────┐\n  │AMS1117  │\n  │  3.3V   │\n  └────┬────┘\n       │\n       └──────────────────→ 3.3V Rail (MCU, Level Shifters)\n\nProtection:\n- Input polarity protection (P-FET)\n- Overcurrent fuses\n- TVS diodes on all rails"
     (exclude_from_sim no)
     (at 25.4 38.1 0)
@@ -396,7 +392,6 @@
     (uuid "text-power-notes")
   )
   
-  ;; Hierarchical Labels
   (hierarchical_label "VIN_12V"
     (shape input)
     (at 25.4 127 180)

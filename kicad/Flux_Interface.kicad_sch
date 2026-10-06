@@ -15,7 +15,6 @@
   
   (lib_symbols)
   
-  ;; Notes
   (text "Flux Capture Architecture\n\nSignal Flow:\n  FDD RDATA ──→ Level Shift ──→ Comparator ──→ TIM2_CH1 (Input Capture)\n                (74LVC245)     (LM311)        (STM32H723)\n\nTiming Resolution:\n- STM32H723 Timer Clock: 275 MHz (after prescaler)\n- Input Capture Resolution: ~3.6 ns\n- Effective Flux Resolution: ~100 MHz equivalent\n- Better than Greaseweazle (84 MHz) and KryoFlux (~72 MHz)\n\nLevel Shifting:\n- FDD signals: 5V TTL (active low)\n- MCU inputs: 3.3V LVCMOS\n- 74LVC245: Bidirectional, auto-direction sensing\n- Separate shifters for input/output paths\n\nAnalog Conditioning (Optional):\n- LM311 comparator for pulse shaping\n- Adjustable threshold via potentiometer\n- Low-pass filter for noise rejection\n\nDMA Configuration:\n- TIM2 Input Capture → DMA1 Stream\n- Circular buffer in DTCM RAM\n- Zero-copy transfer to USB\n\nWrite Path:\n- TIM3 Output Compare for WDATA generation\n- Precompensation via software timing adjustment\n- Hardware gate control (WGATE)"
     (exclude_from_sim no)
     (at 25.4 38.1 0)
@@ -41,7 +40,6 @@
     (uuid "text-timing-diagram")
   )
   
-  ;; Hierarchical Labels
   (hierarchical_label "FLUX_RDATA_5V"
     (shape input)
     (at 25.4 127 180)
