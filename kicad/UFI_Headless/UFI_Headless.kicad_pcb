@@ -31821,6 +31821,17 @@
 			)
 		)
 	)
+	(gr_text "5V"
+		(at 14.25 74.65 0)
+		(layer "F.SilkS")
+		(uuid "9845514d-9df3-411c-bcc4-b0b8cddff3bf")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
 	(gr_text "IEC 1=SRQ 6=RST"
 		(at 98.5 31 0)
 		(layer "F.SilkS")
@@ -31863,6 +31874,30 @@
 				(size 1 1)
 				(thickness 0.15)
 			)
+		)
+	)
+	(gr_text "JP2 1-2 GND / 2-3 +5V (PS/2 only)"
+		(at 12.5 76.65 0)
+		(layer "B.SilkS")
+		(uuid "ce5f4fec-4855-45a2-8c25-de606a1d4afe")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+			(justify mirror)
+		)
+	)
+	(gr_text "JP1 bridge: J6.6=DRATE"
+		(at 19.25 73.65 0)
+		(layer "B.SilkS")
+		(uuid "28ca5252-ca32-4f35-861d-35c3d54be181")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+			(justify mirror)
 		)
 	)
 	(gr_text "UFI Headless v0.1"
