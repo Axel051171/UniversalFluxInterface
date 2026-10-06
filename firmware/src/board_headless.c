@@ -16,7 +16,7 @@ const gpio_pin_t PIN_FDD_DIR         = {GPIOE, GPIO_PIN_12};
 const gpio_pin_t PIN_FDD_SIDE_SEL    = {GPIOE, GPIO_PIN_13};
 const gpio_pin_t PIN_FDD_WGATE       = {GPIOE, GPIO_PIN_14};
 const gpio_pin_t PIN_FDD_DENSITY     = {GPIOE, GPIO_PIN_15};
-const gpio_pin_t PIN_FDD_DRATE       = {GPIOE, GPIO_PIN_6};
+const gpio_pin_t PIN_FDD_DRATE       = {GPIOF, GPIO_PIN_11};
 const gpio_pin_t PIN_FDD_WDATA       = {GPIOA, GPIO_PIN_6};
 
 /* FDD inputs (LVC14 inverters) */
@@ -69,13 +69,16 @@ void board_gpio_init(void)
 
     /* Bus outputs: latch the released level before switching to output mode,
      * so no line glitches to "asserted" during start-up. */
-    const uint16_t fdd_e = GPIO_PIN_6 | GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 |
+    const uint16_t fdd_e = GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 |
                            GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
     const uint16_t iec_d = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
     HAL_GPIO_WritePin(GPIOE, fdd_e, BUS_OUT_RELEASE);
     HAL_GPIO_WritePin(GPIOD, iec_d, BUS_OUT_RELEASE);
     HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, BUS_OUT_RELEASE);
+    HAL_GPIO_WritePin(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, BUS_OUT_RELEASE);
     init_pins(GPIOE, fdd_e, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_HIGH, 0);
+    init_pins(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+              GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOD, iec_d, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_MEDIUM, 0);
     init_pins(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_VERY_HIGH, 0);

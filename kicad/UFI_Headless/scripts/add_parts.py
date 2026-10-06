@@ -9,6 +9,7 @@
 usage: python add_parts.py <netlist.net> <board> REF:x:y[:rot] ...
 """
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ STD = Path(r"C:\Program Files\KiCad\10.0\share\kicad\footprints")
 MM, T = pcbnew.FromMM, pcbnew.ToMM
 MARGIN = 0.3        # courtyard clearance to other parts (mm)
 EDGE = 1.0          # keep this far from the board outline (mm)
-SEARCH = 14.0       # search radius around the target (mm)
+SEARCH = float(os.environ.get("ECO_SEARCH", 14.0))  # search radius around the target (mm)
 STEP = 0.5
 
 net_file, path = sys.argv[1:3]

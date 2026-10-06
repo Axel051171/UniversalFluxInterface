@@ -37,7 +37,7 @@ extern const gpio_pin_t PIN_FDD_DIR;        /* PE12 */
 extern const gpio_pin_t PIN_FDD_SIDE_SEL;   /* PE13 */
 extern const gpio_pin_t PIN_FDD_WGATE;      /* PE14 */
 extern const gpio_pin_t PIN_FDD_DENSITY;    /* PE15 */
-extern const gpio_pin_t PIN_FDD_DRATE;      /* PE6, J6 pin 6 via solder jumper JP1 (v0.4) */
+extern const gpio_pin_t PIN_FDD_DRATE;      /* PF11, J6 pin 6 via solder jumper JP1 (v0.4) */
 extern const gpio_pin_t PIN_FDD_WDATA;      /* PA6, TIM3_CH1 (AF2) write pulses */
 
 /* ---- FDD inputs ---------------------------------------------------------- */

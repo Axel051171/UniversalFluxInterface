@@ -241,6 +241,7 @@ GPIO = {
     "PD11": "PSRAM_IO0", "PD12": "PSRAM_IO1", "PB13": "PSRAM_IO2", "PD13": "PSRAM_IO3",
     # v0.3: USB-C CC voltage (across Rd 5.1k) on ADC1 INP16 / INP15 -> source current 0.5/1.5/3 A
     "PA0": "G:CC1", "PA3": "G:CC2",
+    "PF11": "G:FDD_DRATE",  # v0.4: DRATE for 3-mode drives (J6 pin 6 via solder jumper JP1)
 }
 
 
@@ -379,7 +380,8 @@ FDD_OUT = [  # MCU net -> bus net (active low on bus, MCU low = asserted)
     ("FDD_MOTOR_A", "FD_MOTOR_A"), ("FDD_MOTOR_B", "FD_MOTOR_B"),
     ("FDD_DRVSEL_A", "FD_DRVSEL_A"), ("FDD_DRVSEL_B", "FD_DRVSEL_B"),
     ("FDD_STEP", "FD_STEP"), ("FDD_DIR", "FD_DIR"), ("FDD_SIDE", "FD_SIDE"),
-    ("FDD_WGATE", "FD_WGATE"), ("FDD_WDATA", "FD_WDATA"), ("FDD_DENSITY", "FD_DENSITY")]
+    ("FDD_WGATE", "FD_WGATE"), ("FDD_WDATA", "FD_WDATA"), ("FDD_DENSITY", "FD_DENSITY"),
+    ("FDD_DRATE", "FD_DRATE")]  # v0.4: spare LS07 gate, reaches J6 pin 6 only via JP1
 FDD_IN = [  # bus net -> MCU net (inverted: MCU high = asserted)
     ("FD_INDEX", "FDD_INDEX"), ("FD_TRK0", "FDD_TRK0"), ("FD_WPROT", "FDD_WPROT"),
     ("FD_RDATA", "FDD_RDATA"), ("FD_DSKCHG", "FDD_DSKCHG"), ("FD_READY", "FDD_READY")]
@@ -420,11 +422,11 @@ def build_fdd_conn() -> Sheet:
             "   Adapter cable to DB23. SEL1B shares DRVSEL_B, MTRXD shares MOTOR_B. Only one drive at a time.\n"
             "   CHECK: docs/Amiga_DB23_Adapter_Cable.md uses a different (inconsistent) pinout.", 20, 20, 1.5)
     pc = {str(n): "GND" for n in range(1, 34, 2)}
-    pc.update({"2": "FD_DENSITY", "4": "NC", "6": "NC", "8": "FD_INDEX", "10": "FD_MOTOR_A",
+    pc.update({"2": "FD_DENSITY", "3": "FD_PIN3", "4": "NC", "6": "FD_PIN6", "8": "FD_INDEX", "10": "FD_MOTOR_A",
                "12": "FD_DRVSEL_B", "14": "FD_DRVSEL_A", "16": "FD_MOTOR_B", "18": "FD_DIR",
                "20": "FD_STEP", "22": "FD_WDATA", "24": "FD_WGATE", "26": "FD_TRK0",
                "28": "FD_WPROT", "30": "FD_RDATA", "32": "FD_SIDE", "34": "FD_DSKCHG"})
-    pc = {k: (v if v in ("GND", "NC") else f"G:{v}") for k, v in pc.items()}
+    pc = {k: (v if v in ("GND", "NC", "FD_PIN3", "FD_PIN6") else f"G:{v}") for k, v in pc.items()}
     sh.part("Connector_Generic", "Conn_02x17_Odd_Even", ref("J"), "FDD_34PIN", 90, 110, pc,
             "Connector_IDC:IDC-Header_2x17_P2.54mm_Vertical", {"Note": "IBM PC / Shugart floppy bus"})
 
@@ -449,6 +451,18 @@ def build_fdd_conn() -> Sheet:
                                       "MOTOR_A")]  # DRVSEL_A only reaches internal J6
     for i in range(3):
         esd5(sh, f"D{9 + i}", esd_nets[i * 5:(i + 1) * 5], 120 + i * 40, 250)
+
+    # v0.4 (ideas from Monster FDC, concept only): J6 pin 6 = DRATE for 3-mode drives via
+    # open jumper JP1; J6 pin 3 = GND (JP2 bridged 1-2) or +5V for PS/2 drives (cut, bridge 2-3)
+    sh.text("v0.4: JP1 open = J6 pin 6 unused, bridge = DRATE (3-mode drives).\n"
+            "JP2 default 1-2 = pin 3 GND; 2-3 = +5V (fused FDD_5V) ONLY for PS/2 drives that take power on pin 3.",
+            20, 280, 1.27)
+    sh.part("Jumper", "SolderJumper_2_Open", "JP1", "DRATE", 120, 300,
+            {"1": "G:FD_DRATE", "2": "FD_PIN6"}, "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm",
+            in_bom=False)
+    sh.part("Jumper", "SolderJumper_3_Bridged12", "JP2", "PIN3_GND/5V", 160, 300,
+            {"1": "GND", "2": "FD_PIN3", "3": "G:FDD_5V"},
+            "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm", in_bom=False)
     return sh
 
 
