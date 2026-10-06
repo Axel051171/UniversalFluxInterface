@@ -133,6 +133,9 @@ typedef enum {
     UFI_CMD_SEEK            = 0x13,
     UFI_CMD_RECALIBRATE     = 0x14,
     UFI_CMD_SELECT_SIDE     = 0x15,
+    UFI_CMD_CHECK_DISK      = 0x16, // -> [changed, present]
+    UFI_CMD_DRIVE_TIMING    = 0x17, // no args: get; + drive_timing_t (14 bytes): set
+    UFI_CMD_AMIGA_ID        = 0x18, // -> u32 drive ID
     
     // Flux-Capture
     UFI_CMD_READ_TRACK      = 0x20,
@@ -166,6 +169,17 @@ typedef struct __packed {
     uint8_t status;         // 0=OK, sonst Fehler
     uint16_t length;        // Länge der Daten
 } ufi_response_header_t;
+
+// Drive timing (wire format = in-memory: 7 x u16 little endian)
+typedef struct __packed {
+    uint16_t step_pulse_us;
+    uint16_t step_rate_us;
+    uint16_t settle_us;         // head settle after a seek
+    uint16_t dir_change_us;     // extra settle when the step direction reverses
+    uint16_t side_settle_us;
+    uint16_t spinup_ms;
+    uint16_t select_settle_us;
+} drive_timing_t;
 
 // GET_STATUS payload (wire format, 10 bytes)
 typedef struct __packed {
@@ -241,6 +255,10 @@ bool ufi_drive_write_protected(void);
 bool ufi_drive_disk_changed(void);
 bool ufi_drive_ready(void);
 int ufi_drive_density_line(bool assert);   // 34-pin pin 2; meaning is drive dependent
+drive_timing_t ufi_drive_get_timing(void);
+void ufi_drive_set_timing(const drive_timing_t* t);
+int ufi_drive_check_disk(bool* changed, bool* present);
+int ufi_drive_amiga_id(uint32_t* id);
 #if BOARD_HAS_APPLE
 int ufi_drive_apple_step(int direction);
 #endif

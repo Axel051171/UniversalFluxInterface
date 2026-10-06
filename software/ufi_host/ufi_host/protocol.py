@@ -20,6 +20,12 @@ MAX_REVOLUTIONS = 20                 # firmware REVOLUTIONS_BUFFER
 # command codes (ufi_command_t)
 NOP, GET_INFO, GET_STATUS = 0x00, 0x01, 0x02
 SELECT_DRIVE, MOTOR_ON, MOTOR_OFF, SEEK, RECALIBRATE, SELECT_SIDE = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15
+CHECK_DISK, DRIVE_TIMING, AMIGA_ID = 0x16, 0x17, 0x18
+TIMING_FIELDS = ("step_pulse_us", "step_rate_us", "settle_us", "dir_change_us",
+                 "side_settle_us", "spinup_ms", "select_settle_us")
+TIMING = struct.Struct("<7H")
+AMIGA_IDS = {0xFFFFFFFF: '3.5" DD', 0xAAAAAAAA: '3.5" HD (HD media)',
+             0x55555555: '5.25" 40 track', 0x00000000: "no drive"}
 READ_TRACK, READ_TRACK_RAW, EVT_READ_DONE, EVT_FLUX, ABORT_READ = 0x20, 0x21, 0x2D, 0x2E, 0x2F
 WRITE_TRACK, ERASE_TRACK, WRITE_TRACK_VERIFY = 0x30, 0x31, 0x32
 IEC_RESET, IEC_SEND, IEC_RECEIVE = 0x40, 0x41, 0x42
@@ -145,6 +151,27 @@ class Device:
 
     def side(self, side: int) -> None:
         self.command(SELECT_SIDE, side)
+
+    def check_disk(self) -> tuple[bool, bool]:
+        """-> (disk changed since last check, disk present); steps once to re-arm DSKCHG."""
+        changed, present = self.command(CHECK_DISK, timeout=3.0)
+        return bool(changed), bool(present)
+
+    def timing(self, **changes: int) -> dict[str, int]:
+        """Read drive timings; keyword arguments (TIMING_FIELDS) change them."""
+        cur = dict(zip(TIMING_FIELDS, TIMING.unpack(self.command(DRIVE_TIMING))))
+        if changes:
+            unknown = set(changes) - set(TIMING_FIELDS)
+            if unknown:
+                raise ValueError(f"unknown timing field(s): {', '.join(sorted(unknown))}")
+            cur.update(changes)
+            cur = dict(zip(TIMING_FIELDS, TIMING.unpack(
+                self.command(DRIVE_TIMING, *TIMING.pack(*(cur[f] for f in TIMING_FIELDS))))))
+        return cur
+
+    def amiga_id(self) -> tuple[int, str]:
+        (v,) = struct.unpack("<I", self.command(AMIGA_ID))
+        return v, AMIGA_IDS.get(v, "unknown")
 
     def read_track(self, track: int, side: int, revolutions: int = 3) -> Capture:
         revolutions = max(1, min(revolutions, MAX_REVOLUTIONS))

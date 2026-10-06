@@ -19,12 +19,18 @@ static drive_type_t g_current_drive = DRIVE_NONE;
 static drive_status_t g_drive_status[DRIVE_IEC + 1];
 
 // Timing-Konstanten (µs)
-#define STEP_PULSE_US       3
-#define STEP_RATE_US        3000
-#define SETTLE_TIME_US      15000
-#define MOTOR_SPINUP_MS     500
+// Timing (host-tunable per drive via UFI_CMD_DRIVE_TIMING, defaults = PC/Amiga safe values)
+static drive_timing_t g_timing = {
+    .step_pulse_us = 3, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
+    .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000,
+};
+#define STEP_PULSE_US       (g_timing.step_pulse_us)
+#define STEP_RATE_US        (g_timing.step_rate_us)
+#define SETTLE_TIME_US      (g_timing.settle_us)
+#define MOTOR_SPINUP_MS     (g_timing.spinup_ms)
 #define DIR_SETUP_US        1
-#define SELECT_SETTLE_US    10000
+#define SELECT_SETTLE_US    (g_timing.select_settle_us)
+static int g_last_dir;              /* +1 / -1, for the direction-change settle */
 
 static void delay_us(uint32_t us)
 {
@@ -201,6 +207,10 @@ int ufi_drive_step(int direction)
     /* DIR asserted = step in (towards the spindle) */
     bus_out(&PIN_FDD_DIR, direction > 0);
     delay_us(DIR_SETUP_US);
+    if (direction != g_last_dir && g_timing.dir_change_us) {
+        delay_us(g_timing.dir_change_us);
+    }
+    g_last_dir = direction;
 
     bus_out(&PIN_FDD_STEP, true);
     delay_us(STEP_PULSE_US);
@@ -286,7 +296,7 @@ int ufi_drive_select_side(uint8_t side)
     /* SIDE asserted (low) = head 1 */
     bus_out(&PIN_FDD_SIDE_SEL, side != 0);
     g_drive_status[g_current_drive].current_side = side;
-    delay_us(100);
+    delay_us(g_timing.side_settle_us);
     return UFI_OK;
 }
 
@@ -333,4 +343,73 @@ drive_status_t ufi_drive_get_status(void)
     status->disk_changed = ufi_drive_disk_changed();
     status->ready = ufi_drive_ready();
     return *status;
+}
+
+/* ============================================================================
+ * TIMING / DISK CHECK / AMIGA DRIVE ID
+ * ============================================================================ */
+
+drive_timing_t ufi_drive_get_timing(void)
+{
+    return g_timing;
+}
+
+void ufi_drive_set_timing(const drive_timing_t* t)
+{
+    g_timing = *t;
+    if (g_timing.step_pulse_us == 0) {
+        g_timing.step_pulse_us = 1;
+    }
+}
+
+/* DSKCHG stays asserted after a media change until the head steps with a disk in the
+ * drive.  Read it with the drive selected, then step once (away and back) to re-arm it;
+ * if it is still asserted afterwards there is no disk. */
+int ufi_drive_check_disk(bool* changed, bool* present)
+{
+    if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    *changed = ufi_drive_disk_changed();
+    if (*changed) {
+        const int dir = ufi_drive_at_track0() ? 1 : -1;
+        ufi_drive_step(dir);
+        ufi_drive_step(-dir);
+        delay_us(SETTLE_TIME_US);
+    }
+    *present = !ufi_drive_disk_changed();
+    return UFI_OK;
+}
+
+/* Amiga drive identification (Amiga HRM / Linux amiflop fd_get_drive_id, concept only):
+ * motor on + off via the select latch resets the ID shift register, then 32 select
+ * pulses shift the ID out on /RDY (asserted = 1).  0xFFFFFFFF 3.5" DD, 0xAAAAAAAA 3.5" HD
+ * (HD media), 0x55555555 5.25" 40 track, 0x00000000 no drive. */
+int ufi_drive_amiga_id(uint32_t* id)
+{
+    if (g_current_drive != DRIVE_AMIGA) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    const gpio_pin_t* sel = &PIN_FDD_DRV_SEL_B;
+    bus_out(sel, false);
+    for (int on = 1; on >= 0; on--) {           /* motor on, then off: resets the ID */
+        bus_out(&PIN_FDD_MOTOR_B, on);
+        delay_us(2);
+        bus_out(sel, true);
+        delay_us(2);
+        bus_out(sel, false);
+        delay_us(2);
+    }
+    uint32_t v = 0;
+    for (int i = 0; i < 32; i++) {
+        bus_out(sel, true);
+        delay_us(2);
+        v = (v << 1) | (bus_in(&PIN_FDD_READY) ? 1u : 0u);
+        bus_out(sel, false);
+        delay_us(2);
+    }
+    bus_out(sel, true);                         /* leave the drive selected, motor off */
+    g_drive_status[DRIVE_AMIGA].motor_on = false;
+    *id = v;
+    return UFI_OK;
 }

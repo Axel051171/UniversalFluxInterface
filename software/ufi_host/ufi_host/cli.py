@@ -73,8 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("info", "status", "selftest", "rpm", "recal", "abort", "iec-reset", "iec-recv",
-                 "reset", "bootloader"):
+                 "reset", "bootloader", "check-disk", "amiga-id"):
         sub.add_parser(name)
+    sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000").add_argument(
+        "set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
     sub.add_parser("seek").add_argument("track", type=int)
@@ -129,6 +131,16 @@ def main(argv: list[str] | None = None) -> int:
             dev.recalibrate()
         elif a.cmd == "side":
             dev.side(a.side)
+        elif a.cmd == "check-disk":
+            changed, present = dev.check_disk()
+            print(f"disk {'present' if present else 'MISSING'}" + (", changed" if changed else ""))
+        elif a.cmd == "amiga-id":
+            v, name = dev.amiga_id()
+            print(f"0x{v:08X}  {name}")
+        elif a.cmd == "timing":
+            changes = {k: int(v, 0) for k, v in (s.split("=", 1) for s in a.set)}
+            for k, v in dev.timing(**changes).items():
+                print(f"{k:18} {v}")
         elif a.cmd == "read":
             cap = dev.read_track(a.track, a.side, a.revs)
             print(f"track {a.track}.{a.side}:\n{_summary(cap)}")

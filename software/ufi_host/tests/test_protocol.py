@@ -53,6 +53,14 @@ class FakeDevice:
             self._reply(cmd)
         elif cmd == P.IEC_RECEIVE:
             self._reply(cmd, 0, bytes([0x42, 1]))
+        elif cmd == P.CHECK_DISK:
+            self._reply(cmd, 0, bytes([1, 1]))
+        elif cmd == P.AMIGA_ID:
+            self._reply(cmd, 0, struct.pack("<I", 0xAAAAAAAA))
+        elif cmd == P.DRIVE_TIMING:
+            if len(args) >= P.TIMING.size:
+                self.timing = bytes(args[:P.TIMING.size])
+            self._reply(cmd, 0, getattr(self, "timing", P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000)))
         else:
             self._reply(cmd)
         return len(data)
@@ -110,6 +118,23 @@ def test_write_track_sends_header_then_deltas_and_waits_for_event():
 
 def test_iec_receive_returns_byte_and_eoi():
     assert P.Device(FakeDevice()).iec_receive() == (0x42, True)
+
+
+def test_check_disk_and_amiga_id():
+    dev = P.Device(FakeDevice())
+    assert dev.check_disk() == (True, True)
+    assert dev.amiga_id() == (0xAAAAAAAA, '3.5" HD (HD media)')
+
+
+def test_timing_get_and_set():
+    fake = FakeDevice()
+    dev = P.Device(fake)
+    assert dev.timing()["step_rate_us"] == 3000
+    t = dev.timing(step_rate_us=6000, spinup_ms=750)
+    assert t["step_rate_us"] == 6000 and t["spinup_ms"] == 750 and t["settle_us"] == 15000
+    assert fake.commands[-1][0] == P.DRIVE_TIMING and len(fake.commands[-1][1]) == 14
+    with pytest.raises(ValueError):
+        dev.timing(warp=1)
 
 
 def test_timeout_when_device_is_silent():

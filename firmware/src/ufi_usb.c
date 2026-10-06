@@ -56,6 +56,7 @@ USBD_HandleTypeDef hUsbDevice;
 // Command Buffer (filled from the CDC receive callback)
 static uint8_t cmd_buffer[64];
 static volatile uint8_t cmd_ready = 0;
+static volatile uint32_t cmd_len = 0;
 
 /* ============================================================================
  * HELPER FUNCTIONS
@@ -138,6 +139,7 @@ void ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
     }
     if (len > 0 && len <= sizeof(cmd_buffer) && !cmd_ready) {
         memcpy(cmd_buffer, buf, len);
+        cmd_len = len;
         cmd_ready = 1;
     }
 }
@@ -276,6 +278,29 @@ int ufi_usb_process_command(void) {
         case UFI_CMD_SELECT_SIDE:
             reply(cmd, st(ufi_drive_select_side(cmd_buffer[1])), NULL, 0);
             break;
+        case UFI_CMD_CHECK_DISK: {
+            bool changed = false, present = false;
+            int ret = ufi_drive_check_disk(&changed, &present);
+            const uint8_t r[2] = {changed, present};
+            reply(cmd, st(ret), r, ret == UFI_OK ? 2 : 0);
+            break;
+        }
+        case UFI_CMD_DRIVE_TIMING: {
+            if (cmd_len >= 1 + sizeof(drive_timing_t)) {
+                drive_timing_t t;
+                memcpy(&t, &cmd_buffer[1], sizeof(t));
+                ufi_drive_set_timing(&t);
+            }
+            const drive_timing_t cur = ufi_drive_get_timing();
+            reply(cmd, 0, &cur, sizeof(cur));
+            break;
+        }
+        case UFI_CMD_AMIGA_ID: {
+            uint32_t id = 0;
+            int ret = ufi_drive_amiga_id(&id);
+            reply(cmd, st(ret), &id, ret == UFI_OK ? 4 : 0);
+            break;
+        }
 
         case UFI_CMD_READ_TRACK:
         case UFI_CMD_READ_TRACK_RAW: {
