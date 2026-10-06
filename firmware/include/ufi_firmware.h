@@ -138,6 +138,8 @@ typedef enum {
     UFI_CMD_READ_TRACK      = 0x20,
     UFI_CMD_READ_TRACK_RAW  = 0x21, // Mehrere Umdrehungen
     UFI_CMD_ABORT_READ      = 0x2F,
+    UFI_EVT_FLUX            = 0x2E, // device -> host: flux_packet_header_t + samples
+    UFI_EVT_READ_DONE       = 0x2D, // device -> host: payload [revolutions sent]
     
     // Flux-Write (für Disk-Erstellung)
     UFI_CMD_WRITE_TRACK         = 0x30,
@@ -165,7 +167,22 @@ typedef struct __packed {
     uint16_t length;        // Länge der Daten
 } ufi_response_header_t;
 
-// Flux-Daten Paket
+// GET_STATUS payload (wire format, 10 bytes)
+typedef struct __packed {
+    uint8_t type;           // drive_type_t
+    uint8_t motor_on;
+    uint8_t write_protected;
+    uint8_t track0;
+    uint8_t disk_changed;
+    uint8_t ready;
+    uint8_t current_track;
+    uint8_t current_side;
+    uint16_t rpm;
+} drive_status_wire_t;
+
+// Flux-Daten Paket: every device message starts with ufi_response_header_t;
+// a revolution is {UFI_EVT_FLUX, 0, 12} + this header + sample_count x u32,
+// a capture ends with {UFI_EVT_READ_DONE, status, 1} + [revolutions sent]
 typedef struct __packed {
     uint8_t track;
     uint8_t side;
@@ -238,6 +255,7 @@ int ufi_iec_atn(bool state);
 int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data);
 int ufi_usb_process_command(void);
 int ufi_usb_send_event(uint8_t command, int result);
+int ufi_usb_send_read_done(int result, uint8_t revolutions);
 
 /* ============================================================================
  * WRITE SUPPORT (ufi_write.c)

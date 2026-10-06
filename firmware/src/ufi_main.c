@@ -141,8 +141,11 @@ static void send_capture(void)
             .index_time = rev->index_time,
             .sample_count = rev->count,
         };
-        ufi_usb_send_flux(&header, rev->samples);
+        if (ufi_usb_send_flux(&header, rev->samples) != UFI_OK) {
+            return;                     /* host gone: no READ_DONE either */
+        }
     }
+    ufi_usb_send_read_done(g_capture.error_code == 1 ? UFI_ERR_BUFFER_FULL : UFI_OK, n);
 }
 
 void ufi_main_loop(void)
@@ -163,6 +166,8 @@ void ufi_main_loop(void)
                 led_set(&PIN_LED_FDD, false);
                 break;
             case CAPTURE_ERROR:
+                ufi_usb_send_read_done(g_capture.error_code == 2 ? UFI_ERR_DMA : UFI_ERR_BUFFER_FULL, 0);
+                g_capture.state = CAPTURE_IDLE;
                 led_set(&PIN_LED_FDD, false);
                 led_set(&PIN_LED_ERR, true);
                 break;

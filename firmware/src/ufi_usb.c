@@ -148,13 +148,22 @@ void ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
 
 /* Packet = flux_packet_header_t followed by sample_count x uint32 timestamps */
 int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data) {
-    static flux_packet_header_t hdr;    /* must outlive the transfer */
-    hdr = *header;
-    int ret = usb_tx_blocking((const uint8_t*)&hdr, sizeof(hdr));
+    /* {UFI_EVT_FLUX, 0, 12} + flux header in one transfer, then the samples */
+    static uint8_t msg[sizeof(ufi_response_header_t) + sizeof(flux_packet_header_t)];
+    const ufi_response_header_t rh = {.command = UFI_EVT_FLUX, .status = 0,
+                                      .length = sizeof(flux_packet_header_t)};
+    memcpy(msg, &rh, sizeof(rh));
+    memcpy(msg + sizeof(rh), header, sizeof(*header));
+    int ret = usb_tx_blocking(msg, sizeof(msg));
     if (ret == UFI_OK) {
-        ret = usb_tx_blocking((const uint8_t*)data, hdr.sample_count * sizeof(flux_sample_t));
+        ret = usb_tx_blocking((const uint8_t*)data, header->sample_count * sizeof(flux_sample_t));
     }
     return ret;
+}
+
+/* End of a capture: status = error code of the capture (0 = all revolutions) */
+int ufi_usb_send_read_done(int result, uint8_t revolutions) {
+    return reply(UFI_EVT_READ_DONE, st(result), &revolutions, 1);
 }
 
 /* Unsolicited completion notice (e.g. write finished) */
@@ -238,8 +247,14 @@ int ufi_usb_process_command(void) {
         }
 
         case UFI_CMD_GET_STATUS: {
-            drive_status_t s = ufi_drive_get_status();
-            reply(cmd, 0, &s, sizeof(s));
+            const drive_status_t s = ufi_drive_get_status();
+            const drive_status_wire_t w = {
+                .type = (uint8_t)s.type, .motor_on = s.motor_on,
+                .write_protected = s.write_protected, .track0 = s.track0,
+                .disk_changed = s.disk_changed, .ready = s.ready,
+                .current_track = s.current_track, .current_side = s.current_side,
+                .rpm = s.rpm};
+            reply(cmd, 0, &w, sizeof(w));
             break;
         }
 
