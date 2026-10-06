@@ -173,7 +173,7 @@ UFI Headless: Ausgänge über SN74LS07 (Open Collector, 40 mA), Eingänge über 
 
 ## Hinweise
 
-1. **Stromversorgung:** Das Laufwerk wird über das Kabel mit +5V und +12V versorgt. Sicherstellen dass das UFI-Netzteil ausreichend Leistung liefert.
+1. **Stromversorgung:** Das Laufwerk wird über das Kabel mit +5V und +12V versorgt. Sicherstellen dass das UFI-Netzteil ausreichend Leistung liefert. UFI Headless v0.2: J7 Pin 12/23 sind über Polyfuses (1,1 A) abgesichert, die Busleitungen per ESD-Arrays geschützt.
 
 2. **Drive Select:** Standard ist /SEL1 (Pin 13). Bei mehreren Laufwerken /SEL2 oder /SEL3 verwenden.
 

@@ -22,8 +22,9 @@ def read_netlist(path: str | Path):
             "value": str(child(c, "value")[1]),
             "footprint": str(child(c, "footprint")[1]) if child(c, "footprint") else "",
             "path": sheet + str(child(c, "tstamps")[1]),
+            # flag properties such as (property (name "exclude_from_bom")) carry no value
             "props": {str(p[1][1]): str(p[2][1]) for p in c
-                      if isinstance(p, list) and p[0] == "property"},
+                      if isinstance(p, list) and p[0] == "property" and len(p) > 2},
             "datasheet": str(child(c, "datasheet")[1]) if child(c, "datasheet") else "",
         }
     nets = {}

@@ -14,6 +14,10 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | D6 | green | LED_0603_1608Metric | 0 | +0 | 0 | links |
 | D7 | red | LED_0603_1608Metric | 0 | +0 | 0 | links |
 | D8 | green PWR | LED_0603_1608Metric | 0 | +0 | 0 | links |
+| D9 | ESDA6V1-5SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
+| D10 | ESDA6V1-5SC6 | SOT-23-6 | 90 | +180 | 270 | unten links |
+| D11 | ESDA6V1-5SC6 | SOT-23-6 | 90 | +180 | 270 | unten links |
+| D12 | ESDA6V1-5SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
 | J1 | USB-C | USB_C_Receptacle_HRO_TYPE-C-31-M-12 | 0 | +0 | 0 | oben links |
 | U1 | USBLC6-2SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
 | U2 | TPS54202DDC | SOT-23-6 | 180 | +180 | 0 | unten rechts |
@@ -25,6 +29,7 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | U8 | 74LVC14AD | SOIC-14_3.9x8.7mm_P1.27mm | 90 | +270 | 0 | unten links |
 | U9 | SN74LS07D | SOIC-14_3.9x8.7mm_P1.27mm | 0 | +270 | 270 | oben links |
 | U10 | 74LVC14AD | SOIC-14_3.9x8.7mm_P1.27mm | 0 | +270 | 270 | oben links |
+| U11 | APS6404L-3SQR-SN | SOIC-8_3.9x4.9mm_P1.27mm | 0 | +270 | 270 | oben links |
 | Y1 | 25MHz CL=12pF | Crystal_SMD_3225-4Pin_3.2x2.5mm | -90 | +0 | 270 | oben links |
 
 Dioden/LEDs: Pin 1 = Kathode. Elkos C1/C13: Pin 1 = Plus. USB-C J1: Kontakte zur Platinenkante.

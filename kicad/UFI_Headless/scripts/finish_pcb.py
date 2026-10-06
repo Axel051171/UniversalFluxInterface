@@ -17,7 +17,8 @@ x0, y0 = pcbnew.ToMM(bb.GetX()), pcbnew.ToMM(bb.GetY())
 x1, y1 = x0 + pcbnew.ToMM(bb.GetWidth()), y0 + pcbnew.ToMM(bb.GetHeight())
 
 for layer, netname in ((pcbnew.F_Cu, "GND"), (pcbnew.B_Cu, "GND"), (pcbnew.In2_Cu, "+3V3")):
-    if any(z.GetLayer() == layer for z in board.Zones()):
+    # supply pours (power_pours.py) may already sit on this layer: look for this net's pour
+    if any(z.GetLayer() == layer and z.GetNetname() == netname for z in board.Zones()):
         continue
     z = pcbnew.ZONE(board)
     z.SetLayer(layer)
@@ -80,8 +81,10 @@ def island_vias():
                if t.GetClass() == "PCB_VIA" and t.GetNetname() == "GND"]
     anchors += [p.GetPosition() for p in board.GetPads() if p.HasHole() and p.GetNetname() == "GND"]
     others = [p for p in board.GetPads() if p.GetNetname() != "GND"]
+    own_pads = [p for p in board.GetPads() if p.GetNetname() == "GND"]   # no via-in-pad
     other_tracks = [t for t in board.GetTracks() if t.GetNetname() != "GND"]
     clear = MM(VIA_D / 2 + 0.2)
+    own_clear = MM(VIA_D / 2 + 0.1)
     ring = [(math.cos(a) * 0.45, math.sin(a) * 0.45) for a in [k * math.pi / 4 for k in range(8)]]
     added = 0
     for z in board.Zones():
@@ -102,6 +105,7 @@ def island_vias():
                     if (polys.Contains(p, i)
                             and all(polys.Contains(pcbnew.VECTOR2I(xx + MM(dx), yy + MM(dy)), i) for dx, dy in ring)
                             and not any(o.HitTest(p, clear) for o in others)
+                            and not any(o.HitTest(p, own_clear) for o in own_pads)
                             and not any(t.HitTest(p, clear) for t in other_tracks)):
                         found = p
                         break
@@ -154,6 +158,9 @@ def pad_dogbones():
                 v = pcbnew.VECTOR2I(c.x + MM(r * math.cos(a)), c.y + MM(r * math.sin(a)))
                 if any(o.HitTest(v, MM(DOG_VIA[0] / 2 + 0.16)) for o in foreign_pads):
                     continue
+                if any(o.GetNetname() == "GND" and not o.HasHole() and o.HitTest(v, MM(DOG_VIA[0] / 2 + 0.1))
+                       for o in board.GetPads()):
+                    continue  # no via-in-pad (large pads such as SOT-223 tabs reach this far)
                 if any(t.HitTest(v, MM(DOG_VIA[0] / 2 + 0.16)) for t in foreign_tracks):
                     continue
                 if any((a.x - v.x) ** 2 + (a.y - v.y) ** 2 < MM(VIA_D + 0.3) ** 2 for a in anchors):

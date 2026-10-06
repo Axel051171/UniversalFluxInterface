@@ -12,7 +12,7 @@ import pcbnew
 
 MM = pcbnew.FromMM
 SUPPLY_NETS = ["VBUS", "/Power/VBUS_F", "/Power/+12V_IN", "+12V", "/Power/+5V_DRV",
-               "/Power/BUCK_SW", "+5V"]
+               "/Power/BUCK_SW", "+5V", "FDD_5V", "FDD_12V"]
 BUFFER = 0.4  # mm added on each side of the routed track
 LAYERS = (pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu)
 

@@ -175,7 +175,7 @@ class Sheet:
             self.lib_syms[lid] = s
         return self.lib_syms[lid]
 
-    def part(self, lib, name, ref, value, x, y, conn: dict[str, str], fp=None, props=None,
+    def part(self, lib, name, ref, value, x, y, conn: dict[str, str], fp=None, props=None, in_bom=True,
              unit: int = 1):
         """Place a symbol unit; `conn` maps pin number -> net ('NC' = no-connect)."""
         x, y = snap(x), snap(y)
@@ -204,7 +204,7 @@ class Sheet:
             sx, sy = ex + dx * STUB, ey + dy * STUB
             self.wire(ex, ey, sx, sy)
             self.net_tag(net, sx, sy, (dx, dy))
-        self._place(lib, name, sym, ref, value, x, y, fp, props or {}, pins, in_bom=True, unit=unit)
+        self._place(lib, name, sym, ref, value, x, y, fp, props or {}, pins, in_bom=in_bom, unit=unit)
 
     def _place(self, lib, name, sym, ref, value, x, y, fp, props, pins, in_bom, rot=0, unit=1):
         lp = {str(c[1]): c for c in sym if isinstance(c, list) and c[0] == "property"}

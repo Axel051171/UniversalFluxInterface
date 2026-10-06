@@ -40,7 +40,7 @@ ds.m_CopperEdgeClearance = MM(0.3)
 
 # Net classes: wider tracks for supply / high-current nets (used by Freerouting via the DSN)
 NET_CLASSES = {
-    "Power": (0.25, 0.15, ["+12V", "/Power/+12V_IN", "/Power/+5V_DRV", "/Power/BUCK_SW",
+    "Power": (0.25, 0.15, ["+12V", "/Power/+12V_IN", "/Power/+5V_DRV", "/Power/BUCK_SW", "FDD_5V", "FDD_12V",
                          "+5V", "VBUS", "/Power/VBUS_F"]),
     "Supply": (0.3, 0.15, ["+3V3", "GND", "/MCU_Core/VDDA"]),
 }

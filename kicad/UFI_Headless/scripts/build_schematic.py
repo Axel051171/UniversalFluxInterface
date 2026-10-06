@@ -47,8 +47,29 @@ LCSC = {
     # electromechanical
     "USB-C": "C165948", "RESET": "C2886898", "BOOT": "C2886898", "FDD_34PIN": "C20920",
     "SWD": "C22438120", "FDD_PWR": "C32713270", "DBG_UART": "C49257", "IEC_HDR": "C37208",
+    # v0.2 additions (looked up 2026-10-06): QSPI PSRAM, ESD arrays, drive-power polyfuses
+    "APS6404L-3SQR-SN": "C5333729", "ESDA6V1-5SC6": "C6650",
+    "1.1A hold 6V": "C20801", "1.1A hold 24V": "C20999",
     # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
+    # test points are bare pads (TestPoint_Pad_D1.5mm), nothing to place
 }
+
+# Parts added in v0.2 get fixed references above the v0.1 maxima, so the existing
+# references (and the PCB links keyed on them) stay untouched.
+TP_FP = "TestPoint:TestPoint_Pad_D1.5mm"
+SOT23_6 = "Package_TO_SOT_SMD:SOT-23-6"
+
+
+def testpoint(sh, refdes, label, net, x, y):
+    sh.part("Connector", "TestPoint", refdes, label, x, y, {"1": net}, TP_FP, in_bom=False)  # bare pad
+
+
+def esd5(sh, refdes, nets, x, y):
+    """ESDA6V1-5SC6: 5 unidirectional TVS lines to GND, unused lines left open."""
+    io = list(nets) + ["NC"] * (5 - len(nets))
+    sh.part("Power_Protection", "ESDA6V1-5SC6", refdes, "ESDA6V1-5SC6", x, y, {
+        "1": io[0], "3": io[1], "4": io[2], "5": io[3], "6": io[4], "2": "GND"},
+        SOT23_6, {"MPN": "ESDA6V1-5SC6"})
 
 
 def lcsc_field(value: str, fp: str | None) -> dict:
@@ -166,11 +187,21 @@ def build_power() -> Sheet:
     C(sh, "10uF", 305, 115, "+5V", "GND", C0805)
     cap_row(sh, ["10uF", "100nF"], 340, 115, "+3V3", "GND", C0805)
 
-    # Floppy drive power out (3.5in Berg / 5.25in Molex adapter cable)
+    # Floppy drive power out (3.5in Berg / 5.25in Molex adapter cable), polyfused (v0.2)
     sh.part("Connector_Generic", "Conn_01x04", ref("J"), "FDD_PWR", 340, 170,
-            {"1": "+5V", "2": "GND", "3": "GND", "4": "+12V"},
+            {"1": "G:FDD_5V", "2": "GND", "3": "GND", "4": "G:FDD_12V"},
             "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
             {"Note": "Pin1 +5V, 2/3 GND, 4 +12V (Berg/Molex FDD order)"})
+
+    # v0.2: drive power polyfuses (a shorted drive cable must not take down +5V/+3V3)
+    sh.text("v0.2: drive supplies (J3, Amiga J7) via polyfuses; test points TP1-TP4.", 300, 200, 1.27)
+    sh.part("Device", "Polyfuse", "F2", "1.1A hold 6V", 300, 215, {"1": "+5V", "2": "G:FDD_5V"},
+            "Fuse:Fuse_1206_3216Metric", {"MPN": "SMD1206P110TF (1.1A hold, 6V)"})
+    sh.part("Device", "Polyfuse", "F3", "1.1A hold 24V", 320, 215, {"1": "+12V", "2": "G:FDD_12V"},
+            "Fuse:Fuse_1812_4532Metric", {"MPN": "SMD1812P110TF/24 (1.1A hold, 24V)"})
+    for i, (label, net) in enumerate([("TP_3V3", "+3V3"), ("TP_5V", "+5V"), ("TP_12V", "+12V"),
+                                      ("TP_GND", "GND")]):
+        testpoint(sh, f"TP{i + 1}", label, net, 300 + i * 12.7, 240)
     return sh
 
 
@@ -205,6 +236,9 @@ GPIO = {
     "PG4": "G:PWR_SRC",
     # Clock
     "PH0": "HSE_IN", "PH1": "HSE_OUT",
+    # v0.2: 8 MB QSPI PSRAM on OCTOSPIM port 1 (AF9; PB13 = IO2 is AF4), memory-mapped flux store
+    "PB2": "PSRAM_CLK", "PB10": "PSRAM_CS",
+    "PD11": "PSRAM_IO0", "PD12": "PSRAM_IO1", "PB13": "PSRAM_IO2", "PD13": "PSRAM_IO3",
 }
 
 
@@ -283,6 +317,16 @@ def build_core() -> Sheet:
                 {"2": f"{name}_A", "1": "GND"}, LED0603)
     R(sh, "2.2k", 310, 205, "+3V3", "LED_PWR_A")
     sh.part("Device", "LED", ref("D"), "green PWR", 330, 205, {"2": "LED_PWR_A", "1": "GND"}, LED0603)
+
+    # v0.2: QSPI PSRAM, 8 MB (OCTOSPI1 quad mode, memory-mapped at 0x90000000)
+    sh.text("v0.2: APS6404L 8 MB QSPI PSRAM on OCTOSPIM P1 (PB2 CLK, PB10 NCS, PD11/PD12/PB13/PD13 IO0-3).\n"
+            "CE# pulled up so the RAM stays deselected while the MCU is in reset.", 20, 235, 1.27)
+    sh.part("Memory_RAM", "APS6404L-3SQRx-SN", "U11", "APS6404L-3SQR-SN", 120, 250, {
+        "1": "PSRAM_CS", "2": "PSRAM_IO1", "3": "PSRAM_IO2", "4": "GND",
+        "5": "PSRAM_IO0", "6": "PSRAM_CLK", "7": "PSRAM_IO3", "8": "+3V3"},
+        "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", {"MPN": "APS6404L-3SQR-SN"})
+    sh.part("Device", "C", "C46", "100nF", 150, 250, {"1": "+3V3", "2": "GND"}, C0603)
+    sh.part("Device", "R", "R16", "10k", 90, 250, {"1": "+3V3", "2": "PSRAM_CS"}, R0603)
     return sh
 
 
@@ -356,6 +400,9 @@ def build_flux() -> Sheet:
     pullups(sh, 170, 240, [f"G:{b}" for _, b in FDD_OUT])
     pullups(sh, 260, 160, [f"G:{a}" for a, _ in FDD_IN])
     C(sh, "10uF", 340, 160, "+5V", "GND", C0805)
+    # v0.2: scope test points on the MCU side of the flux inputs
+    testpoint(sh, "TP5", "TP_RDATA", "G:FDD_RDATA", 360, 60)
+    testpoint(sh, "TP6", "TP_INDEX", "G:FDD_INDEX", 360, 75)
     return sh
 
 
@@ -381,16 +428,25 @@ def build_fdd_conn() -> Sheet:
 
     amiga = {"1": "FD_READY", "2": "FD_RDATA", "3": "GND", "4": "GND", "5": "GND", "6": "GND",
              "7": "GND", "8": "FD_MOTOR_B", "9": "AMI_SEL2", "10": "AMI_DRES", "11": "FD_DSKCHG",
-             "12": "+5V", "13": "FD_SIDE", "14": "FD_WPROT", "15": "FD_TRK0", "16": "FD_WGATE",
+             "12": "FDD_5V", "13": "FD_SIDE", "14": "FD_WPROT", "15": "FD_TRK0", "16": "FD_WGATE",
              "17": "FD_WDATA", "18": "FD_STEP", "19": "FD_DIR", "20": "AMI_SEL3",
-             "21": "FD_DRVSEL_B", "22": "FD_INDEX", "23": "+12V", "24": "GND"}
-    amiga = {k: (f"G:{v}" if v.startswith("FD_") else v) for k, v in amiga.items()}
+             "21": "FD_DRVSEL_B", "22": "FD_INDEX", "23": "FDD_12V", "24": "GND"}
+    amiga = {k: (f"G:{v}" if v.startswith(("FD_", "FDD_")) else v) for k, v in amiga.items()}
     sh.part("Connector_Generic", "Conn_02x12_Odd_Even", ref("J"), "AMIGA_FDD", 260, 110, amiga,
             "Connector_IDC:IDC-Header_2x12_P2.54mm_Vertical",
             {"Note": "Pin n = Amiga DB23 pin n; RDY,DKRD,GND x5,MTRXD,SEL2B,DRESB,CHNG,+5V,SIDEB,"
                      "WPRO,TK0,DKWEB,DKWDB,STEPB,DIRB,SEL3B,SEL1B,INDEX,+12V"})
     # unused Amiga selects and drive reset held inactive
     pullups(sh, 260, 190, ["AMI_SEL2", "AMI_SEL3", "AMI_DRES"])
+
+    # v0.2: ESD on every bus line that reaches the external Amiga port (+ J6 selects)
+    sh.text("v0.2: ESDA6V1-5SC6 TVS arrays on all Amiga J7 bus lines + MOTOR_A (J7 is an external port).",
+            20, 230, 1.27)
+    esd_nets = [f"G:FD_{n}" for n in ("READY", "RDATA", "MOTOR_B", "DSKCHG", "SIDE", "WPROT", "TRK0",
+                                      "WGATE", "WDATA", "STEP", "DIR", "DRVSEL_B", "INDEX",
+                                      "MOTOR_A")]  # DRVSEL_A only reaches internal J6
+    for i in range(3):
+        esd5(sh, f"D{9 + i}", esd_nets[i * 5:(i + 1) * 5], 120 + i * 40, 250)
     return sh
 
 
@@ -413,6 +469,8 @@ def build_iec() -> Sheet:
         "1": "IEC_SRQ", "2": "GND", "3": "IEC_ATN", "4": "IEC_CLK", "5": "IEC_DATA", "6": "IEC_RESET"},
         "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
         {"Note": "Pin n = DIN-6 pin n (1 SRQ, 2 GND, 3 ATN, 4 CLK, 5 DATA, 6 RESET); DIN socket external"})
+    # v0.2: ESD on the external IEC lines
+    esd5(sh, "D12", [f"IEC_{n}" for n in IEC_LINES], 300, 210)
     return sh
 
 

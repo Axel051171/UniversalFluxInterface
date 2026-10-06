@@ -372,6 +372,14 @@
       {
         "netclass": "Supply",
         "pattern": "/MCU_Core/VDDA"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "FDD_5V"
+      },
+      {
+        "netclass": "Power",
+        "pattern": "FDD_12V"
       }
     ]
   },

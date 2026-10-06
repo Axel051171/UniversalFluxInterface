@@ -24,10 +24,20 @@ ROUTES = {
 
 conn = board.GetConnectivity()
 conn.RecalculateRatsnest()
+MM_EPS = 0.01
+
+
+def has_via(netname, xy):
+    return any(t.GetClass() == "PCB_VIA" and t.GetNetname() == netname
+               and abs(pcbnew.ToMM(t.GetPosition().x) - xy[0]) < MM_EPS
+               and abs(pcbnew.ToMM(t.GetPosition().y) - xy[1]) < MM_EPS for t in board.GetTracks())
+
+
 for netname, parts in ROUTES.items():
     net = board.FindNet(netname)
-    # per-net ratsnest is not exposed to Python in KiCad 10: only act on an incomplete board
-    if conn.GetUnconnectedCount(False) == 0:
+    # per-net ratsnest is not exposed to Python in KiCad 10: act only on an incomplete board
+    # and never twice (the route's first via marks it as already applied)
+    if conn.GetUnconnectedCount(False) == 0 or has_via(netname, parts[0][1]):
         continue
     for kind, geo in parts:
         if kind == "via":

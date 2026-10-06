@@ -5,3 +5,11 @@
 (rule "tht_gnd_single_spoke"
 	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.NetName == 'GND'")
 	(constraint min_resolved_spokes 1))
+
+# J6/J7 (IDC box headers) sit on the board edge on purpose; their library body outline
+# overhangs the edge and the fab clips that silkscreen.  Only silk-vs-edge pairs of these
+# two footprints are ignored; library footprints stay unmodified.
+(rule "idc_edge_silk"
+	(condition "(A.memberOfFootprint('J6') || A.memberOfFootprint('J7') || B.memberOfFootprint('J6') || B.memberOfFootprint('J7')) && (A.Layer == 'Edge.Cuts' || B.Layer == 'Edge.Cuts')")
+	(constraint silk_clearance (min 0mm))
+	(severity ignore))

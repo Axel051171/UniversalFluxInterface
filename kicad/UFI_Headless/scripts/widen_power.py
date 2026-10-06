@@ -11,7 +11,7 @@ import sys
 
 import pcbnew
 
-POWER_NETS = {"+12V", "/Power/+12V_IN", "/Power/+5V_DRV", "/Power/BUCK_SW", "+5V", "VBUS",
+POWER_NETS = {"+12V", "/Power/+12V_IN", "/Power/+5V_DRV", "/Power/BUCK_SW", "+5V", "VBUS", "FDD_5V", "FDD_12V",
               "/Power/VBUS_F", "GND", "+3V3"}
 WIDTH = {"GND": 0.5, "+3V3": 0.5}   # other supply nets: POWER_WIDTH
 POWER_WIDTH = 0.8
