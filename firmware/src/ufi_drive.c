@@ -21,7 +21,7 @@ static drive_status_t g_drive_status[DRIVE_IEC + 1];
 // Timing-Konstanten (µs)
 // Timing (host-tunable per drive via UFI_CMD_DRIVE_TIMING, defaults = PC/Amiga safe values)
 static drive_timing_t g_timing = {
-    .step_pulse_us = 3, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
+    .step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
     .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000,
 };
 #define STEP_PULSE_US       (g_timing.step_pulse_us)
@@ -271,17 +271,33 @@ int ufi_drive_recalibrate(void)
         return UFI_ERR_NO_DRIVE;
     }
 
+    /* Three phases (concept from FloppyControl's seektrk00): out to TRK0, a few steps in
+     * (TRK0 must release, otherwise the sensor sticks or the head sits beyond track 0),
+     * then out again to TRK0. */
     drive_status_t* status = &g_drive_status[g_current_drive];
-    for (int i = 0; i < 90; i++) {
-        if (ufi_drive_at_track0()) {
-            status->current_track = 0;
-            status->track0 = true;
-            delay_us(SETTLE_TIME_US);
-            return UFI_OK;
+    int i = 0;
+    while (!ufi_drive_at_track0()) {
+        if (++i > 100) {
+            return UFI_ERR_SEEK_FAIL;               /* no TRK0 within 100 steps */
         }
         ufi_drive_step(-1);
     }
-    return UFI_ERR_SEEK_FAIL;
+    for (int k = 0; k < 6; k++) {
+        ufi_drive_step(1);
+    }
+    if (ufi_drive_at_track0()) {
+        return UFI_ERR_SEEK_FAIL;                   /* TRK0 stuck asserted */
+    }
+    for (i = 0; !ufi_drive_at_track0(); i++) {
+        if (i > 10) {
+            return UFI_ERR_SEEK_FAIL;
+        }
+        ufi_drive_step(-1);
+    }
+    status->current_track = 0;
+    status->track0 = true;
+    delay_us(SETTLE_TIME_US);
+    return UFI_OK;
 }
 
 /* ============================================================================

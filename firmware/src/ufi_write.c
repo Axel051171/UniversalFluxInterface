@@ -27,7 +27,7 @@ extern capture_context_t g_capture;
  * WRITE KONFIGURATION
  * ============================================================================ */
 
-#define WRITE_PRECOMP_NS    140     // ns - Write Precompensation
+/* precompensation: see precomp_for_data() */
 #define WRITE_PULSE_NS      400     // WDATA low pulse
 #define WRITE_PULSE_TICKS   ((WRITE_PULSE_NS * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)
 #define WRITE_MIN_DELTA     (4 * WRITE_PULSE_TICKS)
@@ -42,6 +42,7 @@ typedef struct {
     uint32_t bytes_expected;    // Erwartete Bytes
     bool verify_after;          // Nach Schreiben verifizieren?
     bool use_precomp;           // Write Precompensation?
+    uint32_t precomp_ns;        // chosen per data rate when the track is packed
     volatile uint8_t updates_left;  // timer updates until the last pulse is out
 } write_context_t;
 
@@ -130,7 +131,7 @@ static uint32_t apply_precomp(uint32_t timing, uint32_t prev_timing, uint32_t ne
         return timing;
     }
 
-    uint32_t precomp_ns = (track > 60) ? WRITE_PRECOMP_NS : (WRITE_PRECOMP_NS / 2);
+    uint32_t precomp_ns = (track > 60) ? g_write.precomp_ns : (g_write.precomp_ns / 2);
     uint32_t precomp_ticks = (precomp_ns * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL;
 
     if (prev_timing > timing * 2) {
@@ -144,7 +145,23 @@ static uint32_t apply_precomp(uint32_t timing, uint32_t prev_timing, uint32_t ne
 
 /* Pack u32 deltas into u16 ARR values in place (halfword i never overlaps a word >= i-1;
  * the previous delta is kept in a local) */
+/* Write precompensation per data rate (82077 FDC defaults): the shortest MFM interval is
+ * 2 bit cells, so it identifies the rate: ~1 us = ED 1 Mbit/s -> 42 ns, else 125 ns */
+#define PRECOMP_DD_HD_NS    125
+#define PRECOMP_ED_NS       42
+#define ED_SHORTEST_TICKS   ((1500UL * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)   /* 1.5 us */
+
+static uint32_t precomp_for_data(void) {
+    /* 10th-percentile-ish shortest interval over the first samples, robust to glitches */
+    uint32_t below = 0, n = (g_write.flux_count < 2000) ? g_write.flux_count : 2000;
+    for (uint32_t i = 0; i < n; i++) {
+        below += (write_buffer[i] < ED_SHORTEST_TICKS) ? 1u : 0u;
+    }
+    return (below * 10 > n) ? PRECOMP_ED_NS : PRECOMP_DD_HD_NS;
+}
+
 static void pack_deltas(void) {
+    g_write.precomp_ns = precomp_for_data();
     uint32_t prev = 0;
     for (uint32_t i = 0; i < g_write.flux_count; i++) {
         const uint32_t cur = write_buffer[i];
