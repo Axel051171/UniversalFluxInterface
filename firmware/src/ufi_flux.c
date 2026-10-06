@@ -48,6 +48,7 @@ static volatile uint32_t idx_pos[REVOLUTIONS_BUFFER + 1];
 static volatile uint8_t idx_count;      /* index pulses seen since capture start */
 static volatile uint32_t end_pos;       /* samples written when the capture stopped */
 static bool finalised;
+static bool streaming;                  /* samples are read live, store stays untouched */
 static volatile uint32_t last_index_ms;  /* HAL tick of capture start / last index pulse */
 
 /* No disk or motor off: no index within this time ends the capture (error_code 3) */
@@ -337,7 +338,7 @@ capture_state_t ufi_flux_poll(void)
         g_capture.error_code = 3;           /* no index pulse: no disk / motor off */
         g_capture.state = CAPTURE_ERROR;
     }
-    if (g_capture.state != CAPTURE_COMPLETE || finalised) {
+    if (g_capture.state != CAPTURE_COMPLETE || finalised || streaming) {
         return g_capture.state;
     }
 
@@ -367,6 +368,40 @@ capture_state_t ufi_flux_poll(void)
     g_capture.revolutions_captured = n;
     finalised = true;
     return g_capture.state;
+}
+
+/* ============================================================================
+ * LIVE ACCESS (streaming, thread context)
+ * ============================================================================ */
+
+void ufi_flux_set_streaming(bool on)
+{
+    streaming = on;
+}
+
+/* Samples stored so far.  The store holds absolute TIM2 timestamps while streaming. */
+uint32_t ufi_flux_written(void)
+{
+    uint32_t pos = 0;
+    __disable_irq();                        /* chunks_done / NDTR / state must agree */
+    const capture_state_t s = g_capture.state;
+    if (s == CAPTURE_RUNNING) {
+        pos = dma_pos();
+    } else if (s == CAPTURE_COMPLETE || s == CAPTURE_ERROR) {
+        pos = end_pos;
+    }
+    __enable_irq();
+    return pos;
+}
+
+uint8_t ufi_flux_index_count(void)
+{
+    return idx_count;
+}
+
+uint32_t ufi_flux_index_time(uint8_t k)
+{
+    return (k <= REVOLUTIONS_BUFFER) ? idx_time[k] : 0;
 }
 
 /* ============================================================================

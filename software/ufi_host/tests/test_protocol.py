@@ -9,6 +9,25 @@ from ufi_host import protocol as P
 from ufi_host.scp import ScpRevolution, read_scp, scp_to_ticks, ticks_to_scp, write_scp
 
 
+def encode_stream(revs) -> bytes:
+    """Independent encoder for the READ_TRACK stream (spec: firmware/src/ufi_stream.c).
+    revs: [(index_ticks, samples relative to that revolution's index), ...]"""
+    out, t, start = bytearray(), 0, 0
+    for ticks, samples in revs:
+        for s in samples:
+            d = start + s - t
+            if 1 <= d <= 0xEF:
+                out.append(d)
+            elif 240 <= d <= 3567:
+                out += bytes([0xF0 + ((d - 240) >> 8), (d - 240) & 0xFF])
+            else:
+                out += b"\xFE" + struct.pack("<I", d)
+            t = start + s
+        start += ticks
+        out += b"\xFD" + struct.pack("<I", start - t)
+    return bytes(out)
+
+
 class FakeDevice:
     """Byte-level double of firmware/src/ufi_usb.c (+ capture/write flow of ufi_main.c)."""
 
@@ -40,6 +59,12 @@ class FakeDevice:
             self._reply(cmd, 0, b"UFI Flux Engine v1.1\0UFI Headless\0STM32H723\0")
         elif cmd == P.GET_STATUS:
             self._reply(cmd, 0, P.STATUS.pack(1, 1, 0, 1, 0, 1, 0, 0, 300))
+        elif cmd == P.READ_TRACK:
+            self._reply(cmd)
+            data = encode_stream(self.revs[:args[2]])
+            for k in range(0, len(data), 1000):    # message borders carry no meaning
+                self._reply(P.EVT_FLUX_STREAM, 0, data[k:k + 1000])
+            self._reply(P.EVT_READ_DONE, self.read_done_status, bytes([min(len(self.revs), args[2])]))
         elif cmd == P.READ_TRACK_RAW:
             self._reply(cmd)
             for i, (ticks, samples) in enumerate(self.revs[:args[2]]):
@@ -92,6 +117,30 @@ def test_read_track_streams_revolutions_until_read_done():
     assert cap.revolutions[0].track == 5 and cap.revolutions[0].side == 1
     assert cap.revolutions[0].rpm == pytest.approx(300.0)
     assert cap.status == 0
+
+
+def test_read_track_raw_fallback():
+    revs = [(55_000_000, [1100, 2200, 3300]), (55_000_100, [1000, 2000])]
+    fake = FakeDevice(revs)
+    cap = P.Device(fake).read_track_raw(5, 1, 2)
+    assert fake.commands[0][0] == P.READ_TRACK_RAW
+    assert [r.samples for r in cap.revolutions] == [[1100, 2200, 3300], [1000, 2000]]
+
+
+def test_stream_covers_every_code_and_halves_the_data():
+    # 1-byte, 2-byte edges, long (> 3567) and a transition exactly at the index
+    revs = [(1_000_000, [5, 0xEF + 5, 0xEF + 245, 4000, 4000 + 3567, 900_000]),
+            (55_000_000, [0, 550, 1100, 1650])]
+    data = encode_stream(revs)
+    got = P.decode_stream(data, 2, 1)
+    assert [(r.index_ticks, r.samples) for r in got] == revs
+    hd = [(55_000_000, list(range(700, 55_000_000 - 700, 770)))]   # ~71k transitions, 2.8 us
+    assert len(encode_stream(hd)) < 0.51 * 4 * len(hd[0][1])
+
+
+def test_stream_rejects_reserved_bytes():
+    with pytest.raises(ValueError):
+        P.decode_stream(b"\x00")
 
 
 def test_read_overflow_keeps_complete_revolutions():

@@ -3,8 +3,9 @@
 Host -> device: one packet per command, <= 64 bytes, byte 0 = command code, arguments
 follow directly.  Device -> host: a byte stream where every message starts with
 ufi_response_header_t {u8 command, u8 status, u16 length LE} + `length` payload bytes.
-A capture streams {FLUX, 0, 12} + flux header + samples per revolution and ends with
-{READ_DONE, status, 1} + [revolutions].
+READ_TRACK streams {FLUX_STREAM, 0, len} + encoded bytes while the disk turns
+(decode_stream), READ_TRACK_RAW sends {FLUX, 0, 12} + flux header + u32 samples per
+revolution after the capture; both end with {READ_DONE, status, 1} + [revolutions].
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ TIMING = struct.Struct("<7H")
 AMIGA_IDS = {0xFFFFFFFF: '3.5" DD', 0xAAAAAAAA: '3.5" HD (HD media)',
              0x55555555: '5.25" 40 track', 0x00000000: "no drive"}
 READ_TRACK, READ_TRACK_RAW, EVT_READ_DONE, EVT_FLUX, ABORT_READ = 0x20, 0x21, 0x2D, 0x2E, 0x2F
+EVT_FLUX_STREAM = 0x2C
 WRITE_TRACK, ERASE_TRACK, WRITE_TRACK_VERIFY = 0x30, 0x31, 0x32
 IEC_RESET, IEC_SEND, IEC_RECEIVE = 0x40, 0x41, 0x42
 DEBUG_GPIO, DEBUG_TIMER, RESET, BOOTLOADER = 0xD0, 0xD1, 0xF0, 0xFF
@@ -79,6 +81,45 @@ class Revolution:
 class Capture:
     revolutions: list[Revolution] = field(default_factory=list)
     status: int = 0                  # READ_DONE status (10 = store full, fewer revs)
+
+
+def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01) -> list[Revolution]:
+    """Decode a READ_TRACK stream (format: firmware/src/ufi_stream.c) into revolutions.
+
+    Time 0 is the first index pulse; a transition at or after index k belongs to
+    revolution k, as in the firmware's RAW finalisation.
+    """
+    t, flux, index = 0, [], [0]
+    i, n = 0, len(data)
+    while i < n:
+        b = data[i]
+        if 0x01 <= b <= 0xEF:
+            t += b
+            flux.append(t)
+            i += 1
+        elif 0xF0 <= b <= 0xFC:
+            t += 240 + ((b - 0xF0) << 8) + data[i + 1]
+            flux.append(t)
+            i += 2
+        elif b in (0xFD, 0xFE):
+            v = int.from_bytes(data[i + 1:i + 5], "little")
+            if b == 0xFD:
+                index.append(t + v)
+            else:
+                t += v
+                flux.append(t)
+            i += 5
+        else:
+            raise ValueError(f"bad stream byte 0x{b:02X} at {i}")
+    revs, j = [], 0
+    for r in range(len(index) - 1):
+        start, end = index[r], index[r + 1]
+        samples = []
+        while j < len(flux) and flux[j] < end:
+            samples.append(flux[j] - start)
+            j += 1
+        revs.append(Revolution(track, side, r, flags, end - start, samples))
+    return revs
 
 
 @dataclass
@@ -178,6 +219,24 @@ class Device:
         return v, AMIGA_IDS.get(v, "unknown")
 
     def read_track(self, track: int, side: int, revolutions: int = 3) -> Capture:
+        """Streamed capture: the device sends while the disk turns (firmware ufi_stream.c)."""
+        revolutions = max(1, min(revolutions, MAX_REVOLUTIONS))
+        self.command(READ_TRACK, track, side, revolutions, timeout=5.0)
+        data = bytearray()
+        while True:
+            cmd, status, payload = self.read_message(timeout=2.0 + 0.4 * revolutions)
+            if cmd == EVT_FLUX_STREAM:
+                data += payload
+            elif cmd == EVT_READ_DONE:
+                if status and status != 10:
+                    raise DeviceError(READ_TRACK, status)
+                flags = 0x01 | (0x02 if status == 10 else 0)
+                return Capture(decode_stream(bytes(data), track, side, flags), status)
+            else:
+                raise DeviceError(cmd, status or 0xFF)
+
+    def read_track_raw(self, track: int, side: int, revolutions: int = 3) -> Capture:
+        """Capture first, then 4 bytes per transition (older firmware, fallback)."""
         revolutions = max(1, min(revolutions, MAX_REVOLUTIONS))
         self.command(READ_TRACK_RAW, track, side, revolutions, timeout=5.0)
         cap = Capture()

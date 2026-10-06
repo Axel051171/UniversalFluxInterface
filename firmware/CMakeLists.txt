@@ -105,6 +105,7 @@ set(PROJECT_SOURCES
     src/ufi_power.c
     src/ufi_usb.c
     src/ufi_flux.c
+    src/ufi_stream.c
     src/ufi_drive.c
     src/ufi_iec.c
     src/ufi_write.c

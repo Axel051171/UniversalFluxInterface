@@ -85,7 +85,8 @@ void ufi_init(void)
 
 int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions)
 {
-    if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+    if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
+        ufi_stream_active()) {
         return UFI_ERR_BUSY;
     }
     if (ufi_drive_get_current() == DRIVE_NONE) {
@@ -109,6 +110,7 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions)
 
 int ufi_capture_abort(void)
 {
+    ufi_stream_abort();
     ufi_flux_capture_stop();
     led_set(&PIN_LED_FDD, false);
     return UFI_OK;
@@ -159,7 +161,10 @@ void ufi_main_loop(void)
         ufi_write_process();
         ufi_write_service();
 
-        switch (ufi_capture_get_state()) {
+        const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
+        if (ufi_stream_active()) {
+            ufi_stream_service();           /* READ_TRACK: sends while the disk turns */
+        } else switch (cs) {
             case CAPTURE_COMPLETE:
                 send_capture();
                 g_capture.state = CAPTURE_IDLE;

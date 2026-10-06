@@ -95,6 +95,22 @@ static int usb_tx_blocking(const uint8_t* p, uint32_t len) {
     return cdc_wait_idle() ? UFI_OK : UFI_ERR_USB;
 }
 
+bool ufi_usb_tx_idle(void) {
+    return cdc_tx_busy() == 0;
+}
+
+/* Start one transfer (<= USB_TX_CHUNK) and return; the streamer overlaps encoding with it */
+int ufi_usb_tx_start(const uint8_t* p, uint32_t len) {
+    if (len == 0 || len > USB_TX_CHUNK) {
+        return UFI_ERR_USB;
+    }
+    if (cdc_tx_busy() != 0) {
+        return UFI_ERR_BUSY;
+    }
+    USBD_CDC_SetTxBuffer(&hUsbDevice, (uint8_t*)p, len);
+    return (USBD_CDC_TransmitPacket(&hUsbDevice) == USBD_OK) ? UFI_OK : UFI_ERR_USB;
+}
+
 /* Reply = header + optional payload in one transfer (static: outlives the transfer) */
 static int reply(uint8_t cmd, uint8_t status, const void* payload, uint16_t len) {
     static uint8_t buf[sizeof(ufi_response_header_t) + REPLY_MAX_PAYLOAD];
@@ -315,11 +331,17 @@ int ufi_usb_process_command(void) {
 
         case UFI_CMD_READ_TRACK:
         case UFI_CMD_READ_TRACK_RAW: {
-            // [CMD, track, side, revolutions]; flux packets follow from ufi_main_loop
+            // [CMD, track, side, revolutions]; READ_TRACK streams UFI_EVT_FLUX_STREAM while
+            // the disk turns (ufi_stream.c), READ_TRACK_RAW sends UFI_EVT_FLUX packets after
+            // the capture (ufi_main_loop)
             uint8_t revolutions = cmd_buffer[3];
             if (revolutions == 0) revolutions = 1;
             if (revolutions > REVOLUTIONS_BUFFER) revolutions = REVOLUTIONS_BUFFER;
-            reply(cmd, st(ufi_capture_start(cmd_buffer[1], cmd_buffer[2], revolutions)), NULL, 0);
+            int ret = ufi_capture_start(cmd_buffer[1], cmd_buffer[2], revolutions);
+            if (ret == UFI_OK && cmd == UFI_CMD_READ_TRACK) {
+                ufi_stream_begin();
+            }
+            reply(cmd, st(ret), NULL, 0);
             break;
         }
 

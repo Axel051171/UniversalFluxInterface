@@ -140,11 +140,12 @@ typedef enum {
     UFI_CMD_SET_LINES       = 0x1A, // [density, drate]: assert J6 pin 2 / pin 6 (drive dependent)
     
     // Flux-Capture
-    UFI_CMD_READ_TRACK      = 0x20,
-    UFI_CMD_READ_TRACK_RAW  = 0x21, // Mehrere Umdrehungen
+    UFI_CMD_READ_TRACK      = 0x20, // streamed, compact: UFI_EVT_FLUX_STREAM messages (ufi_stream.c)
+    UFI_CMD_READ_TRACK_RAW  = 0x21, // after the capture: UFI_EVT_FLUX + u32 samples per revolution
     UFI_CMD_ABORT_READ      = 0x2F,
     UFI_EVT_FLUX            = 0x2E, // device -> host: flux_packet_header_t + samples
     UFI_EVT_READ_DONE       = 0x2D, // device -> host: payload [revolutions sent]
+    UFI_EVT_FLUX_STREAM     = 0x2C, // device -> host: encoded flux stream bytes (ufi_stream.c)
     
     // Flux-Write (für Disk-Erstellung)
     UFI_CMD_WRITE_TRACK         = 0x30,
@@ -250,6 +251,17 @@ int ufi_psram_init(void);                       // ufi_psram.c
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter
 void ufi_flux_tim2_irq(void);
 void ufi_flux_dma_irq(void);
+// live access for streaming (thread context)
+void ufi_flux_set_streaming(bool on);           // on: no in-place finalisation
+uint32_t ufi_flux_written(void);                // samples DMA has stored so far
+uint8_t ufi_flux_index_count(void);             // index pulses seen (index 0 = start)
+uint32_t ufi_flux_index_time(uint8_t k);        // TIM2 time of index pulse k
+
+// Streamed capture transfer (ufi_stream.c)
+void ufi_stream_begin(void);
+void ufi_stream_abort(void);
+bool ufi_stream_active(void);
+void ufi_stream_service(void);                  // main loop: encode + send, READ_DONE at the end
 
 // Laufwerk-Steuerung
 int ufi_drive_select(drive_type_t type);
@@ -284,6 +296,8 @@ int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data);
 int ufi_usb_process_command(void);
 int ufi_usb_send_event(uint8_t command, int result);
 int ufi_usb_send_read_done(int result, uint8_t revolutions);
+bool ufi_usb_tx_idle(void);
+int ufi_usb_tx_start(const uint8_t* p, uint32_t len);  // non-blocking; p must stay valid
 
 /* ============================================================================
  * WRITE SUPPORT (ufi_write.c)
