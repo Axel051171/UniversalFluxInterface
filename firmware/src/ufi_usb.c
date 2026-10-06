@@ -324,10 +324,10 @@ int ufi_usb_process_command(void) {
             break;
 
         case UFI_CMD_BOOTLOADER:
-            // Magic word for the DFU jump, then reset
-            *((volatile uint32_t*)0x20000000) = 0xDEADBEEF;
+            // reply first, then reset into the ROM USB-DFU bootloader
             reply(cmd, 0, NULL, 0);
-            NVIC_SystemReset();
+            HAL_Delay(20);                  // let the host read the reply
+            ufi_request_bootloader();
             break;
 
         default:

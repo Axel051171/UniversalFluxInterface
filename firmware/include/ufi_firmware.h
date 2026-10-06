@@ -182,6 +182,7 @@ typedef struct __packed {
 
 // Initialisierung
 void ufi_init(void);
+void ufi_request_bootloader(void);   // reset into the ROM USB-DFU bootloader
 void ufi_flux_init(void);  // Timer + DMA (in ufi_flux.c)
 void ufi_drive_init(void);
 void ufi_iec_init(void);

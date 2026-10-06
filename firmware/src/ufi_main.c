@@ -15,6 +15,50 @@
 capture_context_t g_capture;
 
 /* ============================================================================
+ * SYSTEM-BOOTLOADER (USB-DFU im ROM)
+ * ============================================================================ */
+
+/* STM32H72x/H73x system memory bootloader (ST AN2606) */
+#define SYSTEM_BOOTLOADER_ADDR  0x1FF09800UL
+#define BOOTLOADER_MAGIC        0xB007DF00UL
+
+/* DTCM is not cached and not cleared by the startup code (.dtcm is NOLOAD), so the
+ * value survives NVIC_SystemReset() */
+__attribute__((section(".dtcm"))) static volatile uint32_t g_boot_magic;
+
+void ufi_request_bootloader(void)
+{
+    g_boot_magic = BOOTLOADER_MAGIC;
+    __DSB();
+    NVIC_SystemReset();
+}
+
+/* Called first thing in main(): jump to the ROM bootloader if it was requested */
+static void ufi_check_bootloader(void)
+{
+    if (g_boot_magic != BOOTLOADER_MAGIC) {
+        return;
+    }
+    g_boot_magic = 0;
+
+    __disable_irq();
+    SysTick->CTRL = 0;
+    SCB_DisableICache();
+    SCB_DisableDCache();
+    for (uint32_t i = 0; i < 8; i++) {          /* all NVIC lines off and cleared */
+        NVIC->ICER[i] = 0xFFFFFFFFUL;
+        NVIC->ICPR[i] = 0xFFFFFFFFUL;
+    }
+    SCB->VTOR = SYSTEM_BOOTLOADER_ADDR;
+    __set_MSP(*(volatile uint32_t*)SYSTEM_BOOTLOADER_ADDR);
+    __enable_irq();
+    void (*boot)(void) = (void (*)(void))(*(volatile uint32_t*)(SYSTEM_BOOTLOADER_ADDR + 4u));
+    boot();
+    while (1) {
+    }
+}
+
+/* ============================================================================
  * INITIALISIERUNG
  * ============================================================================ */
 
@@ -143,6 +187,7 @@ void ufi_main_loop(void)
 
 int main(void)
 {
+    ufi_check_bootloader();
     ufi_init();
     ufi_main_loop();
     return 0;
