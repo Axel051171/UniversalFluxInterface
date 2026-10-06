@@ -99,6 +99,7 @@ set(PROJECT_SOURCES
     src/ufi_main.c
     src/board_headless.c
     src/ufi_psram.c
+    src/syscalls.c
     src/ufi_usb.c
     src/ufi_flux.c
     src/ufi_drive.c
@@ -147,6 +148,11 @@ add_executable(${PROJECT_NAME}.elf
     ${USB_SOURCES}
     ${STARTUP_SOURCE}
 )
+
+# Vendor code (ST HAL / USB library) is used unmodified; silence its unused-parameter
+# noise only, project sources keep the full -Wall -Wextra set.
+set_source_files_properties(${HAL_SOURCES} ${USB_SOURCES}
+    PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter")
 
 # Generate .hex and .bin
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
