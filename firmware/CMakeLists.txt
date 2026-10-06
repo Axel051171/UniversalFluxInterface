@@ -72,6 +72,8 @@ set(HAL_SOURCES
     ${HAL_PATH}/Src/stm32h7xx_hal_dma.c
     ${HAL_PATH}/Src/stm32h7xx_hal_tim.c
     ${HAL_PATH}/Src/stm32h7xx_hal_tim_ex.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_ospi.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_mdma.c
     ${HAL_PATH}/Src/stm32h7xx_hal_uart.c
     ${HAL_PATH}/Src/stm32h7xx_hal_pcd.c
     ${HAL_PATH}/Src/stm32h7xx_hal_pcd_ex.c
@@ -96,6 +98,7 @@ set(STARTUP_SOURCE ${CMSIS_PATH}/Device/ST/STM32H7xx/Source/Templates/gcc/startu
 set(PROJECT_SOURCES
     src/ufi_main.c
     src/board_headless.c
+    src/ufi_psram.c
     src/ufi_usb.c
     src/ufi_flux.c
     src/ufi_drive.c

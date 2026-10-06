@@ -6,9 +6,12 @@
  *   CH2 = INDEX  -> input capture interrupt, records (timestamp, DMA position) per index
  * Both channels share one time base, so revolution boundaries are exact.
  *
- * The DMA writes linearly into one AXI SRAM buffer (DMA1 cannot reach DTCM); revolutions are
- * slices of that buffer, no copying.  After completion the slices are finalised in place:
- * boundaries are corrected by timestamp and samples made relative to their index pulse.
+ * Flux store: 8 MB QSPI PSRAM (memory-mapped) or a 224 KB AXI SRAM fallback; DMA1 cannot
+ * reach DTCM.  A DMA stream counts at most 65535 items, so the store is filled in chunks
+ * by the stream's double-buffer mode: while one chunk fills, the ISR points the idle
+ * memory register at the next one.  Chunks are contiguous, so the store stays one linear
+ * array; revolutions are slices of it.  After completion the slices are finalised in
+ * place: boundaries corrected by timestamp, samples made relative to their index pulse.
  */
 
 #include "ufi_firmware.h"
@@ -23,7 +26,21 @@ TIM_HandleTypeDef htim2;
 DMA_HandleTypeDef hdma_tim2;
 
 __attribute__((section(".axi_sram"), aligned(32)))
-static uint32_t flux_store[FLUX_STORE_WORDS];
+static uint32_t flux_fallback[FLUX_STORE_FALLBACK_WORDS];
+
+/* overrun target after the last chunk, until the DMA ISR stops the stream */
+__attribute__((section(".axi_sram"), aligned(32)))
+static uint32_t dma_scratch[256];
+
+static uint32_t* flux_store = flux_fallback;
+static uint32_t store_words = FLUX_STORE_FALLBACK_WORDS;
+static bool store_psram;
+
+#define CHUNK_MAX_WORDS 32768u      /* 128 KB per DMA buffer (NDTR is 16 bit) */
+static uint32_t chunk_words;
+static uint32_t n_chunks;
+static volatile uint32_t chunks_done;   /* completed DMA buffers */
+static volatile uint32_t next_chunk;    /* next chunk to hand to the idle memory register */
 
 static flux_revolution_t revs[REVOLUTIONS_BUFFER];
 static volatile uint32_t idx_time[REVOLUTIONS_BUFFER + 1];
@@ -34,13 +51,23 @@ static bool finalised;
 
 #define INDEX_FILTER    0x3     /* fCK_INT, N=8: ~30 ns glitch filter, index pulses are >1 us */
 
-static inline uint32_t dma_pos(void)
-{
-    return FLUX_STORE_WORDS - __HAL_DMA_GET_COUNTER(&hdma_tim2);
-}
+static void dma_stop(void);
 
-static void flux_dma_full(DMA_HandleTypeDef* hdma);
-static void flux_dma_error(DMA_HandleTypeDef* hdma);
+/* Samples written so far.  Called from the TIM2 ISR (priority above the DMA ISR), so a
+ * pending, not yet serviced transfer-complete is accounted for here. */
+static uint32_t dma_pos(void)
+{
+    const uint32_t tc1 = DMA1->LISR & DMA_LISR_TCIF0;
+    uint32_t ndtr = DMA1_Stream0->NDTR;
+    const uint32_t tc2 = DMA1->LISR & DMA_LISR_TCIF0;
+    if (tc1 != tc2) {
+        ndtr = DMA1_Stream0->NDTR;
+    }
+    if (ndtr == 0) {
+        ndtr = chunk_words;
+    }
+    return (chunks_done + (tc2 ? 1u : 0u)) * chunk_words + (chunk_words - ndtr);
+}
 
 /* ============================================================================
  * FLUX TIMER INITIALISIERUNG
@@ -48,6 +75,14 @@ static void flux_dma_error(DMA_HandleTypeDef* hdma);
 
 void ufi_flux_init(void)
 {
+    if (ufi_psram_init() == UFI_OK) {
+        flux_store = (uint32_t*)OCTOSPI1_BASE;
+        store_words = PSRAM_SIZE_BYTES / sizeof(uint32_t);
+        store_psram = true;
+    }
+    chunk_words = (store_words / 2u < CHUNK_MAX_WORDS) ? store_words / 2u : CHUNK_MAX_WORDS;
+    n_chunks = store_words / chunk_words;
+
     __HAL_RCC_TIM2_CLK_ENABLE();
     __HAL_RCC_DMA1_CLK_ENABLE();
 
@@ -77,15 +112,12 @@ void ufi_flux_init(void)
     hdma_tim2.Init.MemInc = DMA_MINC_ENABLE;
     hdma_tim2.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
     hdma_tim2.Init.MemDataAlignment = DMA_MDATAALIGN_WORD;
-    hdma_tim2.Init.Mode = DMA_NORMAL;       /* linear: stop when the store is full */
+    hdma_tim2.Init.Mode = DMA_NORMAL;       /* double-buffer mode is enabled per capture */
     hdma_tim2.Init.Priority = DMA_PRIORITY_VERY_HIGH;
     hdma_tim2.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
     if (HAL_DMA_Init(&hdma_tim2) != HAL_OK) {
         Error_Handler();
     }
-    __HAL_LINKDMA(&htim2, hdma[TIM_DMA_ID_CC1], hdma_tim2);
-    hdma_tim2.XferCpltCallback = flux_dma_full;
-    hdma_tim2.XferErrorCallback = flux_dma_error;
 
     /* Free-running counter, both capture channels enabled; DMA/IRQ armed per capture */
     HAL_TIM_IC_Start(&htim2, FLUX_RDATA_CHANNEL);
@@ -107,9 +139,41 @@ uint32_t ufi_flux_now(void)
 uint32_t* ufi_flux_store(uint32_t* words)
 {
     if (words) {
-        *words = FLUX_STORE_WORDS;
+        *words = store_words;
     }
     return flux_store;
+}
+
+bool ufi_flux_store_is_psram(void)
+{
+    return store_psram;
+}
+
+/* ============================================================================
+ * DMA (direct register control, double-buffer mode)
+ * ============================================================================ */
+
+static void dma_stop(void)
+{
+    DMA1_Stream0->CR &= ~DMA_SxCR_EN;
+    while (DMA1_Stream0->CR & DMA_SxCR_EN) {
+    }
+    DMA1->LIFCR = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0 | DMA_LIFCR_CTEIF0 |
+                  DMA_LIFCR_CDMEIF0 | DMA_LIFCR_CFEIF0;
+}
+
+static void dma_arm(void)
+{
+    dma_stop();
+    chunks_done = 0;
+    next_chunk = 2;
+    DMA1_Stream0->PAR = (uint32_t)&TIM2->CCR1;
+    DMA1_Stream0->M0AR = (uint32_t)&flux_store[0];
+    DMA1_Stream0->M1AR = (uint32_t)&flux_store[chunk_words];
+    DMA1_Stream0->NDTR = chunk_words;
+    DMA1_Stream0->CR = (DMA1_Stream0->CR & ~(DMA_SxCR_CT | DMA_SxCR_CIRC)) |
+                       DMA_SxCR_DBM | DMA_SxCR_TCIE | DMA_SxCR_TEIE | DMA_SxCR_DMEIE;
+    DMA1_Stream0->CR |= DMA_SxCR_EN;    /* idle until TIM2 issues CC1 requests */
 }
 
 /* ============================================================================
@@ -133,16 +197,12 @@ int ufi_flux_capture_start(uint8_t revolutions)
     end_pos = 0;
     finalised = false;
 
-    /* Dirty lines from the write path must not be evicted over fresh DMA data */
-    SCB_CleanInvalidateDCache_by_Addr(flux_store, sizeof(flux_store));
+    /* Dirty lines (write path, earlier finalise) must not be evicted over fresh DMA data */
+    SCB_CleanInvalidateDCache();
 
     /* Arm the stream; transfers only start once CC1DE is set at the first index */
     TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
-    HAL_DMA_Abort(&hdma_tim2);
-    if (HAL_DMA_Start_IT(&hdma_tim2, (uint32_t)&TIM2->CCR1, (uint32_t)flux_store,
-                         FLUX_STORE_WORDS) != HAL_OK) {
-        return UFI_ERR_DMA;
-    }
+    dma_arm();
 
     g_capture.state = CAPTURE_WAITING_INDEX;
     TIM2->SR = ~(TIM_SR_CC2IF | TIM_SR_CC2OF);
@@ -154,7 +214,7 @@ static void capture_halt(void)
 {
     TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
     end_pos = dma_pos();
-    HAL_DMA_Abort_IT(&hdma_tim2);
+    dma_stop();
 }
 
 int ufi_flux_capture_stop(void)
@@ -203,28 +263,47 @@ void ufi_flux_tim2_irq(void)
 
 void ufi_flux_dma_irq(void)
 {
-    HAL_DMA_IRQHandler(&hdma_tim2);
-}
+    const uint32_t isr = DMA1->LISR;
 
-/* Flux store full before all revolutions were captured: keep the complete ones */
-static void flux_dma_full(DMA_HandleTypeDef* hdma)
-{
-    (void)hdma;
-    if (g_capture.state != CAPTURE_RUNNING) {
+    if (isr & (DMA_LISR_TEIF0 | DMA_LISR_DMEIF0)) {
+        DMA1->LIFCR = DMA_LIFCR_CTEIF0 | DMA_LIFCR_CDMEIF0;
+        TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+        dma_stop();
+        g_capture.error_code = 2;
+        g_capture.state = CAPTURE_ERROR;
         return;
     }
-    TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
-    end_pos = FLUX_STORE_WORDS;
-    g_capture.error_code = 1;               /* overflow: fewer revolutions than requested */
-    g_capture.state = (idx_count >= 2) ? CAPTURE_COMPLETE : CAPTURE_ERROR;
-}
+    if (!(isr & DMA_LISR_TCIF0)) {
+        return;
+    }
+    DMA1->LIFCR = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0;
+    chunks_done++;
 
-static void flux_dma_error(DMA_HandleTypeDef* hdma)
-{
-    (void)hdma;
-    TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
-    g_capture.error_code = 2;
-    g_capture.state = CAPTURE_ERROR;
+    if (chunks_done >= n_chunks) {
+        /* Store full before all revolutions were captured: keep the complete ones */
+        TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+        dma_stop();
+        if (g_capture.state == CAPTURE_RUNNING) {
+            end_pos = store_words;
+            g_capture.error_code = 1;       /* overflow: fewer revolutions than requested */
+            g_capture.state = (idx_count >= 2) ? CAPTURE_COMPLETE : CAPTURE_ERROR;
+        }
+        return;
+    }
+
+    /* The buffer that just completed is idle now: point it at the next chunk, or at a
+     * scratch area once the store is used up (the stream keeps running until the ISR
+     * after the last chunk stops it, and must not wrap into chunk n-2). */
+    uint32_t* next = dma_scratch;
+    if (next_chunk < n_chunks) {
+        next = &flux_store[next_chunk * chunk_words];
+        next_chunk++;
+    }
+    if (DMA1_Stream0->CR & DMA_SxCR_CT) {
+        DMA1_Stream0->M0AR = (uint32_t)next;        /* M1 active, M0 finished */
+    } else {
+        DMA1_Stream0->M1AR = (uint32_t)next;
+    }
 }
 
 /* ============================================================================

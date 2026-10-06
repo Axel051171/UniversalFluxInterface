@@ -73,6 +73,22 @@ extern const gpio_pin_t PIN_LED_ERR;        /* PG3 */
 extern const gpio_pin_t PIN_PWR_SRC;        /* PG4, TPS2116 status input */
 extern const gpio_pin_t PIN_VBUS_SENSE;     /* PA9, 22k/33k divider */
 
+/* ---- QSPI PSRAM (board v0.2): APS6404L 8 MB on OCTOSPIM port 1 ---------- */
+#define BOARD_HAS_PSRAM         1
+#define PSRAM_SIZE_BYTES        (8u * 1024u * 1024u)
+#define PSRAM_CLK_PORT  GPIOB
+#define PSRAM_CLK_PIN   GPIO_PIN_2      /* AF9 */
+#define PSRAM_NCS_PORT  GPIOB
+#define PSRAM_NCS_PIN   GPIO_PIN_10     /* AF9 */
+#define PSRAM_IO0_PORT  GPIOD
+#define PSRAM_IO0_PIN   GPIO_PIN_11     /* AF9 */
+#define PSRAM_IO1_PORT  GPIOD
+#define PSRAM_IO1_PIN   GPIO_PIN_12     /* AF9 */
+#define PSRAM_IO2_PORT  GPIOB
+#define PSRAM_IO2_PIN   GPIO_PIN_13     /* AF4 */
+#define PSRAM_IO3_PORT  GPIOD
+#define PSRAM_IO3_PIN   GPIO_PIN_13     /* AF9 */
+
 /* ---- Polarity ------------------------------------------------------------ */
 #define BUS_OUT_ASSERT          GPIO_PIN_RESET  /* MCU low -> LS07 pulls the bus low */
 #define BUS_OUT_RELEASE         GPIO_PIN_SET

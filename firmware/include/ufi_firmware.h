@@ -39,11 +39,10 @@ typedef struct __packed {
     uint32_t timestamp;     // Timer-Wert bei Flanke (32-bit)
 } flux_sample_t;
 
-// Flux store: one DMA-capable buffer in AXI SRAM, shared by capture and write.
-// 56k samples = 224 KB: >= 2 revolutions of HD (~50k flux/rev at 300 rpm worst case),
-// ~5 revolutions of typical DD media.
-#define FLUX_STORE_WORDS    (56 * 1024)
-#define REVOLUTIONS_BUFFER  8           // Max Umdrehungen pro Capture
+// Flux store, shared by capture and write: the 8 MB QSPI PSRAM (2M samples, memory-mapped)
+// when fitted and working, else a 224 KB AXI SRAM fallback (56k samples, >= 2 HD revs).
+#define FLUX_STORE_FALLBACK_WORDS   (56 * 1024)
+#define REVOLUTIONS_BUFFER  20          // Max Umdrehungen pro Capture
 
 // One revolution = slice of the flux store between two index pulses.
 // Timestamps are TIM2 ticks relative to the index pulse that starts the revolution.
@@ -204,6 +203,8 @@ capture_state_t ufi_flux_poll(void);           // finalises a completed capture
 flux_revolution_t* ufi_flux_get_revolution(uint8_t index);
 uint8_t ufi_flux_get_revolution_count(void);
 uint32_t* ufi_flux_store(uint32_t* words);      // shared buffer (write path uses it too)
+bool ufi_flux_store_is_psram(void);
+int ufi_psram_init(void);                       // ufi_psram.c
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter
 void ufi_flux_tim2_irq(void);
 void ufi_flux_dma_irq(void);

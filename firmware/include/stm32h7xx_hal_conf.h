@@ -22,6 +22,8 @@ extern "C" {
 #define HAL_FLASH_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
 #define HAL_IWDG_MODULE_ENABLED
+#define HAL_OSPI_MODULE_ENABLED
+#define HAL_MDMA_MODULE_ENABLED
 #define HAL_PCD_MODULE_ENABLED
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
@@ -136,6 +138,14 @@ extern "C" {
 
 #ifdef HAL_IWDG_MODULE_ENABLED
 #include "stm32h7xx_hal_iwdg.h"
+#endif
+
+#ifdef HAL_MDMA_MODULE_ENABLED
+#include "stm32h7xx_hal_mdma.h"
+#endif
+
+#ifdef HAL_OSPI_MODULE_ENABLED
+#include "stm32h7xx_hal_ospi.h"
 #endif
 
 #ifdef HAL_PCD_MODULE_ENABLED
