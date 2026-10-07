@@ -766,7 +766,9 @@ def main():
             ("IEC_Bus", "IEC_Bus.kicad_sch", build_iec()),
             ("Apple_Port", "Apple_Port.kicad_sch", build_apple())]
     for i, (name, file, sh) in enumerate(subs):
-        u, blk = sheet_block(name, file, 30 + i * 70, 50, 50, 30, str(i + 2), root.uuid)
+        # two rows of three, inside the A4 frame
+        u, blk = sheet_block(name, file, 30 + (i % 3) * 90, 50 + (i // 3) * 50, 50, 30,
+                             str(i + 2), root.uuid)
         blocks.append(blk)
         (OUT / file).write_text(sh.render(PROJECT, f"/{root.uuid}/{u}"), encoding="utf8")
     (OUT / f"{PROJECT}.kicad_sch").write_text(
