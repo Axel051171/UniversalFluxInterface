@@ -1,6 +1,6 @@
 """Add a silkscreen label near a target spot, at the closest position that collides with no
 pad, no silkscreen item and no reference text (shape based) and stays inside the board.
-Re-running replaces a label with the same text on the same layer.
+Re-running replaces a label with the same text on the same layer within RADIUS + 1 mm.
 usage: python add_silk_label.py <board> F|B SIZE_MM "TEXT" X Y [RADIUS_MM]
 """
 import math
@@ -27,8 +27,9 @@ for f in b.GetFootprints():
     for t in (f.Reference(), f.Value()):
         if t.IsVisible() and t.GetLayer() == silk:
             obs.append(t.GetEffectiveShape())
-old = [d for d in b.GetDrawings()
-       if d.GetClass() == "PCB_TEXT" and d.GetLayer() == silk and d.GetText() == text]
+old = [d for d in b.GetDrawings()   # same text near the target only (e.g. several "GND")
+       if d.GetClass() == "PCB_TEXT" and d.GetLayer() == silk and d.GetText() == text
+       and math.hypot(T(d.GetPosition().x) - float(tx), T(d.GetPosition().y) - float(ty)) <= radius + 1]
 obs += [d.GetEffectiveShape() for d in b.GetDrawings() if d.GetLayer() == silk and d not in old]
 obs += [v.GetEffectiveShape(cu) for v in b.GetTracks() if v.GetClass() == "PCB_VIA"]  # mask-free vias
 

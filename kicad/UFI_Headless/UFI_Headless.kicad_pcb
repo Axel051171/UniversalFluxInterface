@@ -50295,6 +50295,17 @@
 			)
 		)
 	)
+	(gr_text "GND"
+		(at 12.35 90.29 0)
+		(layer "F.SilkS")
+		(uuid "178a75b2-4bf7-44e4-b6e5-50d49a89ab2b")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
 	(gr_text "5V"
 		(at 14.25 74.65 0)
 		(layer "F.SilkS")
@@ -50361,10 +50372,10 @@
 			)
 		)
 	)
-	(gr_text "SYNC"
-		(at 33.8 88.5 0)
+	(gr_text "+5V"
+		(at 33.4 88.5 0)
 		(layer "F.SilkS")
-		(uuid "b8d6d5ec-07f2-4bb5-b6c7-cd2eaebb2a66")
+		(uuid "63d6d9a0-4d28-4c9a-af83-a2aaf1482f6c")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -50372,10 +50383,98 @@
 			)
 		)
 	)
-	(gr_text "USB HDR"
-		(at 62 22.65 0)
+	(gr_text "GND"
+		(at 33.9 91.04 0)
 		(layer "F.SilkS")
-		(uuid "2cc651e6-2e22-45a4-ad38-af3c90520f15")
+		(uuid "f0a24a5f-1bd8-4427-9731-0e6fbeb6d285")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "SYNC"
+		(at 34.15 93.08 0)
+		(layer "F.SilkS")
+		(uuid "afd7d51c-7f6e-42f4-9d91-13f157ebc2cd")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "1"
+		(at 53.1 19.5 0)
+		(layer "F.SilkS")
+		(uuid "4d219b7b-c644-442f-8871-2877dd46a122")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "5V"
+		(at 55 21.75 0)
+		(layer "F.SilkS")
+		(uuid "ef5f87db-f7ad-4c54-ae38-cad48934b425")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "D-"
+		(at 57.54 21.75 0)
+		(layer "F.SilkS")
+		(uuid "e760f8c7-bcc2-44ef-b274-9cd0f5cdb358")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "USB 2.0"
+		(at 59 14.05 0)
+		(layer "F.SilkS")
+		(uuid "5635c41d-a3c6-4257-a7dd-3a578b5c18d3")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "D+"
+		(at 60.08 22 0)
+		(layer "F.SilkS")
+		(uuid "d5497fdb-2fbe-40f6-9070-21254ee5a8be")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "GND"
+		(at 63.62 21.75 0)
+		(layer "F.SilkS")
+		(uuid "fb4578e3-d28a-42d5-a4ad-f32a0749e9af")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(gr_text "X"
+		(at 65.16 21.75 0)
+		(layer "F.SilkS")
+		(uuid "4a710320-a80b-47b3-ba03-0932244d2298")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -50417,7 +50516,7 @@
 		)
 	)
 	(gr_text "DISK II"
-		(at 37.1 93.6 0)
+		(at 38.5 95.6 0)
 		(layer "F.SilkS")
 		(uuid "0f9b40c8-0611-4dc6-914f-a4f63ee7f913")
 		(effects
