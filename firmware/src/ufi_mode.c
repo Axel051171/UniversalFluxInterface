@@ -53,6 +53,9 @@ static void show_mode(uint8_t mode)
 
 static void apply(uint8_t mode)
 {
+    if (mode != ufi_usb_get_mode()) {
+        ufi_v2_event_now(UFI_V2_EVT_MODE, &mode, 1);   /* before the re-enumeration */
+    }
     if (ufi_usb_set_mode(mode) == UFI_OK) {
         show_mode(mode);
     }

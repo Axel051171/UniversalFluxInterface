@@ -32,6 +32,7 @@ extern capture_context_t g_capture;
 #define WRITE_PULSE_TICKS   ((WRITE_PULSE_NS * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)
 #define WRITE_MIN_DELTA     (4 * WRITE_PULSE_TICKS)
 #define WRITE_MAX_DELTA     65536U  // 16-bit timer: 238 us max interval
+#define WRITE_INDEX_TIMEOUT_MS  1000u   // no index pulse within this time: give up
 
 typedef struct {
     write_state_t state;
@@ -50,6 +51,7 @@ typedef struct {
     uint8_t code_len, code_need;
     bool bad;                   // compact: reserved / index code seen
     bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
+    uint32_t wait_since;        // HAL tick when the wait for the index pulse began
 } write_context_t;
 
 static write_context_t g_write;
@@ -367,7 +369,7 @@ int ufi_write_start(void) {
     HAL_Delay(20);                          // head settle after side select
 
     led_set(&PIN_LED_FDD, true);
-    if (g_write.apple) {
+    if (g_write.apple && !ufi_config_apple_sync()) {
         /* no index pulse: start right away, /WRREQ low; ends after the last interval */
         HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
         g_write.state = WRITE_ACTIVE;
@@ -376,6 +378,7 @@ int ufi_write_start(void) {
         __HAL_TIM_ENABLE(&htim3);
         return UFI_OK;
     }
+    g_write.wait_since = HAL_GetTick();
     g_write.state = WRITE_WAITING_INDEX;
     return UFI_OK;
 }
@@ -394,8 +397,18 @@ static void write_finish(write_state_t final_state) {
 /* Called from the TIM2 index-capture interrupt */
 void ufi_write_index_handler(uint32_t t) {
     (void)t;
+    if (g_write.apple && g_write.state == WRITE_WAITING_INDEX) {
+        /* Disk II with sync sensor: start at the sensor pulse (track alignment kept);
+         * the end comes from the last interval, not from the next pulse */
+        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
+        g_write.state = WRITE_ACTIVE;
+        g_write.updates_left = 0;
+        TIM3->DIER |= TIM_DIER_UDE;
+        __HAL_TIM_ENABLE(&htim3);
+        return;
+    }
     if (g_write.apple) {
-        return;                             /* Disk II write: no index involved */
+        return;                             /* Disk II: no index safety stop */
     }
     if (g_write.state == WRITE_WAITING_INDEX) {
         bus_out(&PIN_FDD_WGATE, true);
@@ -589,6 +602,13 @@ void ufi_write_service(void) {
             ufi_usb_send_event(write_event_cmd(), ret);
             ufi_write_abort();
         }
+        return;
+    }
+    if (g_write.state == WRITE_WAITING_INDEX &&
+        HAL_GetTick() - g_write.wait_since > WRITE_INDEX_TIMEOUT_MS) {
+        const uint8_t cmd = write_event_cmd();
+        ufi_write_abort();                  /* no index pulse: nothing was written */
+        ufi_usb_send_event(cmd, UFI_ERR_NO_INDEX);
         return;
     }
     if (g_write.state == WRITE_COMPLETE || g_write.state == WRITE_ERROR) {

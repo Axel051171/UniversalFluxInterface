@@ -363,6 +363,7 @@ int ufi_usb_set_mode(uint8_t mode);
 uint8_t ufi_usb_get_mode(void);
 uint8_t ufi_usb_flux_mode(void);                // UFI_USB_FLUX or UFI_USB_GW per UFI.CFG
 bool ufi_config_protocol_gw(void);              // UFI.CFG protocol=gw
+bool ufi_config_apple_sync(void);              // UFI.CFG apple_sync=1: Disk II sync sensor on J19
 int ufi_usb_tx_blocking(const uint8_t* p, uint32_t len);
 
 // Greaseweazle protocol (ufi_gw.c)
@@ -390,9 +391,38 @@ int ufi_floppy_write(const uint8_t* buf, uint32_t lba, uint32_t count);
 int ufi_floppy_flush(void);
 void ufi_floppy_service(void);                  // main loop: idle write-back
 
+// UFI v2 protocol (ufi_v2.c, docs/USB_Protokoll.md section 3): framed requests in the
+// UFI flux personality; a packet starting with 55 AA switches the session to v2
+#define UFI_V2_HDR          8u                  // 55 AA type cmd seq status len16
+#define UFI_V2_MAX_PAYLOAD  4096u
+#define UFI_V2_FRAME_MAX    (UFI_V2_HDR + UFI_V2_MAX_PAYLOAD + 2u)
+enum { UFI_V2_REQUEST = 1, UFI_V2_REPLY = 2, UFI_V2_EVENT = 3, UFI_V2_DATA = 4, UFI_V2_END = 5 };
+enum { UFI_V2_READ = 0x20, UFI_V2_WRITE = 0x22 };
+enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_BUTTON = 0x81, UFI_V2_EVT_DUMP = 0x82,
+       UFI_V2_EVT_POWER = 0x83, UFI_V2_EVT_MODE = 0x84 };
+bool ufi_v2_active(void);
+bool ufi_v2_write_pending(void);                // a v2 WRITE owns the write path
+bool ufi_v2_rx(const uint8_t* buf, uint32_t len);   // USB IRQ; false = pause reception
+void ufi_v2_clear_comms(void);                  // USB IRQ: SET_LINE_CODING 10000 baud
+void ufi_v2_reset(void);                        // re-enumeration: back to v1
+void ufi_v2_service(void);                      // main loop (UFI flux personality)
+uint32_t ufi_v2_frame(uint8_t* f, uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
+                      uint16_t len);            // header + CRC around f[8..8+len), total size
+bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len);  // false: not v2
+void ufi_v2_event(uint8_t code, const void* payload, uint16_t len);      // queued (mask)
+void ufi_v2_event_now(uint8_t code, const void* payload, uint16_t len);  // blocking (mode switch)
+
+// File access on the SD NAND for UFI v2 (ufi_dump.c); names are NUL-terminated
+int ufi_file_dir(const char* path, uint16_t start, uint8_t* out, uint16_t max, uint16_t* len);
+int ufi_file_read(const char* name, uint32_t offset, uint8_t* out, uint16_t len, uint16_t* got);
+int ufi_file_write(const char* name, uint32_t offset, bool create, const uint8_t* data,
+                   uint16_t len, uint16_t* written);
+int ufi_file_delete(const char* name);
+
 // Streamed capture transfer (ufi_stream.c)
 void ufi_stream_begin(void);
 void ufi_stream_begin_gw(void);                 // Greaseweazle flux code (ufi_gw.c)
+void ufi_stream_begin_v2(uint8_t seq);          // UFI v2 DATA frames (ufi_v2.c)
 void ufi_stream_abort(void);
 bool ufi_stream_active(void);
 void ufi_stream_service(void);                  // main loop: encode + send, READ_DONE at the end

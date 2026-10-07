@@ -81,6 +81,8 @@ static void sample_rails(void)
                 power_mask &= (uint8_t)~(1u << r);
                 trip_mask |= (uint8_t)(1u << r);
                 led_set(&PIN_LED_ERR, true);
+                const board_status_t s = ufi_board_status();
+                ufi_v2_event(UFI_V2_EVT_POWER, &s, sizeof(s));
             }
         } else {
             oc_count[r] = 0;

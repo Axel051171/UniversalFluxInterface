@@ -217,7 +217,7 @@ static int finish_file(void)
     const bool apple = (cfg.drive == DRIVE_APPLE_II || cfg.drive == DRIVE_APPLE2);
     uint8_t hdr[SCP_HDR_LEN] = {'S', 'C', 'P', SCP_VERSION, apple ? SCP_DISK_APPLE2 : SCP_DISK_OTHER,
                                 cfg.revs, 0, last,
-                                apple ? 0u : SCP_FLAG_INDEX, 0, (uint8_t)(cfg.sides == 2 ? 0 : 1), 0,
+                                (apple && !ufi_config_apple_sync()) ? 0u : SCP_FLAG_INDEX, 0, (uint8_t)(cfg.sides == 2 ? 0 : 1), 0,
                                 (uint8_t)checksum, (uint8_t)(checksum >> 8),
                                 (uint8_t)(checksum >> 16), (uint8_t)(checksum >> 24)};
     UINT bw = 0;
@@ -238,7 +238,7 @@ static int finish_file(void)
  * ============================================================================ */
 
 static FIL logfile;
-static bool log_open, copying, button_copy, protocol_gw;
+static bool log_open, copying, button_copy, protocol_gw, apple_sync;
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -506,6 +506,11 @@ bool ufi_config_protocol_gw(void)
     return protocol_gw;
 }
 
+bool ufi_config_apple_sync(void)
+{
+    return apple_sync;
+}
+
 /* ============================================================================
  * UFI.CFG on the SD NAND: drive and dump settings for stand-alone use, editable in the
  * SD drive mode.  Lines "key=value", '#' comments; written with defaults if missing.
@@ -525,7 +530,9 @@ static const char cfg_default[] =
     "copy_to=b\r\n"
     "# flux protocol with the mode switch in the middle: ufi (ufi host tool) or gw\r\n"
     "# (Greaseweazle host tools: gw read, gw write, ...)\r\n"
-    "protocol=ufi\r\n";
+    "protocol=ufi\r\n"
+    "# Disk II sync (index) sensor on J19: 1 = Apple reads/writes use its index pulse\r\n"
+    "apple_sync=0\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
@@ -578,6 +585,8 @@ static void parse_line(const char* k, dump_config_t* c)
         button_copy = word_is(v, "copy");
     } else if (!strncmp(k, "protocol=", 9)) {
         protocol_gw = word_is(v, "gw");
+    } else if (!strncmp(k, "apple_sync=", 11)) {
+        apple_sync = (num == 1u);
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -779,7 +788,7 @@ void ufi_dump_service(void)
 void ufi_buttons_service(void)
 {
     static uint32_t a_since, b_since, blink_t;
-    static bool armed, a_used, b_used;
+    static bool armed, a_used, b_used, a_down;
     static uint8_t blink_n;
     const uint32_t now = HAL_GetTick();
     const bool a = HAL_GPIO_ReadPin(PIN_BTN_A.port, PIN_BTN_A.pin) == GPIO_PIN_RESET;
@@ -789,10 +798,22 @@ void ufi_buttons_service(void)
         armed = !a && !b;
         return;
     }
-    if (!a) { a_since = now; a_used = false; }
+    if (!a) {
+        if (a_down && !a_used) {                       /* short press: UFI v2 event only */
+            const uint8_t ev[2] = {0, 0};
+            ufi_v2_event(UFI_V2_EVT_BUTTON, ev, 2);
+        }
+        a_since = now;
+        a_used = false;
+    }
+    a_down = a;
     if (!b) {
-        if (b_since && !b_used && ufi_dump_active()) { /* short press of B aborts */
-            ufi_dump_abort();
+        if (b_since && !b_used) {
+            const uint8_t ev[2] = {1, 0};
+            ufi_v2_event(UFI_V2_EVT_BUTTON, ev, 2);
+            if (ufi_dump_active()) {                   /* short press of B aborts */
+                ufi_dump_abort();
+            }
         }
         b_since = 0;
         b_used = false;
@@ -802,6 +823,8 @@ void ufi_buttons_service(void)
 
     if (a && !a_used && now - a_since >= HOLD_START_MS) {
         a_used = true;
+        const uint8_t ev[2] = {0, 1};
+        ufi_v2_event(UFI_V2_EVT_BUTTON, ev, 2);
         if (button_copy) {                             /* UFI.CFG button_a=copy */
             ufi_copy_start();
         } else {
@@ -810,7 +833,9 @@ void ufi_buttons_service(void)
     }
     if (b && b_since && !b_used && !ufi_dump_active() && now - b_since >= HOLD_MSC_MS) {
         b_used = true;
-        ufi_mode_button_b();                           /* SD drive on/off (switch in middle) */
+        const uint8_t ev[2] = {1, 1};
+        ufi_v2_event(UFI_V2_EVT_BUTTON, ev, 2);
+        ufi_mode_button_b();                          /* SD drive on/off (switch in middle) */
     }
 
     /* ERR LED: n short blinks, 1 s pause, until the next dump starts */
@@ -824,4 +849,130 @@ void ufi_buttons_service(void)
             led_set(&PIN_LED_ERR, (blink_n & 1u) != 0);
         }
     }
+}
+
+/* ============================================================================
+ * file access for the host (UFI v2 DIR / READ_FILE / WRITE_FILE / DELETE)
+ * Each call mounts, works and unmounts; a running dump owns the file system.
+ * ============================================================================ */
+
+static int fr_status(FRESULT fr)
+{
+    switch (fr) {
+        case FR_OK:             return UFI_OK;
+        case FR_NO_FILE:
+        case FR_NO_PATH:        return UFI_ERR_NOT_FOUND;
+        case FR_INVALID_NAME:   return UFI_ERR_BAD_ARGS;
+        case FR_WRITE_PROTECTED: return UFI_ERR_WRITE_PROT;
+        default:                return UFI_ERR_STORAGE;
+    }
+}
+
+static int file_begin(void)
+{
+    if (ufi_dump_active()) {
+        return UFI_ERR_BUSY;
+    }
+    return mount();
+}
+
+/* out: count u8, more u8, per entry size u32, attr u8, nlen u8, name */
+int ufi_file_dir(const char* path, uint16_t start, uint8_t* out, uint16_t max, uint16_t* len)
+{
+    *len = 0;
+    int ret = file_begin();
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    DIR dir;
+    FILINFO fi;
+    FRESULT fr = f_opendir(&dir, path);
+    uint16_t n = 2, idx = 0;
+    uint8_t count = 0, more = 0;
+    if (fr == FR_OK) {
+        while ((fr = f_readdir(&dir, &fi)) == FR_OK && fi.fname[0]) {
+            if (idx++ < start) {
+                continue;
+            }
+            const uint8_t nl = (uint8_t)strlen(fi.fname);
+            if (count == 255u || n + 6u + nl > max) {
+                more = 1;
+                break;
+            }
+            const uint32_t size = (uint32_t)fi.fsize;
+            memcpy(&out[n], &size, 4);
+            out[n + 4] = fi.fattrib;
+            out[n + 5] = nl;
+            memcpy(&out[n + 6], fi.fname, nl);
+            n = (uint16_t)(n + 6u + nl);
+            count++;
+        }
+        f_closedir(&dir);
+    }
+    unmount();
+    out[0] = count;
+    out[1] = more;
+    *len = (fr == FR_OK) ? n : 0u;
+    return fr_status(fr);
+}
+
+/* Fewer bytes than asked (also 0) = end of file */
+int ufi_file_read(const char* name, uint32_t offset, uint8_t* out, uint16_t len, uint16_t* got)
+{
+    *got = 0;
+    int ret = file_begin();
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    FRESULT fr = f_open(&file, name, FA_READ);
+    if (fr == FR_OK) {
+        file_open = 1;
+        UINT n = 0;
+        fr = f_lseek(&file, offset);
+        if (fr == FR_OK) {
+            fr = f_read(&file, out, len, &n);
+        }
+        *got = (uint16_t)n;
+    }
+    unmount();
+    return fr_status(fr);
+}
+
+/* create: new file / truncate to 0 first; a short write (volume full) = UFI_ERR_STORAGE */
+int ufi_file_write(const char* name, uint32_t offset, bool create, const uint8_t* data,
+                   uint16_t len, uint16_t* written)
+{
+    *written = 0;
+    int ret = file_begin();
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    FRESULT fr = f_open(&file, name, FA_WRITE | (create ? FA_CREATE_ALWAYS : FA_OPEN_EXISTING));
+    UINT n = 0;
+    if (fr == FR_OK) {
+        file_open = 1;
+        fr = f_lseek(&file, offset);
+        if (fr == FR_OK && len) {
+            fr = f_write(&file, data, len, &n);
+        }
+        if (fr == FR_OK) {
+            fr = f_close(&file);
+            file_open = 0;
+        }
+        *written = (uint16_t)n;
+    }
+    unmount();
+    ret = fr_status(fr);
+    return (ret == UFI_OK && n < len) ? UFI_ERR_STORAGE : ret;
+}
+
+int ufi_file_delete(const char* name)
+{
+    int ret = file_begin();
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    const FRESULT fr = f_unlink(name);
+    unmount();
+    return fr_status(fr);
 }

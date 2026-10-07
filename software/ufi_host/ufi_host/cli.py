@@ -1,22 +1,33 @@
 """ufi - command line host tool for the UFI Flux Engine (UFI Headless board).
 
-  ufi info | status | selftest | rpm
-  ufi select {a,b,amiga,iec,none} | motor {on,off} | seek N | recal | side {0,1}
+Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmware.
+
+  ufi info | status | caps | selftest | rpm
+  ufi select {a,b,amiga,iec,none,...} | motor {on,off} | seek N | recal | side {0,1}
   ufi read TRACK SIDE [-r REVS] [-o out.scp]          one track, summary or SCP
   ufi read-disk -o disk.scp [--tracks 80] [--sides 2] [-r 3] [--drive a]
   ufi write disk.scp TRACK SIDE [--verify]            rev 0 of that SCP track
   ufi write-disk disk.scp [--verify] [--drive a]
   ufi erase TRACK SIDE | abort
   ufi iec-reset | iec-send BYTE [--eoi] | iec-recv
+  ufi files [PATH] | get NAME [-o out] | put LOCAL NAME | rm NAME       (v2, SD NAND)
+  ufi cfg [KEY=VALUE ...]                             show / edit UFI.CFG (v2)
+  ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | copy
+  ufi power [MASK] | events | mode {flux,sd,floppy,gw}
   ufi reset | bootloader
 """
 from __future__ import annotations
 
 import argparse
+import re
 import sys
+from pathlib import PurePosixPath
 
 from . import protocol as P
+from . import protocol2 as P2
 from .scp import ScpRevolution, read_scp, scp_to_ticks, ticks_to_scp, write_scp
+
+CFG_NAME = "UFI.CFG"
 
 
 def _to_scp(rev: P.Revolution) -> ScpRevolution:
@@ -33,13 +44,28 @@ def _summary(cap: P.Capture) -> str:
     return "\n".join(lines)
 
 
-def _prepare(dev: P.Device, drive: str) -> None:
+def _prepare(dev, drive: str) -> None:
     dev.select(drive)
     dev.motor(True)
     dev.recalibrate()
 
 
-def cmd_read_disk(dev: P.Device, a) -> None:
+def edit_cfg(text: str, changes: dict[str, str]) -> str:
+    """Set KEY=VALUE lines in UFI.CFG text: replace the first active line, else append."""
+    nl = "\r\n" if "\r\n" in text else "\n"
+    lines = text.splitlines()
+    for key, value in changes.items():
+        pat = re.compile(rf"^\s*{re.escape(key)}\s*=", re.IGNORECASE)
+        for i, line in enumerate(lines):
+            if pat.match(line):
+                lines[i] = f"{key}={value}"
+                break
+        else:
+            lines.append(f"{key}={value}")
+    return nl.join(lines) + nl
+
+
+def cmd_read_disk(dev, a) -> None:
     _prepare(dev, a.drive)
     tracks = {}
     try:
@@ -56,7 +82,7 @@ def cmd_read_disk(dev: P.Device, a) -> None:
     print(f"wrote {a.output}: {len(tracks)} tracks x {revs} revolutions")
 
 
-def cmd_write_disk(dev: P.Device, a) -> None:
+def cmd_write_disk(dev, a) -> None:
     _, tracks = read_scp(a.image)
     _prepare(dev, a.drive)
     try:
@@ -67,13 +93,101 @@ def cmd_write_disk(dev: P.Device, a) -> None:
         dev.motor(False)
 
 
+def cmd_caps(dev: P2.Device2) -> None:
+    i = dev.device_info()
+    print(f"protocol v{i.proto}, firmware {i.fw_major}.{i.fw_minor}, "
+          f"board {f'v0.{i.board_rev}' if i.board_rev else 'unknown'}")
+    print(f"sample clock {i.sample_hz} Hz, store {i.store_bytes} bytes, max payload {i.max_payload}")
+    print(f"caps 0x{i.caps:08X}")
+    for bit, (name, on) in enumerate(i.caps_list()):
+        print(f"  bit{bit:<2} {'yes' if on else 'no ':3}  {name}")
+
+
+def cmd_events(dev: P2.Device2) -> None:
+    dev.enable_events(P2.EVENTS_ALL)
+    print("events enabled - Ctrl+C to stop", flush=True)
+    try:
+        for ev in dev.iter_events():
+            print(ev.describe(), flush=True)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        dev.enable_events(0)
+
+
+def _progress(total: int | None):
+    def show(n: int) -> None:
+        print(f"\r  {n} bytes" + (f" / {total}" if total is not None else ""), end="",
+              file=sys.stderr, flush=True)
+    return show
+
+
+def run_v2(dev: P2.Device2, a) -> bool:
+    """v2-only commands; returns False when a.cmd is not one of them."""
+    if a.cmd == "caps":
+        cmd_caps(dev)
+    elif a.cmd == "files":
+        for e in dev.list_dir(a.path):
+            print(f"{'<DIR>' if e.is_dir else e.size:>10}  {e.name}")
+    elif a.cmd == "get":
+        data = dev.read_file(a.name, _progress(None))
+        out = a.output or PurePosixPath(a.name).name
+        with open(out, "wb") as f:
+            f.write(data)
+        print(f"\nwrote {out}: {len(data)} bytes")
+    elif a.cmd == "put":
+        with open(a.local, "rb") as f:
+            data = f.read()
+        dev.write_file(a.name, data, _progress(len(data)))
+        print(f"\n{a.name}: {len(data)} bytes written")
+    elif a.cmd == "rm":
+        dev.delete(a.name)
+    elif a.cmd == "cfg":
+        text = dev.read_file(CFG_NAME).decode("latin-1")
+        if not a.set:
+            print(text, end="" if text.endswith("\n") else "\n")
+            return True
+        changes = {}
+        for s in a.set:
+            if "=" not in s:
+                raise SystemExit(f"expected KEY=VALUE, got {s!r}")
+            k, v = s.split("=", 1)
+            changes[k.strip()] = v.strip()
+        dev.write_file(CFG_NAME, edit_cfg(text, changes).encode("latin-1"))
+        dev.cfg_reload()
+        print(f"{CFG_NAME} updated and reloaded: " + ", ".join(f"{k}={v}" for k, v in changes.items()))
+    elif a.cmd == "events":
+        cmd_events(dev)
+    elif a.cmd == "mode":
+        dev.usb_mode(a.mode)
+        print(f"switching to {a.mode} - the device re-enumerates")
+    elif a.cmd == "dump":
+        dev.dump_start(a.drive, a.tracks, a.sides, a.revs)
+    elif a.cmd == "dump-status":
+        print(dev.dump_status())
+    elif a.cmd == "dump-abort":
+        dev.dump_abort()
+    elif a.cmd == "copy":
+        dev.copy_start()
+    elif a.cmd == "power":
+        print(dev.power(a.mask))
+    else:
+        return False
+    return True
+
+
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status",
+           "dump-abort", "copy", "power"}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ufi", description="UFI Flux Engine host tool",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("info", "status", "selftest", "rpm", "recal", "abort", "iec-reset", "iec-recv",
-                 "reset", "bootloader", "check-disk", "amiga-id", "usb-power"):
+                 "reset", "bootloader", "check-disk", "amiga-id", "usb-power", "caps", "events",
+                 "dump-status", "dump-abort", "copy"):
         sub.add_parser(name)
     sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000").add_argument(
         "set", nargs="*", metavar="FIELD=VALUE")
@@ -107,10 +221,34 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("iec-send")
     p.add_argument("byte", type=lambda s: int(s, 0))
     p.add_argument("--eoi", action="store_true")
+    sub.add_parser("files", help="list a directory on the SD NAND").add_argument("path", nargs="?", default="")
+    p = sub.add_parser("get", help="download a file from the SD NAND, e.g. DUMP0001.SCP")
+    p.add_argument("name")
+    p.add_argument("-o", "--output")
+    p = sub.add_parser("put", help="upload a file to the SD NAND")
+    p.add_argument("local")
+    p.add_argument("name")
+    sub.add_parser("rm", help="delete a file on the SD NAND").add_argument("name")
+    sub.add_parser("cfg", help="show UFI.CFG, or set KEY=VALUE lines and reload").add_argument(
+        "set", nargs="*", metavar="KEY=VALUE")
+    sub.add_parser("mode", help="switch USB personality").add_argument("mode", choices=list(P2.USB_MODES))
+    p = sub.add_parser("dump", help="standalone dump to DUMPnnnn.SCP on the SD NAND")
+    p.add_argument("--drive", choices=list(P.DRIVES))
+    p.add_argument("--tracks", type=int, default=80)
+    p.add_argument("--sides", type=int, default=2, choices=(1, 2))
+    p.add_argument("-r", "--revs", type=int, default=3)
+    sub.add_parser("power", help="board status; MASK bit0 FDD_5V, bit1 FDD_12V").add_argument(
+        "mask", nargs="?", type=lambda s: int(s, 0))
     a = ap.parse_args(argv)
 
-    dev = P.Device(P.open_serial(a.port))
+    dev = P2.connect(a.port)
     try:
+        if isinstance(dev, P2.Device2):
+            if run_v2(dev, a):
+                return 0
+        elif a.cmd in V2_ONLY:
+            print(f"error: '{a.cmd}' needs UFI v2 firmware (>= 1.12)", file=sys.stderr)
+            return 1
         if a.cmd == "info":
             print("\n".join(dev.info()))
         elif a.cmd == "status":

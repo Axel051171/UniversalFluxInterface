@@ -23,6 +23,9 @@
  *   250..254, b           delta = 250 + (byte - 250) * 255 + b - 1
  *   0xFF 1 N28            index pulse, N = ticks after the last transition
  *   0xFF 2 N28, 249       flux transition, delta = N + 249
+ *
+ * UFI v2 mode (ufi_v2.c, READ 0x20): the v1 stream code in DATA frames (type 4, seq of the
+ * request, <= 4096 payload bytes, CRC); READ_DONE becomes the END frame.
  */
 
 #include "ufi_firmware.h"
@@ -36,10 +39,13 @@ extern capture_context_t g_capture;
 #define TS_MARGIN       2750        /* 10 us: the index IRQ for older samples has run */
 #define DELTA_MAX       (1u << 28)  /* ~0.98 s; larger while running = not yet written */
 #define STALL_MS        1000u       /* host stopped reading */
+#define HDR             UFI_V2_HDR  /* room for a v2 frame header; v1 uses its last 4 bytes */
 
-static uint8_t buf[2][sizeof(ufi_response_header_t) + STREAM_BUF];
+/* payload at HDR; v2 appends its CRC after the payload */
+static uint8_t buf[2][HDR + STREAM_BUF + 2u];
 static uint8_t cur;                 /* buffer being filled (the other one may be on USB) */
 static uint32_t fill;
+static uint32_t cap, send_at;       /* payload limit / send threshold per message */
 static bool active, started, done;
 static uint32_t rd;                 /* next sample to encode */
 static uint32_t t_last;             /* time of the last emitted transition / index 0 */
@@ -48,6 +54,8 @@ static uint8_t n_final;             /* revolutions in this stream, 0 until known
 static uint32_t tx_start_ms;
 static bool gw;                     /* Greaseweazle flux code (ufi_gw.c) */
 static uint32_t gw_rem;             /* 275 MHz ticks not yet passed on (below one GW tick) */
+static bool v2;                     /* UFI v2 DATA frames (ufi_v2.c) */
+static uint8_t v2_seq;              /* seq of the READ request */
 
 /* ============================================================================
  * ENCODER
@@ -75,7 +83,7 @@ static void put_delta_gw(uint32_t d)
     const uint32_t acc = d + gw_rem;    /* 275 MHz -> 68.75 MHz without drift */
     const uint32_t v = acc >> GW_TICK_SHIFT;
     gw_rem = acc & ((1u << GW_TICK_SHIFT) - 1u);
-    uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
+    uint8_t* o = &buf[cur][HDR + fill];
     if (v == 0u) {
         gw_rem = acc;                   /* < 1 GW tick: merge into the next transition */
     } else if (v < 250u) {
@@ -100,7 +108,7 @@ static void put_delta(uint32_t d)
         put_delta_gw(d);
         return;
     }
-    uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
+    uint8_t* o = &buf[cur][HDR + fill];
     if (d >= 1u && d <= 0xEFu) {
         o[0] = (uint8_t)d;
         fill += 1;
@@ -118,7 +126,7 @@ static void put_delta(uint32_t d)
 
 static void put_index(uint32_t offset)
 {
-    uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
+    uint8_t* o = &buf[cur][HDR + fill];
     if (gw) {
         o[0] = 0xFF;
         o[1] = 1;                       /* FLUXOP_INDEX, cursor unchanged */
@@ -167,7 +175,7 @@ static void encode(bool halted)
         }
     }
 
-    while (!done && rd < wr && fill <= STREAM_BUF - ROOM) {
+    while (!done && rd < wr && fill <= cap - ROOM) {
         const uint32_t ts = s[phys];
         const uint32_t d = ts - t_last;
         if (!halted && ((int32_t)(now - ts) < TS_MARGIN || d >= DELTA_MAX)) {
@@ -186,7 +194,7 @@ static void encode(bool halted)
     }
     ufi_flux_stream_consumed(rd);           /* frees ring chunks for the DMA */
     /* Capture over and every stored sample used: the last index pulses follow no flux */
-    if (halted && !done && rd >= wr && fill <= STREAM_BUF - ROOM) {
+    if (halted && !done && rd >= wr && fill <= cap - ROOM) {
         put_indexes_before(0, true);
     }
 }
@@ -224,7 +232,7 @@ static void finish(int result)
 /* Returns false if the host stopped reading (stream aborted) */
 static bool pump(void)
 {
-    if (fill == 0 || (fill < SEND_AT && !done)) {
+    if (fill == 0 || (fill < send_at && !done)) {
         return true;
     }
     if (!ufi_usb_tx_idle()) {
@@ -238,11 +246,22 @@ static bool pump(void)
         }
         return true;
     }
-    const ufi_response_header_t h = {.command = UFI_EVT_FLUX_STREAM, .status = 0,
-                                     .length = (uint16_t)fill};
-    memcpy(buf[cur], &h, sizeof(h));
-    const uint32_t skip = gw ? sizeof(h) : 0u;  /* Greaseweazle: raw bytes, no header */
-    if (ufi_usb_tx_start(buf[cur] + skip, sizeof(h) + fill - skip) != UFI_OK) {
+    const uint8_t* p;
+    uint32_t n;
+    if (v2) {                               /* DATA frame: header + payload + CRC */
+        n = ufi_v2_frame(buf[cur], UFI_V2_DATA, UFI_V2_READ, v2_seq, 0, (uint16_t)fill);
+        p = buf[cur];
+    } else if (gw) {                        /* Greaseweazle: raw bytes, no header */
+        n = fill;
+        p = buf[cur] + HDR;
+    } else {
+        const ufi_response_header_t h = {.command = UFI_EVT_FLUX_STREAM, .status = 0,
+                                         .length = (uint16_t)fill};
+        memcpy(buf[cur] + HDR - sizeof(h), &h, sizeof(h));
+        n = sizeof(h) + fill;
+        p = buf[cur] + HDR - sizeof(h);
+    }
+    if (ufi_usb_tx_start(p, n) != UFI_OK) {
         ufi_flux_capture_stop();
         stop();
         if (gw) {
@@ -263,6 +282,9 @@ static bool pump(void)
 void ufi_stream_begin(void)
 {
     gw = false;
+    v2 = false;
+    cap = STREAM_BUF;
+    send_at = SEND_AT;
     cur = 0;
     fill = 0;
     rd = 0;
@@ -283,6 +305,17 @@ void ufi_stream_begin_gw(void)
     gw = true;
     gw_rem = 0;
     next_idx = 0;                       /* gw counts the first index pulse as well */
+}
+
+/* UFI v2 READ (ufi_v2.c): v1 stream code in DATA frames of <= UFI_V2_MAX_PAYLOAD bytes;
+ * the END frame comes from ufi_usb_send_read_done() -> ufi_v2_end() */
+void ufi_stream_begin_v2(uint8_t seq)
+{
+    ufi_stream_begin();
+    v2 = true;
+    v2_seq = seq;
+    cap = UFI_V2_MAX_PAYLOAD;
+    send_at = UFI_V2_MAX_PAYLOAD - ROOM + 1u;  /* the encoder stops above cap - ROOM */
 }
 
 void ufi_stream_abort(void)

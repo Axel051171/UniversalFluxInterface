@@ -125,10 +125,11 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
     g_capture.current_track = track;
     g_capture.current_side = side;
 
-    /* Apple Disk II: RDDATA input, no index pulse -> revolutions are 200 ms slices */
+    /* Apple Disk II: RDDATA input; without a sync sensor (J19, UFI.CFG apple_sync=1) there
+     * is no index pulse -> revolutions are 200 ms slices */
     const bool apple = ufi_drive_is_apple();
     ufi_flux_select_apple(apple);
-    if (apple && period_ticks == 0) {
+    if (apple && period_ticks == 0 && !ufi_config_apple_sync()) {
         period_ticks = FLUX_TIMER_FREQ / 5u;
     }
 

@@ -1,6 +1,6 @@
 # ufi – PC-Tool für die UFI Flux Engine (UFI Headless)
 
-Kommandozeilen-Tool über den USB-CDC-Port (unter Windows ohne Treiber, COM-Port wird per VID/PID `1209:4F54` gefunden).
+Kommandozeilen-Tool (Protokoll UFI v2, Rückfall auf v1) über den USB-CDC-Port (unter Windows ohne Treiber, COM-Port wird per VID/PID `1209:4F54` gefunden).
 Alternativ (Firmware ≥ 1.10, `UFI.CFG` `protocol=gw`): das Gerät spricht das Greaseweazle-Protokoll (PID `1209:4F57`, „gw-compat“) und wird mit den Greaseweazle-Werkzeugen (`gw read`, `gw write`, …) benutzt – dann nicht mit `ufi`.
 Liest Spuren als Flux und speichert sie als **SCP** (SuperCard Pro) – Dekodierung/Konvertierung mit vorhandenen Werkzeugen (HxC, Greaseweazle `gw convert`, FluxEngine). Schreibt SCP-Images zurück.
 
@@ -15,7 +15,32 @@ ufi iec-reset && ufi iec-send 0x28 && ufi iec-recv
 ufi bootloader                            # danach: dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin
 ```
 
-## Protokoll (Firmware ≥ ec98588; Stream-Lesen braucht eine Firmware mit `ufi_stream.c`)
+Nur mit UFI v2 (Firmware ≥ 1.12):
+
+```bash
+ufi caps                                  # Board-Revision, Firmware, caps-Bits im Klartext
+ufi files [PFAD]                          # Verzeichnis auf dem SD-NAND
+ufi get DUMP0001.SCP [-o d.scp]           # Datei herunterladen (READ_FILE in 4-KB-Stücken)
+ufi put lokal.bin NAME.BIN                # Datei hochladen
+ufi rm NAME.BIN
+ufi cfg                                   # UFI.CFG anzeigen
+ufi cfg drive=amiga revs=5                # Zeilen setzen/anhängen, zurückschreiben, CFG_RELOAD
+ufi events                                # alle Ereignisse einschalten und ausgeben bis Strg+C
+ufi mode flux|sd|floppy|gw                # USB-Betriebsart (Gerät meldet sich neu an)
+ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | copy
+ufi power [MASKE]                         # Board-Status; Maske Bit0 FDD_5V, Bit1 FDD_12V
+```
+
+## Protokoll UFI v2 (Standard)
+
+`ufi` spricht **UFI v2** – Spezifikation: [docs/USB_Protokoll.md](../../docs/USB_Protokoll.md), Abschnitt 3 (Rahmen `55 AA`, type/cmd/seq/status/len, CRC-16/CCITT-FALSE, Daten-/Ende-Rahmen für Lesen und Schreiben, Ereignisse, Dateien). Implementierung: `ufi_host/protocol2.py` (`Device2`, `FrameParser`, `connect`).
+
+- Beim Öffnen: Kanal-Reset (10000 Baud), dann `PING` als v2-Rahmen. Antwortet das Gerät nicht in v2 (alte Firmware), nimmt `ufi` das v1-Protokoll (unten) und weist auf ein Firmware-Update hin; v2-Befehle (`caps`, `files`, `cfg`, …) melden dann einen Fehler.
+- Lesen: `READ` → Annahme, Daten-Rahmen mit dem Flusscode (275 MHz, wie v1-Stream), Ende-Rahmen mit Umdrehungszahl. SCP-Ausgabe identisch zum v1-Weg.
+- Schreiben: `WRITE` mit `flux_count`/`byte_count`, dann Daten-Rahmen im Flusscode (≤ 4096 Byte je Rahmen), Ende-Rahmen nach dem Schreiben (bzw. Prüflesen mit `--verify`).
+- `selftest` gibt es in v2 nicht (PSRAM-Test steht in `ufi info`); `rpm` misst in v2 eine Umdrehung der aktuellen Spur (Motor muss laufen).
+
+## Protokoll UFI v1 (alt, Firmware < 1.12; Stream-Lesen braucht eine Firmware mit `ufi_stream.c`)
 
 - Host → Gerät: ein Paket ≤ 64 Byte je Befehl, `[cmd, args...]` (Codes in `ufi_host/protocol.py` = `ufi_command_t`).
 - Gerät → Host: jede Nachricht beginnt mit `{u8 command, u8 status, u16 length}` + Payload. Status = Fehlercode aus `ufi_fixes.h` (Klartext in `protocol.ERRORS`).
@@ -33,4 +58,4 @@ ufi bootloader                            # danach: dfu-util -a 0 -s 0x08000000:
 - Startmodi (Taster beim Einschalten halten): A = ROM-DFU-Bootloader (Rettung ohne funktionierende Firmware), B = Sicherheitsmodus, Laufwerksversorgung bleibt aus (ERR-LED an, `BOARD_STATUS` Flag Bit6), einschalten per `BOARD_STATUS [maske]`.
 - Sicherheit in der Firmware: USB weg > 300 ms → Transfers abbrechen, Motor aus, Laufwerk abwählen, WGATE frei; Laufwerksversorgung > 1,5 A für 50 ms → Schiene aus.
 
-Tests ohne Hardware (simuliertes Gerät auf Byte-Ebene): `python -m pytest software/ufi_host/tests`.
+Tests ohne Hardware (simuliertes v1- und v2-Gerät auf Byte-Ebene, inkl. geteilter Rahmen, CRC-Fehler, Dateien, Rückfall auf v1): `python -m pytest software/ufi_host/tests`.

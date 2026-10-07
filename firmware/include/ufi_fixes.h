@@ -37,6 +37,10 @@ typedef enum {
     UFI_ERR_NOT_IMPL    = -11,
     UFI_ERR_WRITE_PROT  = -12,
     UFI_ERR_STORAGE     = -13,  /* SD NAND: not ready, file system error or full */
+    UFI_ERR_FRAME       = -14,  /* UFI v2: frame error (CRC, length) */
+    UFI_ERR_UNKNOWN_CMD = -15,  /* UFI v2: unknown command */
+    UFI_ERR_BAD_ARGS    = -16,  /* UFI v2: invalid arguments */
+    UFI_ERR_NOT_FOUND   = -17,  /* file not found */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

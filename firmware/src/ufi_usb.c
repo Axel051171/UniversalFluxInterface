@@ -223,6 +223,7 @@ int ufi_usb_set_mode(uint8_t mode) {
     if (usb_mode == UFI_USB_GW) {
         ufi_gw_end();                       /* abort a read, motors off */
     }
+    ufi_v2_reset();                         /* a new enumeration starts in v1 */
     USBD_Stop(&hUsbDevice);
     USBD_DeInit(&hUsbDevice);
     HAL_Delay(200);
@@ -267,8 +268,15 @@ bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
     if (usb_mode == UFI_USB_GW) {
         return ufi_gw_rx(buf, len);
     }
+    // UFI v2: latched by a packet starting with 55 AA (not inside v1 write data)
+    if (usb_mode == UFI_USB_FLUX &&
+        (ufi_v2_active() ||
+         ((ufi_write_get_state() != WRITE_RECEIVING || ufi_v2_write_pending()) && len >= 2 &&
+          buf[0] == 0x55u && buf[1] == 0xAAu))) {
+        return ufi_v2_rx(buf, len);
+    }
     // While a write is being prepared, every OUT packet is flux data
-    if (ufi_write_get_state() == WRITE_RECEIVING) {
+    if (ufi_write_get_state() == WRITE_RECEIVING && !ufi_v2_write_pending()) {
         ufi_write_receive_chunk(buf, len);
         return true;
     }
@@ -281,10 +289,12 @@ bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
 }
 
 /* CDC SET_LINE_CODING (interrupt context): the Greaseweazle tools clear the channel by
- * setting 10000 baud */
+ * setting 10000 baud; in the UFI personality this ends a v2 session (back to v1) */
 void ufi_usb_line_coding(uint32_t baud) {
     if (usb_mode == UFI_USB_GW && baud == 10000u) {
         ufi_gw_clear_comms();
+    } else if (usb_mode == UFI_USB_FLUX && baud == 10000u) {
+        ufi_v2_clear_comms();
     }
 }
 
@@ -307,13 +317,20 @@ int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data) {
     return ret;
 }
 
-/* End of a capture: status = error code of the capture (0 = all revolutions) */
+/* End of a capture: status = error code of the capture (0 = all revolutions);
+ * a v2 READ ends with an END frame instead */
 int ufi_usb_send_read_done(int result, uint8_t revolutions) {
+    if (ufi_v2_end(UFI_V2_READ, result, &revolutions, 1)) {
+        return UFI_OK;
+    }
     return reply(UFI_EVT_READ_DONE, st(result), &revolutions, 1);
 }
 
-/* Unsolicited completion notice (e.g. write finished) */
+/* Unsolicited completion notice (write finished; a v2 WRITE ends with an END frame) */
 int ufi_usb_send_event(uint8_t command, int result) {
+    if (ufi_v2_end(UFI_V2_WRITE, result, NULL, 0)) {
+        return UFI_OK;
+    }
     return reply(command, st(result), NULL, 0);
 }
 
@@ -378,6 +395,9 @@ int ufi_usb_process_command(void) {
     if (usb_mode == UFI_USB_GW) {
         ufi_gw_service();                   /* Greaseweazle protocol (ufi_gw.c) */
         return 0;
+    }
+    if (usb_mode == UFI_USB_FLUX) {
+        ufi_v2_service();                   /* UFI v2 frames, events (ufi_v2.c) */
     }
     if (!cmd_ready) {
         return 0;
