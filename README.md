@@ -38,6 +38,6 @@ Flashen per SWD oder USB-DFU (Taster A beim Einschalten halten bzw. `ufi bootloa
 ## Status
 
 Platine v0.5 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`).
-Hardware und Firmware sind noch nicht am echten Gerät getestet – die Inbetriebnahme des Prototyps steht aus.
+Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md).
 
 Lizenz: siehe [LICENSE](LICENSE).
