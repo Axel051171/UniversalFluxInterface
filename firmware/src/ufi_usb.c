@@ -110,6 +110,10 @@ static int usb_tx_blocking(const uint8_t* p, uint32_t len) {
     return cdc_wait_idle() ? UFI_OK : UFI_ERR_USB;
 }
 
+int ufi_usb_tx_blocking(const uint8_t* p, uint32_t len) {
+    return usb_tx_blocking(p, len);
+}
+
 bool ufi_usb_tx_idle(void) {
     return cdc_tx_busy() == 0;
 }
@@ -186,7 +190,12 @@ uint8_t ufi_usb_get_mode(void) {
 }
 
 int ufi_usb_set_msc(bool on) {
-    return ufi_usb_set_mode(on ? UFI_USB_SD : UFI_USB_FLUX);
+    return ufi_usb_set_mode(on ? UFI_USB_SD : ufi_usb_flux_mode());
+}
+
+/* Flux personality for the switch in the middle: UFI protocol or Greaseweazle (UFI.CFG) */
+uint8_t ufi_usb_flux_mode(void) {
+    return ufi_config_protocol_gw() ? UFI_USB_GW : UFI_USB_FLUX;
 }
 
 /* Re-enumerate as flux device (CDC), SD drive or USB floppy (both USB mass storage).
@@ -198,10 +207,11 @@ int ufi_usb_set_mode(uint8_t mode) {
     if (mode == usb_mode) {
         return UFI_OK;
     }
-    if (mode > UFI_USB_FLOPPY) {
+    if (mode > UFI_USB_GW) {
         return UFI_ERR_NOT_IMPL;
     }
-    if (mode != UFI_USB_FLUX && ufi_dump_active()) {
+    const bool cdc = (mode == UFI_USB_FLUX || mode == UFI_USB_GW);
+    if (!cdc && ufi_dump_active()) {
         return UFI_ERR_BUSY;
     }
     if (mode == UFI_USB_SD && ufi_sd_init() != UFI_OK) {
@@ -210,15 +220,21 @@ int ufi_usb_set_mode(uint8_t mode) {
     if (usb_mode == UFI_USB_FLOPPY) {
         ufi_floppy_end();                   /* write back cached tracks first */
     }
+    if (usb_mode == UFI_USB_GW) {
+        ufi_gw_end();                       /* abort a read, motors off */
+    }
     USBD_Stop(&hUsbDevice);
     USBD_DeInit(&hUsbDevice);
     HAL_Delay(200);
     usb_mode = mode;
-    msc_mode = (mode != UFI_USB_FLUX);
+    msc_mode = !cdc;
     cmd_ready = 0;
+    if (mode == UFI_USB_GW) {
+        ufi_gw_begin();
+    }
     usbd_desc_set_mode(mode);
     USBD_Init(&hUsbDevice, &HS_Desc, 0);
-    if (mode == UFI_USB_FLUX) {
+    if (cdc) {
         USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
         USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
     } else {
@@ -246,16 +262,29 @@ void ufi_usb_poll(void) {
  * USB CALLBACK (aufgerufen von usbd_cdc_if.c, Interrupt-Kontext)
  * ============================================================================ */
 
-void ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
+/* Returns false if the OUT endpoint must stay paused (Greaseweazle flow control) */
+bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
+    if (usb_mode == UFI_USB_GW) {
+        return ufi_gw_rx(buf, len);
+    }
     // While a write is being prepared, every OUT packet is flux data
     if (ufi_write_get_state() == WRITE_RECEIVING) {
         ufi_write_receive_chunk(buf, len);
-        return;
+        return true;
     }
     if (len > 0 && len <= sizeof(cmd_buffer) && !cmd_ready) {
         memcpy(cmd_buffer, buf, len);
         cmd_len = len;
         cmd_ready = 1;
+    }
+    return true;
+}
+
+/* CDC SET_LINE_CODING (interrupt context): the Greaseweazle tools clear the channel by
+ * setting 10000 baud */
+void ufi_usb_line_coding(uint32_t baud) {
+    if (usb_mode == UFI_USB_GW && baud == 10000u) {
+        ufi_gw_clear_comms();
     }
 }
 
@@ -346,6 +375,10 @@ static void cmd_debug_timer(uint8_t cmd) {
 }
 
 int ufi_usb_process_command(void) {
+    if (usb_mode == UFI_USB_GW) {
+        ufi_gw_service();                   /* Greaseweazle protocol (ufi_gw.c) */
+        return 0;
+    }
     if (!cmd_ready) {
         return 0;
     }

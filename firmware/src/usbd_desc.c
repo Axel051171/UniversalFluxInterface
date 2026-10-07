@@ -17,6 +17,8 @@
 #define USBD_PRODUCT_STRING_MSC      "UFI Flux Storage"
 #define USBD_PID_FLOPPY              0x4F56  /* USB floppy mode (disk in drive A) */
 #define USBD_PRODUCT_STRING_FLOPPY   "UFI USB Floppy"
+#define USBD_PID_GW                  0x4F57  /* Greaseweazle-compatible flux mode */
+#define USBD_PRODUCT_STRING_GW       "UFI Flux Engine (gw-compat)"  /* gw tools match "gw-compat" */
 
 static uint8_t usb_mode;
 #define USBD_CONFIGURATION_STRING    "CDC Config"
@@ -107,23 +109,24 @@ uint8_t *USBD_HS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
     (void)speed;
     static const char* const names[] = {USBD_PRODUCT_STRING, USBD_PRODUCT_STRING_MSC,
-                                        USBD_PRODUCT_STRING_FLOPPY};
+                                        USBD_PRODUCT_STRING_FLOPPY, USBD_PRODUCT_STRING_GW};
     USBD_GetString((uint8_t *)names[usb_mode], USBD_StrDesc, length);
     return USBD_StrDesc;
 }
 
 /**
  * @brief  Switch the device descriptor: 0 = flux engine (CDC), 1 = SD drive, 2 = USB
- *         floppy (both mass storage); own PID each, so the host does not reuse a driver
- *         binding of another mode
+ *         floppy (both mass storage), 3 = Greaseweazle-compatible (CDC); own PID each,
+ *         so the host does not reuse a driver binding of another mode
  */
 void usbd_desc_set_mode(uint8_t mode)
 {
-    static const uint16_t pids[] = {USBD_PID, USBD_PID_MSC, USBD_PID_FLOPPY};
-    usb_mode = (mode <= 2u) ? mode : 0u;
+    static const uint16_t pids[] = {USBD_PID, USBD_PID_MSC, USBD_PID_FLOPPY, USBD_PID_GW};
+    usb_mode = (mode <= 3u) ? mode : 0u;
     const uint16_t pid = pids[usb_mode];
-    USBD_HS_DeviceDesc[4] = usb_mode ? 0x00 : 0x02;    /* class per interface / CDC */
-    USBD_HS_DeviceDesc[5] = usb_mode ? 0x00 : 0x02;
+    const uint8_t cls = (usb_mode == 0u || usb_mode == 3u) ? 0x02 : 0x00;  /* CDC / per interface */
+    USBD_HS_DeviceDesc[4] = cls;
+    USBD_HS_DeviceDesc[5] = cls;
     USBD_HS_DeviceDesc[10] = LOBYTE(pid);
     USBD_HS_DeviceDesc[11] = HIBYTE(pid);
 }

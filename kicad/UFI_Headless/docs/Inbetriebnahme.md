@@ -108,6 +108,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 7.2b | `UFI.CFG` im SD-Laufwerk-Modus auf `drive=ds1` ändern, Neustart, Dump mit Taster A | Dump läuft auf dem DS1-Laufwerk | |
 | 7.2c | Nach einem Dump `DUMPnnnn.LOG` im SD-Laufwerk-Modus öffnen | Format erkannt, gute Disketten: alle Spuren voll, Drehzahl ≈ 300 | |
 | 7.2d | Zwei Laufwerke, `button_a=copy`, `copy_from=a`, `copy_to=b`, Neustart, Schrott-Diskette in B, Taster A | Kopie läuft, ACT dauerhaft an; Kopie im PC lesbar | |
+| 7.2e | `UFI.CFG` `protocol=gw`, Neustart (Schalter Mitte), Greaseweazle-Werkzeuge installiert: `gw info`, `gw read --drive A --revs 3 t.scp`, `gw write --drive B t.scp` auf eine Schrott-Diskette | ACT blinkt 4×; `gw info` zeigt Firmware 1.10, Modell „Unknown (0x5501)“; Lesen/Schreiben fehlerfrei, Kopie im PC lesbar | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |
 

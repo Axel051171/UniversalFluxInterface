@@ -234,7 +234,7 @@ static int finish_file(void)
  * ============================================================================ */
 
 static FIL logfile;
-static bool log_open, copying, button_copy;
+static bool log_open, copying, button_copy, protocol_gw;
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -496,6 +496,11 @@ uint8_t ufi_standalone_drive(void)
     return cfg.drive;
 }
 
+bool ufi_config_protocol_gw(void)
+{
+    return protocol_gw;
+}
+
 /* ============================================================================
  * UFI.CFG on the SD NAND: drive and dump settings for stand-alone use, editable in the
  * SD drive mode.  Lines "key=value", '#' comments; written with defaults if missing.
@@ -511,7 +516,10 @@ static const char cfg_default[] =
     "# button A: dump (disk -> DUMPnnnn.SCP + .LOG) or copy (copy_from -> copy_to)\r\n"
     "button_a=dump\r\n"
     "copy_from=a\r\n"
-    "copy_to=b\r\n";
+    "copy_to=b\r\n"
+    "# flux protocol with the mode switch in the middle: ufi (ufi host tool) or gw\r\n"
+    "# (Greaseweazle host tools: gw read, gw write, ...)\r\n"
+    "protocol=ufi\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
@@ -561,6 +569,8 @@ static void parse_line(const char* k, dump_config_t* c)
         c->revs = (uint8_t)num;
     } else if (!strncmp(k, "button_a=", 9)) {
         button_copy = word_is(v, "copy");
+    } else if (!strncmp(k, "protocol=", 9)) {
+        protocol_gw = word_is(v, "gw");
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {

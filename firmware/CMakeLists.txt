@@ -20,7 +20,7 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 project(ufi_firmware C ASM)
 
 # Firmware version + git revision for GET_INFO (revision is taken at configure time)
-set(UFI_FW_VERSION "1.9")
+set(UFI_FW_VERSION "1.10")
 execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 OUTPUT_VARIABLE UFI_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(NOT UFI_GIT_REV)
@@ -129,6 +129,7 @@ set(PROJECT_SOURCES
     src/ufi_usb.c
     src/ufi_flux.c
     src/ufi_stream.c
+    src/ufi_gw.c
     src/ufi_board.c
     src/ufi_sd.c
     src/ufi_dump.c

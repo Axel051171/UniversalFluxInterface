@@ -5,6 +5,7 @@
 
 #include "usbd_cdc_if.h"
 #include "ufi_firmware.h"
+#include <string.h>
 
 /* CDC Buffer Sizes */
 #define APP_RX_DATA_SIZE  2048
@@ -20,7 +21,10 @@ uint8_t UserTxBufferHS[APP_TX_DATA_SIZE];
 extern USBD_HandleTypeDef hUsbDevice;
 
 /* Command Callback - to be implemented in ufi_usb.c */
-extern void ufi_usb_receive_callback(uint8_t *buf, uint32_t len);
+extern bool ufi_usb_receive_callback(uint8_t *buf, uint32_t len);  /* false = pause OUT */
+extern void ufi_usb_line_coding(uint32_t baud);
+
+static uint8_t line_coding[7] = {0x80, 0x25, 0x00, 0x00, 0, 0, 8};   /* 9600 8N1 */
 
 /* ============================================================================
  * CDC Interface Callbacks
@@ -74,18 +78,15 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t *pbuf, uint16_t length)
             break;
 
         case CDC_SET_LINE_CODING:
-            /* Line coding is not used - we're raw binary */
+            /* raw binary link; the baud rate is only a control channel (Greaseweazle:
+             * 10000 baud = clear communications) */
+            memcpy(line_coding, pbuf, sizeof(line_coding));
+            ufi_usb_line_coding((uint32_t)pbuf[0] | ((uint32_t)pbuf[1] << 8) |
+                                ((uint32_t)pbuf[2] << 16) | ((uint32_t)pbuf[3] << 24));
             break;
 
         case CDC_GET_LINE_CODING:
-            /* Return dummy values */
-            pbuf[0] = (uint8_t)(115200);
-            pbuf[1] = (uint8_t)(115200 >> 8);
-            pbuf[2] = (uint8_t)(115200 >> 16);
-            pbuf[3] = (uint8_t)(115200 >> 24);
-            pbuf[4] = 0;  /* Stop bits: 1 */
-            pbuf[5] = 0;  /* Parity: None */
-            pbuf[6] = 8;  /* Data bits: 8 */
+            memcpy(pbuf, line_coding, sizeof(line_coding));
             break;
 
         case CDC_SET_CONTROL_LINE_STATE:
@@ -108,12 +109,14 @@ static int8_t CDC_Control_HS(uint8_t cmd, uint8_t *pbuf, uint16_t length)
  */
 static int8_t CDC_Receive_HS(uint8_t *Buf, uint32_t *Len)
 {
-    /* Forward to UFI command handler */
-    ufi_usb_receive_callback(Buf, *Len);
+    /* Forward to UFI command handler; it may hold the endpoint (flow control) and
+     * re-arm it later with USBD_CDC_ReceivePacket() */
+    const bool rearm = ufi_usb_receive_callback(Buf, *Len);
 
-    /* Prepare for next reception */
     USBD_CDC_SetRxBuffer(&hUsbDevice, &Buf[0]);
-    USBD_CDC_ReceivePacket(&hUsbDevice);
+    if (rearm) {
+        USBD_CDC_ReceivePacket(&hUsbDevice);
+    }
 
     return USBD_OK;
 }

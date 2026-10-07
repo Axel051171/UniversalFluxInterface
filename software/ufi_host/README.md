@@ -1,6 +1,7 @@
 # ufi – PC-Tool für die UFI Flux Engine (UFI Headless)
 
 Kommandozeilen-Tool über den USB-CDC-Port (unter Windows ohne Treiber, COM-Port wird per VID/PID `1209:4F54` gefunden).
+Alternativ (Firmware ≥ 1.10, `UFI.CFG` `protocol=gw`): das Gerät spricht das Greaseweazle-Protokoll (PID `1209:4F57`, „gw-compat“) und wird mit den Greaseweazle-Werkzeugen (`gw read`, `gw write`, …) benutzt – dann nicht mit `ufi`.
 Liest Spuren als Flux und speichert sie als **SCP** (SuperCard Pro) – Dekodierung/Konvertierung mit vorhandenen Werkzeugen (HxC, Greaseweazle `gw convert`, FluxEngine). Schreibt SCP-Images zurück.
 
 ```bash

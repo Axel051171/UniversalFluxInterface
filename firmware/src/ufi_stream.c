@@ -14,6 +14,15 @@
  * The bytes travel in {UFI_EVT_FLUX_STREAM, 0, len} messages (message borders carry no
  * meaning).  The stream ends right after index pulse n, followed by
  * {UFI_EVT_READ_DONE, status, 1} + [n] (n = complete revolutions in the stream).
+ *
+ * Greaseweazle mode (ufi_gw.c, CMD_READ_FLUX): the same pipeline in the Greaseweazle flux
+ * code (cdc_acm_protocol.h of the Greaseweazle firmware, public domain): raw bytes, no
+ * message headers, ticks at GW_SAMPLE_FREQ = 275 MHz / 4, terminated by a 0 byte; the
+ * result goes to ufi_gw_read_done() instead of a READ_DONE message.
+ *   1..249                flux transition, delta = byte
+ *   250..254, b           delta = 250 + (byte - 250) * 255 + b - 1
+ *   0xFF 1 N28            index pulse, N = ticks after the last transition
+ *   0xFF 2 N28, 249       flux transition, delta = N + 249
  */
 
 #include "ufi_firmware.h"
@@ -37,6 +46,8 @@ static uint32_t t_last;             /* time of the last emitted transition / ind
 static uint8_t next_idx;            /* next index pulse to emit */
 static uint8_t n_final;             /* revolutions in this stream, 0 until known */
 static uint32_t tx_start_ms;
+static bool gw;                     /* Greaseweazle flux code (ufi_gw.c) */
+static uint32_t gw_rem;             /* 275 MHz ticks not yet passed on (below one GW tick) */
 
 /* ============================================================================
  * ENCODER
@@ -50,8 +61,45 @@ static void put_u32(uint8_t* o, uint32_t v)
     o[3] = (uint8_t)(v >> 24);
 }
 
+/* Greaseweazle N28: 28-bit value in 4 bytes, bit 0 of each byte set */
+static void put_n28(uint8_t* o, uint32_t n)
+{
+    o[0] = (uint8_t)(1u | (n << 1));
+    o[1] = (uint8_t)(1u | (n >> 6));
+    o[2] = (uint8_t)(1u | (n >> 13));
+    o[3] = (uint8_t)(1u | (n >> 20));
+}
+
+static void put_delta_gw(uint32_t d)
+{
+    const uint32_t acc = d + gw_rem;    /* 275 MHz -> 68.75 MHz without drift */
+    const uint32_t v = acc >> GW_TICK_SHIFT;
+    gw_rem = acc & ((1u << GW_TICK_SHIFT) - 1u);
+    uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
+    if (v == 0u) {
+        gw_rem = acc;                   /* < 1 GW tick: merge into the next transition */
+    } else if (v < 250u) {
+        o[0] = (uint8_t)v;
+        fill += 1;
+    } else if (v < 250u + 5u * 255u) {
+        o[0] = (uint8_t)(250u + (v - 250u) / 255u);
+        o[1] = (uint8_t)(1u + (v - 250u) % 255u);
+        fill += 2;
+    } else {
+        o[0] = 0xFF;
+        o[1] = 2;                       /* FLUXOP_SPACE */
+        put_n28(&o[2], v - 249u);
+        o[6] = 249;
+        fill += 7;
+    }
+}
+
 static void put_delta(uint32_t d)
 {
+    if (gw) {
+        put_delta_gw(d);
+        return;
+    }
     uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
     if (d >= 1u && d <= 0xEFu) {
         o[0] = (uint8_t)d;
@@ -71,6 +119,13 @@ static void put_delta(uint32_t d)
 static void put_index(uint32_t offset)
 {
     uint8_t* o = &buf[cur][sizeof(ufi_response_header_t) + fill];
+    if (gw) {
+        o[0] = 0xFF;
+        o[1] = 1;                       /* FLUXOP_INDEX, cursor unchanged */
+        put_n28(&o[2], (offset + gw_rem) >> GW_TICK_SHIFT);
+        fill += 6;
+        return;
+    }
     o[0] = 0xFD;
     put_u32(&o[1], offset);
     fill += 5;
@@ -153,6 +208,14 @@ static void finish(int result)
     if (!ufi_usb_tx_idle()) {
         return;                             /* last data message still on its way */
     }
+    if (gw) {
+        /* end of stream: one 0 byte, then the status for CMD_GET_FLUX_STATUS */
+        static const uint8_t eos = 0;
+        ufi_usb_tx_start(&eos, 1);
+        stop();
+        ufi_gw_read_done(result);
+        return;
+    }
     const uint8_t revs = (next_idx > 0) ? (uint8_t)(next_idx - 1u) : 0u;
     ufi_usb_send_read_done(result, revs);
     stop();
@@ -168,6 +231,9 @@ static bool pump(void)
         if (HAL_GetTick() - tx_start_ms > STALL_MS) {
             ufi_flux_capture_stop();
             stop();
+            if (gw) {
+                ufi_gw_read_done(UFI_ERR_BUFFER_FULL);
+            }
             return false;
         }
         return true;
@@ -175,9 +241,13 @@ static bool pump(void)
     const ufi_response_header_t h = {.command = UFI_EVT_FLUX_STREAM, .status = 0,
                                      .length = (uint16_t)fill};
     memcpy(buf[cur], &h, sizeof(h));
-    if (ufi_usb_tx_start(buf[cur], sizeof(h) + fill) != UFI_OK) {
+    const uint32_t skip = gw ? sizeof(h) : 0u;  /* Greaseweazle: raw bytes, no header */
+    if (ufi_usb_tx_start(buf[cur] + skip, sizeof(h) + fill - skip) != UFI_OK) {
         ufi_flux_capture_stop();
         stop();
+        if (gw) {
+            ufi_gw_read_done(UFI_ERR_USB);
+        }
         return false;
     }
     tx_start_ms = HAL_GetTick();
@@ -192,6 +262,7 @@ static bool pump(void)
 
 void ufi_stream_begin(void)
 {
+    gw = false;
     cur = 0;
     fill = 0;
     rd = 0;
@@ -203,6 +274,15 @@ void ufi_stream_begin(void)
     tx_start_ms = HAL_GetTick();
     ufi_flux_set_streaming(true);
     active = true;
+}
+
+/* Greaseweazle CMD_READ_FLUX (ufi_gw.c): same capture, Greaseweazle flux code */
+void ufi_stream_begin_gw(void)
+{
+    ufi_stream_begin();
+    gw = true;
+    gw_rem = 0;
+    next_idx = 0;                       /* gw counts the first index pulse as well */
 }
 
 void ufi_stream_abort(void)
@@ -230,6 +310,10 @@ void ufi_stream_service(void)
         fill = 0;
         const int err = g_capture.error_code == 2 ? UFI_ERR_DMA :
                         g_capture.error_code == 3 ? UFI_ERR_NO_INDEX : UFI_ERR_BUFFER_FULL;
+        if (gw) {
+            finish(err);                    /* 0 byte + status, ERR LED by the host */
+            return;
+        }
         if (ufi_usb_tx_idle()) {
             ufi_usb_send_read_done(err, 0);
             stop();

@@ -5,13 +5,14 @@
  * inputs are on the expansion header J9 pins 5/6):
  * common = J13 pin 2 (3V3), one side = pin 1 (EXP_IO1, PE0), the other = pin 3
  * (EXP_IO2, PE1); the MCU pull-downs keep both low without a switch.
- *   middle (both low)  = flux engine (CDC, ufi host tool)
+ *   middle (both low)  = flux engine (CDC, ufi host tool), with UFI.CFG protocol=gw the
+ *                        Greaseweazle-compatible flux device (gw host tools, ufi_gw.c)
  *   EXP_IO1 high       = USB floppy (disk in drive A as a USB drive)
  *   EXP_IO2 high       = SD drive (dumps on the SD NAND)
  * The switch is read at start-up and debounced at run time; a change takes effect as soon
  * as no capture, write or dump is running.  Button B >= 2 s toggles the SD drive only
  * while the switch is in the middle.  After every change the ACT LED blinks the mode:
- * 1 = flux, 2 = USB floppy, 3 = SD drive.
+ * 1 = flux, 2 = USB floppy, 3 = SD drive, 4 = Greaseweazle flux.
  */
 
 #include "ufi_firmware.h"
@@ -33,7 +34,7 @@ static uint8_t read_switch(void)
     if (io1 && io2) {
         return 0xFF;                    /* not a valid position (wiring fault): ignore */
     }
-    return io1 ? UFI_USB_FLOPPY : io2 ? UFI_USB_SD : UFI_USB_FLUX;
+    return io1 ? UFI_USB_FLOPPY : io2 ? UFI_USB_SD : ufi_usb_flux_mode();   /* middle: UFI or GW */
 }
 
 static bool busy(void)
@@ -61,17 +62,17 @@ void ufi_mode_init(void)
 {
     sw_raw = sw_mode = read_switch();
     sw_since = HAL_GetTick();
-    if (sw_mode != 0xFF && sw_mode != UFI_USB_FLUX) {
+    if (sw_mode != 0xFF && sw_mode != UFI_USB_FLUX) {   /* USB starts as UFI flux device */
         apply(sw_mode);
     }
 }
 
 void ufi_mode_button_b(void)
 {
-    if (sw_mode != UFI_USB_FLUX || busy()) {
+    if (sw_mode != ufi_usb_flux_mode() || busy()) {
         return;                         /* the switch decides */
     }
-    apply(ufi_usb_get_mode() == UFI_USB_SD ? UFI_USB_FLUX : UFI_USB_SD);
+    apply(ufi_usb_get_mode() == UFI_USB_SD ? ufi_usb_flux_mode() : UFI_USB_SD);
 }
 
 void ufi_mode_service(void)

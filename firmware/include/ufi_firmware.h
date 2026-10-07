@@ -355,9 +355,23 @@ bool ufi_usb_msc_active(void);                  // true = no CDC interface (SD o
 int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device
 
 // USB personalities (v0.6): mode switch on J9 (ufi_mode.c), buttons, USB_MSC [mode]
-enum { UFI_USB_FLUX = 0, UFI_USB_SD = 1, UFI_USB_FLOPPY = 2 };
+// UFI_USB_GW: Greaseweazle-compatible flux device (UFI.CFG protocol=gw, switch in middle)
+enum { UFI_USB_FLUX = 0, UFI_USB_SD = 1, UFI_USB_FLOPPY = 2, UFI_USB_GW = 3 };
 int ufi_usb_set_mode(uint8_t mode);
 uint8_t ufi_usb_get_mode(void);
+uint8_t ufi_usb_flux_mode(void);                // UFI_USB_FLUX or UFI_USB_GW per UFI.CFG
+bool ufi_config_protocol_gw(void);              // UFI.CFG protocol=gw
+int ufi_usb_tx_blocking(const uint8_t* p, uint32_t len);
+
+// Greaseweazle protocol (ufi_gw.c)
+#define GW_TICK_SHIFT   2                       // GW sample clock = 275 MHz / 4 = 68.75 MHz
+#define GW_SAMPLE_FREQ  (FLUX_TIMER_FREQ >> GW_TICK_SHIFT)
+void ufi_gw_begin(void);                        // entering GW mode: reset protocol state
+void ufi_gw_end(void);
+bool ufi_gw_rx(const uint8_t* buf, uint32_t len);   // USB IRQ; false = pause reception
+void ufi_gw_clear_comms(void);                  // USB IRQ: SET_LINE_CODING 10000 baud
+void ufi_gw_service(void);                      // main loop
+void ufi_gw_read_done(int result);              // ufi_stream.c: end of a CMD_READ_FLUX
 void ufi_usb_poll(void);                        // main loop: USB stack in floppy mode
 void ufi_mode_init(void);                       // start-up: follow the switch
 void ufi_mode_service(void);                    // main loop: switch changes, mode blink
@@ -376,6 +390,7 @@ void ufi_floppy_service(void);                  // main loop: idle write-back
 
 // Streamed capture transfer (ufi_stream.c)
 void ufi_stream_begin(void);
+void ufi_stream_begin_gw(void);                 // Greaseweazle flux code (ufi_gw.c)
 void ufi_stream_abort(void);
 bool ufi_stream_active(void);
 void ufi_stream_service(void);                  // main loop: encode + send, READ_DONE at the end
