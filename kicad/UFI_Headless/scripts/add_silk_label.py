@@ -18,9 +18,6 @@ b = pcbnew.LoadBoard(path)
 silk = pcbnew.F_SilkS if side == "F" else pcbnew.B_SilkS
 cu = pcbnew.F_Cu if side == "F" else pcbnew.B_Cu
 
-for d in list(b.GetDrawings()):
-    if d.GetClass() == "PCB_TEXT" and d.GetLayer() == silk and d.GetText() == text:
-        b.Remove(d)
 
 obs = []
 for f in b.GetFootprints():
@@ -30,7 +27,9 @@ for f in b.GetFootprints():
     for t in (f.Reference(), f.Value()):
         if t.IsVisible() and t.GetLayer() == silk:
             obs.append(t.GetEffectiveShape())
-obs += [d.GetEffectiveShape() for d in b.GetDrawings() if d.GetLayer() == silk]
+old = [d for d in b.GetDrawings()
+       if d.GetClass() == "PCB_TEXT" and d.GetLayer() == silk and d.GetText() == text]
+obs += [d.GetEffectiveShape() for d in b.GetDrawings() if d.GetLayer() == silk and d not in old]
 obs += [v.GetEffectiveShape(cu) for v in b.GetTracks() if v.GetClass() == "PCB_VIA"]  # mask-free vias
 
 lbl = pcbnew.PCB_TEXT(b)
@@ -57,6 +56,8 @@ for _, x, y in sorted(cands):
     shape = lbl.GetEffectiveShape()
     if any(o.Collide(shape, CLR) for o in obs):
         continue
+    for d in old:                       # removed only now: pcbnew must not iterate after Remove()
+        b.Remove(d)
     b.Add(lbl)
     b.Save(path)
     print(f"'{text}' ({side}) -> ({x:.2f},{y:.2f})")

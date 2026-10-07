@@ -50,6 +50,10 @@ LCSC = {
     # v0.2 additions (looked up 2026-10-06): QSPI PSRAM, ESD arrays, drive-power polyfuses
     "APS6404L-3SQR-SN": "C5333729", "ESDA6V1-5SC6": "C6650",
     "1.1A hold 6V": "C20801", "1.1A hold 24V": "C20999",
+    # v0.5 additions (looked up 2026-10-07): drive supply switch / current sense, write lock, microSD
+    "AO3401A": "C15127", "2N7002": "C8545", "INA180A1": "C122228", "74LVC1G32GW": "C12516",
+    ("0.1R 1%", "Resistor_SMD:R_1206_3216Metric"): "C25334", ("100k", R0603): "C25803",
+    ("47k", R0603): "C25819", "104031-0811": "C585350", "BTN_A": "C2886898", "BTN_B": "C2886898",
     # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
     # test points are bare pads (TestPoint_Pad_D1.5mm), nothing to place
 }
@@ -195,10 +199,38 @@ def build_power() -> Sheet:
 
     # v0.2: drive power polyfuses (a shorted drive cable must not take down +5V/+3V3)
     sh.text("v0.2: drive supplies (J3, Amiga J7) via polyfuses; test points TP1-TP4.", 300, 200, 1.27)
-    sh.part("Device", "Polyfuse", "F2", "1.1A hold 6V", 300, 215, {"1": "+5V", "2": "G:FDD_5V"},
+    sh.part("Device", "Polyfuse", "F2", "1.1A hold 6V", 300, 215, {"1": "+5V", "2": "FDD5_F"},
             "Fuse:Fuse_1206_3216Metric", {"MPN": "SMD1206P110TF (1.1A hold, 6V)"})
-    sh.part("Device", "Polyfuse", "F3", "1.1A hold 24V", 320, 215, {"1": "+12V", "2": "G:FDD_12V"},
+    sh.part("Device", "Polyfuse", "F3", "1.1A hold 24V", 320, 215, {"1": "+12V", "2": "FDD12_F"},
             "Fuse:Fuse_1812_4532Metric", {"MPN": "SMD1812P110TF/24 (1.1A hold, 24V)"})
+
+    # v0.5: drive supplies switched (P-FET high side, off while the MCU is in reset) and
+    # measured (0.1R shunt + INA180A1, 20 V/V -> 2 V/A on the ADC), TVS at the outputs
+    sh.text("v0.5: FDD_5V / FDD_12V: polyfuse -> 0.1R shunt (INA180A1 -> I_FDD5/I_FDD12, 2 V/A)\n"
+            "-> AO3401A high-side switch (FDD5_EN/FDD12_EN high = on, 100k pull-downs = off in reset)\n"
+            "-> TVS. 12V gate divider 10k/10k keeps Vgs at -6 V (AO3401A max +-12 V).", 300, 255, 1.27)
+    for k, (rail, fuse_out, tvs, y) in enumerate([("5", "FDD5_F", "SMF5.0CA", 270),
+                                                  ("12", "FDD12_F", "SMAJ15CA", 310)]):
+        s, gate, en, out = f"FDD{rail}_S", f"FDD{rail}_G", f"G:FDD{rail}_EN", f"G:FDD_{rail}V"
+        r0 = 26 + 3 * k                     # R26-R28 (5V), R29-R31 (12V), R32 12V gate series
+        sh.part("Device", "R", f"R{r0}", "0.1R 1%", 300, y, {"1": fuse_out, "2": s},
+                "Resistor_SMD:R_1206_3216Metric", {"MPN": "1206W4F100LT5E (0.1R 1% 1/4W)"})
+        sh.part("Amplifier_Current", "INA180A1", f"U{12 + k}", "INA180A1", 300, y + 15, {
+            "1": f"G:I_FDD{rail}", "2": "GND", "3": fuse_out, "4": s, "5": "+3V3"},
+            "Package_TO_SOT_SMD:SOT-23-5", {"MPN": "INA180A1IDBVR"})
+        sh.part("Device", "C", f"C{49 + k}", "100nF", 280, y + 15, {"1": "+3V3", "2": "GND"}, C0603)
+        sh.part("Transistor_FET", "AO3401A", f"Q{1 + 2 * k}", "AO3401A", 330, y,
+                {"1": gate, "2": s, "3": out}, "Package_TO_SOT_SMD:SOT-23")
+        sh.part("Transistor_FET", "2N7002", f"Q{2 + 2 * k}", "2N7002", 350, y + 15,
+                {"1": en, "2": "GND", "3": gate if rail == "5" else "FDD12_GD"},
+                "Package_TO_SOT_SMD:SOT-23")
+        sh.part("Device", "R", f"R{r0 + 1}", "100k" if rail == "5" else "10k", 330, y + 15,
+                {"1": s, "2": gate}, R0603)
+        sh.part("Device", "R", f"R{r0 + 2}", "100k", 370, y + 15, {"1": en, "2": "GND"}, R0603)
+        if rail == "12":
+            sh.part("Device", "R", "R32", "10k", 345, y + 25, {"1": gate, "2": "FDD12_GD"}, R0603)
+        sh.part("Device", "D_TVS", f"D{13 + k}", tvs, 360, y, {"1": out, "2": "GND"},
+                "Diode_SMD:D_SMF" if rail == "5" else "Diode_SMD:D_SMA", {"MPN": tvs})
     for i, (label, net) in enumerate([("TP_3V3", "+3V3"), ("TP_5V", "+5V"), ("TP_12V", "+12V"),
                                       ("TP_GND", "GND")]):
         testpoint(sh, f"TP{i + 1}", label, net, 300 + i * 12.7, 240)
@@ -242,6 +274,17 @@ GPIO = {
     # v0.3: USB-C CC voltage (across Rd 5.1k) on ADC1 INP16 / INP15 -> source current 0.5/1.5/3 A
     "PA0": "G:CC1", "PA3": "G:CC2",
     "PF11": "G:FDD_DRATE",  # v0.4: DRATE for 3-mode drives (J6 pin 6 via solder jumper JP1)
+    # v0.5: switched + measured drive supplies, write lock, board ID
+    "PE2": "G:FDD5_EN", "PE3": "G:FDD12_EN",           # high = drive supply on (reset: off)
+    "PC0": "G:I_FDD5", "PC1": "G:I_FDD12",             # ADC1 INP10/INP11, INA180A1: 2 V/A
+    "PE4": "G:WLOCK",                                  # high = write lock jumper set
+    "PA4": "BOARD_ID",                                 # ADC1 INP18, divider = board revision
+    # v0.5: expansion header J9 (I2C1 AF4, 2 GPIO), front buttons SW3/SW4 (active low)
+    "PB6": "I2C_SCL", "PB7": "I2C_SDA", "PE0": "EXP_IO1", "PE1": "EXP_IO2",
+    "PB8": "BTN_A", "PB9": "BTN_B",
+    # v0.5: microSD on SDMMC2, 4 bit (PD6/PD7/PG9/PG10 AF11, PG11/PG12 AF10), PG13 card detect
+    "PD6": "SD_CLK", "PD7": "SD_CMD", "PG9": "SD_D0", "PG10": "SD_D1", "PG11": "SD_D2",
+    "PG12": "SD_D3", "PG13": "SD_CD",
 }
 
 
@@ -330,6 +373,30 @@ def build_core() -> Sheet:
         "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", {"MPN": "APS6404L-3SQR-SN"})
     sh.part("Device", "C", "C46", "100nF", 150, 250, {"1": "+3V3", "2": "GND"}, C0603)
     sh.part("Device", "R", "R16", "10k", 90, 250, {"1": "+3V3", "2": "PSRAM_CS"}, R0603)
+
+    # v0.5: board ID divider (10k/10k = 1.65 V = rev v0.5), expansion header, buttons, microSD
+    sh.text("v0.5: BOARD_ID divider on PA4 (10k/10k -> v0.5). J9 expansion: I2C1 (2.2k pull-ups), 2 GPIO,\n"
+            "button lines, 3V3/5V. SW3/SW4 front buttons (active low, MCU pull-ups). microSD J10 on SDMMC2,\n"
+            "4 bit, 47k pull-ups on CMD/DAT, card detect switch to GND on PG13 (MCU pull-up).", 20, 280, 1.27)
+    sh.part("Device", "R", "R17", "10k", 30, 300, {"1": "+3V3", "2": "BOARD_ID"}, R0603)
+    sh.part("Device", "R", "R18", "10k", 30, 315, {"1": "BOARD_ID", "2": "GND"}, R0603)
+    sh.part("Device", "R", "R19", "2.2k", 60, 300, {"1": "+3V3", "2": "I2C_SCL"}, R0603)
+    sh.part("Device", "R", "R20", "2.2k", 60, 315, {"1": "+3V3", "2": "I2C_SDA"}, R0603)
+    sh.part("Connector_Generic", "Conn_02x05_Odd_Even", "J9", "EXPANSION", 100, 300, {
+        "1": "+3V3", "2": "+5V", "3": "I2C_SCL", "4": "I2C_SDA", "5": "EXP_IO1", "6": "EXP_IO2",
+        "7": "BTN_A", "8": "BTN_B", "9": "GND", "10": "GND"},
+        "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+        {"Note": "1 3V3, 2 5V, 3 SCL, 4 SDA, 5/6 GPIO PE0/PE1, 7/8 buttons (low = pressed), 9/10 GND"})
+    sh.part("Switch", "SW_Push", "SW3", "BTN_A", 140, 300, {"1": "BTN_A", "2": "GND"}, BTN)
+    sh.part("Switch", "SW_Push", "SW4", "BTN_B", 140, 315, {"1": "BTN_B", "2": "GND"}, BTN)
+    sh.part("Connector", "Micro_SD_Card_Det2", "J10", "104031-0811", 220, 300, {
+        "1": "SD_D2", "2": "SD_D3", "3": "SD_CMD", "4": "+3V3", "5": "SD_CLK", "6": "GND",
+        "7": "SD_D0", "8": "SD_D1", "9": "SD_CD", "10": "GND", "SH": "GND"},
+        "Connector_Card:microSD_HC_Molex_104031-0811", {"MPN": "Molex 104031-0811"})
+    for i, net in enumerate(["SD_CMD", "SD_D0", "SD_D1", "SD_D2", "SD_D3"]):
+        sh.part("Device", "R", f"R{21 + i}", "47k", 180 + i * 8, 330, {"1": "+3V3", "2": net}, R0603)
+    sh.part("Device", "C", "C47", "100nF", 250, 300, {"1": "+3V3", "2": "GND"}, C0603)
+    sh.part("Device", "C", "C48", "10uF", 260, 300, {"1": "+3V3", "2": "GND"}, C0805)
     return sh
 
 
@@ -380,7 +447,7 @@ FDD_OUT = [  # MCU net -> bus net (active low on bus, MCU low = asserted)
     ("FDD_MOTOR_A", "FD_MOTOR_A"), ("FDD_MOTOR_B", "FD_MOTOR_B"),
     ("FDD_DRVSEL_A", "FD_DRVSEL_A"), ("FDD_DRVSEL_B", "FD_DRVSEL_B"),
     ("FDD_STEP", "FD_STEP"), ("FDD_DIR", "FD_DIR"), ("FDD_SIDE", "FD_SIDE"),
-    ("FDD_WGATE", "FD_WGATE"), ("FDD_WDATA", "FD_WDATA"), ("FDD_DENSITY", "FD_DENSITY"),
+    ("FDD_WGATE_G", "FD_WGATE"), ("FDD_WDATA", "FD_WDATA"), ("FDD_DENSITY", "FD_DENSITY"),
     ("FDD_DRATE", "FD_DRATE")]  # v0.4: spare LS07 gate, reaches J6 pin 6 only via JP1
 FDD_IN = [  # bus net -> MCU net (inverted: MCU high = asserted)
     ("FD_INDEX", "FDD_INDEX"), ("FD_TRK0", "FDD_TRK0"), ("FD_WPROT", "FDD_WPROT"),
@@ -407,6 +474,22 @@ def build_flux() -> Sheet:
     # v0.2: scope test points on the MCU side of the flux inputs
     testpoint(sh, "TP5", "TP_RDATA", "G:FDD_RDATA", 360, 60)
     testpoint(sh, "TP6", "TP_INDEX", "G:FDD_INDEX", 360, 75)
+
+    # v0.5: write lock - jumper J11 forces the WGATE driver input high (released) in hardware,
+    # whatever the firmware does; the MCU reads the jumper on WLOCK (PE4)
+    sh.text("v0.5: WRITE LOCK jumper J11 set -> WLOCK high -> 74LVC1G32 output high -> WGATE released.\n"
+            "Open (default, 100k pull-down) -> WGATE follows the MCU. TP7: WDATA (MCU), TP8: WGATE after the gate.",
+            20, 280, 1.27)
+    sh.part("74xGxx", "74LVC1G32", "U14", "74LVC1G32GW", 120, 300, {
+        "1": "G:FDD_WGATE", "2": "G:WLOCK", "3": "GND", "4": "G:FDD_WGATE_G", "5": "+3V3"},
+        "Package_TO_SOT_SMD:SOT-353_SC-70-5", {"MPN": "74LVC1G32GW,125"})
+    sh.part("Device", "C", "C51", "100nF", 150, 300, {"1": "+3V3", "2": "GND"}, C0603)
+    sh.part("Connector_Generic", "Conn_01x02", "J11", "WRITE_LOCK", 80, 300,
+            {"1": "+3V3", "2": "G:WLOCK"}, "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+            {"Note": "jumper set = no writes possible"})
+    sh.part("Device", "R", "R33", "100k", 80, 320, {"1": "G:WLOCK", "2": "GND"}, R0603)
+    testpoint(sh, "TP7", "TP_WDATA", "G:FDD_WDATA", 360, 90)
+    testpoint(sh, "TP8", "TP_WGATE", "G:FDD_WGATE_G", 360, 105)   # after the lock gate
     return sh
 
 

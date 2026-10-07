@@ -6,6 +6,12 @@
 	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.NetName == 'GND'")
 	(constraint min_resolved_spokes 1))
 
+# v0.5: J9 pin 1 (+3V3, expansion header) is fed by an F.Cu track; the In2 +3V3 plane
+# around it has room for a single thermal spoke only.
+(rule "j9_3v3_single_spoke"
+	(condition "A.Type == 'Pad' && A.memberOfFootprint('J9') && A.NetName == '+3V3'")
+	(constraint min_resolved_spokes 1))
+
 # J6/J7 (IDC box headers) sit on the board edge on purpose; their library body outline
 # overhangs the edge and the fab clips that silkscreen.  Only silk-vs-edge pairs of these
 # two footprints are ignored; library footprints stay unmodified.
