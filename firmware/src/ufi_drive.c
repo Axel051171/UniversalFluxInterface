@@ -379,14 +379,21 @@ bool ufi_drive_write_protected(void)
     return bus_in(&PIN_FDD_WPROT);
 }
 
+/* J6 pin 34 is DSKCHG on the PC bus but READY on the Shugart bus (same input PF2);
+ * the Shugart disk change output on pin 2 is not readable (pin 2 = DENSITY output) */
 bool ufi_drive_disk_changed(void)
 {
-    return bus_in(&PIN_FDD_DKCHG);
+    return is_shugart(g_current_drive) ? false : bus_in(&PIN_FDD_DKCHG);
 }
 
 bool ufi_drive_ready(void)
 {
-    return bus_in(&PIN_FDD_READY);
+    return bus_in(is_shugart(g_current_drive) ? &PIN_FDD_DKCHG : &PIN_FDD_READY);
+}
+
+bool ufi_drive_is_shugart_bus(void)
+{
+    return is_shugart(g_current_drive);
 }
 
 drive_status_t ufi_drive_get_status(void)

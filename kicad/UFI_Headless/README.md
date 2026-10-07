@@ -60,6 +60,7 @@ Ungerade Pins GND (Pin 3 über JP2). 2 DENSITY · 6 DRATE (nur mit JP1) · 8 IND
 | JP1 (Pin 6) | offen – Pin 6 unbeschaltet | brücken für 3-Mode-Laufwerke (DRATE, Firmware `SET_LINES` 0x1A) |
 | JP2 (Pin 3) | 1-2 gebrückt = GND | Leiterbahn 1-2 auftrennen, 2-3 brücken = +5V (FDD_5V, über F2) – **nur** für PS/2-Laufwerke mit Versorgung an Pin 3; ein normales Laufwerk hat dort GND → Kurzschluss (F2 löst aus) |
 **Shugart-Bus** (Firmware 1.5, gerades Kabel, Laufwerke per Jumper DS0–DS3): Pin 10 = DS0, 12 = DS1, 14 = DS2, **6 = DS3 (nur mit JP1)**, Pin 16 = MOTOR ON für alle → bis zu **4 Laufwerke**. Auswahl `ufi select ds0…ds3` bzw. `UFI.CFG` `drive=ds0…ds3`. Alle Motoren laufen gemeinsam (Strom beim Anlauf beachten); JP1 als DS3 schließt DRATE aus; ein Amiga-Laufwerk an J7 belegt DS1 (Pin 12). PC-Belegung (A/B mit Twist) und Shugart-Bus nicht an einem Kabel mischen.
+Abweichungen der Shugart-Belegung (abgeglichen mit pinouts.ru „Floppy Diskdrive pinout“): **Pin 34 = READY** statt DSKCHG – die Firmware (ab 1.6) wertet ihn bei DS0–DS3 als READY; **Pin 2 = /DCD, ein Ausgang des Laufwerks** – bei uns der DENSITY-Ausgang, beide Open-Collector, also harmlos, aber nicht lesbar. Folge: am Shugart-Bus gibt es **keine Diskettenwechsel-Erkennung**. Im USB-Floppy-Modus wird der Spurpuffer verworfen, sobald der Motor stoppt (nie Daten einer Diskette auf eine andere schreiben); nach einem Diskettenwechsel den Betriebsart-Schalter kurz auf Flux und zurück, damit der PC die neue Diskette einliest.
 
 ## Amiga-Header (J7) – gegen Amiga HRM verifiziert
 

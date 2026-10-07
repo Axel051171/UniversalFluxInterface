@@ -65,6 +65,7 @@ static bool fmt_ok, active;
 static drive_timing_t saved_timing;
 static uint32_t stamp, last_write_ms, last_check_ms, detect_fail_ms;
 static bool detect_failed;
+static bool shugart_motor_was_on;
 
 /* ============================================================================
  * drive access
@@ -395,7 +396,21 @@ int ufi_floppy_ready(void)
     if (!ufi_drive_motor_is_on()) {
         ufi_drive_select(FLOPPY_DRIVE);                /* DSKCHG is valid while selected */
     }
-    if (ufi_drive_disk_changed()) {                    /* disk out (or swapped) */
+    if (ufi_drive_is_shugart_bus()) {
+        /* Shugart bus: no disk change line, J6 pin 34 is READY (valid while the motor
+         * runs).  A disk swapped while the motor is off goes unseen, so the cached tracks
+         * are dropped when the motor stops (never write one disk's track onto another). */
+        const bool on = ufi_drive_motor_is_on();
+        if (shugart_motor_was_on && !on && !slots[0].dirty && !slots[1].dirty) {
+            drop_cache();
+        }
+        shugart_motor_was_on = on;
+        if (on && !ufi_drive_ready()) {
+            fmt_ok = false;
+            drop_cache();
+            return UFI_ERR_NO_DRIVE;
+        }
+    } else if (ufi_drive_disk_changed()) {             /* disk out (or swapped) */
         fmt_ok = false;
         drop_cache();
         detect_failed = false;
@@ -410,7 +425,9 @@ int ufi_floppy_ready(void)
         }
     }
     if (!fmt_ok) {
-        if (detect_failed && now - detect_fail_ms < DETECT_RETRY_MS) {
+        /* Shugart bus: a failed detection spun the motor, retry less often */
+        const uint32_t retry = ufi_drive_is_shugart_bus() ? 30000u : DETECT_RETRY_MS;
+        if (detect_failed && now - detect_fail_ms < retry) {
             return UFI_ERR_NOT_IMPL;
         }
         if (detect() != UFI_OK) {

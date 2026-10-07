@@ -35,7 +35,7 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 | 3.1 | `cmake -S firmware -B firmware/build -G Ninja && cmake --build firmware/build` | `ufi_firmware.bin`, keine Warnungen | |
 | 3.2 | Flashen: ST-Link an J4 (SWD) **oder** BOOT-Taster (SW2) halten + RESET (SW1) → `dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin` | erfolgreich | |
 | 3.3 | Nach dem Start (12 V an, Netzteil 500 mA) | 3 ERR-Blinker = PSRAM-Fehler; sonst keine ERR-LED | |
-| 3.4 | `ufi info` | `UFI Flux Engine v1.5 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
+| 3.4 | `ufi info` | `UFI Flux Engine v1.6 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
 | 3.5 | Bei „rev ?“: Spannung an PA4 (R17/R18) messen | 1,06 V | |
 | 3.6 | `ufi selftest`, `ufi status` | keine Fehler | |
 

@@ -525,7 +525,8 @@ def build_fdd_conn() -> Sheet:
     sh = Sheet("UFI Headless - FDD Connectors", PROJECT)
     sh.text("FDD CONNECTORS\n"
             "J: 34-pin IBM PC / Shugart. Odd pins GND. Pins 10/12/14/16 = MOTEA/DRVSB/DRVSA/MOTEB (PC)\n"
-            "   resp. DS0/DS1/DS2/MOTOR (Shugart) - firmware selects bus type. Pin 34 = DSKCHG (PC) / READY (Shugart).\n"
+            "   resp. DS0/DS1/DS2/MOTOR (Shugart, DS3 = pin 6 via JP1); the drive type selects the bus.\n"
+            "   Pin 34 = DSKCHG (PC) / READY (Shugart); Shugart /DCD on pin 2 is not readable (DENSITY output).\n"
             "J: Amiga external drive, 2x12 header, pin n = DB23 pin n (Amiga HRM pinout), pin 24 GND.\n"
             "   Adapter cable to DB23. SEL1B shares DRVSEL_B, MTRXD shares MOTOR_B. Only one drive at a time.\n"
             "   CHECK: docs/Amiga_DB23_Adapter_Cable.md uses a different (inconsistent) pinout.", 20, 20, 1.5)

@@ -389,7 +389,8 @@ drive_type_t ufi_drive_get_current(void);
 bool ufi_drive_at_track0(void);
 bool ufi_drive_write_protected(void);
 bool ufi_drive_disk_changed(void);
-bool ufi_drive_ready(void);
+bool ufi_drive_ready(void);              // Shugart bus: J6 pin 34 (READY)
+bool ufi_drive_is_shugart_bus(void);    // current drive is DS0-DS3 (no DSKCHG line)
 int ufi_drive_density_line(bool assert);   // 34-pin pin 2; meaning is drive dependent
 drive_timing_t ufi_drive_get_timing(void);
 void ufi_drive_set_timing(const drive_timing_t* t);
