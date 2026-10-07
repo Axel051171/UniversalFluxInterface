@@ -23,6 +23,7 @@ static drive_status_t g_drive_status[DRIVE_IEC + 1];
 static drive_timing_t g_timing = {
     .step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
     .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000,
+    .motor_off_s = 30, .double_step = 0, .precomp_ns = PRECOMP_AUTO,
 };
 #define STEP_PULSE_US       (g_timing.step_pulse_us)
 #define STEP_RATE_US        (g_timing.step_rate_us)
@@ -236,9 +237,14 @@ int ufi_drive_seek(uint8_t track)
         return UFI_ERR_NO_DRIVE;
     }
     const uint8_t max_track = (g_current_drive == DRIVE_APPLE_II) ? 39 : 83;
-    if (track > max_track) {
+    /* double step: logical track n sits at physical track 2n (40-track disk, 80-track drive);
+     * current_track counts physical tracks */
+    const uint32_t phys = (g_timing.double_step && g_current_drive != DRIVE_APPLE_II)
+                          ? 2u * track : track;
+    if (phys > max_track) {
         return UFI_ERR_SEEK_FAIL;
     }
+    track = (uint8_t)phys;
 
     drive_status_t* status = &g_drive_status[g_current_drive];
     if (!status->track0 && status->current_track == 0) {
@@ -368,6 +374,56 @@ drive_status_t ufi_drive_get_status(void)
 drive_timing_t ufi_drive_get_timing(void)
 {
     return g_timing;
+}
+
+bool ufi_drive_motor_is_on(void)
+{
+    return g_current_drive != DRIVE_NONE && g_drive_status[g_current_drive].motor_on;
+}
+
+/* Everything that could move the head or write: off/released (USB lost, abort) */
+void ufi_drive_safe_state(void)
+{
+    if (ufi_drive_motor_is_on()) {
+        ufi_drive_motor(false);
+    }
+    bus_out(&PIN_FDD_WGATE, false);
+    bus_out(&PIN_FDD_STEP, false);
+    bus_out(&PIN_FDD_MOTOR_A, false);
+    bus_out(&PIN_FDD_MOTOR_B, false);
+    ufi_drive_select(DRIVE_NONE);
+}
+
+/* Highest reachable track: from track 0 step in until the mechanical end stop (the head
+ * simply stops there), then count the steps back to TRK0.  Gentle: double step rate.
+ * Note: some drives knock audibly at the end stop. */
+int ufi_drive_probe_tracks(uint8_t* highest)
+{
+    if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC ||
+        g_current_drive == DRIVE_APPLE_II) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    if (ufi_drive_recalibrate() != UFI_OK) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    const uint16_t rate = g_timing.step_rate_us;
+    g_timing.step_rate_us = (rate < 30000u) ? (uint16_t)(rate * 2u) : rate;
+    for (int i = 0; i < 90; i++) {
+        ufi_drive_step(1);
+    }
+    int n = 0;
+    while (!ufi_drive_at_track0() && n < 100) {
+        ufi_drive_step(-1);
+        n++;
+    }
+    g_timing.step_rate_us = rate;
+    if (!ufi_drive_at_track0()) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    g_drive_status[g_current_drive].current_track = 0;
+    g_drive_status[g_current_drive].track0 = true;
+    *highest = (uint8_t)n;
+    return UFI_OK;
 }
 
 void ufi_drive_set_timing(const drive_timing_t* t)

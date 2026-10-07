@@ -7,6 +7,8 @@
  *   0.70 - 1.16 V  1.5 A
  *   1.31 - 2.04 V  3.0 A
  * CC1 = PA0 (ADC1_INP16), CC2 = PA3 (ADC1_INP15).  ADC clock: per_ck (HSI 64 MHz) / 2.
+ * v0.5: the same ADC reads the drive supply currents (PC0/PC1) and the board ID (PA4),
+ * see ufi_board.c.
  */
 
 #include "ufi_firmware.h"
@@ -22,12 +24,15 @@ static void adc_init(void)
     HAL_RCCEx_PeriphCLKConfig(&pclk);
     __HAL_RCC_ADC12_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
 
     GPIO_InitTypeDef g = {0};
-    g.Pin = GPIO_PIN_0 | GPIO_PIN_3;
+    g.Pin = GPIO_PIN_0 | GPIO_PIN_3 | GPIO_PIN_4;        /* CC1, CC2, BOARD_ID */
     g.Mode = GPIO_MODE_ANALOG;
     g.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &g);
+    g.Pin = GPIO_PIN_0 | GPIO_PIN_1;                     /* I_FDD5, I_FDD12 */
+    HAL_GPIO_Init(GPIOC, &g);
 
     hadc1.Instance = ADC1;
     hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV2;
@@ -62,6 +67,17 @@ static uint16_t read_mv(uint32_t channel)
         return 0;
     }
     return (uint16_t)((HAL_ADC_GetValue(&hadc1) * 3300UL) / 65535UL);
+}
+
+uint16_t ufi_adc_mv(uint32_t channel)
+{
+    if (!adc_ready) {
+        adc_init();
+        if (!adc_ready) {
+            return 0;
+        }
+    }
+    return read_mv(channel);
 }
 
 int ufi_usb_power(usb_power_t* p)

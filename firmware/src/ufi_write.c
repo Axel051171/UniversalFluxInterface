@@ -44,6 +44,11 @@ typedef struct {
     bool use_precomp;           // Write Precompensation?
     uint32_t precomp_ns;        // chosen per data rate when the track is packed
     volatile uint8_t updates_left;  // timer updates until the last pulse is out
+    bool compact;               // WRITE_TRACK_C: OUT data in the READ_TRACK stream code
+    uint32_t decoded;           // compact: deltas decoded so far
+    uint8_t code[5];            // compact: multi-byte code being assembled
+    uint8_t code_len, code_need;
+    bool bad;                   // compact: reserved / index code seen
 } write_context_t;
 
 static write_context_t g_write;
@@ -161,7 +166,8 @@ static uint32_t precomp_for_data(void) {
 }
 
 static void pack_deltas(void) {
-    g_write.precomp_ns = precomp_for_data();
+    const uint16_t pc = ufi_drive_get_timing().precomp_ns;    /* host override (B11) */
+    g_write.precomp_ns = (pc == PRECOMP_AUTO) ? precomp_for_data() : pc;
     uint32_t prev = 0;
     for (uint32_t i = 0; i < g_write.flux_count; i++) {
         const uint32_t cur = write_buffer[i];
@@ -196,9 +202,68 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.bytes_expected = flux_count * sizeof(uint32_t);
     g_write.bytes_received = 0;
     g_write.verify_after = verify;
+    g_write.compact = false;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
+}
+
+/* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
+ * markers are not allowed), decoded on arrival into the same u32 delta buffer */
+int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,
+                              uint32_t byte_count, bool verify) {
+    int ret = ufi_write_prepare(track, side, flux_count, verify);
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    if (byte_count < flux_count || byte_count > flux_count * 5u) {
+        g_write.state = WRITE_IDLE;
+        return UFI_ERR_BUFFER_FULL;
+    }
+    g_write.compact = true;
+    g_write.bytes_expected = byte_count;
+    g_write.decoded = 0;
+    g_write.code_len = 0;
+    g_write.code_need = 0;
+    g_write.bad = false;
+    return UFI_OK;
+}
+
+static void put_decoded(uint32_t d) {
+    if (g_write.decoded < g_write.flux_count) {
+        write_buffer[g_write.decoded] = d;
+    }
+    g_write.decoded++;                      /* overcount = malformed data, caught later */
+}
+
+static void decode_compact(const uint8_t* p, uint32_t len) {
+    for (uint32_t i = 0; i < len; i++) {
+        const uint8_t b = p[i];
+        if (g_write.code_need == 0) {
+            if (b >= 0x01u && b <= 0xEFu) {
+                put_decoded(b);
+                continue;
+            }
+            g_write.code[0] = b;
+            g_write.code_len = 1;
+            g_write.code_need = (b >= 0xF0u && b <= 0xFCu) ? 2u : (b == 0xFEu) ? 5u : 0xFFu;
+            continue;
+        }
+        g_write.code[g_write.code_len++] = b;
+        if (g_write.code_len < g_write.code_need) {
+            continue;
+        }
+        const uint8_t* c = g_write.code;
+        if (g_write.code_need == 2u) {
+            put_decoded(240u + ((uint32_t)(c[0] - 0xF0u) << 8) + c[1]);
+        } else if (g_write.code_need == 5u) {
+            put_decoded((uint32_t)c[1] | ((uint32_t)c[2] << 8) | ((uint32_t)c[3] << 16) |
+                        ((uint32_t)c[4] << 24));
+        } else {
+            g_write.bad = true;             /* reserved / index code: reject the track */
+        }
+        g_write.code_need = 0;
+    }
 }
 
 int ufi_write_receive_chunk(uint8_t* data, uint32_t len) {
@@ -209,7 +274,11 @@ int ufi_write_receive_chunk(uint8_t* data, uint32_t len) {
         return UFI_ERR_BUFFER_FULL;
     }
 
-    memcpy(((uint8_t*)write_buffer) + g_write.bytes_received, data, len);
+    if (g_write.compact) {
+        decode_compact(data, len);
+    } else {
+        memcpy(((uint8_t*)write_buffer) + g_write.bytes_received, data, len);
+    }
     g_write.bytes_received += len;
 
     return UFI_OK;
@@ -230,6 +299,15 @@ int ufi_write_start(void) {
     }
     if (g_write.bytes_received < g_write.bytes_expected) {
         return UFI_ERR_BUFFER_FULL;
+    }
+    if (g_write.compact && (g_write.bad || g_write.code_need != 0 ||
+                            g_write.decoded != g_write.flux_count)) {
+        g_write.state = WRITE_ERROR;
+        return UFI_ERR_BUFFER_FULL;         /* malformed compact data */
+    }
+    if (ufi_board_write_locked()) {         /* WRITE LOCK jumper: WGATE is blocked anyway */
+        g_write.state = WRITE_ERROR;
+        return UFI_ERR_WRITE_PROT;
     }
     if (ufi_drive_write_protected()) {
         g_write.state = WRITE_ERROR;
@@ -332,7 +410,7 @@ void ufi_write_process(void) {
  * ============================================================================ */
 
 int ufi_erase_track(uint8_t track, uint8_t side) {
-    if (ufi_drive_write_protected()) {
+    if (ufi_board_write_locked() || ufi_drive_write_protected()) {
         return UFI_ERR_WRITE_PROT;
     }
     if (ufi_drive_seek(track) != 0) {
@@ -379,7 +457,7 @@ int ufi_write_verify(void) {
 
     g_write.state = WRITE_VERIFYING;
 
-    int ret = ufi_capture_start(g_write.track, g_write.side, 1);
+    int ret = ufi_capture_start(g_write.track, g_write.side, 1, 0);
     if (ret != 0) {
         g_write.state = WRITE_ERROR;
         return ret;
@@ -445,18 +523,26 @@ void ufi_write_set_precomp(bool enable) {
     g_write.use_precomp = enable;
 }
 
+/* Completion events carry the command code the host used */
+static uint8_t write_event_cmd(void) {
+    if (g_write.compact) {
+        return UFI_CMD_WRITE_TRACK_C;
+    }
+    return g_write.verify_after ? UFI_CMD_WRITE_TRACK_VERIFY : UFI_CMD_WRITE_TRACK;
+}
+
 /* Main-loop step: start once all data arrived, verify when done, report to the host */
 void ufi_write_service(void) {
     if (ufi_write_data_complete()) {
         int ret = ufi_write_start();
         if (ret != UFI_OK) {
-            ufi_usb_send_event(UFI_CMD_WRITE_TRACK, ret);
+            ufi_usb_send_event(write_event_cmd(), ret);
             ufi_write_abort();
         }
         return;
     }
     if (g_write.state == WRITE_COMPLETE || g_write.state == WRITE_ERROR) {
-        const uint8_t cmd = g_write.verify_after ? UFI_CMD_WRITE_TRACK_VERIFY : UFI_CMD_WRITE_TRACK;
+        const uint8_t cmd = write_event_cmd();
         int ret = UFI_ERR_DMA;
         if (g_write.state == WRITE_COMPLETE) {
             ret = g_write.verify_after ? ufi_write_verify() : UFI_OK;

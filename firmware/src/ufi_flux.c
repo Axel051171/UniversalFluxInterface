@@ -43,13 +43,22 @@ static volatile uint32_t chunks_done;   /* completed DMA buffers */
 static volatile uint32_t next_chunk;    /* next chunk to hand to the idle memory register */
 
 static flux_revolution_t revs[REVOLUTIONS_BUFFER];
-static volatile uint32_t idx_time[REVOLUTIONS_BUFFER + 1];
-static volatile uint32_t idx_pos[REVOLUTIONS_BUFFER + 1];
+static volatile uint32_t idx_time[REVOLUTIONS_STREAM + 1];
+static volatile uint32_t idx_pos[REVOLUTIONS_STREAM + 1];
 static volatile uint8_t idx_count;      /* index pulses seen since capture start */
 static volatile uint32_t end_pos;       /* samples written when the capture stopped */
 static bool finalised;
-static bool streaming;                  /* samples are read live, store stays untouched */
+static volatile bool streaming;         /* samples are read live, store stays untouched */
 static volatile uint32_t last_index_ms;  /* HAL tick of capture start / last index pulse */
+
+/* Streaming turns the store into a ring: logical sample n lives at n % store_words, and
+ * a chunk may be reused once the streamer has read everything it held. */
+static volatile uint32_t stream_consumed;
+static volatile bool stream_scratch;    /* no free chunk: the DMA runs into dma_scratch */
+
+/* Index-less capture (no index hole/sensor, flippy side, hard-sectored): revolution
+ * boundaries every `period` ticks from the capture start instead of index pulses */
+static uint32_t period;
 
 /* No disk or motor off: no index within this time ends the capture (error_code 3) */
 #define INDEX_TIMEOUT_MS    600     /* > 1 revolution at 300 rpm (200 ms) with margin */
@@ -185,14 +194,17 @@ static void dma_arm(void)
  * CAPTURE STARTEN / STOPPEN
  * ============================================================================ */
 
-int ufi_flux_capture_start(uint8_t revolutions)
+int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
 {
     if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
         return UFI_ERR_BUSY;
     }
-    if (revolutions == 0 || revolutions > REVOLUTIONS_BUFFER) {
+    if (revolutions == 0 || revolutions > REVOLUTIONS_STREAM) {
         return UFI_ERR_BUFFER_FULL;
     }
+    period = period_ticks;
+    stream_consumed = 0;
+    stream_scratch = false;
 
     g_capture.revolutions_requested = revolutions;
     g_capture.revolutions_captured = 0;
@@ -209,6 +221,17 @@ int ufi_flux_capture_start(uint8_t revolutions)
     /* Arm the stream; transfers only start once CC1DE is set at the first index */
     TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
     dma_arm();
+
+    if (period) {                           /* index-less: revolution 0 starts now */
+        __disable_irq();
+        idx_time[0] = TIM2->CNT;
+        idx_pos[0] = 0;
+        idx_count = 1;
+        TIM2->DIER |= TIM_DIER_CC1DE;
+        g_capture.state = CAPTURE_RUNNING;
+        __enable_irq();
+        return UFI_OK;
+    }
 
     g_capture.state = CAPTURE_WAITING_INDEX;
     TIM2->SR = ~(TIM_SR_CC2IF | TIM_SR_CC2OF);
@@ -255,7 +278,7 @@ void ufi_flux_tim2_irq(void)
         last_index_ms = HAL_GetTick();
         TIM2->DIER |= TIM_DIER_CC1DE;       /* start streaming RDATA timestamps */
         g_capture.state = CAPTURE_RUNNING;
-    } else if (g_capture.state == CAPTURE_RUNNING) {
+    } else if (g_capture.state == CAPTURE_RUNNING && !period) {
         idx_time[idx_count] = t;
         idx_pos[idx_count] = dma_pos();
         last_index_ms = HAL_GetTick();
@@ -287,12 +310,12 @@ void ufi_flux_dma_irq(void)
     DMA1->LIFCR = DMA_LIFCR_CTCIF0 | DMA_LIFCR_CHTIF0;
     chunks_done++;
 
-    if (chunks_done >= n_chunks) {
+    if (stream_scratch || (!streaming && chunks_done >= n_chunks)) {
         /* Store full before all revolutions were captured: keep the complete ones */
         TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
         dma_stop();
         if (g_capture.state == CAPTURE_RUNNING) {
-            end_pos = store_words;
+            end_pos = chunks_done * chunk_words;    /* logical: == store_words without ring */
             g_capture.error_code = 1;       /* overflow: fewer revolutions than requested */
             g_capture.state = (idx_count >= 2) ? CAPTURE_COMPLETE : CAPTURE_ERROR;
         }
@@ -303,7 +326,15 @@ void ufi_flux_dma_irq(void)
      * scratch area once the store is used up (the stream keeps running until the ISR
      * after the last chunk stops it, and must not wrap into chunk n-2). */
     uint32_t* next = dma_scratch;
-    if (next_chunk < n_chunks) {
+    if (streaming) {
+        /* ring: logical chunk c overwrites chunk c - n_chunks, which must be read already */
+        if (next_chunk < n_chunks || stream_consumed >= (next_chunk - n_chunks + 1u) * chunk_words) {
+            next = &flux_store[(next_chunk % n_chunks) * chunk_words];
+            next_chunk++;
+        } else {
+            stream_scratch = true;          /* streamer too slow: stop after this buffer */
+        }
+    } else if (next_chunk < n_chunks) {
         next = &flux_store[next_chunk * chunk_words];
         next_chunk++;
     }
@@ -332,7 +363,22 @@ static uint32_t align_boundary(uint32_t pos, uint32_t t, uint32_t lo, uint32_t h
 
 capture_state_t ufi_flux_poll(void)
 {
-    if ((g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) &&
+    if (period && g_capture.state == CAPTURE_RUNNING) {
+        /* index-less: record the boundaries that have passed, stop after the last one */
+        const uint8_t seen = ufi_flux_index_count();
+        while (idx_count < seen) {
+            __disable_irq();
+            idx_time[idx_count] = idx_time[0] + (uint32_t)idx_count * period;
+            idx_pos[idx_count] = dma_pos();
+            idx_count++;
+            if (idx_count > g_capture.revolutions_requested && g_capture.state == CAPTURE_RUNNING) {
+                capture_halt();
+                g_capture.state = CAPTURE_COMPLETE;
+            }
+            __enable_irq();
+        }
+    }
+    if (!period && (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) &&
         HAL_GetTick() - last_index_ms > INDEX_TIMEOUT_MS) {
         capture_halt();
         g_capture.error_code = 3;           /* no index pulse: no disk / motor off */
@@ -394,14 +440,30 @@ uint32_t ufi_flux_written(void)
     return pos;
 }
 
+/* Index pulses up to now.  Index-less: boundaries that have passed by the timer, so the
+ * streamer sees them as early as real pulses (poll() records them later). */
 uint8_t ufi_flux_index_count(void)
 {
+    if (period && g_capture.state == CAPTURE_RUNNING && idx_count > 0) {
+        const uint32_t last = idx_time[0] + (uint32_t)(idx_count - 1u) * period;
+        uint32_t n = idx_count + (TIM2->CNT - last) / period;
+        const uint32_t cap = (uint32_t)g_capture.revolutions_requested + 1u;
+        return (uint8_t)((n > cap) ? cap : n);
+    }
     return idx_count;
 }
 
 uint32_t ufi_flux_index_time(uint8_t k)
 {
-    return (k <= REVOLUTIONS_BUFFER) ? idx_time[k] : 0;
+    if (period) {
+        return idx_time[0] + (uint32_t)k * period;
+    }
+    return (k <= REVOLUTIONS_STREAM) ? idx_time[k] : 0;
+}
+
+void ufi_flux_stream_consumed(uint32_t samples)
+{
+    stream_consumed = samples;
 }
 
 /* ============================================================================

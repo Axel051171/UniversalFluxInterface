@@ -99,13 +99,21 @@ static void encode(bool halted)
     uint32_t words;
     const volatile uint32_t* s = ufi_flux_store(&words);
 
+    /* The store is a ring here: logical sample n sits at n % words */
+    uint32_t phys = rd % words;
     if (wr > rd) {                          /* DMA wrote behind the cache's back */
-        const uint32_t from = rd & ~7u;     /* 32-byte lines */
-        SCB_InvalidateDCache_by_Addr((void*)&s[from], (int32_t)((wr - from) * 4u + 31u) & ~31);
+        uint32_t from = phys & ~7u;         /* 32-byte lines */
+        uint32_t left = wr - rd + (phys - from);
+        while (left > 0) {
+            const uint32_t run = (words - from < left) ? words - from : left;
+            SCB_InvalidateDCache_by_Addr((void*)&s[from], (int32_t)((run * 4u + 31u) & ~31u));
+            left -= run;
+            from = 0;
+        }
     }
 
     while (!done && rd < wr && fill <= STREAM_BUF - ROOM) {
-        const uint32_t ts = s[rd];
+        const uint32_t ts = s[phys];
         const uint32_t d = ts - t_last;
         if (!halted && ((int32_t)(now - ts) < TS_MARGIN || d >= DELTA_MAX)) {
             break;                          /* too fresh, or stale data: retry next call */
@@ -117,7 +125,11 @@ static void encode(bool halted)
         put_delta(d);
         t_last = ts;
         rd++;
+        if (++phys == words) {
+            phys = 0;
+        }
     }
+    ufi_flux_stream_consumed(rd);           /* frees ring chunks for the DMA */
     /* Capture over and every stored sample used: the last index pulses follow no flux */
     if (halted && !done && rd >= wr && fill <= STREAM_BUF - ROOM) {
         put_indexes_before(0, true);

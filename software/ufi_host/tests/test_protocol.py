@@ -87,7 +87,7 @@ class FakeDevice:
         elif cmd == P.DRIVE_TIMING:
             if len(args) >= P.TIMING.size:
                 self.timing = bytes(args[:P.TIMING.size])
-            self._reply(cmd, 0, getattr(self, "timing", P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000)))
+            self._reply(cmd, 0, getattr(self, "timing", P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF)))
         else:
             self._reply(cmd)
         return len(data)
@@ -184,7 +184,8 @@ def test_timing_get_and_set():
     assert dev.timing()["step_rate_us"] == 3000
     t = dev.timing(step_rate_us=6000, spinup_ms=750)
     assert t["step_rate_us"] == 6000 and t["spinup_ms"] == 750 and t["settle_us"] == 15000
-    assert fake.commands[-1][0] == P.DRIVE_TIMING and len(fake.commands[-1][1]) == 14
+    assert t["motor_off_s"] == 30 and t["precomp_ns"] == 0xFFFF
+    assert fake.commands[-1][0] == P.DRIVE_TIMING and len(fake.commands[-1][1]) == 20
     with pytest.raises(ValueError):
         dev.timing(warp=1)
 

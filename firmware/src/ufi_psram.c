@@ -13,6 +13,7 @@
 #if BOARD_HAS_PSRAM
 
 static OSPI_HandleTypeDef hospi;
+static const char* psram_result = "PSRAM init failed";
 
 #define PSRAM_CMD_RESET_EN      0x66
 #define PSRAM_CMD_RESET         0x99
@@ -187,6 +188,7 @@ int ufi_psram_init(void)
 
     uint8_t id[2] = {0, 0};
     if (psram_read_id(id) != UFI_OK || id[0] != PSRAM_ID_MF || id[1] != PSRAM_ID_KGD) {
+        psram_result = "PSRAM not answering";
         return UFI_ERR_NOT_IMPL;                        /* not fitted / not answering */
     }
     if (psram_cmd(PSRAM_CMD_ENTER_QPI, false) != UFI_OK || psram_memory_mapped() != UFI_OK) {
@@ -194,20 +196,51 @@ int ufi_psram_init(void)
     }
     psram_mpu();
 
-    /* pattern test across the whole range (first/last words of each MB) */
+    /* Self-test: data lines (walking one), address lines (unique value at every power-of-
+     * two word offset, catches shorted/open address bits), pattern in each MB */
     volatile uint32_t* mem = (volatile uint32_t*)OCTOSPI1_BASE;
     const uint32_t words = PSRAM_SIZE_BYTES / 4u;
-    for (uint32_t a = 0; a < words; a += words / 8u) {
-        mem[a] = 0xA5A50000u ^ a;
-        mem[a + 1] = ~(0xA5A50000u ^ a);
-    }
-    SCB_CleanInvalidateDCache();
-    for (uint32_t a = 0; a < words; a += words / 8u) {
-        if (mem[a] != (0xA5A50000u ^ a) || mem[a + 1] != ~(0xA5A50000u ^ a)) {
+    for (uint32_t bit = 1; bit != 0; bit <<= 1) {
+        mem[0] = bit;
+        SCB_CleanInvalidateDCache();
+        if (mem[0] != bit) {
+            psram_result = "PSRAM data line fault";
             return UFI_ERR_DMA;
         }
     }
+    mem[0] = 0x5555AAAAu;
+    for (uint32_t a = 1; a < words; a <<= 1) {
+        mem[a] = 0xC0DE0000u ^ a;
+    }
+    SCB_CleanInvalidateDCache();
+    if (mem[0] != 0x5555AAAAu) {
+        psram_result = "PSRAM address line fault";
+        return UFI_ERR_DMA;
+    }
+    for (uint32_t a = 1; a < words; a <<= 1) {
+        if (mem[a] != (0xC0DE0000u ^ a)) {
+            psram_result = "PSRAM address line fault";
+            return UFI_ERR_DMA;
+        }
+    }
+    for (uint32_t a = 0; a < words; a += words / 8u) {
+        mem[a + 3] = 0xA5A50000u ^ a;
+        mem[a + 4] = ~(0xA5A50000u ^ a);
+    }
+    SCB_CleanInvalidateDCache();
+    for (uint32_t a = 0; a < words; a += words / 8u) {
+        if (mem[a + 3] != (0xA5A50000u ^ a) || mem[a + 4] != ~(0xA5A50000u ^ a)) {
+            psram_result = "PSRAM pattern fault";
+            return UFI_ERR_DMA;
+        }
+    }
+    psram_result = "PSRAM 8 MB ok";
     return UFI_OK;
+}
+
+const char* ufi_psram_result(void)
+{
+    return psram_result;
 }
 
 #else
@@ -215,6 +248,11 @@ int ufi_psram_init(void)
 int ufi_psram_init(void)
 {
     return UFI_ERR_NOT_IMPL;
+}
+
+const char* ufi_psram_result(void)
+{
+    return "no PSRAM";
 }
 
 #endif

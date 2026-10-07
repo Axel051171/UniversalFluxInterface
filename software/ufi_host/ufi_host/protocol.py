@@ -23,8 +23,9 @@ NOP, GET_INFO, GET_STATUS = 0x00, 0x01, 0x02
 SELECT_DRIVE, MOTOR_ON, MOTOR_OFF, SEEK, RECALIBRATE, SELECT_SIDE = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15
 CHECK_DISK, DRIVE_TIMING, AMIGA_ID, USB_POWER = 0x16, 0x17, 0x18, 0x19
 TIMING_FIELDS = ("step_pulse_us", "step_rate_us", "settle_us", "dir_change_us",
-                 "side_settle_us", "spinup_ms", "select_settle_us")
-TIMING = struct.Struct("<7H")
+                 "side_settle_us", "spinup_ms", "select_settle_us",
+                 "motor_off_s", "double_step", "precomp_ns")   # precomp 0xFFFF = by data rate
+TIMING = struct.Struct("<10H")
 AMIGA_IDS = {0xFFFFFFFF: '3.5" DD', 0xAAAAAAAA: '3.5" HD (HD media)',
              0x55555555: '5.25" 40 track', 0x00000000: "no drive"}
 READ_TRACK, READ_TRACK_RAW, EVT_READ_DONE, EVT_FLUX, ABORT_READ = 0x20, 0x21, 0x2D, 0x2E, 0x2F

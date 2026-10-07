@@ -72,9 +72,21 @@ void ufi_init(void)
     board_gpio_init();          /* all pins in their released / idle state */
     ufi_drive_init();
     ufi_iec_init();
-    ufi_flux_init();            /* TIM2 + DMA */
+    ufi_flux_init();            /* TIM2 + DMA, PSRAM self-test */
     ufi_write_init();
+    ufi_board_init();           /* v0.5: drive supplies on (5 V, then 12 V) */
     ufi_usb_init();
+
+    /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,
+     * GET_INFO reports the result) */
+    if (BOARD_HAS_PSRAM && !ufi_flux_store_is_psram()) {
+        for (int i = 0; i < 3; i++) {
+            led_set(&PIN_LED_ERR, true);
+            HAL_Delay(150);
+            led_set(&PIN_LED_ERR, false);
+            HAL_Delay(150);
+        }
+    }
 
     g_capture.state = CAPTURE_IDLE;
 }
@@ -83,7 +95,7 @@ void ufi_init(void)
  * FLUX CAPTURE
  * ============================================================================ */
 
-int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions)
+int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks)
 {
     if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
         ufi_stream_active()) {
@@ -100,7 +112,7 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions)
     g_capture.current_track = track;
     g_capture.current_side = side;
 
-    int ret = ufi_flux_capture_start(revolutions);
+    int ret = ufi_flux_capture_start(revolutions, period_ticks);
     if (ret == UFI_OK) {
         led_set(&PIN_LED_ERR, false);
         led_set(&PIN_LED_FDD, true);
@@ -160,6 +172,7 @@ void ufi_main_loop(void)
         ufi_usb_process_command();
         ufi_write_process();
         ufi_write_service();
+        ufi_board_service();            /* overcurrent, USB loss, motor timeout */
 
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
         if (ufi_stream_active()) {

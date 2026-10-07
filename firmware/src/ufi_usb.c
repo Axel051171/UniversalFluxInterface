@@ -36,10 +36,9 @@ __ALIGN_BEGIN uint8_t USBD_DeviceDesc[USB_LEN_DEV_DESC] __ALIGN_END = {
     USBD_MAX_NUM_CONFIGURATION  // bNumConfigurations
 };
 
-// String Descriptors
+// String Descriptors (serial number: STM32 unique ID, usbd_desc.c)
 const uint8_t* USBD_Manufacturer_String = (uint8_t*)"UFT Project";
 const uint8_t* USBD_Product_String = (uint8_t*)"UFI Flux Engine";
-const uint8_t* USBD_Serial_String = (uint8_t*)"UFI-001";
 
 /* ============================================================================
  * USB HANDLES / BUFFERS
@@ -125,6 +124,22 @@ static int reply(uint8_t cmd, uint8_t status, const void* payload, uint16_t len)
     }
     return usb_tx_blocking(buf, sizeof(hdr) + len);
 }
+
+/* Append s plus its NUL to a reply text of max REPLY_MAX_PAYLOAD bytes (cut if too long) */
+static uint16_t str_add(char* buf, uint16_t n, const char* s) {
+    while (*s && n < REPLY_MAX_PAYLOAD - 1u) {
+        buf[n++] = *s++;
+    }
+    buf[n++] = '\0';
+    return n;
+}
+
+#ifndef UFI_FW_VERSION
+#define UFI_FW_VERSION "1.2"
+#endif
+#ifndef UFI_GIT_REV
+#define UFI_GIT_REV "dev"
+#endif
 
 /* UFI error code (negative) -> wire status byte */
 static uint8_t st(int ret) {
@@ -252,6 +267,7 @@ int ufi_usb_process_command(void) {
     }
 
     const uint8_t cmd = cmd_buffer[0];
+    ufi_board_activity();                   /* motor idle timer */
 
     switch (cmd) {
         case UFI_CMD_NOP:
@@ -259,8 +275,17 @@ int ufi_usb_process_command(void) {
             break;
 
         case UFI_CMD_GET_INFO: {
-            static const char info[] = "UFI Flux Engine v1.1\0" BOARD_NAME "\0STM32H723\0";
-            reply(cmd, 0, info, sizeof(info));
+            // NUL-separated: firmware (version, git revision, build date), board (+ revision
+            // from the BOARD_ID divider), MCU, PSRAM self-test result
+            char info[REPLY_MAX_PAYLOAD];
+            uint16_t n = 0;
+            n = str_add(info, n, "UFI Flux Engine v" UFI_FW_VERSION " " UFI_GIT_REV " " __DATE__);
+            const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
+            n = str_add(info, n, (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u)
+                                 ? BOARD_NAME " v0.5" : BOARD_NAME " rev ?");
+            n = str_add(info, n, "STM32H723");
+            n = str_add(info, n, ufi_psram_result());
+            reply(cmd, 0, info, n);
             break;
         }
 
@@ -302,9 +327,11 @@ int ufi_usb_process_command(void) {
             break;
         }
         case UFI_CMD_DRIVE_TIMING: {
-            if (cmd_len >= 1 + sizeof(drive_timing_t)) {
-                drive_timing_t t;
-                memcpy(&t, &cmd_buffer[1], sizeof(t));
+            // a shorter payload (older hosts: 7 fields) overwrites only the leading fields
+            if (cmd_len >= 3) {
+                drive_timing_t t = ufi_drive_get_timing();
+                const uint32_t n = (cmd_len - 1 < sizeof(t)) ? (cmd_len - 1) & ~1u : sizeof(t);
+                memcpy(&t, &cmd_buffer[1], n);
                 ufi_drive_set_timing(&t);
             }
             const drive_timing_t cur = ufi_drive_get_timing();
@@ -316,6 +343,26 @@ int ufi_usb_process_command(void) {
             bus_out(&PIN_FDD_DRATE, cmd_buffer[2] != 0);
             reply(cmd, 0, NULL, 0);
             break;
+        case UFI_CMD_BOARD_STATUS: {        // [mask] optional: bit0 FDD_5V, bit1 FDD_12V
+            if (cmd_len >= 2) {
+                ufi_board_power(cmd_buffer[1]);
+            }
+            const board_status_t s = ufi_board_status();
+            reply(cmd, 0, &s, sizeof(s));
+            break;
+        }
+        case UFI_CMD_PROBE_TRACKS: {
+            uint8_t highest = 0;
+            int ret = ufi_drive_probe_tracks(&highest);
+            reply(cmd, st(ret), &highest, ret == UFI_OK ? 1 : 0);
+            break;
+        }
+        case UFI_CMD_SD_INFO: {
+            sd_info_t info = {0};
+            int ret = ufi_sd_info(&info);
+            reply(cmd, st(ret), &info, sizeof(info));
+            break;
+        }
         case UFI_CMD_USB_POWER: {
             usb_power_t p = {0};
             int ret = ufi_usb_power(&p);
@@ -331,13 +378,21 @@ int ufi_usb_process_command(void) {
 
         case UFI_CMD_READ_TRACK:
         case UFI_CMD_READ_TRACK_RAW: {
-            // [CMD, track, side, revolutions]; READ_TRACK streams UFI_EVT_FLUX_STREAM while
-            // the disk turns (ufi_stream.c), READ_TRACK_RAW sends UFI_EVT_FLUX packets after
-            // the capture (ufi_main_loop)
+            // [CMD, track, side, revolutions, flags, period_ms u16]; READ_TRACK streams
+            // UFI_EVT_FLUX_STREAM while the disk turns (ufi_stream.c, up to 200 revolutions),
+            // READ_TRACK_RAW sends UFI_EVT_FLUX packets after the capture (up to 20).
+            // flags bit0: no index pulses, revolution boundaries every period_ms (0 = 200)
+            const uint8_t max_revs = (cmd == UFI_CMD_READ_TRACK) ? REVOLUTIONS_STREAM : REVOLUTIONS_BUFFER;
             uint8_t revolutions = cmd_buffer[3];
             if (revolutions == 0) revolutions = 1;
-            if (revolutions > REVOLUTIONS_BUFFER) revolutions = REVOLUTIONS_BUFFER;
-            int ret = ufi_capture_start(cmd_buffer[1], cmd_buffer[2], revolutions);
+            if (revolutions > max_revs) revolutions = max_revs;
+            uint32_t period_ticks = 0;
+            if (cmd_len >= 5 && (cmd_buffer[4] & 0x01u)) {
+                uint32_t ms = (cmd_len >= 7) ? (uint32_t)cmd_buffer[5] | ((uint32_t)cmd_buffer[6] << 8) : 0u;
+                if (ms == 0 || ms > 2000u) ms = 200u;
+                period_ticks = ms * (FLUX_TIMER_FREQ / 1000u);
+            }
+            int ret = ufi_capture_start(cmd_buffer[1], cmd_buffer[2], revolutions, period_ticks);
             if (ret == UFI_OK && cmd == UFI_CMD_READ_TRACK) {
                 ufi_stream_begin();
             }
@@ -376,6 +431,19 @@ int ufi_usb_process_command(void) {
                                   ((uint32_t)cmd_buffer[5] << 16) | ((uint32_t)cmd_buffer[6] << 24);
             int ret = ufi_write_prepare(cmd_buffer[1], cmd_buffer[2], flux_count,
                                         cmd == UFI_CMD_WRITE_TRACK_VERIFY);
+            reply(cmd, st(ret), NULL, 0);
+            break;
+        }
+
+        case UFI_CMD_WRITE_TRACK_C: {
+            // [CMD, track, side, flux_count u32, byte_count u32, verify]; then byte_count
+            // bytes in the READ_TRACK stream code; completion event = UFI_CMD_WRITE_TRACK_C
+            const uint32_t flux_count = (uint32_t)cmd_buffer[3] | ((uint32_t)cmd_buffer[4] << 8) |
+                                        ((uint32_t)cmd_buffer[5] << 16) | ((uint32_t)cmd_buffer[6] << 24);
+            const uint32_t byte_count = (uint32_t)cmd_buffer[7] | ((uint32_t)cmd_buffer[8] << 8) |
+                                        ((uint32_t)cmd_buffer[9] << 16) | ((uint32_t)cmd_buffer[10] << 24);
+            int ret = ufi_write_prepare_compact(cmd_buffer[1], cmd_buffer[2], flux_count, byte_count,
+                                                cmd_len >= 12 && cmd_buffer[11] != 0);
             reply(cmd, st(ret), NULL, 0);
             break;
         }

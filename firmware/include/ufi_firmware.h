@@ -42,7 +42,8 @@ typedef struct __packed {
 // Flux store, shared by capture and write: the 8 MB QSPI PSRAM (2M samples, memory-mapped)
 // when fitted and working, else a 224 KB AXI SRAM fallback (56k samples, >= 2 HD revs).
 #define FLUX_STORE_FALLBACK_WORDS   (56 * 1024)
-#define REVOLUTIONS_BUFFER  20          // Max Umdrehungen pro Capture
+#define REVOLUTIONS_BUFFER  20          // Max Umdrehungen pro Capture (READ_TRACK_RAW)
+#define REVOLUTIONS_STREAM  200         // READ_TRACK: the store is a ring buffer, more revolutions
 
 // One revolution = slice of the flux store between two index pulses.
 // Timestamps are TIM2 ticks relative to the index pulse that starts the revolution.
@@ -138,6 +139,9 @@ typedef enum {
     UFI_CMD_AMIGA_ID        = 0x18, // -> u32 drive ID
     UFI_CMD_USB_POWER       = 0x19, // -> usb_power_t (CC1/CC2 mV, allowed source mA)
     UFI_CMD_SET_LINES       = 0x1A, // [density, drate]: assert J6 pin 2 / pin 6 (drive dependent)
+    UFI_CMD_BOARD_STATUS    = 0x1B, // [power mask] optional: set drive supplies -> board_status_t
+    UFI_CMD_PROBE_TRACKS    = 0x1C, // -> u8 highest reachable track (steps to the end stop!)
+    UFI_CMD_SD_INFO         = 0x1D, // -> sd_info_t (card detect + init)
     
     // Flux-Capture
     UFI_CMD_READ_TRACK      = 0x20, // streamed, compact: UFI_EVT_FLUX_STREAM messages (ufi_stream.c)
@@ -151,6 +155,8 @@ typedef enum {
     UFI_CMD_WRITE_TRACK         = 0x30,
     UFI_CMD_WRITE_TRACK_VERIFY  = 0x32,  // Write mit Verify
     UFI_CMD_ERASE_TRACK         = 0x31,
+    UFI_CMD_WRITE_TRACK_C       = 0x33,  // [track, side, flux_count u32, byte_count u32, verify]
+                                         // + byte_count bytes in the READ_TRACK stream code
     
     // IEC Bus (C64)
     UFI_CMD_IEC_RESET       = 0x40,
@@ -173,7 +179,8 @@ typedef struct __packed {
     uint16_t length;        // Länge der Daten
 } ufi_response_header_t;
 
-// Drive timing (wire format = in-memory: 7 x u16 little endian)
+// Drive timing / options (wire format = in-memory: 10 x u16 little endian).  A shorter
+// DRIVE_TIMING payload (e.g. the original 7 fields) only overwrites the leading fields.
 typedef struct __packed {
     uint16_t step_pulse_us;
     uint16_t step_rate_us;
@@ -182,7 +189,30 @@ typedef struct __packed {
     uint16_t side_settle_us;
     uint16_t spinup_ms;
     uint16_t select_settle_us;
+    uint16_t motor_off_s;       // motor off after this idle time, 0 = never
+    uint16_t double_step;       // 1 = two steps per track (40-track disk in an 80-track drive)
+    uint16_t precomp_ns;        // write precompensation: 0xFFFF = by data rate, 0 = off
 } drive_timing_t;
+#define PRECOMP_AUTO    0xFFFFu
+
+// BOARD_STATUS payload (8 bytes)
+typedef struct __packed {
+    uint8_t power;              // bit0 FDD_5V on, bit1 FDD_12V on
+    uint8_t flags;              // bit0 write lock jumper, bit1/2 5V/12V overcurrent trip,
+                                // bit3 SD card present, bit4/5 button A/B pressed
+    uint16_t i5_ma;             // drive supply currents
+    uint16_t i12_ma;
+    uint16_t board_id_mv;       // BOARD_ID divider (1650 = v0.5)
+} board_status_t;
+
+// SD_INFO payload (8 bytes)
+typedef struct __packed {
+    uint8_t present;            // card detect switch
+    uint8_t status;             // 0 = initialised, else UFI error code (positive)
+    uint8_t card_type;          // HAL CardType (0 SDSC, 1 SDHC/SDXC)
+    uint8_t bus_width;          // 1 or 4
+    uint32_t capacity_mb;
+} sd_info_t;
 
 // USB_POWER payload (6 bytes); current_ma 0 = no Type-C source detected
 typedef struct __packed {
@@ -234,13 +264,13 @@ void ufi_usb_init(void);
 void ufi_main_loop(void);
 
 // Flux-Capture (high level, ufi_main.c: seek + side + capture)
-int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions);
+int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks);
 int ufi_capture_abort(void);
 capture_state_t ufi_capture_get_state(void);
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution);
 
 // Flux engine (ufi_flux.c)
-int ufi_flux_capture_start(uint8_t revolutions);
+int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks);  // period 0 = index pulses
 int ufi_flux_capture_stop(void);
 capture_state_t ufi_flux_poll(void);           // finalises a completed capture
 flux_revolution_t* ufi_flux_get_revolution(uint8_t index);
@@ -256,6 +286,19 @@ void ufi_flux_set_streaming(bool on);           // on: no in-place finalisation
 uint32_t ufi_flux_written(void);                // samples DMA has stored so far
 uint8_t ufi_flux_index_count(void);             // index pulses seen (index 0 = start)
 uint32_t ufi_flux_index_time(uint8_t k);        // TIM2 time of index pulse k
+void ufi_flux_stream_consumed(uint32_t samples); // ring buffer: samples the streamer has read
+const char* ufi_psram_result(void);              // PSRAM self-test result text
+
+// Board extras v0.5 (ufi_board.c): drive supplies, currents, write lock, board ID, safety
+void ufi_board_init(void);
+void ufi_board_service(void);                   // main loop: overcurrent, USB loss, motor timeout
+void ufi_board_activity(void);                  // host command / transfer seen
+void ufi_board_power(uint8_t mask);
+board_status_t ufi_board_status(void);
+bool ufi_board_write_locked(void);
+uint16_t ufi_adc_mv(uint32_t channel);          // ufi_power.c, 0 if the ADC is not available
+int ufi_sd_info(sd_info_t* info);               // ufi_sd.c
+bool ufi_sd_present(void);
 
 // Streamed capture transfer (ufi_stream.c)
 void ufi_stream_begin(void);
@@ -281,6 +324,9 @@ drive_timing_t ufi_drive_get_timing(void);
 void ufi_drive_set_timing(const drive_timing_t* t);
 int ufi_drive_check_disk(bool* changed, bool* present);
 int ufi_drive_amiga_id(uint32_t* id);
+bool ufi_drive_motor_is_on(void);
+int ufi_drive_probe_tracks(uint8_t* highest);
+void ufi_drive_safe_state(void);    // motor off, deselect, all write lines released
 #if BOARD_HAS_APPLE
 int ufi_drive_apple_step(int direction);
 #endif
@@ -317,6 +363,8 @@ typedef enum {
 // Write Funktionen
 void ufi_write_init(void);
 int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool verify);
+int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,
+                              uint32_t byte_count, bool verify);
 int ufi_write_receive_chunk(uint8_t* data, uint32_t len);
 bool ufi_write_data_complete(void);
 int ufi_write_start(void);
