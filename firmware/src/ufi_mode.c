@@ -1,8 +1,9 @@
 /**
  * UFI Flux Engine - operating mode: flux engine / USB floppy / SD drive (board v0.6)
  *
- * Optional 3-position toggle switch (ON-OFF-ON) on the expansion header J9:
- * common to pin 1 (3V3), one side to pin 5 (EXP_IO1, PE0), the other to pin 6
+ * Optional 3-position toggle switch (ON-OFF-ON) on J13 (1x3, switch pin order; the same
+ * inputs are on the expansion header J9 pins 5/6):
+ * common = J13 pin 2 (3V3), one side = pin 1 (EXP_IO1, PE0), the other = pin 3
  * (EXP_IO2, PE1); the MCU pull-downs keep both low without a switch.
  *   middle (both low)  = flux engine (CDC, ufi host tool)
  *   EXP_IO1 high       = USB floppy (disk in drive A as a USB drive)

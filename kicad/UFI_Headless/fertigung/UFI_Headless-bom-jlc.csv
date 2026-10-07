@@ -33,6 +33,7 @@
 "EXPANSION","J9","Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",""
 "WRITE_LOCK","J11","Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",""
 "FRONT_LED","J12","Connector_PinHeader_2.54mm:PinHeader_2x04_P2.54mm_Vertical",""
+"MODE_SW","J13","Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",""
 "15uH 3A","L1","Inductor_SMD:L_Bourns_SRN6045TA","C1330797"
 "AO3401A","Q1,Q3","Package_TO_SOT_SMD:SOT-23","C15127"
 "2N7002","Q2,Q4","Package_TO_SOT_SMD:SOT-23","C8545"

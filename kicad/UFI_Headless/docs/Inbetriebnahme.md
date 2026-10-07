@@ -35,7 +35,7 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 | 3.1 | `cmake -S firmware -B firmware/build -G Ninja && cmake --build firmware/build` | `ufi_firmware.bin`, keine Warnungen | |
 | 3.2 | Flashen: ST-Link an J4 (SWD) **oder** BOOT-Taster (SW2) halten + RESET (SW1) → `dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin` | erfolgreich | |
 | 3.3 | Nach dem Start (12 V an, Netzteil 500 mA) | 3 ERR-Blinker = PSRAM-Fehler; sonst keine ERR-LED | |
-| 3.4 | `ufi info` | `UFI Flux Engine v1.4 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
+| 3.4 | `ufi info` | `UFI Flux Engine v1.5 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
 | 3.5 | Bei „rev ?“: Spannung an PA4 (R17/R18) messen | 1,06 V | |
 | 3.6 | `ufi selftest`, `ufi status` | keine Fehler | |
 
@@ -83,7 +83,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 5.12 | Während eines Dumps Taster B kurz | Abbruch, ERR blinkt 4× | |
 | 5.13 | Taster B ≥ 2 s (USB am PC) | USB-LED an, Laufwerk „UFI“ erscheint; `DUMP0001.SCP` kopieren und mit dem Image aus 5.7 vergleichen (gleiche Diskette: Spurdaten ähnlich, Format identisch) | |
 | 5.14 | Taster B ≥ 2 s erneut | USB-LED aus, `ufi info` geht wieder | |
-| 5.15 | Betriebsart-Schalter an J9 (Mitte → Pin 1, Seiten → Pin 5 / Pin 6), auf „USB-Floppy“ | ACT blinkt 2×, USB-LED an, am PC erscheint „UFI USB Floppy“ | |
+| 5.15 | Betriebsart-Schalter an J13 (Kabel 1:1, Mittelkontakt = Pin 2), auf „USB-Floppy“ (Pin 1) | ACT blinkt 2×, USB-LED an, am PC erscheint „UFI USB Floppy“ | |
 | 5.16 | Formatierte 1,44-MB-Diskette rein, Explorer öffnen, Datei kopieren/lesen | Inhalt sichtbar, Datei lesbar; nach dem Schreiben läuft der Motor ~1 s nach (Rückschreiben + Prüflesen) | |
 | 5.17 | Dasselbe mit 720K (und, falls 5,25"-Laufwerk, 1,2M / 360K) | Größe stimmt im Explorer | |
 | 5.18 | Diskette wechseln, Explorer F5 | neuer Inhalt; ohne Diskette „kein Datenträger“ | |
@@ -104,6 +104,8 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 |---|---|---|---|
 | 7.1 | 3-Mode-Laufwerk: JP1 brücken, `SET_LINES` DRATE an/aus, HD-Diskette lesen | **DRATE-Polarität festhalten** | |
 | 7.2 | 1541 an J8 (DIN-6-Kabel): `ufi iec-reset`, `ufi iec-send 0x28`, `ufi iec-recv` | Laufwerk antwortet | |
+| 7.2a | Shugart-Bus: gerades Kabel, Laufwerke auf DS0/DS1/DS2 (DS3 nur mit JP1) gejumpert; `ufi select ds0` … `ds3`, `ufi motor on`, `ufi recal`, `ufi read 0 0` | jeweils nur das gewählte Laufwerk reagiert (Kopf fährt, LED), alle Motoren laufen gemeinsam | |
+| 7.2b | `UFI.CFG` im SD-Laufwerk-Modus auf `drive=ds1` ändern, Neustart, Dump mit Taster A | Dump läuft auf dem DS1-Laufwerk | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |
 

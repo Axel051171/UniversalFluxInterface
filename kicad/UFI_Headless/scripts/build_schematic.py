@@ -403,6 +403,12 @@ def build_core() -> Sheet:
         "7": "BTN_A", "8": "BTN_B", "9": "GND", "10": "GND"},
         "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
         {"Note": "1 3V3, 2 5V, 3 SCL, 4 SDA, 5/6 GPIO PE0/PE1, 7/8 buttons (low = pressed), 9/10 GND"})
+    # v0.6: external 3-position mode switch (ON-OFF-ON) in the enclosure; pin order = switch
+    # pin order (common in the middle).  Same MCU inputs as J9 pins 5/6 (PE0/PE1, pull-downs).
+    sh.part("Connector_Generic", "Conn_01x03", "J13", "MODE_SW", 100, 330, {
+        "1": "EXP_IO1", "2": "+3V3", "3": "EXP_IO2"},
+        "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+        {"Note": "mode switch: 1 = USB floppy, 2 = common (3V3), 3 = SD drive; open = flux"})
     sh.part("Switch", "SW_Push", "SW3", "BTN_A", 140, 300, {"1": "BTN_A", "2": "GND"}, BTN)
     sh.part("Switch", "SW_Push", "SW4", "BTN_B", 140, 315, {"1": "BTN_B", "2": "GND"}, BTN)
     # v0.6: soldered SD NAND instead of the microSD slot (board lives in a closed case);

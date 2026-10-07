@@ -34,7 +34,8 @@ WRITE_TRACK, ERASE_TRACK, WRITE_TRACK_VERIFY = 0x30, 0x31, 0x32
 IEC_RESET, IEC_SEND, IEC_RECEIVE = 0x40, 0x41, 0x42
 DEBUG_GPIO, DEBUG_TIMER, RESET, BOOTLOADER = 0xD0, 0xD1, 0xF0, 0xFF
 
-DRIVES = {"none": 0, "a": 1, "b": 2, "apple": 3, "amiga": 4, "iec": 5}
+DRIVES = {"none": 0, "a": 1, "b": 2, "apple": 3, "amiga": 4, "iec": 5,
+          "ds0": 6, "ds1": 7, "ds2": 8, "ds3": 9}   # ds*: Shugart bus (straight cable)
 
 # status byte = -ufi_error_t (firmware/include/ufi_fixes.h)
 ERRORS = {

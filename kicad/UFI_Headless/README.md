@@ -34,9 +34,10 @@ v0.6 (Gerät kommt in ein geschlossenes Gehäuse): microSD-Slot J10 entfällt, d
 |---|---|---|
 | Speicher 4 GB | U15 CSNP32GCR01-AOW (C2841139), LGA-8 8×6,2 mm; derselbe Footprint passt für MKDV8GIL-AST (1 GB, C26159627, günstiger) | FAT32, beim ersten Start formatiert (Volume „UFI“) |
 | Dump ohne PC | Taster A ≥ 1 s | ganze Diskette → `DUMPnnnn.SCP` (byte-gleich mit `ufi read-disk`); Taster B kurz = Abbruch |
-| Betriebsart-Schalter (optional, extern) | Kippschalter EIN-AUS-EIN an **J9**: Mittelkontakt → Pin 1 (3V3), Seite 1 → Pin 5 (EXP_IO1/PE0), Seite 2 → Pin 6 (EXP_IO2/PE1) | Mitte = Flux (Host-Tool), Pin 5 = **USB-Floppy** (Diskette in Laufwerk A als USB-Laufwerk, PC-Formate 360K/720K/1.2M/1.44M, PID 0x4F56), Pin 6 = SD-Laufwerk. Nach jedem Wechsel blinkt ACT 1×/2×/3× = Flux/Floppy/SD |
+| Betriebsart-Schalter (optional, extern) | Kippschalter EIN-AUS-EIN an **J13** (1×3, Belegung wie der Schalter): Pin 1 → EXP_IO1/PE0, Pin 2 = 3V3 (Mittelkontakt), Pin 3 → EXP_IO2/PE1 (parallel zu J9 Pin 5/6, die dann nicht anders belegt werden dürfen) | Mitte = Flux (Host-Tool), Pin 1 = **USB-Floppy** (Diskette in Laufwerk A als USB-Laufwerk, PC-Formate 360K/720K/1.2M/1.44M, PID 0x4F56), Pin 3 = SD-Laufwerk. Nach jedem Wechsel blinkt ACT 1×/2×/3× = Flux/Floppy/SD |
 | USB-Laufwerk | Taster B ≥ 2 s (nur Schalter in Mitte; oder `USB_MSC` 0x53) | Gerät meldet sich als Massenspeicher „UFI Flux Storage“ (PID 0x4F55), USB-LED an; Taster B ≥ 2 s zurück |
 | Board-ID | R18 4,7k | 1,06 V = v0.6 |
+| Einstellungen ohne PC | Datei `UFI.CFG` auf dem SD-NAND (wird beim ersten Start angelegt, im SD-Laufwerk-Modus am PC bearbeiten) | `drive=a\|b\|amiga\|ds0…ds3` (Laufwerk für Dump und USB-Floppy), `tracks=80`, `sides=2`, `revs=3`; Schlüssel klein schreiben |
 | Front-LEDs (Gehäuse) | J12 2×4 + R34–R37 330 Ω (≈ 4 mA), je LED eine Reihe: 1+/2− PWR, 3+/4− ACT, 5+/6− FDD, 7+/8− ERR | parallel zu den Board-LEDs, keine Firmware-Änderung |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
@@ -58,7 +59,7 @@ Ungerade Pins GND (Pin 3 über JP2). 2 DENSITY · 6 DRATE (nur mit JP1) · 8 IND
 |---|---|---|
 | JP1 (Pin 6) | offen – Pin 6 unbeschaltet | brücken für 3-Mode-Laufwerke (DRATE, Firmware `SET_LINES` 0x1A) |
 | JP2 (Pin 3) | 1-2 gebrückt = GND | Leiterbahn 1-2 auftrennen, 2-3 brücken = +5V (FDD_5V, über F2) – **nur** für PS/2-Laufwerke mit Versorgung an Pin 3; ein normales Laufwerk hat dort GND → Kurzschluss (F2 löst aus) |
-Shugart-Laufwerke: Pin 10/12/14 = DS0/DS1/DS2, Pin 16 = MOTOR ON – die Firmware wählt den Bustyp (wie Greaseweazle).
+**Shugart-Bus** (Firmware 1.5, gerades Kabel, Laufwerke per Jumper DS0–DS3): Pin 10 = DS0, 12 = DS1, 14 = DS2, **6 = DS3 (nur mit JP1)**, Pin 16 = MOTOR ON für alle → bis zu **4 Laufwerke**. Auswahl `ufi select ds0…ds3` bzw. `UFI.CFG` `drive=ds0…ds3`. Alle Motoren laufen gemeinsam (Strom beim Anlauf beachten); JP1 als DS3 schließt DRATE aus; ein Amiga-Laufwerk an J7 belegt DS1 (Pin 12). PC-Belegung (A/B mit Twist) und Shugart-Bus nicht an einem Kabel mischen.
 
 ## Amiga-Header (J7) – gegen Amiga HRM verifiziert
 

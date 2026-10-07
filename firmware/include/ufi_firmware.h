@@ -84,7 +84,14 @@ typedef enum {
     DRIVE_SHUGART_B,        // FDD2 (34-pin)
     DRIVE_APPLE_II,         // Apple Disk II (19-pin)
     DRIVE_AMIGA,            // Amiga External (via Header)
-    DRIVE_IEC               // C64 1541/1571 (DIN-6)
+    DRIVE_IEC,              // C64 1541/1571 (DIN-6)
+    // 34-pin Shugart bus (straight cable, drives jumpered DS0-DS3, shared MOTOR ON pin 16):
+    // DS0 pin 10, DS1 pin 12, DS2 pin 14, DS3 pin 6 (only with solder jumper JP1)
+    DRIVE_SHUGART_DS0,
+    DRIVE_SHUGART_DS1,
+    DRIVE_SHUGART_DS2,
+    DRIVE_SHUGART_DS3,
+    DRIVE_TYPE_COUNT
 } drive_type_t;
 
 // Laufwerk-Status
@@ -339,6 +346,8 @@ bool ufi_dump_active(void);
 dump_status_t ufi_dump_status(void);
 void ufi_dump_service(void);                    // main loop
 void ufi_buttons_service(void);                 // main loop: A hold = dump, B = abort / MSC
+void ufi_config_load(void);                     // UFI.CFG on the SD NAND (start-up)
+uint8_t ufi_standalone_drive(void);             // drive for dump + USB floppy (drive_type_t)
 bool ufi_usb_msc_active(void);                  // true = no CDC interface (SD or floppy)
 int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device
 

@@ -46,6 +46,7 @@ Upload: **BOM** `UFI_Headless-bom-jlc.csv`, **CPL** `UFI_Headless-cpl-jlc.csv`.
 | J9 | Stiftleiste 2×5, 2,54 mm | Erweiterung, optional |
 | J11 | Stiftleiste 1×2 + Jumper | WRITE LOCK |
 | J12 | Stiftleiste 2×4, 2,54 mm | Front-LEDs im Gehäuse (je LED eine Reihe: ungerade Pin = +, gerade = −) |
+| J13 | Stiftleiste 1×3, 2,54 mm | Betriebsart-Schalter im Gehäuse (Kippschalter EIN-AUS-EIN, Kabel 1:1, Mitte = Pin 2) |
 
 - Testpunkte TP1–TP8 und Lötbrücken JP1/JP2 sind blankes Kupfer – nichts zu bestücken.
 

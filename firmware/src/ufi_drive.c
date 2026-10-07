@@ -16,7 +16,7 @@
  * ============================================================================ */
 
 static drive_type_t g_current_drive = DRIVE_NONE;
-static drive_status_t g_drive_status[DRIVE_IEC + 1];
+static drive_status_t g_drive_status[DRIVE_TYPE_COUNT];
 
 // Timing-Konstanten (µs)
 // Timing (host-tunable per drive via UFI_CMD_DRIVE_TIMING, defaults = PC/Amiga safe values)
@@ -90,7 +90,7 @@ int ufi_drive_apple_step(int direction)
 void ufi_drive_init(void)
 {
     /* GPIO modes/levels are set by board_gpio_init(); all lines released */
-    for (int i = 0; i <= DRIVE_IEC; i++) {
+    for (int i = 0; i < DRIVE_TYPE_COUNT; i++) {
         g_drive_status[i] = (drive_status_t){0};
         g_drive_status[i].type = DRIVE_NONE;
     }
@@ -101,6 +101,17 @@ void ufi_drive_init(void)
  * LAUFWERK AUSWÄHLEN
  * ============================================================================ */
 
+/* Shugart bus: select line per DS number (pin 10 = MOTOR_A line, pin 6 = DRATE line via
+ * JP1); pin 16 = MOTOR ON shared by all drives */
+static const gpio_pin_t* const shugart_sel[4] = {
+    &PIN_FDD_MOTOR_A, &PIN_FDD_DRV_SEL_B, &PIN_FDD_DRV_SEL_A, &PIN_FDD_DRATE,
+};
+
+static bool is_shugart(drive_type_t t)
+{
+    return t >= DRIVE_SHUGART_DS0 && t <= DRIVE_SHUGART_DS3;
+}
+
 int ufi_drive_select(drive_type_t type)
 {
     bus_out(&PIN_FDD_DRV_SEL_A, false);
@@ -108,6 +119,17 @@ int ufi_drive_select(drive_type_t type)
 #if BOARD_HAS_APPLE
     HAL_GPIO_WritePin(APPLE_PORT, APPLE_ENABLE_PIN, GPIO_PIN_RESET);
 #endif
+    if (is_shugart(type) || is_shugart(g_current_drive)) {
+        bus_out(&PIN_FDD_MOTOR_A, false);   /* DS0 line (PC: motor A) */
+        bus_out(&PIN_FDD_DRATE, false);     /* DS3 line */
+    }
+    if (is_shugart(type)) {
+        bus_out(shugart_sel[type - DRIVE_SHUGART_DS0], true);
+        g_current_drive = type;
+        g_drive_status[type].type = type;
+        delay_us(SELECT_SETTLE_US);
+        return UFI_OK;
+    }
 
     switch (type) {
         case DRIVE_SHUGART_A:
@@ -179,6 +201,21 @@ int ufi_drive_motor(bool on)
             HAL_GPIO_WritePin(APPLE_PORT, APPLE_ENABLE_PIN, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
             break;
 #endif
+        case DRIVE_SHUGART_DS0:
+        case DRIVE_SHUGART_DS1:
+        case DRIVE_SHUGART_DS2:
+        case DRIVE_SHUGART_DS3: {
+            /* MOTOR ON (pin 16) is shared: all Shugart drives spin together */
+            const bool was_on = g_drive_status[g_current_drive].motor_on;
+            bus_out(&PIN_FDD_MOTOR_B, on);
+            for (int t = DRIVE_SHUGART_DS0; t <= DRIVE_SHUGART_DS3; t++) {
+                g_drive_status[t].motor_on = on;
+            }
+            if (on && !was_on) {
+                HAL_Delay(MOTOR_SPINUP_MS);
+            }
+            return UFI_OK;
+        }
         default:
             return UFI_ERR_NO_DRIVE;
     }
@@ -391,6 +428,10 @@ void ufi_drive_safe_state(void)
     bus_out(&PIN_FDD_STEP, false);
     bus_out(&PIN_FDD_MOTOR_A, false);
     bus_out(&PIN_FDD_MOTOR_B, false);
+    bus_out(&PIN_FDD_DRATE, false);         /* Shugart DS3 line */
+    for (int t = DRIVE_SHUGART_DS0; t <= DRIVE_SHUGART_DS3; t++) {
+        g_drive_status[t].motor_on = false;
+    }
     ufi_drive_select(DRIVE_NONE);
 }
 

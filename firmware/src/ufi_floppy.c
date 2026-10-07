@@ -1,7 +1,7 @@
 /**
  * UFI Flux Engine - USB floppy mode: PC disks as a USB mass storage device
  *
- * The drive on the 34-pin connector (drive A) is read and written track by track:
+ * The stand-alone drive (UFI.CFG drive=, default A) is read and written track by track:
  *  - format detection on track 0 side 0: data rate (decode with 500k / 250k / 300k,
  *    most ID fields wins), sectors per track, then the boot sector BPB for heads and
  *    cylinders: 1.44M, 720K, 1.2M, 360K (300k = 360K disk in a 1.2M drive, double step)
@@ -28,7 +28,7 @@
 #define EMPTY_CHECK_MS      2000u
 #define DETECT_RETRY_MS     5000u
 #define CAPTURE_TIMEOUT_MS  2000u
-#define FLOPPY_DRIVE        DRIVE_SHUGART_A
+#define FLOPPY_DRIVE        ((drive_type_t)ufi_standalone_drive())   /* UFI.CFG drive= */
 
 extern capture_context_t g_capture;
 

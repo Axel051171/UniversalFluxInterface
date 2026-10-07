@@ -244,6 +244,121 @@ static void fail(uint8_t code)
     state = D_ERROR;
 }
 
+/* stand-alone drive: PC A/B, Amiga, Shugart DS0-DS3 (no Apple, no IEC) */
+static bool drive_ok(uint8_t d)
+{
+    return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA ||
+           (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3);
+}
+
+static bool config_valid(const dump_config_t* c)
+{
+    return drive_ok(c->drive) && c->tracks >= 1 && c->tracks <= 84 && c->sides >= 1 &&
+           c->sides <= 2 && c->revs >= 1 && c->revs <= REVOLUTIONS_BUFFER;
+}
+
+uint8_t ufi_standalone_drive(void)
+{
+    return cfg.drive;
+}
+
+/* ============================================================================
+ * UFI.CFG on the SD NAND: drive and dump settings for stand-alone use, editable in the
+ * SD drive mode.  Lines "key=value", '#' comments; written with defaults if missing.
+ * ============================================================================ */
+
+static const char cfg_default[] =
+    "# UFI stand-alone settings (dump with button A, USB floppy mode)\r\n"
+    "# drive: a, b (PC cable), amiga, ds0, ds1, ds2, ds3 (Shugart bus; ds3 needs JP1)\r\n"
+    "drive=a\r\n"
+    "tracks=80\r\n"
+    "sides=2\r\n"
+    "revs=3\r\n";
+
+static const struct { const char* name; uint8_t type; } drive_names[] = {
+    {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
+    {"ds0", DRIVE_SHUGART_DS0}, {"ds1", DRIVE_SHUGART_DS1},
+    {"ds2", DRIVE_SHUGART_DS2}, {"ds3", DRIVE_SHUGART_DS3},
+};
+
+static bool word_is(const char* p, const char* w)
+{
+    while (*w) {
+        char ch = *p++;
+        if (ch >= 'A' && ch <= 'Z') {
+            ch = (char)(ch - 'A' + 'a');
+        }
+        if (ch != *w++) {
+            return false;
+        }
+    }
+    return *p == '\r' || *p == '\n' || *p == ' ' || *p == '\t' || *p == '\0' || *p == '#';
+}
+
+static void parse_line(const char* k, dump_config_t* c)
+{
+    const char* v = k;
+    while (*v && *v != '=' && *v != '\n') {
+        v++;
+    }
+    if (*v != '=') {
+        return;
+    }
+    v++;
+    uint32_t num = 0;
+    for (const char* d = v; *d >= '0' && *d <= '9'; d++) {
+        num = num * 10u + (uint32_t)(*d - '0');
+    }
+    if (!strncmp(k, "drive=", 6)) {
+        for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
+            if (word_is(v, drive_names[i].name)) {
+                c->drive = drive_names[i].type;
+            }
+        }
+    } else if (!strncmp(k, "tracks=", 7)) {
+        c->tracks = (uint8_t)num;
+    } else if (!strncmp(k, "sides=", 6)) {
+        c->sides = (uint8_t)num;
+    } else if (!strncmp(k, "revs=", 5)) {
+        c->revs = (uint8_t)num;
+    }
+}
+
+void ufi_config_load(void)
+{
+    if (mount() != UFI_OK) {
+        return;
+    }
+    UINT n = 0;
+    if (f_open(&file, "UFI.CFG", FA_READ) == FR_OK) {
+        f_read(&file, stage, 1023, &n);
+        f_close(&file);
+        stage[n] = 0;
+        dump_config_t c = cfg;
+        for (char* p = (char*)stage; *p; ) {
+            while (*p == ' ' || *p == '\t') {
+                p++;
+            }
+            if (*p != '#') {
+                parse_line(p, &c);
+            }
+            while (*p && *p != '\n') {
+                p++;
+            }
+            if (*p) {
+                p++;
+            }
+        }
+        if (config_valid(&c)) {
+            cfg = c;
+        }
+    } else if (f_open(&file, "UFI.CFG", FA_WRITE | FA_CREATE_NEW) == FR_OK) {
+        f_write(&file, cfg_default, sizeof(cfg_default) - 1u, &n);
+        f_close(&file);
+    }
+    unmount();
+}
+
 int ufi_dump_start(const dump_config_t* c)
 {
     if (state != D_IDLE && state != D_DONE && state != D_ERROR) {
@@ -254,8 +369,7 @@ int ufi_dump_start(const dump_config_t* c)
         return UFI_ERR_BUSY;
     }
     if (c) {
-        if (c->tracks == 0 || c->tracks > 84 || c->sides == 0 || c->sides > 2 ||
-            c->revs == 0 || c->revs > REVOLUTIONS_BUFFER) {
+        if (!config_valid(c)) {
             return UFI_ERR_NOT_IMPL;
         }
         cfg = *c;
