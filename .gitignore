@@ -42,3 +42,9 @@ desktop.ini
 *.zip
 *.tar.gz
 *.7z
+
+# Local tool data (Claude plugins, editor history, code index)
+.claude-flow/
+.history/
+graft/
+*.lck
