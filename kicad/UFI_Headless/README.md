@@ -87,6 +87,7 @@ Platine dafür unten um 12 mm verlängert (110 × 97 mm, zusätzliche Befestigun
 - **J15** (1×2): /ENABLE eines zweiten Laufwerks (U16 Ausgang 2Y1) + GND – für ein Adapterkabel auf einen zweiten Disk-II-Stecker oder DB19 Pin 9 (/DRIVE2, Daisy-Chain wie am Apple-5.25-Controller).
 - DB19-Laufwerke (Apple 5.25 Drive, UniDisk 5.25) über Adapterkabel 20-pol → DB19. **Nicht** unterstützt: Apple 3.5 Drive / UniDisk 3.5 (/EN3.5, SmartPort; DB19 Pin 4 bleibt GND), Macintosh-Laufwerke.
 - ESD auf allen Signalleitungen am Stecker (D15, D16).
+- **J19 Sync-Sensor** (1 +5 V FDD_5V, 2 GND, 3 SYNC): für einen Sync-Sensor nach Applesauce-Art (Magnet an der Spindel, Hall-Sensor A3144, Open-Collector mit 10k Pull-up, aktiv low, ≥ 500 µs je Umdrehung; wiki.applesaucefdc.com „Sync Sensor“). SYNC liegt direkt auf der INDEX-Leitung des 34-pol Busses (Wired-OR, 1k Pull-up, ESD D11, LVC14 → TIM2_CH2) – elektrisch verhält sich der Sensor wie der Index-Ausgang eines Laufwerks. 34-pol Laufwerke treiben INDEX nur, solange sie angewählt sind. Mit `UFI.CFG apple_sync=1` liest die Firmware Apple-Laufwerke indexbasiert (echte Umdrehungen, SCP mit Index-Flag) und schreibt ab dem Sensorimpuls – Spuren bleiben zueinander ausgerichtet (Kopierschutz mit Spur-Synchronisation). Applesauce-Sensoren haben ein 3,5-mm-Klinkenkabel: Adapter auf J19, Belegung der Klinke vor dem Anschluss am Sensor durchmessen.
 - **Schreibschutz**: Der WRITE-LOCK-Jumper J11 sperrt in Hardware nur WGATE des 34-pol Busses; für den Apple-Port prüft die Firmware den Jumper (kein Schreiben mit gestecktem Jumper), die Hardware nicht.
 - Firmware 1.11: Laufwerke `apple` (J14) und `apple2` (J15), `ufi select apple`, `UFI.CFG drive=apple` (`tracks=35`, `sides=1`). Kein Indexloch: Umdrehungen = 200-ms-Abschnitte, SCP mit Disk-Typ Apple II ohne Index-Flag. Kopf: 4-Phasen-Schrittmotor, 2 Halbschritte je Spur, Rekalibrieren = 80 Halbschritte gegen den Anschlag (Klackern, wie beim Original). Schreiben startet sofort (kein Index), Löschen = /WRREQ ohne Pegelwechsel. Board-ID 10k/2,2k = 0,6 V → „v0.7“, nur dann sind die Apple-Laufwerke wählbar.
 
@@ -158,12 +159,18 @@ Hinweis Fertigung: kein Via-in-Pad. VBUS-Vias sitzen neben den A4/A9-Pads (die N
 ## Stromversorgung
 
 ```
-USB-C VBUS ──Polyfuse 1.5A──► VBUS_F ──────────────┐ VIN2 (Fallback)
-12V Jack ──SS54──► +12V ──TPS54202──► +5V_DRV ─────┤ VIN1 (Priorität, Schwelle ≈4.3V)
+USB-C / J16 VBUS ──Polyfuse 1.5A──► VBUS_F ──────────────────────────┐ VIN2 (Fallback)
+12V Jack / J17 Pin 4 ──SS54──► +12V ──TPS54202──► +5V_DRV ── J18 1-2 ─┤ VIN1 = +5V_PRI
+J17 Pin 1 (PSU +5V) ──F4 1.5A──► +5V_PSU_F ──────────────── J18 2-3 ─┘ (Priorität, Schwelle ≈4.3V)
                      │                             TPS2116 ──► +5V ──► AP7361C ──► +3V3
                      └─F3 1.1A─► FDD_12V           (2.5A)      └─F2 1.1A─► FDD_5V
                                  (J3 Pin 4, J7 Pin 23)                     (J3 Pin 1, J7 Pin 12)
 ```
+
+**v0.7 – Einbau im PC-Gehäuse:**
+- **J16** interner USB-2.0-Header (2×5, **Stift 9 nicht bestücken** = Kodierung, Pad 9 bleibt frei), Belegung wie der Mainboard-Header (Port 1): 1 +5 V, 3 D−, 5 D+, 7/8 GND, 2/4/6/10 frei → 1:1-Kabel 9-pol Buchse–Buchse zum Mainboard. Liegt parallel zur USB-C-Buchse: **immer nur einen Host anschließen** (USB-C oder J16).
+- **J17** Stromeingang vom PC-Netzteil, Floppy-(Berg-)Stecker: 1 +5 V, 2/3 GND, 4 +12 V. Die 12 V laufen wie die der Hohlbuchse über SS54/TVS: **J2 oder J17, nicht beide**. +5 V über eigene Polyfuse F4 und TVS D17.
+- **J18** Jumper für die 5-V-Vorrangquelle des TPS2116: **1-2 = 12-V-Wandler** (ab Werk, Hohlbuchse oder Netzteil-12 V), **2-3 = Netzteil-5 V direkt** (Bestückungsdruck: „BUCK“ / „EXT“). USB bleibt in beiden Stellungen die automatische Ausweichquelle (fehlt die Vorrangquelle, übernimmt USB). Ohne Jumper läuft das Board nur über USB.
 
 Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleiben stehen.
 

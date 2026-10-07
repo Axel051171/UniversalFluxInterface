@@ -59,6 +59,7 @@ LCSC = {
     # v0.7 Apple Disk II port
     "SN74AHCT244PWR": "C484743", "74LVC2G17GW": "C19829576", "ICL7662EBA+T": "C28595",
     "DISK_II": "C2977593", ("10uF/25V", C1206): "C14860", ("10k", RPACK4_FP): "C29718",
+    "PSU_IN": "C32713270", "5V_SEL": "C49257", "SYNC_SENSOR": "C49257",   # v0.7: same headers as J3 / J5
     # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
     # test points are bare pads (TestPoint_Pad_D1.5mm), nothing to place
 }
@@ -178,17 +179,46 @@ def build_power() -> Sheet:
     cap_row(sh, ["22uF/16V", "22uF/16V", "100nF"], 250, 170, "+5V_DRV", "GND", C1206)
     sh.pwr_flag("+5V_DRV", 280, 150)
 
-    # Power mux: +5V_DRV (priority) / VBUS_F (fallback) -> +5V
+    # Power mux: +5V_PRI (priority, JP selection below) / VBUS_F (USB fallback) -> +5V
     sh.part("Power_Management", "TPS2116DRL", ref("U"), "TPS2116DRL", 200, 90, {
-        "3": "+5V_DRV", "5": "+5V_DRV", "4": "MUX_PR1", "6": "VBUS_F",
+        "3": "+5V_PRI", "5": "+5V_PRI", "4": "MUX_PR1", "6": "VBUS_F",
         "2": "+5V", "7": "+5V", "1": "GND", "8": "G:PWR_SRC"}, None, {"MPN": "TPS2116DRLR"})
-    R(sh, "33k 1%", 165, 70, "+5V_DRV", "MUX_PR1")
+    R(sh, "33k 1%", 165, 70, "+5V_PRI", "MUX_PR1")
     R(sh, "10k 1%", 165, 105, "MUX_PR1", "GND")
     R(sh, "10k", 235, 70, "+3V3", "G:PWR_SRC")
-    cap_row(sh, ["1uF", "1uF"], 165, 125, "+5V_DRV", "GND")
+    cap_row(sh, ["1uF", "1uF"], 165, 125, "+5V_PRI", "GND")
     C(sh, "1uF", 185, 125, "VBUS_F", "GND")
     cap_row(sh, ["22uF/10V", "100nF"], 250, 95, "+5V", "GND", C0805)
     CP(sh, "100uF/25V", 270, 95, "+5V", "GND")
+
+    # v0.7: board inside a PC case - internal USB 2.0 header J16 (port 1 pinout of a mainboard
+    # header, pin 9 key) parallel to USB-C (one host at a time), PC PSU input J17 (Berg:
+    # 1 +5V, 2/3 GND, 4 +12V into +12V_IN like the barrel jack, one 12 V source at a time),
+    # J18 jumper = priority 5 V source of the mux: 1-2 12V buck (default), 2-3 PSU 5 V;
+    # USB stays the automatic fallback either way
+    sh.text("v0.7: J16 internal USB header (1 +5V, 3 D-, 5 D+, 7/8 GND, pin 9 not fitted = key) parallel to USB-C: one host only.\n"
+            "J17 PC PSU (Berg 1 +5V, 2/3 GND, 4 +12V -> +12V_IN): J2 or J17, not both.\n"
+            "J18 5V priority source: 1-2 = 12V buck (default), 2-3 = PSU +5V; USB VBUS is the fallback.",
+            20, 230, 1.27)
+    sh.part("Connector_Generic", "Conn_02x05_Odd_Even", "J16", "USB_HDR", 40, 250, {
+        "1": "VBUS", "3": "G:USB_DM", "5": "G:USB_DP", "7": "GND", "8": "GND",
+        "2": "NC", "4": "NC", "6": "NC", "9": "NC", "10": "NC"},
+        "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+        {"Note": "mainboard USB 2.0 header pinout (port 1), 1:1 9-pin cable: do not fit pin 9 (key)"})
+    sh.part("Connector_Generic", "Conn_01x04", "J17", "PSU_IN", 90, 250,
+            {"1": "+5V_PSU", "2": "GND", "3": "GND", "4": "+12V_IN"},
+            "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical",
+            {"Note": "PC PSU floppy (Berg) plug: 1 +5V, 2/3 GND, 4 +12V"})
+    sh.part("Device", "Polyfuse", "F4", "1.5A hold", 120, 250, {"1": "+5V_PSU", "2": "+5V_PSU_F"},
+            "Fuse:Fuse_1812_4532Metric", {"MPN": "SMD1812P150TF/24 (1.5A hold)"})
+    sh.part("Device", "D_TVS", "D17", "SMF5.0CA", 140, 260, {"1": "+5V_PSU_F", "2": "GND"},
+            "Diode_SMD:D_SMF", {"MPN": "SMF5.0CA"})
+    sh.part("Connector_Generic", "Conn_01x03", "J18", "5V_SEL", 170, 250,
+            {"1": "+5V_DRV", "2": "+5V_PRI", "3": "+5V_PSU_F"},
+            "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+            {"Note": "jumper 1-2 = 12V buck (default), 2-3 = PC PSU 5V"})
+    sh.pwr_flag("+5V_PRI", 190, 240)
+    sh.pwr_flag("+5V_PSU", 100, 240)
 
     # 3.3V LDO
     sh.part("Regulator_Linear", "AP7361C-33E", ref("U"), "AP7361C-33E", 320, 95,
@@ -705,6 +735,18 @@ def build_apple() -> Sheet:
     sh.part("Connector_Generic", "Conn_01x02", "J15", "APPLE_EN2", 300, 190,
             {"1": "AP_EN2", "2": "GND"}, "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             {"Note": "/ENABLE second drive (DB19 pin 9 /DRIVE2)"})
+    # v0.7: sync sensor input for Disk II drives (Applesauce-style: magnet on the spindle +
+    # A3144 hall sensor, open collector with 10k pull-up, active low, >= 500 us per turn).
+    # Same electrical behaviour as a drive's INDEX output, so it joins the 34-pin FD_INDEX
+    # line directly (wired OR, 1k pull-up, ESD D11, LVC14 -> TIM2_CH2 index capture)
+    sh.text("J19 SYNC sensor (hall, open collector, active low): 1 FDD_5V, 2 GND, 3 SYNC -> FD_INDEX directly\n"
+            "(wired OR with the 34-pin drives, which only drive INDEX while selected). Firmware: UFI.CFG apple_sync=1.",
+            20, 280, 1.27)
+    sh.part("Connector_Generic", "Conn_01x03", "J19", "SYNC_SENSOR", 300, 280,
+            {"1": "G:FDD_5V", "2": "GND", "3": "G:FD_INDEX"},
+            "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+            {"Note": "Disk II sync sensor: 1 +5V, 2 GND, 3 SYNC (open collector, active low)"})
+
     # ESD on everything that leaves the board
     esd5(sh, "D15", ["AP_PH0", "AP_PH1", "AP_PH2", "AP_PH3", "AP_EN1"], 250, 230)
     esd5(sh, "D16", ["AP_EN2", "AP_WRREQ", "AP_WRDATA", "AP_RDDATA", "AP_WRPROT"], 290, 230)

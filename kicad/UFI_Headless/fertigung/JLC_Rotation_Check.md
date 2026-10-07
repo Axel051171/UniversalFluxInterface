@@ -22,6 +22,7 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | D14 | SMAJ15CA | D_SMA | 0 | +0 | 0 | links |
 | D15 | ESDA6V1-5SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
 | D16 | ESDA6V1-5SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
+| D17 | SMF5.0CA | D_SMF | 0 | +0 | 0 | links |
 | J1 | USB-C | USB_C_Receptacle_HRO_TYPE-C-31-M-12 | 0 | +0 | 0 | oben links |
 | U1 | USBLC6-2SC6 | SOT-23-6 | 0 | +180 | 180 | oben links |
 | U2 | TPS54202DDC | SOT-23-6 | 180 | +180 | 0 | unten rechts |

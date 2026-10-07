@@ -40,6 +40,9 @@ In der BOM vorhanden, beim JLC-BOM-Schritt aber **abwählen** („do not place�
 | J6 | Wannenstecker 2×17, 2,54 mm (34-pol Laufwerk) | C20920 | 1 | 0,28 $ |
 | J8 | Stiftleiste 1×6, 2,54 mm (IEC) | C37208 | 1 | 0,04 $ |
 | J14 | Wannenstecker 2×10, 2,54 mm (Apple Disk II, v0.7) | C2977593 | 1 | 0,12 $ |
+| J17 | Stiftleiste 1×4, 2,54 mm (Netzteil-Eingang, v0.7) | C32713270 | 1 | 0,03 $ |
+| J18 | Stiftleiste 1×3, 2,54 mm + **Jumper** (5-V-Quelle, v0.7) | C49257 | 1 | 0,03 $ |
+| J19 | Stiftleiste 1×3, 2,54 mm (Disk-II-Sync-Sensor, v0.7) | C49257 | 1 | 0,03 $ |
 
 ## 3 Ohne LCSC-Nummer – selbst besorgen
 
@@ -52,6 +55,7 @@ In der BOM vorhanden, beim JLC-BOM-Schritt aber **abwählen** („do not place�
 | J12 | Stiftleiste 2×4, 2,54 mm | 1 | Front-LEDs |
 | J13 | Stiftleiste 1×3, 2,54 mm | 1 | Betriebsart-Schalter |
 | J15 | Stiftleiste 1×2, 2,54 mm | 1 | /ENABLE zweites Apple-Laufwerk, nur bei Bedarf |
+| J16 | Stiftleiste 2×5, 2,54 mm, **Stift 9 vor dem Einlöten herausziehen** | 1 | interner USB-Header; Stift 9 ist die Kodierung des Mainboard-Kabels (Pad 9 bleibt frei) |
 
 Am einfachsten: eine Leiste 2×40 und eine 1×40 (2,54 mm) zum Ablängen, dazu ein paar Jumper.
 
@@ -71,7 +75,9 @@ Am einfachsten: eine Leiste 2×40 und eine 1×40 (2,54 mm) zum Ablängen, dazu e
 | Teil | Menge | Hinweis |
 |---|---|---|
 | Netzteil **12 V, ≥ 2 A**, Hohlstecker 5,5/2,1 mm | 1 | für 5,25"-Laufwerke nötig (12 V); ein 3,5"-Laufwerk geht auch nur an USB-C, wenn der Port ≥ 1,5 A liefert (`ufi`-Befehl `USB_POWER` zeigt es) |
-| USB-C-Kabel (Daten) | 1 | |
+| USB-C-Kabel (Daten) | 1 | für den Betrieb außerhalb des PCs |
+| USB-2.0-Header-Kabel 9-pol Buchse–Buchse (1:1) | 1 | Einbau im PC: Mainboard-Header → J16 |
+| Netzteil-Floppystecker (Berg) → J17 | 1 | Einbau im PC: 1 +5 V, 2/3 GND, 4 +12 V; dann **keine** Hohlbuchse J2 stecken |
 | 34-pol Flachbandkabel **mit Twist** | 1 | PC-Laufwerke A/B |
 | 34-pol Flachbandkabel **gerade** (mehrere Stecker) | 1 | nur für den Shugart-Bus mit bis zu 4 Laufwerken |
 | Laufwerks-Stromkabel J3 → Laufwerk | 1 je Laufwerk | J3: Pin 1 = +5 V, 2/3 = GND, 4 = +12 V – **gleiche Reihenfolge wie der 3,5"-Berg-Stecker**, der große 5,25"-Molex-Stecker hat sie **umgekehrt** (Pin 1 = +12 V): Kabel entsprechend kreuzen! |

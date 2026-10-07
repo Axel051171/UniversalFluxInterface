@@ -21,7 +21,9 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 
 | # | Prüfung | Soll | ✔ |
 |---|---|---|---|
-| 2.1 | 12 V an J2, Netzteil auf **150 mA** begrenzt | Strom < 100 mA, PWR-LED an | |
+| 2.1 | 12 V an J2, Netzteil auf **150 mA** begrenzt (J18 auf 1-2) | Strom < 100 mA, PWR-LED an | |
+| 2.1a | v0.7 PC-Einbau: J17 am Labornetzteil (Pin 1 5 V, Pin 4 12 V, je 150 mA), J18 auf 2-3, J2 frei | TP2 ≈ 5 V; J18 auf 1-2 umstecken: 5 V weiter aus dem 12-V-Wandler | |
+| 2.1b | v0.7: USB über J16 (Header-Kabel vom Mainboard), USB-C frei, kein 12 V | Gerät meldet sich am PC, läuft aus USB-5 V (PWR_SRC = USB) | |
 | 2.2 | TP3 / TP2 / TP1 | 11,5–12,5 V / 4,9–5,2 V / 3,25–3,35 V | |
 | 2.3 | Verpolung kurz testen (12 V falsch herum, 150 mA) | kein Strom (SS54), nichts warm | |
 | 2.4 | Nur USB-C am PC (ohne 12 V) | TP2 ≈ 5 V über den TPS2116, TP1 3,3 V | |
@@ -114,6 +116,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 7.2h | Disk II an J14 (Originalkabel, rote Ader = Pin 1), `ufi select apple`, `ufi motor on`, `ufi recal`, `ufi read 0 0 -r 2` (Firmware nimmt bei Apple automatisch 200-ms-Abschnitte statt Index) | Kopf klackert an Spur 0, Fluss 4-µs-Raster (GCR), ~50 000 Wechsel je 200 ms | |
 | 7.2i | `UFI.CFG` `drive=apple`, `tracks=35`, `sides=1`, Dump mit Taster A, SCP am PC mit `a2r`/Applesauce-Tools bzw. HxC öffnen | DOS-3.3/ProDOS-Diskette dekodierbar | |
 | 7.2j | Schreiben (J11 ziehen, Schrott-Diskette): eine gelesene Spur zurückschreiben, erneut lesen | gleiche Flussanzahl ±5 %; WRDATA an Pin 18 wechselt je Flusswechsel den Pegel | |
+| 7.2k | Sync-Sensor an J19, Magnet an der Disk-II-Spindel, `UFI.CFG apple_sync=1`, `ufi select apple`, `ufi motor on`, `ufi read 0 0 -r 3` | Oszi TP6 (INDEX): ein Puls je Umdrehung ≥ 500 µs; `ufi read` zeigt ≈ 300 U/min je Umdrehung (echte Index-Umdrehungen) | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |
 

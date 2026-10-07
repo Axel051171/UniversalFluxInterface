@@ -29,7 +29,7 @@ for f in b.GetFootprints():
             for lay in LAY.values():
                 if p.IsOnLayer(lay):
                     obst.append((lay, p.GetEffectiveShape(lay), lbl))
-        if p.HasHole():
+        if p.HasHole() and p.GetNetCode() != code:  # own THT pad: track ends on it
             obst.append((None, p.GetEffectiveHoleShape(), lbl + " hole"))
 for t in b.GetTracks():
     if t.GetNetCode() == code:
