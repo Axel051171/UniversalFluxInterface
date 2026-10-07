@@ -553,6 +553,35 @@ void ufi_write_service(void) {
     }
 }
 
+/* Firmware-generated track (USB floppy mode, ufi_floppy.c): the caller has put
+ * flux_count u32 deltas into the flux store (ufi_flux_store).  Blocking until the track
+ * is written (index wait + one revolution); no USB events, the caller verifies. */
+int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count) {
+    int ret = ufi_write_prepare(track, side, flux_count, false);
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    g_write.bytes_received = g_write.bytes_expected;    /* data is already in place */
+    ret = ufi_write_start();
+    if (ret == UFI_OK) {
+        const uint32_t t0 = HAL_GetTick();
+        while (g_write.state == WRITE_WAITING_INDEX || g_write.state == WRITE_ACTIVE) {
+            if (HAL_GetTick() - t0 > 1500u) {
+                ret = UFI_ERR_NO_INDEX;
+                break;
+            }
+        }
+        if (ret == UFI_OK && g_write.state != WRITE_COMPLETE) {
+            ret = UFI_ERR_DMA;
+        }
+    }
+    if (ret != UFI_OK) {
+        ufi_write_abort();
+    }
+    g_write.state = WRITE_IDLE;
+    return ret;
+}
+
 /* ============================================================================
  * DIAGNOSE: DAUERMUSTER
  * ============================================================================ */

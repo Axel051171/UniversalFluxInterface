@@ -378,7 +378,7 @@ void ufi_buttons_service(void)
     }
     if (b && b_since && !b_used && !ufi_dump_active() && now - b_since >= HOLD_MSC_MS) {
         b_used = true;
-        ufi_usb_set_msc(!ufi_usb_msc_active());
+        ufi_mode_button_b();                           /* SD drive on/off (switch in middle) */
     }
 
     /* ERR LED: n short blinks, 1 s pause, until the next dump starts */

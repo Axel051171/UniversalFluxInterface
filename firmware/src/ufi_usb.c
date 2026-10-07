@@ -12,7 +12,9 @@
 #include "usbd_msc.h"
 #include <string.h>
 
-extern USBD_StorageTypeDef ufi_msc_fops;    /* ufi_msc.c */
+extern USBD_StorageTypeDef ufi_msc_fops;    /* ufi_msc.c: SD NAND */
+extern USBD_StorageTypeDef ufi_floppy_fops; /* ufi_msc.c: disk in drive A */
+extern PCD_HandleTypeDef hpcd_USB_OTG_HS;
 
 /* ============================================================================
  * USB DESCRIPTORS
@@ -64,8 +66,10 @@ static volatile uint32_t cmd_len = 0;
  * HELPER FUNCTIONS
  * ============================================================================ */
 
-/* v0.6: the device is either CDC (commands) or USB mass storage (SD NAND, ufi_msc.c) */
+/* v0.6: the device is either CDC (commands) or USB mass storage (SD NAND or the floppy
+ * disk, ufi_msc.c); msc_mode = no CDC interface */
 static bool msc_mode;
+static uint8_t usb_mode = UFI_USB_FLUX;
 
 /* CDC class keeps TxState in its handle (1 = transfer in progress) */
 static uint32_t cdc_tx_busy(void) {
@@ -150,7 +154,7 @@ static uint16_t str_add(char* buf, uint16_t n, const char* s) {
 }
 
 #ifndef UFI_FW_VERSION
-#define UFI_FW_VERSION "1.3"
+#define UFI_FW_VERSION "1.4"
 #endif
 #ifndef UFI_GIT_REV
 #define UFI_GIT_REV "dev"
@@ -177,35 +181,65 @@ bool ufi_usb_msc_active(void) {
     return msc_mode;
 }
 
-/* Re-enumerate as USB mass storage (SD NAND) or back as CDC.  The soft disconnect is
- * held 200 ms so the host sees the device go away and reads the new descriptors. */
+uint8_t ufi_usb_get_mode(void) {
+    return usb_mode;
+}
+
 int ufi_usb_set_msc(bool on) {
-    if (on == msc_mode) {
+    return ufi_usb_set_mode(on ? UFI_USB_SD : UFI_USB_FLUX);
+}
+
+/* Re-enumerate as flux device (CDC), SD drive or USB floppy (both USB mass storage).
+ * The soft disconnect is held 200 ms so the host sees the device go away and reads the
+ * new descriptors.  USB floppy: the USB interrupt stays off and ufi_usb_poll() runs the
+ * stack from the main loop, so the blocking disk accesses in the storage callbacks
+ * delay no interrupt. */
+int ufi_usb_set_mode(uint8_t mode) {
+    if (mode == usb_mode) {
         return UFI_OK;
     }
-    if (on && ufi_dump_active()) {
+    if (mode > UFI_USB_FLOPPY) {
+        return UFI_ERR_NOT_IMPL;
+    }
+    if (mode != UFI_USB_FLUX && ufi_dump_active()) {
         return UFI_ERR_BUSY;
     }
-    if (on && ufi_sd_init() != UFI_OK) {
+    if (mode == UFI_USB_SD && ufi_sd_init() != UFI_OK) {
         return UFI_ERR_STORAGE;
+    }
+    if (usb_mode == UFI_USB_FLOPPY) {
+        ufi_floppy_end();                   /* write back cached tracks first */
     }
     USBD_Stop(&hUsbDevice);
     USBD_DeInit(&hUsbDevice);
     HAL_Delay(200);
-    msc_mode = on;
+    usb_mode = mode;
+    msc_mode = (mode != UFI_USB_FLUX);
     cmd_ready = 0;
-    usbd_desc_set_msc(on);
+    usbd_desc_set_mode(mode);
     USBD_Init(&hUsbDevice, &HS_Desc, 0);
-    if (on) {
-        USBD_RegisterClass(&hUsbDevice, &USBD_MSC);
-        USBD_MSC_RegisterStorage(&hUsbDevice, &ufi_msc_fops);
-    } else {
+    if (mode == UFI_USB_FLUX) {
         USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
         USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
+    } else {
+        USBD_RegisterClass(&hUsbDevice, &USBD_MSC);
+        USBD_MSC_RegisterStorage(&hUsbDevice, mode == UFI_USB_SD ? &ufi_msc_fops : &ufi_floppy_fops);
+    }
+    if (mode == UFI_USB_FLOPPY) {
+        ufi_floppy_begin();
+        HAL_NVIC_DisableIRQ(OTG_HS_IRQn);   /* polled: ufi_usb_poll() */
     }
     USBD_Start(&hUsbDevice);
-    led_set(&PIN_LED_USB, on);              /* USB LED steady = mass storage mode */
+    led_set(&PIN_LED_USB, msc_mode);        /* USB LED steady = mass storage (SD or floppy) */
     return UFI_OK;
+}
+
+/* Main loop: in USB floppy mode the USB stack runs here instead of the interrupt */
+void ufi_usb_poll(void) {
+    if (usb_mode == UFI_USB_FLOPPY) {
+        HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
+        NVIC_ClearPendingIRQ(OTG_HS_IRQn);
+    }
 }
 
 /* ============================================================================
@@ -541,12 +575,19 @@ int ufi_usb_process_command(void) {
             ufi_dump_abort();
             reply(cmd, 0, NULL, 0);
             break;
-        case UFI_CMD_USB_MSC: {             // reply first, the CDC interface goes away
-            const int ret = (ufi_dump_active() || ufi_sd_init() != UFI_OK) ? UFI_ERR_STORAGE : UFI_OK;
-            reply(cmd, st(ret), NULL, 0);
+        case UFI_CMD_USB_MSC: {             // [mode] optional: 1 SD drive (default), 2 USB floppy
+            const uint8_t mode = (cmd_len >= 2) ? cmd_buffer[1] : UFI_USB_SD;
+            int ret = (mode == UFI_USB_SD || mode == UFI_USB_FLOPPY) ? UFI_OK : UFI_ERR_NOT_IMPL;
+            if (ret == UFI_OK && ufi_dump_active()) {
+                ret = UFI_ERR_BUSY;
+            }
+            if (ret == UFI_OK && mode == UFI_USB_SD && ufi_sd_init() != UFI_OK) {
+                ret = UFI_ERR_STORAGE;
+            }
+            reply(cmd, st(ret), NULL, 0);   // reply first, the CDC interface goes away
             if (ret == UFI_OK) {
                 HAL_Delay(20);              // let the host read the reply
-                ufi_usb_set_msc(true);
+                ufi_usb_set_mode(mode);
             }
             break;
         }

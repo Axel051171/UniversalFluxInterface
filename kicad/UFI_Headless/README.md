@@ -34,7 +34,8 @@ v0.6 (Gerät kommt in ein geschlossenes Gehäuse): microSD-Slot J10 entfällt, d
 |---|---|---|
 | Speicher 4 GB | U15 CSNP32GCR01-AOW (C2841139), LGA-8 8×6,2 mm; derselbe Footprint passt für MKDV8GIL-AST (1 GB, C26159627, günstiger) | FAT32, beim ersten Start formatiert (Volume „UFI“) |
 | Dump ohne PC | Taster A ≥ 1 s | ganze Diskette → `DUMPnnnn.SCP` (byte-gleich mit `ufi read-disk`); Taster B kurz = Abbruch |
-| USB-Laufwerk | Taster B ≥ 2 s (oder `USB_MSC` 0x53) | Gerät meldet sich als Massenspeicher „UFI Flux Storage“ (PID 0x4F55), USB-LED an; Taster B ≥ 2 s zurück |
+| Betriebsart-Schalter (optional, extern) | Kippschalter EIN-AUS-EIN an **J9**: Mittelkontakt → Pin 1 (3V3), Seite 1 → Pin 5 (EXP_IO1/PE0), Seite 2 → Pin 6 (EXP_IO2/PE1) | Mitte = Flux (Host-Tool), Pin 5 = **USB-Floppy** (Diskette in Laufwerk A als USB-Laufwerk, PC-Formate 360K/720K/1.2M/1.44M, PID 0x4F56), Pin 6 = SD-Laufwerk. Nach jedem Wechsel blinkt ACT 1×/2×/3× = Flux/Floppy/SD |
+| USB-Laufwerk | Taster B ≥ 2 s (nur Schalter in Mitte; oder `USB_MSC` 0x53) | Gerät meldet sich als Massenspeicher „UFI Flux Storage“ (PID 0x4F55), USB-LED an; Taster B ≥ 2 s zurück |
 | Board-ID | R18 4,7k | 1,06 V = v0.6 |
 | Front-LEDs (Gehäuse) | J12 2×4 + R34–R37 330 Ω (≈ 4 mA), je LED eine Reihe: 1+/2− PWR, 3+/4− ACT, 5+/6− FDD, 7+/8− ERR | parallel zu den Board-LEDs, keine Firmware-Änderung |
 

@@ -81,6 +81,8 @@ extern const gpio_pin_t PIN_FDD12_EN;       /* PE3 */
 extern const gpio_pin_t PIN_WLOCK;          /* PE4, high = WRITE LOCK jumper set */
 extern const gpio_pin_t PIN_BTN_A;          /* PB8, low = pressed */
 extern const gpio_pin_t PIN_BTN_B;          /* PB9, low = pressed */
+extern const gpio_pin_t PIN_EXP_IO1;        /* PE0, J9 pin 5: mode switch "USB floppy" (high = on) */
+extern const gpio_pin_t PIN_EXP_IO2;        /* PE1, J9 pin 6: mode switch "SD drive" (high = on) */
 #define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A */
 #define ADC_CH_I_FDD12          ADC_CHANNEL_11  /* PC1 */
 #define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */

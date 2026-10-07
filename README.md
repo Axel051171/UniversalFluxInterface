@@ -14,6 +14,7 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | Schreiben | Timer + DMA, Precompensation, Verify, WRITE-LOCK-Jumper |
 | Platine v0.6 | 110 × 85 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader |
 | Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher, danach als USB-Laufwerk am PC abholen |
+| USB-Floppy | Betriebsart-Schalter: PC-Disketten (360K–1,44 MB) erscheinen am PC als normales USB-Diskettenlaufwerk, ohne Treiber |
 
 ## Aufbau des Repos
 

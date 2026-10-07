@@ -71,3 +71,57 @@ static int8_t inquiry[STANDARD_INQUIRY_DATA_LEN_UFI] = {
 USBD_StorageTypeDef ufi_msc_fops = {
     st_init, st_capacity, st_ready, st_write_protected, st_read, st_write, st_max_lun, inquiry,
 };
+
+/* ============================================================================
+ * USB floppy mode: the disk in drive A (ufi_floppy.c), USB polled from the main loop
+ * ============================================================================ */
+
+static int8_t fl_init(uint8_t lun)
+{
+    (void)lun;
+    return 0;
+}
+
+static int8_t fl_capacity(uint8_t lun, uint32_t* block_num, uint16_t* block_size)
+{
+    (void)lun;
+    *block_num = (ufi_floppy_ready() == UFI_OK) ? ufi_floppy_blocks() : 0u;
+    *block_size = 512;
+    return *block_num ? 0 : -1;
+}
+
+static int8_t fl_ready(uint8_t lun)
+{
+    (void)lun;
+    return ufi_floppy_ready() == UFI_OK ? 0 : -1;
+}
+
+static int8_t fl_write_protected(uint8_t lun)
+{
+    (void)lun;
+    return ufi_floppy_write_protected() ? 1 : 0;
+}
+
+static int8_t fl_read(uint8_t lun, uint8_t* buf, uint32_t blk_addr, uint16_t blk_len)
+{
+    (void)lun;
+    return ufi_floppy_read(buf, blk_addr, blk_len) == UFI_OK ? 0 : -1;
+}
+
+static int8_t fl_write(uint8_t lun, uint8_t* buf, uint32_t blk_addr, uint16_t blk_len)
+{
+    (void)lun;
+    return ufi_floppy_write(buf, blk_addr, blk_len) == UFI_OK ? 0 : -1;
+}
+
+static int8_t fl_inquiry[STANDARD_INQUIRY_DATA_LEN_UFI] = {
+    0x00, 0x80, 0x02, 0x02, (STANDARD_INQUIRY_DATA_LEN_UFI - 5), 0x00, 0x00, 0x00,
+    'U', 'F', 'I', ' ', ' ', ' ', ' ', ' ',
+    'U', 'S', 'B', ' ', 'F', 'l', 'o', 'p',
+    'p', 'y', ' ', ' ', ' ', ' ', ' ', ' ',
+    '0', '.', '6', ' ',
+};
+
+USBD_StorageTypeDef ufi_floppy_fops = {
+    fl_init, fl_capacity, fl_ready, fl_write_protected, fl_read, fl_write, st_max_lun, fl_inquiry,
+};

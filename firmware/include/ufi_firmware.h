@@ -339,8 +339,28 @@ bool ufi_dump_active(void);
 dump_status_t ufi_dump_status(void);
 void ufi_dump_service(void);                    // main loop
 void ufi_buttons_service(void);                 // main loop: A hold = dump, B = abort / MSC
-bool ufi_usb_msc_active(void);
+bool ufi_usb_msc_active(void);                  // true = no CDC interface (SD or floppy)
 int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device
+
+// USB personalities (v0.6): mode switch on J9 (ufi_mode.c), buttons, USB_MSC [mode]
+enum { UFI_USB_FLUX = 0, UFI_USB_SD = 1, UFI_USB_FLOPPY = 2 };
+int ufi_usb_set_mode(uint8_t mode);
+uint8_t ufi_usb_get_mode(void);
+void ufi_usb_poll(void);                        // main loop: USB stack in floppy mode
+void ufi_mode_init(void);                       // start-up: follow the switch
+void ufi_mode_service(void);                    // main loop: switch changes, mode blink
+void ufi_mode_button_b(void);                   // B >= 2 s: SD drive on/off (switch in middle)
+
+// USB floppy mode (ufi_floppy.c): PC disks in drive A as USB mass storage
+void ufi_floppy_begin(void);
+int ufi_floppy_end(void);                       // writes back cached tracks
+int ufi_floppy_ready(void);                     // disk change, format detection
+uint32_t ufi_floppy_blocks(void);
+bool ufi_floppy_write_protected(void);
+int ufi_floppy_read(uint8_t* buf, uint32_t lba, uint32_t count);
+int ufi_floppy_write(const uint8_t* buf, uint32_t lba, uint32_t count);
+int ufi_floppy_flush(void);
+void ufi_floppy_service(void);                  // main loop: idle write-back
 
 // Streamed capture transfer (ufi_stream.c)
 void ufi_stream_begin(void);
@@ -421,6 +441,7 @@ void ufi_write_abort(void);
 void ufi_write_set_precomp(bool enable);
 void ufi_write_service(void);
 int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms);
+int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count);  // deltas in the flux store
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
 

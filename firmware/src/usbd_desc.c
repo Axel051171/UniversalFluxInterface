@@ -15,8 +15,10 @@
 #define USBD_PRODUCT_STRING          "UFI Flux Engine"
 #define USBD_PID_MSC                 0x4F55  /* mass storage mode (SD NAND) */
 #define USBD_PRODUCT_STRING_MSC      "UFI Flux Storage"
+#define USBD_PID_FLOPPY              0x4F56  /* USB floppy mode (disk in drive A) */
+#define USBD_PRODUCT_STRING_FLOPPY   "UFI USB Floppy"
 
-static uint8_t msc_mode;
+static uint8_t usb_mode;
 #define USBD_CONFIGURATION_STRING    "CDC Config"
 #define USBD_INTERFACE_STRING        "CDC Interface"
 
@@ -104,21 +106,24 @@ uint8_t *USBD_HS_ManufacturerStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *le
 uint8_t *USBD_HS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
     (void)speed;
-    USBD_GetString((uint8_t *)(msc_mode ? USBD_PRODUCT_STRING_MSC : USBD_PRODUCT_STRING),
-                   USBD_StrDesc, length);
+    static const char* const names[] = {USBD_PRODUCT_STRING, USBD_PRODUCT_STRING_MSC,
+                                        USBD_PRODUCT_STRING_FLOPPY};
+    USBD_GetString((uint8_t *)names[usb_mode], USBD_StrDesc, length);
     return USBD_StrDesc;
 }
 
 /**
- * @brief  Switch the device descriptor between CDC (commands) and mass storage (SD NAND);
- *         own PID so the host does not reuse the CDC driver binding
+ * @brief  Switch the device descriptor: 0 = flux engine (CDC), 1 = SD drive, 2 = USB
+ *         floppy (both mass storage); own PID each, so the host does not reuse a driver
+ *         binding of another mode
  */
-void usbd_desc_set_msc(uint8_t msc)
+void usbd_desc_set_mode(uint8_t mode)
 {
-    msc_mode = msc;
-    const uint16_t pid = msc ? USBD_PID_MSC : USBD_PID;
-    USBD_HS_DeviceDesc[4] = msc ? 0x00 : 0x02;     /* class defined per interface / CDC */
-    USBD_HS_DeviceDesc[5] = msc ? 0x00 : 0x02;
+    static const uint16_t pids[] = {USBD_PID, USBD_PID_MSC, USBD_PID_FLOPPY};
+    usb_mode = (mode <= 2u) ? mode : 0u;
+    const uint16_t pid = pids[usb_mode];
+    USBD_HS_DeviceDesc[4] = usb_mode ? 0x00 : 0x02;    /* class per interface / CDC */
+    USBD_HS_DeviceDesc[5] = usb_mode ? 0x00 : 0x02;
     USBD_HS_DeviceDesc[10] = LOBYTE(pid);
     USBD_HS_DeviceDesc[11] = HIBYTE(pid);
 }

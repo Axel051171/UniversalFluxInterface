@@ -53,6 +53,8 @@ const gpio_pin_t PIN_FDD12_EN        = {GPIOE, GPIO_PIN_3};
 const gpio_pin_t PIN_WLOCK           = {GPIOE, GPIO_PIN_4};
 const gpio_pin_t PIN_BTN_A           = {GPIOB, GPIO_PIN_8};
 const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
+const gpio_pin_t PIN_EXP_IO1         = {GPIOE, GPIO_PIN_0};
+const gpio_pin_t PIN_EXP_IO2         = {GPIOE, GPIO_PIN_1};
 
 static void init_pins(GPIO_TypeDef* port, uint16_t pins, uint32_t mode, uint32_t pull,
                       uint32_t speed, uint32_t alternate)

@@ -87,6 +87,7 @@ void ufi_init(void)
     }
     ufi_usb_init();
     ufi_sd_init();              /* v0.6 SD NAND; failure shows in SD_INFO / dump error 1 */
+    ufi_mode_init();            /* mode switch on J9: flux / USB floppy / SD drive */
 
     /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,
      * GET_INFO reports the result) */
@@ -186,6 +187,9 @@ void ufi_main_loop(void)
         ufi_board_service();            /* overcurrent, USB loss, motor timeout */
 
         ufi_buttons_service();          /* A hold = dump, B = abort / USB mass storage */
+        ufi_mode_service();             /* mode switch, mode blink code */
+        ufi_usb_poll();                 /* USB floppy mode: USB stack runs here */
+        ufi_floppy_service();           /* USB floppy mode: write back idle tracks */
 
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
         if (ufi_dump_active()) {
