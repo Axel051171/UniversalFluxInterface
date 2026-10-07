@@ -20,7 +20,7 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 project(ufi_firmware C ASM)
 
 # Firmware version + git revision for GET_INFO (revision is taken at configure time)
-set(UFI_FW_VERSION "1.2")
+set(UFI_FW_VERSION "1.3")
 execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 OUTPUT_VARIABLE UFI_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(NOT UFI_GIT_REV)
@@ -68,6 +68,7 @@ set(STM32CUBE_PATH "$ENV{HOME}/STM32Cube/Repository/STM32Cube_FW_H7_V1.11.0"
 set(HAL_PATH ${STM32CUBE_PATH}/Drivers/STM32H7xx_HAL_Driver)
 set(CMSIS_PATH ${STM32CUBE_PATH}/Drivers/CMSIS)
 set(USB_PATH ${STM32CUBE_PATH}/Middlewares/ST/STM32_USB_Device_Library)
+set(FATFS_PATH ${STM32CUBE_PATH}/Middlewares/Third_Party/FatFs/src)
 
 # HAL Sources
 set(HAL_SOURCES
@@ -101,6 +102,15 @@ set(USB_SOURCES
     ${USB_PATH}/Core/Src/usbd_ctlreq.c
     ${USB_PATH}/Core/Src/usbd_ioreq.c
     ${USB_PATH}/Class/CDC/Src/usbd_cdc.c
+    ${USB_PATH}/Class/MSC/Src/usbd_msc.c
+    ${USB_PATH}/Class/MSC/Src/usbd_msc_bot.c
+    ${USB_PATH}/Class/MSC/Src/usbd_msc_data.c
+    ${USB_PATH}/Class/MSC/Src/usbd_msc_scsi.c
+)
+
+# FatFs R0.12c (own disk glue in ufi_sd.c, ffconf.h in include/)
+set(FATFS_SOURCES
+    ${FATFS_PATH}/ff.c
 )
 
 # Startup
@@ -121,6 +131,8 @@ set(PROJECT_SOURCES
     src/ufi_stream.c
     src/ufi_board.c
     src/ufi_sd.c
+    src/ufi_dump.c
+    src/ufi_msc.c
     src/ufi_drive.c
     src/ufi_iec.c
     src/ufi_write.c
@@ -144,6 +156,8 @@ include_directories(
     ${CMSIS_PATH}/Device/ST/STM32H7xx/Include
     ${USB_PATH}/Core/Inc
     ${USB_PATH}/Class/CDC/Inc
+    ${USB_PATH}/Class/MSC/Inc
+    ${FATFS_PATH}
 )
 
 # ============================================================================
@@ -165,6 +179,7 @@ add_executable(${PROJECT_NAME}.elf
     ${PROJECT_SOURCES}
     ${HAL_SOURCES}
     ${USB_SOURCES}
+    ${FATFS_SOURCES}
     ${STARTUP_SOURCE}
 )
 

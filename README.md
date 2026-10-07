@@ -12,7 +12,8 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | USB | USB-C, Full Speed, Datenstrom ~2 Byte je Flusswechsel, sendet während die Diskette dreht |
 | Laufwerke | 34-pol PC/Shugart (DENSITY, DRATE), Amiga DB23 (Header), Commodore IEC (1541) |
 | Schreiben | Timer + DMA, Precompensation, Verify, WRITE-LOCK-Jumper |
-| Platine v0.5 | 110 × 85 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, microSD, Erweiterungsheader |
+| Platine v0.6 | 110 × 85 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader |
+| Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher, danach als USB-Laufwerk am PC abholen |
 
 ## Aufbau des Repos
 
@@ -37,7 +38,7 @@ Flashen per SWD oder USB-DFU (Taster A beim Einschalten halten bzw. `ufi bootloa
 
 ## Status
 
-Platine v0.5 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md).
+Platine v0.6 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md).
 Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md).
 
 Lizenz: siehe [LICENSE](LICENSE).

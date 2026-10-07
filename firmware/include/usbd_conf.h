@@ -19,6 +19,7 @@
 #define USBD_DEBUG_LEVEL               0
 #define USBD_SELF_POWERED              1
 #define USBD_CDC_INTERVAL              2000
+#define MSC_MEDIA_PACKET               4096U   /* mass storage: 8 SD blocks per transfer */
 
 /* Memory Management */
 #define USBD_memset               memset

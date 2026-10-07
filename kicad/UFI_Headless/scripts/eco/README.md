@@ -14,6 +14,8 @@ Netznamen mit `/` (z. B. `/MCU_Core/SD_D3`) unter Git Bash mit `MSYS_NO_PATHCONV
 | `who_blocks.py board NET LAYER x y r` | welches Fremdkupfer einen Punkt blockiert |
 | `copy_tracks.py old new NET x0 y0 x1 y1 check\|apply` | Bahnen eines Netzes aus einem früheren Board übernehmen (z. B. Versorgung nach einer ECO) |
 | `drop_seg.py`, `drop_box.py`, `renet_box.py`, `move_fp.py` | Segmente/Bereiche löschen, Kupfer umnetzen, Bauteil versetzen und darunter freiräumen |
+| `remove_part.py board REF[,REF] [NET ...]` | im Schaltplan entfernte Bauteile vom Board nehmen und Netze komplett aufreißen (vor `make_pcb.sh eco`) |
+| `set_value.py board REF VALUE [FELD=WERT ...]` | geänderten Bauteilwert ins Layout übernehmen (Schaltplan-Parität) |
 | `probe_region.py board x0 y0 x1 y1` | Courtyards und Kupfer in einem Fenster auflisten |
 | `check_via_in_pad.py board` | Vias, die ein SMD-Pad berühren (muss 0 sein) |
 

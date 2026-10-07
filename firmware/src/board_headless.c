@@ -53,7 +53,6 @@ const gpio_pin_t PIN_FDD12_EN        = {GPIOE, GPIO_PIN_3};
 const gpio_pin_t PIN_WLOCK           = {GPIOE, GPIO_PIN_4};
 const gpio_pin_t PIN_BTN_A           = {GPIOB, GPIO_PIN_8};
 const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
-const gpio_pin_t PIN_SD_CD           = {GPIOG, GPIO_PIN_13};
 
 static void init_pins(GPIO_TypeDef* port, uint16_t pins, uint32_t mode, uint32_t pull,
                       uint32_t speed, uint32_t alternate)
@@ -112,12 +111,11 @@ void board_gpio_init(void)
               GPIO_SPEED_FREQ_LOW, 0);
 
     /* v0.5: drive supplies stay off until ufi_board_init(); write lock has its own
-     * pull-down, buttons and card detect use the MCU pull-ups, expansion GPIO pulled down */
+     * pull-down, buttons use the MCU pull-ups, expansion GPIO pulled down */
     __HAL_RCC_GPIOB_CLK_ENABLE();
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_RESET);
     init_pins(GPIOE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOB, GPIO_PIN_8 | GPIO_PIN_9, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
-    init_pins(PIN_SD_CD.port, PIN_SD_CD.pin, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOE, GPIO_PIN_0 | GPIO_PIN_1, GPIO_MODE_INPUT, GPIO_PULLDOWN, GPIO_SPEED_FREQ_LOW, 0);
 }

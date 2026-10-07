@@ -1,6 +1,6 @@
 # UFI Headless – STM32H723 Flux Engine (ohne CM5)
 
-Status: **Schaltplan + Layout v0.5** – ERC 0 Verstöße, alle 128 Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen (Details unten).
+Status: **Schaltplan + Layout v0.6** – ERC 0 Verstöße, alle Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen (Details unten).
 
 | Sheet | Inhalt | Status |
 |---|---|---|
@@ -24,9 +24,20 @@ v0.5 (neue Teile mit festen Referenzen ab Q1, U12, R17, C47, D13, J9, SW3, TP7):
 | WRITE LOCK | J11 (Jumper), U14 74LVC1G32, R33 | Jumper gesteckt = WGATE in Hardware gesperrt, Firmware meldet „write protected“ |
 | Erweiterung | J9 2×5: 3V3, 5V, I²C1 (PB6/PB7, 2,2k), GPIO PE0/PE1, Taster-Leitungen | z. B. OLED-Display + Taster für Betrieb ohne PC |
 | Taster | SW3/SW4 (PB8/PB9, aktiv low) | frei für Firmware-Funktionen |
-| microSD | J10 Molex 104031-0811 an SDMMC2 (4 Bit), Card-Detect PG13 | `SD_INFO` (0x1D); Polarität des Card-Detect am ersten Board prüfen |
-| Board-ID | R17/R18 10k/10k an PA4 | 1,65 V = v0.5, steht in `GET_INFO` |
+| ~~microSD~~ | in v0.6 durch SD-NAND U15 ersetzt (s. u.) | – |
+| Board-ID | R17/R18 an PA4 | 10k/10k = 1,65 V = v0.5, 10k/4,7k = 1,06 V = v0.6; steht in `GET_INFO` |
 | Messpunkte | TP7 WDATA, TP8 WGATE (MCU-Seite) | – |
+
+v0.6 (Gerät kommt in ein geschlossenes Gehäuse): microSD-Slot J10 entfällt, dafür **SD-NAND U15** fest eingelötet an denselben SDMMC2-Leitungen (Pull-ups R21–R25, C47/C48 bleiben).
+
+| Funktion | Teile | Bedienung / Firmware |
+|---|---|---|
+| Speicher 4 GB | U15 CSNP32GCR01-AOW (C2841139), LGA-8 8×6,2 mm; derselbe Footprint passt für MKDV8GIL-AST (1 GB, C26159627, günstiger) | FAT32, beim ersten Start formatiert (Volume „UFI“) |
+| Dump ohne PC | Taster A ≥ 1 s | ganze Diskette → `DUMPnnnn.SCP` (byte-gleich mit `ufi read-disk`); Taster B kurz = Abbruch |
+| USB-Laufwerk | Taster B ≥ 2 s (oder `USB_MSC` 0x53) | Gerät meldet sich als Massenspeicher „UFI Flux Storage“ (PID 0x4F55), USB-LED an; Taster B ≥ 2 s zurück |
+| Board-ID | R18 4,7k | 1,06 V = v0.6 |
+
+Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 
 A8 (Verpolschutz 12 V) war schon vorhanden: SS54 in Reihe + SMAJ15CA. A10 (50-pol 8"-Anschluss) passt nicht auf 110×85 mm – 8"-Laufwerke über externen Adapter.
 
@@ -156,7 +167,7 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5) |
 | BTN_A / BTN_B | PB8 / PB9 | GPIO in, Pull-up, low = gedrückt (SW3/SW4, J9) (v0.5) |
 | SD CK / CMD / D0–D3 | PD6 / PD7 / PG9–PG12 | SDMMC2 (AF11, D2/D3 AF10) (v0.5) |
-| SD_CD | PG13 | GPIO in, Pull-up, low = Karte steckt (v0.5) |
+| (frei) | PG13 | v0.5 Card-Detect, ab v0.6 unbenutzt |
 | FDD_TRK0 / WPROT / DSKCHG / READY | PF0 / PF1 / PF2 / PF3 | GPIO in |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_OUT | PD0–PD4 | GPIO out → OC-Treiber |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_IN | PF4–PF8 | GPIO in |

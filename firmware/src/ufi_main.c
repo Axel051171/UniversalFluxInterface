@@ -86,6 +86,7 @@ void ufi_init(void)
         led_set(&PIN_LED_ERR, true);
     }
     ufi_usb_init();
+    ufi_sd_init();              /* v0.6 SD NAND; failure shows in SD_INFO / dump error 1 */
 
     /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,
      * GET_INFO reports the result) */
@@ -184,8 +185,12 @@ void ufi_main_loop(void)
         ufi_write_service();
         ufi_board_service();            /* overcurrent, USB loss, motor timeout */
 
+        ufi_buttons_service();          /* A hold = dump, B = abort / USB mass storage */
+
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
-        if (ufi_stream_active()) {
+        if (ufi_dump_active()) {
+            ufi_dump_service();             /* stand-alone dump owns the capture */
+        } else if (ufi_stream_active()) {
             ufi_stream_service();           /* READ_TRACK: sends while the disk turns */
         } else switch (cs) {
             case CAPTURE_COMPLETE:

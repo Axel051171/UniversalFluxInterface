@@ -36,6 +36,7 @@ typedef enum {
     UFI_ERR_BUFFER_FULL = -10,
     UFI_ERR_NOT_IMPL    = -11,
     UFI_ERR_WRITE_PROT  = -12,
+    UFI_ERR_STORAGE     = -13,  /* SD NAND: not ready, file system error or full */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

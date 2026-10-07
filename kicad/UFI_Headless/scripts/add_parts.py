@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from netlist import read_netlist  # noqa: E402
 
 STD = Path(r"C:\Program Files\KiCad\10.0\share\kicad\footprints")
+LOCAL = Path(__file__).resolve().parent.parent / "lib"
 MM, T = pcbnew.FromMM, pcbnew.ToMM
 MARGIN = 0.3        # courtyard clearance to other parts (mm)
 EDGE = 1.0          # keep this far from the board outline (mm)
@@ -93,7 +94,8 @@ new_rects = []
 for ref, tx, ty, rots in targets:
     c = comps[ref]
     lib, name = c["footprint"].split(":")
-    fp = pcbnew.FootprintLoad(str(STD / f"{lib}.pretty"), name)
+    local = LOCAL / f"{lib}.pretty"  # project library (lib/) before the standard one
+    fp = pcbnew.FootprintLoad(str(local if local.exists() else STD / f"{lib}.pretty"), name)
     fp.SetFPID(pcbnew.LIB_ID(lib, name))
     fp.SetReference(ref)
     fp.SetValue(c["value"])

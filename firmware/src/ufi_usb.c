@@ -9,7 +9,10 @@
 #include "usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_cdc_if.h"
+#include "usbd_msc.h"
 #include <string.h>
+
+extern USBD_StorageTypeDef ufi_msc_fops;    /* ufi_msc.c */
 
 /* ============================================================================
  * USB DESCRIPTORS
@@ -61,13 +64,22 @@ static volatile uint32_t cmd_len = 0;
  * HELPER FUNCTIONS
  * ============================================================================ */
 
+/* v0.6: the device is either CDC (commands) or USB mass storage (SD NAND, ufi_msc.c) */
+static bool msc_mode;
+
 /* CDC class keeps TxState in its handle (1 = transfer in progress) */
 static uint32_t cdc_tx_busy(void) {
+    if (msc_mode) {
+        return 0;                           /* class data is the MSC handle */
+    }
     USBD_CDC_HandleTypeDef* hcdc = (USBD_CDC_HandleTypeDef*)hUsbDevice.pClassData;
     return hcdc ? hcdc->TxState : 0;
 }
 
 static bool cdc_wait_idle(void) {
+    if (msc_mode) {
+        return false;                       /* no CDC interface: nothing can be sent */
+    }
     const uint32_t start = HAL_GetTick();
     while (cdc_tx_busy() != 0) {
         if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
@@ -103,6 +115,9 @@ int ufi_usb_tx_start(const uint8_t* p, uint32_t len) {
     if (len == 0 || len > USB_TX_CHUNK) {
         return UFI_ERR_USB;
     }
+    if (msc_mode) {
+        return UFI_ERR_USB;
+    }
     if (cdc_tx_busy() != 0) {
         return UFI_ERR_BUSY;
     }
@@ -135,7 +150,7 @@ static uint16_t str_add(char* buf, uint16_t n, const char* s) {
 }
 
 #ifndef UFI_FW_VERSION
-#define UFI_FW_VERSION "1.2"
+#define UFI_FW_VERSION "1.3"
 #endif
 #ifndef UFI_GIT_REV
 #define UFI_GIT_REV "dev"
@@ -156,6 +171,41 @@ void ufi_usb_init(void) {
     USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
     USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
     USBD_Start(&hUsbDevice);
+}
+
+bool ufi_usb_msc_active(void) {
+    return msc_mode;
+}
+
+/* Re-enumerate as USB mass storage (SD NAND) or back as CDC.  The soft disconnect is
+ * held 200 ms so the host sees the device go away and reads the new descriptors. */
+int ufi_usb_set_msc(bool on) {
+    if (on == msc_mode) {
+        return UFI_OK;
+    }
+    if (on && ufi_dump_active()) {
+        return UFI_ERR_BUSY;
+    }
+    if (on && ufi_sd_init() != UFI_OK) {
+        return UFI_ERR_STORAGE;
+    }
+    USBD_Stop(&hUsbDevice);
+    USBD_DeInit(&hUsbDevice);
+    HAL_Delay(200);
+    msc_mode = on;
+    cmd_ready = 0;
+    usbd_desc_set_msc(on);
+    USBD_Init(&hUsbDevice, &HS_Desc, 0);
+    if (on) {
+        USBD_RegisterClass(&hUsbDevice, &USBD_MSC);
+        USBD_MSC_RegisterStorage(&hUsbDevice, &ufi_msc_fops);
+    } else {
+        USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
+        USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
+    }
+    USBD_Start(&hUsbDevice);
+    led_set(&PIN_LED_USB, on);              /* USB LED steady = mass storage mode */
+    return UFI_OK;
 }
 
 /* ============================================================================
@@ -269,6 +319,15 @@ int ufi_usb_process_command(void) {
     const uint8_t cmd = cmd_buffer[0];
     ufi_board_activity();                   /* motor idle timer */
 
+    /* a stand-alone dump owns the drive: only status queries and abort meanwhile */
+    if (ufi_dump_active() && cmd != UFI_CMD_NOP && cmd != UFI_CMD_GET_INFO &&
+        cmd != UFI_CMD_GET_STATUS && cmd != UFI_CMD_BOARD_STATUS &&
+        cmd != UFI_CMD_DUMP_STATUS && cmd != UFI_CMD_DUMP_ABORT) {
+        reply(cmd, st(UFI_ERR_BUSY), NULL, 0);
+        cmd_ready = 0;
+        return 1;
+    }
+
     switch (cmd) {
         case UFI_CMD_NOP:
             reply(cmd, 0, NULL, 0);
@@ -281,8 +340,9 @@ int ufi_usb_process_command(void) {
             uint16_t n = 0;
             n = str_add(info, n, "UFI Flux Engine v" UFI_FW_VERSION " " UFI_GIT_REV " " __DATE__);
             const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
-            n = str_add(info, n, (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u)
-                                 ? BOARD_NAME " v0.5" : BOARD_NAME " rev ?");
+            n = str_add(info, n, (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? BOARD_NAME " v0.5"
+                               : (id + 200u > BOARD_ID_V06_MV && id < BOARD_ID_V06_MV + 200u) ? BOARD_NAME " v0.6"
+                               : BOARD_NAME " rev ?");
             n = str_add(info, n, "STM32H723");
             n = str_add(info, n, ufi_psram_result());
             reply(cmd, 0, info, n);
@@ -459,6 +519,37 @@ int ufi_usb_process_command(void) {
         case UFI_CMD_ERASE_TRACK:
             reply(cmd, st(ufi_erase_track(cmd_buffer[1], cmd_buffer[2])), NULL, 0);
             break;
+
+        case UFI_CMD_DUMP_START: {          // [drive, tracks, sides, revs] optional
+            int ret;
+            if (cmd_len >= 1 + sizeof(dump_config_t)) {
+                dump_config_t c;
+                memcpy(&c, &cmd_buffer[1], sizeof(c));
+                ret = ufi_dump_start(&c);
+            } else {
+                ret = ufi_dump_start(NULL);
+            }
+            reply(cmd, st(ret), NULL, 0);
+            break;
+        }
+        case UFI_CMD_DUMP_STATUS: {
+            const dump_status_t s = ufi_dump_status();
+            reply(cmd, 0, &s, sizeof(s));
+            break;
+        }
+        case UFI_CMD_DUMP_ABORT:
+            ufi_dump_abort();
+            reply(cmd, 0, NULL, 0);
+            break;
+        case UFI_CMD_USB_MSC: {             // reply first, the CDC interface goes away
+            const int ret = (ufi_dump_active() || ufi_sd_init() != UFI_OK) ? UFI_ERR_STORAGE : UFI_OK;
+            reply(cmd, st(ret), NULL, 0);
+            if (ret == UFI_OK) {
+                HAL_Delay(20);              // let the host read the reply
+                ufi_usb_set_msc(true);
+            }
+            break;
+        }
 
         case UFI_CMD_DEBUG_GPIO:
             cmd_debug_gpio(cmd);

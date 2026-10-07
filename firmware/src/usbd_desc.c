@@ -13,6 +13,10 @@
 #define USBD_LANGID_STRING           0x409   /* English US */
 #define USBD_MANUFACTURER_STRING     "UFT Project"
 #define USBD_PRODUCT_STRING          "UFI Flux Engine"
+#define USBD_PID_MSC                 0x4F55  /* mass storage mode (SD NAND) */
+#define USBD_PRODUCT_STRING_MSC      "UFI Flux Storage"
+
+static uint8_t msc_mode;
 #define USBD_CONFIGURATION_STRING    "CDC Config"
 #define USBD_INTERFACE_STRING        "CDC Interface"
 
@@ -100,8 +104,23 @@ uint8_t *USBD_HS_ManufacturerStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *le
 uint8_t *USBD_HS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
     (void)speed;
-    USBD_GetString((uint8_t *)USBD_PRODUCT_STRING, USBD_StrDesc, length);
+    USBD_GetString((uint8_t *)(msc_mode ? USBD_PRODUCT_STRING_MSC : USBD_PRODUCT_STRING),
+                   USBD_StrDesc, length);
     return USBD_StrDesc;
+}
+
+/**
+ * @brief  Switch the device descriptor between CDC (commands) and mass storage (SD NAND);
+ *         own PID so the host does not reuse the CDC driver binding
+ */
+void usbd_desc_set_msc(uint8_t msc)
+{
+    msc_mode = msc;
+    const uint16_t pid = msc ? USBD_PID_MSC : USBD_PID;
+    USBD_HS_DeviceDesc[4] = msc ? 0x00 : 0x02;     /* class defined per interface / CDC */
+    USBD_HS_DeviceDesc[5] = msc ? 0x00 : 0x02;
+    USBD_HS_DeviceDesc[10] = LOBYTE(pid);
+    USBD_HS_DeviceDesc[11] = HIBYTE(pid);
 }
 
 /**

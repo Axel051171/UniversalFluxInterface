@@ -16,6 +16,7 @@ from pathlib import Path
 
 KICAD_SYM_DIR = Path(os.environ.get(
     "KICAD_SYMBOL_DIR", "C:/Program Files/KiCad/10.0/share/kicad/symbols"))
+PROJECT_SYM_DIR = Path(__file__).resolve().parent.parent / "lib"
 FORMAT_VERSION = "20231120"
 STUB = 2.54
 # Nets that are rendered as power symbols from the 'power' library
@@ -72,7 +73,10 @@ _LIB_CACHE: dict[str, list] = {}
 
 def _lib(lib: str):
     if lib not in _LIB_CACHE:
-        _LIB_CACHE[lib] = parse((KICAD_SYM_DIR / f"{lib}.kicad_sym").read_text(encoding="utf8"))
+        # project-local library (kicad/UFI_Headless/lib) first, then the KiCad standard libraries
+        local = PROJECT_SYM_DIR / f"{lib}.kicad_sym"
+        path = local if local.exists() else KICAD_SYM_DIR / f"{lib}.kicad_sym"
+        _LIB_CACHE[lib] = parse(path.read_text(encoding="utf8"))
     return _LIB_CACHE[lib]
 
 

@@ -164,7 +164,13 @@ typedef enum {
     UFI_CMD_IEC_RESET       = 0x40,
     UFI_CMD_IEC_SEND        = 0x41,
     UFI_CMD_IEC_RECEIVE     = 0x42,
-    
+
+    // SD NAND storage (v0.6, ufi_dump.c / ufi_msc.c)
+    UFI_CMD_DUMP_START      = 0x50, // [drive, tracks, sides, revs] optional: dump to DUMPnnnn.SCP
+    UFI_CMD_DUMP_STATUS     = 0x51, // -> dump_status_t
+    UFI_CMD_DUMP_ABORT      = 0x52,
+    UFI_CMD_USB_MSC         = 0x53, // reply, then re-enumerate as USB mass storage (SD NAND)
+
     // Debug
     UFI_CMD_DEBUG_GPIO      = 0xD0,
     UFI_CMD_DEBUG_TIMER     = 0xD1,
@@ -201,16 +207,35 @@ typedef struct __packed {
 typedef struct __packed {
     uint8_t power;              // bit0 FDD_5V on, bit1 FDD_12V on
     uint8_t flags;              // bit0 write lock jumper, bit1/2 5V/12V overcurrent trip,
-                                // bit3 SD card present, bit4/5 button A/B pressed,
+                                // bit3 SD NAND ready, bit4/5 button A/B pressed,
                                 // bit6 safe mode (button B held at start-up)
     uint16_t i5_ma;             // drive supply currents
     uint16_t i12_ma;
     uint16_t board_id_mv;       // BOARD_ID divider (1650 = v0.5)
 } board_status_t;
 
+// DUMP_START arguments (defaults: drive A, 80 tracks, 2 sides, 3 revolutions)
+typedef struct __packed {
+    uint8_t drive;              // drive_type_t
+    uint8_t tracks;             // cylinders, 1..84
+    uint8_t sides;              // 1 or 2
+    uint8_t revs;               // 1..REVOLUTIONS_BUFFER
+} dump_config_t;
+
+// DUMP_STATUS payload (8 bytes)
+typedef struct __packed {
+    uint8_t state;              // 0 idle, 1-5 running, 6 done, 7 error
+    uint8_t error;              // 1 storage, 2 drive/read, 3 disk full/write, 4 aborted
+    uint8_t track;              // cylinder / head in progress (or where it stopped)
+    uint8_t side;
+    uint16_t file_no;           // DUMPnnnn.SCP
+    uint8_t fs_result;          // last FatFs mount result (FRESULT)
+    uint8_t storage_ready;      // SD NAND initialised
+} dump_status_t;
+
 // SD_INFO payload (8 bytes)
 typedef struct __packed {
-    uint8_t present;            // card detect switch
+    uint8_t present;            // SD NAND initialised (v0.6; v0.5: card detect switch)
     uint8_t status;             // 0 = initialised, else UFI error code (positive)
     uint8_t card_type;          // HAL CardType (0 SDSC, 1 SDHC/SDXC)
     uint8_t bus_width;          // 1 or 4
@@ -301,7 +326,21 @@ board_status_t ufi_board_status(void);
 bool ufi_board_write_locked(void);
 uint16_t ufi_adc_mv(uint32_t channel);          // ufi_power.c, 0 if the ADC is not available
 int ufi_sd_info(sd_info_t* info);               // ufi_sd.c
-bool ufi_sd_present(void);
+bool ufi_sd_present(void);                      // SD NAND initialised
+int ufi_sd_init(void);
+uint32_t ufi_sd_blocks(void);                   // 512-byte blocks
+int ufi_sd_read(uint8_t* buf, uint32_t lba, uint32_t count);
+int ufi_sd_write(const uint8_t* buf, uint32_t lba, uint32_t count);
+
+// Stand-alone dump to the SD NAND (ufi_dump.c) and USB mass storage mode (ufi_usb.c)
+int ufi_dump_start(const dump_config_t* cfg);   // NULL = last / default configuration
+void ufi_dump_abort(void);
+bool ufi_dump_active(void);
+dump_status_t ufi_dump_status(void);
+void ufi_dump_service(void);                    // main loop
+void ufi_buttons_service(void);                 // main loop: A hold = dump, B = abort / MSC
+bool ufi_usb_msc_active(void);
+int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device
 
 // Streamed capture transfer (ufi_stream.c)
 void ufi_stream_begin(void);

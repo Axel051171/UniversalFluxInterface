@@ -7,6 +7,7 @@
 #include "usbd_def.h"
 #include "usbd_core.h"
 #include "usbd_cdc.h"
+#include "usbd_msc.h"
 
 /* USB Device Handle */
 PCD_HandleTypeDef hpcd_USB_OTG_HS;
@@ -271,11 +272,14 @@ void USBD_LL_Delay(uint32_t Delay)
     HAL_Delay(Delay);
 }
 
+/* One class at a time (CDC or, v0.6, mass storage): one buffer for the larger handle */
+#define CLASS_DATA_SIZE  (sizeof(USBD_CDC_HandleTypeDef) > sizeof(USBD_MSC_BOT_HandleTypeDef) ? \
+                          sizeof(USBD_CDC_HandleTypeDef) : sizeof(USBD_MSC_BOT_HandleTypeDef))
+
 void *USBD_static_malloc(uint32_t size)
 {
-    (void)size;
-    static uint32_t mem[(sizeof(USBD_CDC_HandleTypeDef) / 4) + 1];
-    return mem;
+    static uint32_t mem[(CLASS_DATA_SIZE / 4) + 1];
+    return size <= sizeof(mem) ? mem : NULL;
 }
 
 void USBD_static_free(void *p)

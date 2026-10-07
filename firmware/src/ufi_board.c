@@ -133,6 +133,9 @@ void ufi_board_service(void)
         usb_ok_ms = now;
     } else if (usb_seen && !usb_lost && now - usb_ok_ms > USB_LOST_MS) {
         usb_lost = true;
+        if (ufi_dump_active()) {
+            return;                             /* stand-alone dump: USB not needed */
+        }
         ufi_capture_abort();
         ufi_write_abort();
         ufi_drive_safe_state();

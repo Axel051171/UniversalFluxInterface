@@ -13,5 +13,6 @@
 
 /* Exported Descriptor */
 extern USBD_DescriptorsTypeDef HS_Desc;
+void usbd_desc_set_msc(uint8_t msc);   /* 1 = mass storage descriptor (own PID) */
 
 #endif /* USBD_DESC_H */

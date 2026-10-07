@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "UFI_Headless")(type "KiCad")(uri "${KIPRJMOD}/lib/UFI_Headless.kicad_sym")(options "")(descr "Project symbols (SD NAND)"))
+)

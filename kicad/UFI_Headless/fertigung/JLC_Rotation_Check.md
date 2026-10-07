@@ -35,6 +35,7 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | U12 | INA180A1 | SOT-23-5 | 0 | +180 | 180 | oben links |
 | U13 | INA180A1 | SOT-23-5 | 0 | +180 | 180 | oben links |
 | U14 | 74LVC1G32GW | SOT-353_SC-70-5 | 90 | +180 | 270 | unten links |
+| U15 | CSNP32GCR01-AOW | SD_NAND_LGA-8_6x8mm_P1.27mm | 0 | +0 | 0 | oben links |
 | Y1 | 25MHz CL=12pF | Crystal_SMD_3225-4Pin_3.2x2.5mm | -90 | +0 | 270 | oben links |
 
 Dioden/LEDs: Pin 1 = Kathode. Elkos C1/C13: Pin 1 = Plus. USB-C J1: Kontakte zur Platinenkante.

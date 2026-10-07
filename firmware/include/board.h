@@ -75,17 +75,17 @@ extern const gpio_pin_t PIN_PWR_SRC;        /* PG4, TPS2116 status input */
 extern const gpio_pin_t PIN_VBUS_SENSE;     /* PA9, 22k/33k divider */
 
 /* v0.5: drive supply switches (high = on, 100k pull-downs keep them off in reset),
- * write lock jumper, buttons, expansion GPIO, microSD card detect */
+ * write lock jumper, buttons, expansion GPIO (v0.6: SD NAND on SDMMC2, no card detect) */
 extern const gpio_pin_t PIN_FDD5_EN;        /* PE2 */
 extern const gpio_pin_t PIN_FDD12_EN;       /* PE3 */
 extern const gpio_pin_t PIN_WLOCK;          /* PE4, high = WRITE LOCK jumper set */
 extern const gpio_pin_t PIN_BTN_A;          /* PB8, low = pressed */
 extern const gpio_pin_t PIN_BTN_B;          /* PB9, low = pressed */
-extern const gpio_pin_t PIN_SD_CD;          /* PG13, low = card inserted (switch to GND) */
 #define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A */
 #define ADC_CH_I_FDD12          ADC_CHANNEL_11  /* PC1 */
-#define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4, 10k/10k = 1650 mV = v0.5 */
+#define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */
 #define BOARD_ID_V05_MV         1650u
+#define BOARD_ID_V06_MV         1055u   /* 10k/4.7k, SD NAND instead of the microSD slot */
 
 /* ---- QSPI PSRAM (board v0.2): APS6404L 8 MB on OCTOSPIM port 1 ---------- */
 #define BOARD_HAS_PSRAM         1

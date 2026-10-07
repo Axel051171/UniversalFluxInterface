@@ -31,7 +31,7 @@ LCSC = {
     ("5.1k", R0603): "C23186", ("100k 1%", R0603): "C25803", ("13.3k 1%", R0603): "C25952",
     ("33k 1%", R0603): "C4216", ("33k", R0603): "C4216", ("10k 1%", R0603): "C25804",
     ("10k", R0603): "C25804", ("22k", R0603): "C31850", ("1k", R0603): "C21190",
-    ("2.2k", R0603): "C4190", ("1k", RPACK4_FP): "C20197",
+    ("2.2k", R0603): "C4190", ("4.7k", R0603): "C23162", ("1k", RPACK4_FP): "C20197",
     # capacitors
     ("100nF", C0603): "C14663", ("100nF/50V", C0603): "C14663", ("1uF", C0603): "C15849",
     ("18pF C0G", C0603): "C1647", ("1uF", C0805): "C28323", ("2.2uF", C0805): "C87994",
@@ -53,7 +53,9 @@ LCSC = {
     # v0.5 additions (looked up 2026-10-07): drive supply switch / current sense, write lock, microSD
     "AO3401A": "C15127", "2N7002": "C8545", "INA180A1": "C122228", "74LVC1G32GW": "C12516",
     ("0.1R 1%", "Resistor_SMD:R_1206_3216Metric"): "C25334", ("100k", R0603): "C25803",
-    ("47k", R0603): "C25819", "104031-0811": "C585350", "BTN_A": "C2886898", "BTN_B": "C2886898",
+    ("47k", R0603): "C25819", "BTN_A": "C2886898", "BTN_B": "C2886898",
+    # v0.6 (looked up 2026-10-07): SD NAND replaces the microSD slot
+    "CSNP32GCR01-AOW": "C2841139",
     # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
     # test points are bare pads (TestPoint_Pad_D1.5mm), nothing to place
 }
@@ -282,9 +284,10 @@ GPIO = {
     # v0.5: expansion header J9 (I2C1 AF4, 2 GPIO), front buttons SW3/SW4 (active low)
     "PB6": "I2C_SCL", "PB7": "I2C_SDA", "PE0": "EXP_IO1", "PE1": "EXP_IO2",
     "PB8": "BTN_A", "PB9": "BTN_B",
-    # v0.5: microSD on SDMMC2, 4 bit (PD6/PD7/PG9/PG10 AF11, PG11/PG12 AF10), PG13 card detect
+    # SDMMC2, 4 bit (PD6/PD7/PG9/PG10 AF11, PG11/PG12 AF10): v0.5 microSD, v0.6 soldered SD NAND
+    # (PG13 card detect dropped with the slot)
     "PD6": "SD_CLK", "PD7": "SD_CMD", "PG9": "SD_D0", "PG10": "SD_D1", "PG11": "SD_D2",
-    "PG12": "SD_D3", "PG13": "SD_CD",
+    "PG12": "SD_D3",
 }
 
 
@@ -375,11 +378,12 @@ def build_core() -> Sheet:
     sh.part("Device", "R", "R16", "10k", 90, 250, {"1": "+3V3", "2": "PSRAM_CS"}, R0603)
 
     # v0.5: board ID divider (10k/10k = 1.65 V = rev v0.5), expansion header, buttons, microSD
-    sh.text("v0.5: BOARD_ID divider on PA4 (10k/10k -> v0.5). J9 expansion: I2C1 (2.2k pull-ups), 2 GPIO,\n"
-            "button lines, 3V3/5V. SW3/SW4 front buttons (active low, MCU pull-ups). microSD J10 on SDMMC2,\n"
-            "4 bit, 47k pull-ups on CMD/DAT, card detect switch to GND on PG13 (MCU pull-up).", 20, 280, 1.27)
+    sh.text("BOARD_ID divider on PA4 (10k/10k -> v0.5, 10k/4.7k -> v0.6). J9 expansion: I2C1 (2.2k pull-ups), 2 GPIO,\n"
+            "button lines, 3V3/5V. SW3/SW4 front buttons (active low, MCU pull-ups). v0.6: SD NAND U15 on\n"
+            "SDMMC2 (soldered, 4 GB), 4 bit, 47k pull-ups on CMD/DAT.", 20, 280, 1.27)
     sh.part("Device", "R", "R17", "10k", 30, 300, {"1": "+3V3", "2": "BOARD_ID"}, R0603)
-    sh.part("Device", "R", "R18", "10k", 30, 315, {"1": "BOARD_ID", "2": "GND"}, R0603)
+    # board revision divider: 10k/10k = 1650 mV (v0.5), 10k/4.7k = 1055 mV (v0.6, SD NAND)
+    sh.part("Device", "R", "R18", "4.7k", 30, 315, {"1": "BOARD_ID", "2": "GND"}, R0603)
     sh.part("Device", "R", "R19", "2.2k", 60, 300, {"1": "+3V3", "2": "I2C_SCL"}, R0603)
     sh.part("Device", "R", "R20", "2.2k", 60, 315, {"1": "+3V3", "2": "I2C_SDA"}, R0603)
     sh.part("Connector_Generic", "Conn_02x05_Odd_Even", "J9", "EXPANSION", 100, 300, {
@@ -389,10 +393,13 @@ def build_core() -> Sheet:
         {"Note": "1 3V3, 2 5V, 3 SCL, 4 SDA, 5/6 GPIO PE0/PE1, 7/8 buttons (low = pressed), 9/10 GND"})
     sh.part("Switch", "SW_Push", "SW3", "BTN_A", 140, 300, {"1": "BTN_A", "2": "GND"}, BTN)
     sh.part("Switch", "SW_Push", "SW4", "BTN_B", 140, 315, {"1": "BTN_B", "2": "GND"}, BTN)
-    sh.part("Connector", "Micro_SD_Card_Det2", "J10", "104031-0811", 220, 300, {
-        "1": "SD_D2", "2": "SD_D3", "3": "SD_CMD", "4": "+3V3", "5": "SD_CLK", "6": "GND",
-        "7": "SD_D0", "8": "SD_D1", "9": "SD_CD", "10": "GND", "SH": "GND"},
-        "Connector_Card:microSD_HC_Molex_104031-0811", {"MPN": "Molex 104031-0811"})
+    # v0.6: soldered SD NAND instead of the microSD slot (board lives in a closed case);
+    # same land pattern fits MKDV8GIL-AST (1 GB, C26159627) as a cheaper alternative
+    sh.part("UFI_Headless", "SD_NAND_LGA8", "U15", "CSNP32GCR01-AOW", 220, 300, {
+        "1": "SD_D2", "2": "SD_D3", "3": "SD_CLK", "4": "GND",
+        "5": "SD_CMD", "6": "SD_D0", "7": "SD_D1", "8": "+3V3"},
+        "UFI_Headless:SD_NAND_LGA-8_6x8mm_P1.27mm",
+        {"MPN": "CSNP32GCR01-AOW", "Note": "4 GB; alt. MKDV8GIL-AST 1 GB (C26159627), same footprint"})
     for i, net in enumerate(["SD_CMD", "SD_D0", "SD_D1", "SD_D2", "SD_D3"]):
         sh.part("Device", "R", f"R{21 + i}", "47k", 180 + i * 8, 330, {"1": "+3V3", "2": net}, R0603)
     sh.part("Device", "C", "C47", "100nF", 250, 300, {"1": "+3V3", "2": "GND"}, C0603)

@@ -41,7 +41,8 @@ ERRORS = {
     1: "busy", 2: "no drive selected", 3: "seek failed", 4: "no index pulse",
     5: "timeout", 6: "DMA / verify error", 7: "USB error", 8: "IEC: no device (NRFD)",
     9: "IEC: no acknowledge", 10: "buffer full / overflow", 11: "not implemented",
-    12: "write protected", 0xFE: "reply too long", 0xFF: "unknown command",
+    12: "write protected", 13: "storage (SD NAND) error", 0xFE: "reply too long",
+    0xFF: "unknown command",
 }
 
 HDR = struct.Struct("<BBH")

@@ -21,12 +21,12 @@ jobs:
           sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build cmake
           arm-none-eabi-gcc --version | head -1
 
-      - name: Cache STM32CubeH7 (HAL, CMSIS, USB device library)
+      - name: Cache STM32CubeH7 (HAL, CMSIS, USB device library, FatFs)
         id: cube
         uses: actions/cache@v4
         with:
           path: ~/STM32CubeH7
-          key: stm32cubeh7-v1.11.0-sparse
+          key: stm32cubeh7-v1.11.0-sparse-fatfs
 
       - name: Fetch STM32CubeH7 v1.11.0 (sparse)
         if: steps.cube.outputs.cache-hit != 'true'
@@ -35,7 +35,8 @@ jobs:
             https://github.com/STMicroelectronics/STM32CubeH7.git ~/STM32CubeH7
           cd ~/STM32CubeH7
           git sparse-checkout set Drivers/STM32H7xx_HAL_Driver Drivers/CMSIS/Include \
-            Drivers/CMSIS/Device/ST/STM32H7xx Middlewares/ST/STM32_USB_Device_Library
+            Drivers/CMSIS/Device/ST/STM32H7xx Middlewares/ST/STM32_USB_Device_Library \
+            Middlewares/Third_Party/FatFs
 
       - name: Build
         run: |
