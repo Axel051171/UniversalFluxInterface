@@ -1,0 +1,54 @@
+name: Firmware build
+
+on:
+  push:
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+  pull_request:
+    paths: ["firmware/**", ".github/workflows/firmware.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0              # git revision for GET_INFO
+
+      - name: Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build cmake
+          arm-none-eabi-gcc --version | head -1
+
+      - name: Cache STM32CubeH7 (HAL, CMSIS, USB device library)
+        id: cube
+        uses: actions/cache@v4
+        with:
+          path: ~/STM32CubeH7
+          key: stm32cubeh7-v1.11.0-sparse
+
+      - name: Fetch STM32CubeH7 v1.11.0 (sparse)
+        if: steps.cube.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v1.11.0 --filter=blob:none --sparse \
+            https://github.com/STMicroelectronics/STM32CubeH7.git ~/STM32CubeH7
+          cd ~/STM32CubeH7
+          git sparse-checkout set Drivers/STM32H7xx_HAL_Driver Drivers/CMSIS/Include \
+            Drivers/CMSIS/Device/ST/STM32H7xx Middlewares/ST/STM32_USB_Device_Library
+
+      - name: Build
+        run: |
+          cmake -S firmware -B firmware/build -G Ninja -DSTM32CUBE_PATH=$HOME/STM32CubeH7
+          cmake --build firmware/build 2>&1 | tee build.log
+          # our sources build without warnings; ST vendor code is not policed
+          ! grep -E "warning:" build.log | grep -v "STM32CubeH7"
+          arm-none-eabi-size firmware/build/ufi_firmware.elf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ufi_firmware-${{ github.sha }}
+          path: |
+            firmware/build/ufi_firmware.bin
+            firmware/build/ufi_firmware.hex
+            firmware/build/ufi_firmware.elf
