@@ -552,3 +552,52 @@ void ufi_write_service(void) {
         ufi_usb_send_event(cmd, ret);
     }
 }
+
+/* ============================================================================
+ * DIAGNOSE: DAUERMUSTER
+ * ============================================================================ */
+
+/* Write one constant flux interval for duration_ms (write chain on the scope, head
+ * alignment).  Same guards as a track write: write lock jumper, write protect, idle
+ * write/capture path, motor running.  Blocking; duration capped at 5 s. */
+int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms) {
+    if (g_write.state != WRITE_IDLE ||
+        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+        return UFI_ERR_BUSY;
+    }
+    if (ufi_board_write_locked() || ufi_drive_write_protected()) {
+        return UFI_ERR_WRITE_PROT;
+    }
+    if (!ufi_drive_motor_is_on()) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    const uint32_t ticks = ((uint32_t)interval_ns * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL;
+    if (ticks < WRITE_MIN_DELTA || ticks > WRITE_MAX_DELTA) {
+        return UFI_ERR_BUFFER_FULL;
+    }
+    if (duration_ms > 5000u) {
+        duration_ms = 5000u;
+    }
+    if (ufi_drive_seek(track) != UFI_OK) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    ufi_drive_select_side(side);
+    HAL_Delay(20);
+
+    __HAL_TIM_DISABLE(&htim3);
+    TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
+    TIM3->ARR = ticks - 1u;
+    TIM3->EGR = TIM_EGR_UG;
+    TIM3->SR = 0;
+    TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_PWM1;
+    led_set(&PIN_LED_FDD, true);
+    bus_out(&PIN_FDD_WGATE, true);
+    __HAL_TIM_ENABLE(&htim3);
+
+    const uint32_t start = HAL_GetTick();
+    while (HAL_GetTick() - start < duration_ms) {
+        UFI_WATCHDOG_FEED();
+    }
+    write_finish(WRITE_IDLE);
+    return UFI_OK;
+}

@@ -394,6 +394,22 @@ void ufi_drive_safe_state(void)
     ufi_drive_select(DRIVE_NONE);
 }
 
+/* Diagnostics: seek back and forth between two tracks (stepper / head positioning test,
+ * audible and on a scope at STEP).  Blocking; cycles capped at 50. */
+int ufi_drive_seek_test(uint8_t a, uint8_t b, uint8_t cycles)
+{
+    if (cycles > 50) {
+        cycles = 50;
+    }
+    for (uint8_t i = 0; i < cycles; i++) {
+        if (ufi_drive_seek(a) != UFI_OK || ufi_drive_seek(b) != UFI_OK) {
+            return UFI_ERR_SEEK_FAIL;
+        }
+        UFI_WATCHDOG_FEED();
+    }
+    return UFI_OK;
+}
+
 /* Highest reachable track: from track 0 step in until the mechanical end stop (the head
  * simply stops there), then count the steps back to TRK0.  Gentle: double step rate.
  * Note: some drives knock audibly at the end stop. */

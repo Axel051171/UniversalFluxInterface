@@ -357,6 +357,14 @@ int ufi_usb_process_command(void) {
             reply(cmd, st(ret), &highest, ret == UFI_OK ? 1 : 0);
             break;
         }
+        case UFI_CMD_SEEK_TEST:             // [a, b, cycles]; reply when done (blocking)
+            reply(cmd, st(ufi_drive_seek_test(cmd_buffer[1], cmd_buffer[2], cmd_buffer[3])), NULL, 0);
+            break;
+        case UFI_CMD_WRITE_PATTERN:         // [track, side, interval_ns u16, duration_ms u16]
+            reply(cmd, st(ufi_write_pattern(cmd_buffer[1], cmd_buffer[2],
+                                            (uint16_t)(cmd_buffer[3] | (cmd_buffer[4] << 8)),
+                                            (uint16_t)(cmd_buffer[5] | (cmd_buffer[6] << 8)))), NULL, 0);
+            break;
         case UFI_CMD_SD_INFO: {
             sd_info_t info = {0};
             int ret = ufi_sd_info(&info);

@@ -142,6 +142,7 @@ typedef enum {
     UFI_CMD_BOARD_STATUS    = 0x1B, // [power mask] optional: set drive supplies -> board_status_t
     UFI_CMD_PROBE_TRACKS    = 0x1C, // -> u8 highest reachable track (steps to the end stop!)
     UFI_CMD_SD_INFO         = 0x1D, // -> sd_info_t (card detect + init)
+    UFI_CMD_SEEK_TEST       = 0x1E, // [track_a, track_b, cycles]: seek back and forth (diagnostics)
     
     // Flux-Capture
     UFI_CMD_READ_TRACK      = 0x20, // streamed, compact: UFI_EVT_FLUX_STREAM messages (ufi_stream.c)
@@ -157,6 +158,7 @@ typedef enum {
     UFI_CMD_ERASE_TRACK         = 0x31,
     UFI_CMD_WRITE_TRACK_C       = 0x33,  // [track, side, flux_count u32, byte_count u32, verify]
                                          // + byte_count bytes in the READ_TRACK stream code
+    UFI_CMD_WRITE_PATTERN       = 0x34,  // [track, side, interval_ns u16, duration_ms u16]: constant flux
     
     // IEC Bus (C64)
     UFI_CMD_IEC_RESET       = 0x40,
@@ -199,7 +201,8 @@ typedef struct __packed {
 typedef struct __packed {
     uint8_t power;              // bit0 FDD_5V on, bit1 FDD_12V on
     uint8_t flags;              // bit0 write lock jumper, bit1/2 5V/12V overcurrent trip,
-                                // bit3 SD card present, bit4/5 button A/B pressed
+                                // bit3 SD card present, bit4/5 button A/B pressed,
+                                // bit6 safe mode (button B held at start-up)
     uint16_t i5_ma;             // drive supply currents
     uint16_t i12_ma;
     uint16_t board_id_mv;       // BOARD_ID divider (1650 = v0.5)
@@ -290,7 +293,7 @@ void ufi_flux_stream_consumed(uint32_t samples); // ring buffer: samples the str
 const char* ufi_psram_result(void);              // PSRAM self-test result text
 
 // Board extras v0.5 (ufi_board.c): drive supplies, currents, write lock, board ID, safety
-void ufi_board_init(void);
+void ufi_board_init(bool power_on);              // false = safe mode (button B at start-up)
 void ufi_board_service(void);                   // main loop: overcurrent, USB loss, motor timeout
 void ufi_board_activity(void);                  // host command / transfer seen
 void ufi_board_power(uint8_t mask);
@@ -327,6 +330,7 @@ int ufi_drive_amiga_id(uint32_t* id);
 bool ufi_drive_motor_is_on(void);
 int ufi_drive_probe_tracks(uint8_t* highest);
 void ufi_drive_safe_state(void);    // motor off, deselect, all write lines released
+int ufi_drive_seek_test(uint8_t a, uint8_t b, uint8_t cycles);
 #if BOARD_HAS_APPLE
 int ufi_drive_apple_step(int direction);
 #endif
@@ -377,6 +381,7 @@ uint32_t ufi_write_get_progress(void);
 void ufi_write_abort(void);
 void ufi_write_set_precomp(bool enable);
 void ufi_write_service(void);
+int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms);
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
 

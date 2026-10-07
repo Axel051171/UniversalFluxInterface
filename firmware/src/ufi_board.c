@@ -28,6 +28,7 @@ extern capture_context_t g_capture;
 #define RAIL_STAGGER_MS         50u     /* 5 V first, then 12 V */
 
 static uint8_t power_mask;
+static bool safe_mode;                  /* button B at start-up: supplies stay off */
 static uint8_t trip_mask;
 static uint8_t oc_count[2];
 static uint16_t rail_ma[2];
@@ -53,9 +54,14 @@ void ufi_board_power(uint8_t mask)
     power_mask = mask;
 }
 
-void ufi_board_init(void)
+void ufi_board_init(bool power_on)
 {
     last_activity_ms = HAL_GetTick();
+    safe_mode = !power_on;
+    if (safe_mode) {
+        ufi_board_power(0x00);              /* e.g. a shorted drive: host switches on */
+        return;
+    }
     ufi_board_power(0x01);
     HAL_Delay(RAIL_STAGGER_MS);
     ufi_board_power(0x03);
@@ -99,7 +105,8 @@ board_status_t ufi_board_status(void)
     s.flags = (uint8_t)((ufi_board_write_locked() ? 0x01u : 0u) | (uint8_t)(trip_mask << 1) |
                         (ufi_sd_present() ? 0x08u : 0u) |
                         (HAL_GPIO_ReadPin(PIN_BTN_A.port, PIN_BTN_A.pin) == GPIO_PIN_RESET ? 0x10u : 0u) |
-                        (HAL_GPIO_ReadPin(PIN_BTN_B.port, PIN_BTN_B.pin) == GPIO_PIN_RESET ? 0x20u : 0u));
+                        (HAL_GPIO_ReadPin(PIN_BTN_B.port, PIN_BTN_B.pin) == GPIO_PIN_RESET ? 0x20u : 0u) |
+                        (safe_mode ? 0x40u : 0u));
     s.i5_ma = rail_ma[0];
     s.i12_ma = rail_ma[1];
     s.board_id_mv = ufi_adc_mv(ADC_CH_BOARD_ID);

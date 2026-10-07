@@ -74,7 +74,17 @@ void ufi_init(void)
     ufi_iec_init();
     ufi_flux_init();            /* TIM2 + DMA, PSRAM self-test */
     ufi_write_init();
-    ufi_board_init();           /* v0.5: drive supplies on (5 V, then 12 V) */
+    /* Buttons held at power-up (v0.5): A = ROM USB-DFU bootloader (recovery even when the
+     * USB firmware is broken), B = safe mode: drive supplies stay off (BOARD_STATUS bit6) */
+    HAL_Delay(5);               /* button pull-ups settle */
+    if (HAL_GPIO_ReadPin(PIN_BTN_A.port, PIN_BTN_A.pin) == GPIO_PIN_RESET) {
+        ufi_request_bootloader();
+    }
+    const bool safe_mode = HAL_GPIO_ReadPin(PIN_BTN_B.port, PIN_BTN_B.pin) == GPIO_PIN_RESET;
+    ufi_board_init(!safe_mode); /* drive supplies on (5 V, then 12 V) unless safe mode */
+    if (safe_mode) {
+        led_set(&PIN_LED_ERR, true);
+    }
     ufi_usb_init();
 
     /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,
