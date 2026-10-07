@@ -16,6 +16,7 @@
 
 #include "ufi_firmware.h"
 #include "ff.h"
+#include "ufi_mfm.h"
 #include <string.h>
 
 #define SCP_TRACKS          168u
@@ -29,7 +30,7 @@
 
 extern capture_context_t g_capture;
 
-typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR } dump_state_t;
+typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR, D_COPY } dump_state_t;
 
 /* CPU-polled SD transfers: the staging buffer may live in DTCM (not zeroed at start) */
 __attribute__((section(".dtcm"), aligned(4))) static uint8_t stage[32 * 1024];
@@ -228,8 +229,240 @@ static int finish_file(void)
  * state machine
  * ============================================================================ */
 
+/* ============================================================================
+ * quality report (DUMPnnnn.LOG) and disk-to-disk copy
+ * ============================================================================ */
+
+static FIL logfile;
+static bool log_open, copying, button_copy;
+static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
+static uint8_t tries, q_spt, bad_tracks;
+static bool q_known, q_amiga;
+static uint32_t q_rate;
+
+static int prepare_drive(uint8_t d)
+{
+    if (ufi_drive_select((drive_type_t)d) != UFI_OK) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    if (!ufi_drive_motor_is_on() && ufi_drive_motor(true) != UFI_OK) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    return ufi_drive_recalibrate();
+}
+
+typedef struct {
+    uint64_t good;
+    uint8_t max_r;
+    uint8_t cyl;
+} qctx_t;
+
+static void q_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
+{
+    (void)data;
+    qctx_t* q = p;
+    if (crc_ok && id->r >= 1u && id->r <= 63u && id->c == q->cyl) {
+        q->good |= 1ull << (id->r - 1u);
+        if (id->r > q->max_r) {
+            q->max_r = id->r;
+        }
+    }
+}
+
+/* good sectors of the captured track (all revolutions as one stream) */
+static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
+{
+    static mfm_decoder_t d;
+    qctx_t q = {.cyl = cyl};
+    if (amiga) {
+        mfm_dec_init_amiga(&d, rate, q_sector, &q);
+    } else {
+        mfm_dec_init(&d, rate, q_sector, &q);
+    }
+    uint32_t carry = 0;
+    for (uint8_t k = 0; k < ufi_flux_get_revolution_count(); k++) {
+        const flux_revolution_t* r = ufi_flux_get_revolution(k);
+        uint32_t prev = 0;
+        for (uint32_t i = 0; i < r->count; i++) {
+            mfm_dec_interval(&d, r->samples[i].timestamp - prev + carry);
+            carry = 0;
+            prev = r->samples[i].timestamp;
+        }
+        carry = r->index_time - prev;
+    }
+    *max_r = q.max_r;
+    uint8_t n = 0;
+    for (uint64_t g = q.good; g; g &= g - 1u) {
+        n++;
+    }
+    return n;
+}
+
+/* on track 0.0 probe IBM 500k/250k/300k/1M and Amiga; afterwards decode that format */
+static uint8_t track_quality(void)
+{
+    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u};
+    uint8_t max_r = 0;
+    if (cyl == 0 && head == 0 && tries == 0) {
+        uint8_t best = 0;
+        for (uint32_t i = 0; i < 5; i++) {
+            const uint8_t g = count_good(rates[i], i == 4u, &max_r);
+            if (g > best) {
+                best = g;
+                q_rate = rates[i];
+                q_amiga = (i == 4u);
+                q_spt = max_r;
+            }
+        }
+        q_known = best >= 4u;
+        return best;
+    }
+    return q_known ? count_good(q_rate, q_amiga, &max_r) : 0u;
+}
+
+static void log_puts(const char* s)
+{
+    UINT bw = 0;
+    if (log_open) {
+        f_write(&logfile, s, (UINT)strlen(s), &bw);
+    }
+}
+
+static char* put_num(char* p, uint32_t v, int width)
+{
+    char tmp[10];
+    int n = 0;
+    do {
+        tmp[n++] = (char)('0' + v % 10u);
+        v /= 10u;
+    } while (v && n < 10);
+    while (n < width) {
+        tmp[n++] = ' ';
+    }
+    while (n) {
+        *p++ = tmp[--n];
+    }
+    return p;
+}
+
+static void open_log(void)
+{
+    char name[13];
+    memcpy(name, "DUMP0000.LOG", 13);
+    name[4] = (char)('0' + file_no / 1000u);
+    name[5] = (char)('0' + file_no / 100u % 10u);
+    name[6] = (char)('0' + file_no / 10u % 10u);
+    name[7] = (char)('0' + file_no % 10u);
+    log_open = (f_open(&logfile, name, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK);
+    log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
+}
+
+static void log_track(uint8_t good)
+{
+    if (!log_open) {
+        return;
+    }
+    char line[64], *p = line;
+    const flux_revolution_t* r = ufi_flux_get_revolution(0);
+    const uint32_t rpm10 = r->index_time ? (uint32_t)(600ull * FLUX_TIMER_FREQ / r->index_time) : 0u;
+    p = put_num(p, cyl, 2);
+    *p++ = '.';
+    p = put_num(p, head, 1);
+    p = put_num(p, good, 6);
+    *p++ = '/';
+    p = put_num(p, q_known ? q_spt : 0u, 2);
+    p = put_num(p, rpm10 / 10u, 9);
+    *p++ = '.';
+    p = put_num(p, rpm10 % 10u, 1);
+    p = put_num(p, tries + 1u, 4);
+    if (q_known && good < q_spt) {
+        memcpy(p, "  BAD", 5);
+        p += 5;
+    }
+    *p++ = '\r';
+    *p++ = '\n';
+    *p = 0;
+    log_puts(line);
+}
+
+static void close_log(void)
+{
+    if (!log_open) {
+        return;
+    }
+    char line[48], *p = line;
+    memcpy(p, "bad tracks: ", 12);
+    p = put_num(p + 12, bad_tracks, 1);
+    memcpy(p, q_known ? "\r\n" : " (format not recognised)\r\n", q_known ? 3 : 27);
+    log_puts(line);
+    f_close(&logfile);
+    log_open = false;
+}
+
+/* copy: revolution 0 of the source (index to index) is written to the destination,
+ * then the destination is read back: same good-sector count (known format) or a flux
+ * count within 5 % */
+static int copy_track(void)
+{
+    const flux_revolution_t* r = ufi_flux_get_revolution(0);
+    const uint32_t n = r->count;
+    if (n < 3u) {
+        return UFI_ERR_NO_INDEX;
+    }
+    uint8_t max_r = 0;
+    const uint8_t src_good = q_known ? count_good(q_rate, q_amiga, &max_r) : 0u;
+    uint32_t words = 0;
+    uint32_t* store = ufi_flux_store(&words);
+    uint32_t prev = 0;
+    for (uint32_t i = 0; i < n; i++) {                 /* timestamps -> deltas, in place */
+        const uint32_t t = r->samples[i].timestamp;
+        store[i] = t - prev;
+        prev = t;
+    }
+    g_capture.state = CAPTURE_IDLE;
+    ufi_drive_select((drive_type_t)copy_dst);
+    int ret = ufi_write_local(cyl, head, n);
+    if (ret == UFI_OK) {
+        ret = ufi_capture_start(cyl, head, 2, 0);
+        const uint32_t t0 = HAL_GetTick();
+        while (ret == UFI_OK) {
+            const capture_state_t s = ufi_capture_get_state();
+            if (s == CAPTURE_COMPLETE) {
+                break;
+            }
+            if (s == CAPTURE_ERROR || HAL_GetTick() - t0 > 2000u) {
+                ufi_capture_abort();
+                ret = UFI_ERR_NO_INDEX;
+            }
+        }
+    }
+    if (ret == UFI_OK) {
+        const uint32_t m = ufi_flux_get_revolution(0)->count;
+        const uint32_t diff = (m > n) ? m - n : n - m;
+        if (q_known ? count_good(q_rate, q_amiga, &max_r) < src_good : diff > n / 20u) {
+            ret = UFI_ERR_DMA;                         /* verify failed */
+        }
+    }
+    ufi_drive_select((drive_type_t)copy_src);
+    return ret;
+}
+
+int ufi_copy_start(void)
+{
+    if (copy_src == copy_dst) {
+        return UFI_ERR_NOT_IMPL;
+    }
+    copying = true;
+    const int ret = ufi_dump_start(NULL);
+    if (ret != UFI_OK) {
+        copying = false;
+    }
+    return ret;
+}
+
 static void fail(uint8_t code)
 {
+    close_log();
     ufi_capture_abort();
     g_capture.state = CAPTURE_IDLE;                    /* main loop must not send it to USB */
     if (file_open) {
@@ -241,6 +474,7 @@ static void fail(uint8_t code)
     led_set(&PIN_LED_FDD, false);
     led_set(&PIN_LED_ACT, false);
     err_code = code;
+    copying = false;
     state = D_ERROR;
 }
 
@@ -273,7 +507,11 @@ static const char cfg_default[] =
     "drive=a\r\n"
     "tracks=80\r\n"
     "sides=2\r\n"
-    "revs=3\r\n";
+    "revs=3\r\n"
+    "# button A: dump (disk -> DUMPnnnn.SCP + .LOG) or copy (copy_from -> copy_to)\r\n"
+    "button_a=dump\r\n"
+    "copy_from=a\r\n"
+    "copy_to=b\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
@@ -321,6 +559,14 @@ static void parse_line(const char* k, dump_config_t* c)
         c->sides = (uint8_t)num;
     } else if (!strncmp(k, "revs=", 5)) {
         c->revs = (uint8_t)num;
+    } else if (!strncmp(k, "button_a=", 9)) {
+        button_copy = word_is(v, "copy");
+    } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
+        for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
+            if (word_is(v, drive_names[i].name)) {
+                *(k[5] == 'f' ? &copy_src : &copy_dst) = drive_names[i].type;
+            }
+        }
     }
 }
 
@@ -405,31 +651,81 @@ void ufi_dump_service(void)
 {
     switch (state) {
         case D_START:
-            if (mount() != UFI_OK) { fail(1); break; }
-            if (open_next_file() != UFI_OK || begin_file() != UFI_OK) { fail(1); break; }
-            if (ufi_drive_select((drive_type_t)cfg.drive) != UFI_OK ||
-                ufi_drive_motor(true) != UFI_OK || ufi_drive_recalibrate() != UFI_OK) {
-                fail(2);
-                break;
+            if (copying) {                             /* copy: no files, both drives ready */
+                if (prepare_drive(copy_dst) != UFI_OK || prepare_drive(copy_src) != UFI_OK) {
+                    fail(2);
+                    break;
+                }
+            } else {
+                if (mount() != UFI_OK) { fail(1); break; }
+                if (open_next_file() != UFI_OK || begin_file() != UFI_OK) { fail(1); break; }
+                open_log();
+                if (prepare_drive(cfg.drive) != UFI_OK) { fail(2); break; }
             }
             cyl = 0;
             head = 0;
+            tries = 0;
+            q_known = false;
+            bad_tracks = 0;
             state = D_CAPTURE;
             break;
 
         case D_CAPTURE:
             ufi_board_activity();
-            if (ufi_capture_start(cyl, head, cfg.revs, 0) != UFI_OK) { fail(2); break; }
+            if (copying) {
+                ufi_drive_select((drive_type_t)copy_src);
+            }
+            if (ufi_capture_start(cyl, head, copying ? 2 : cfg.revs, 0) != UFI_OK) { fail(2); break; }
             state = D_WAIT;
             break;
 
         case D_WAIT:
             switch (ufi_capture_get_state()) {
-                case CAPTURE_COMPLETE: state = D_WRITE; break;
+                case CAPTURE_COMPLETE: {
+                    /* quality: decode the track (format probed on 0.0); retry weak tracks */
+                    const uint8_t good = track_quality();
+                    if (q_known && good < q_spt && tries < 2u) {
+                        tries++;
+                        g_capture.state = CAPTURE_IDLE;
+                        state = D_CAPTURE;
+                        break;
+                    }
+                    if (q_known && good < q_spt) {
+                        bad_tracks++;
+                    }
+                    log_track(good);
+                    tries = 0;
+                    state = copying ? D_COPY : D_WRITE;
+                    break;
+                }
                 case CAPTURE_ERROR:    fail(2); break;
                 default:               break;
             }
             break;
+
+        case D_COPY: {
+            led_set(&PIN_LED_FDD, false);
+            const int ret = copy_track();
+            g_capture.state = CAPTURE_IDLE;
+            if (ret != UFI_OK) { fail(ret == UFI_ERR_WRITE_PROT ? 3 : 2); break; }
+            HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
+            if (++head >= cfg.sides) {
+                head = 0;
+                cyl++;
+            }
+            if (cyl >= cfg.tracks) {
+                ufi_drive_select((drive_type_t)copy_dst);
+                ufi_drive_motor(false);
+                ufi_drive_select((drive_type_t)copy_src);
+                ufi_drive_motor(false);
+                led_set(&PIN_LED_ACT, true);
+                copying = false;
+                state = D_DONE;
+            } else {
+                state = D_CAPTURE;
+            }
+            break;
+        }
 
         case D_WRITE: {
             led_set(&PIN_LED_FDD, false);
@@ -447,6 +743,7 @@ void ufi_dump_service(void)
 
         case D_FINISH:
             ufi_drive_motor(false);
+            close_log();
             if (finish_file() != UFI_OK) { fail(3); break; }
             unmount();
             led_set(&PIN_LED_ACT, true);
@@ -488,7 +785,11 @@ void ufi_buttons_service(void)
 
     if (a && !a_used && now - a_since >= HOLD_START_MS) {
         a_used = true;
-        ufi_dump_start(NULL);                          /* busy / mass storage mode: ignored */
+        if (button_copy) {                             /* UFI.CFG button_a=copy */
+            ufi_copy_start();
+        } else {
+            ufi_dump_start(NULL);                      /* busy / mass storage mode: ignored */
+        }
     }
     if (b && b_since && !b_used && !ufi_dump_active() && now - b_since >= HOLD_MSC_MS) {
         b_used = true;

@@ -35,7 +35,7 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 | 3.1 | `cmake -S firmware -B firmware/build -G Ninja && cmake --build firmware/build` | `ufi_firmware.bin`, keine Warnungen | |
 | 3.2 | Flashen: ST-Link an J4 (SWD) **oder** BOOT-Taster (SW2) halten + RESET (SW1) → `dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin` | erfolgreich | |
 | 3.3 | Nach dem Start (12 V an, Netzteil 500 mA) | 3 ERR-Blinker = PSRAM-Fehler; sonst keine ERR-LED | |
-| 3.4 | `ufi info` | `UFI Flux Engine v1.7 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
+| 3.4 | `ufi info` | `UFI Flux Engine v1.8 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
 | 3.5 | Bei „rev ?“: Spannung an PA4 (R17/R18) messen | 1,06 V | |
 | 3.6 | `ufi selftest`, `ufi status` | keine Fehler | |
 
@@ -106,6 +106,8 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 7.2 | 1541 an J8 (DIN-6-Kabel): `ufi iec-reset`, `ufi iec-send 0x28`, `ufi iec-recv` | Laufwerk antwortet | |
 | 7.2a | Shugart-Bus: gerades Kabel, Laufwerke auf DS0/DS1/DS2 (DS3 nur mit JP1) gejumpert; `ufi select ds0` … `ds3`, `ufi motor on`, `ufi recal`, `ufi read 0 0` | jeweils nur das gewählte Laufwerk reagiert (Kopf fährt, LED), alle Motoren laufen gemeinsam | |
 | 7.2b | `UFI.CFG` im SD-Laufwerk-Modus auf `drive=ds1` ändern, Neustart, Dump mit Taster A | Dump läuft auf dem DS1-Laufwerk | |
+| 7.2c | Nach einem Dump `DUMPnnnn.LOG` im SD-Laufwerk-Modus öffnen | Format erkannt, gute Disketten: alle Spuren voll, Drehzahl ≈ 300 | |
+| 7.2d | Zwei Laufwerke, `button_a=copy`, `copy_from=a`, `copy_to=b`, Neustart, Schrott-Diskette in B, Taster A | Kopie läuft, ACT dauerhaft an; Kopie im PC lesbar | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |
 

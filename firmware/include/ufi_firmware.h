@@ -177,6 +177,7 @@ typedef enum {
     UFI_CMD_DUMP_STATUS     = 0x51, // -> dump_status_t
     UFI_CMD_DUMP_ABORT      = 0x52,
     UFI_CMD_USB_MSC         = 0x53, // reply, then re-enumerate as USB mass storage (SD NAND)
+    UFI_CMD_COPY_START      = 0x54, // disk to disk copy (UFI.CFG copy_from / copy_to, tracks, sides)
 
     // Debug
     UFI_CMD_DEBUG_GPIO      = 0xD0,
@@ -347,6 +348,7 @@ dump_status_t ufi_dump_status(void);
 void ufi_dump_service(void);                    // main loop
 void ufi_buttons_service(void);                 // main loop: A hold = dump, B = abort / MSC
 void ufi_config_load(void);                     // UFI.CFG on the SD NAND (start-up)
+int ufi_copy_start(void);                       // disk to disk: UFI.CFG copy_from -> copy_to
 uint8_t ufi_standalone_drive(void);             // drive for dump + USB floppy (drive_type_t)
 bool ufi_usb_msc_active(void);                  // true = no CDC interface (SD or floppy)
 int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device

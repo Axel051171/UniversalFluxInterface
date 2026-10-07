@@ -154,7 +154,7 @@ static uint16_t str_add(char* buf, uint16_t n, const char* s) {
 }
 
 #ifndef UFI_FW_VERSION
-#define UFI_FW_VERSION "1.7"
+#define UFI_FW_VERSION "1.8"
 #endif
 #ifndef UFI_GIT_REV
 #define UFI_GIT_REV "dev"
@@ -574,6 +574,9 @@ int ufi_usb_process_command(void) {
         case UFI_CMD_DUMP_ABORT:
             ufi_dump_abort();
             reply(cmd, 0, NULL, 0);
+            break;
+        case UFI_CMD_COPY_START:            // progress / result via DUMP_STATUS
+            reply(cmd, st(ufi_copy_start()), NULL, 0);
             break;
         case UFI_CMD_USB_MSC: {             // [mode] optional: 1 SD drive (default), 2 USB floppy
             const uint8_t mode = (cmd_len >= 2) ? cmd_buffer[1] : UFI_USB_SD;
