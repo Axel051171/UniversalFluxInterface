@@ -481,7 +481,7 @@ static void fail(uint8_t code)
 /* stand-alone drive: PC A/B, Amiga, Shugart DS0-DS3 (no Apple, no IEC) */
 static bool drive_ok(uint8_t d)
 {
-    return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA ||
+    return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA || d == DRIVE_AMIGA2 ||
            (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3);
 }
 
@@ -503,7 +503,7 @@ uint8_t ufi_standalone_drive(void)
 
 static const char cfg_default[] =
     "# UFI stand-alone settings (dump with button A, USB floppy mode)\r\n"
-    "# drive: a, b (PC cable), amiga, ds0, ds1, ds2, ds3 (Shugart bus; ds3 needs JP1)\r\n"
+    "# drive: a, b (PC cable), amiga, amiga2 (DF2, needs JP3), ds0-ds3 (Shugart bus; ds3 needs JP1)\r\n"
     "drive=a\r\n"
     "tracks=80\r\n"
     "sides=2\r\n"
@@ -516,7 +516,7 @@ static const char cfg_default[] =
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
     {"ds0", DRIVE_SHUGART_DS0}, {"ds1", DRIVE_SHUGART_DS1},
-    {"ds2", DRIVE_SHUGART_DS2}, {"ds3", DRIVE_SHUGART_DS3},
+    {"ds2", DRIVE_SHUGART_DS2}, {"ds3", DRIVE_SHUGART_DS3}, {"amiga2", DRIVE_AMIGA2},
 };
 
 static bool word_is(const char* p, const char* w)

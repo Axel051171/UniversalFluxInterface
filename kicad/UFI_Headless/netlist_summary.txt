@@ -159,14 +159,14 @@ WLOCK            J11.2 R33.1 U14.2
 == FDD_Connectors
 +5V              RN6.6 RN6.7 RN6.8
 AMI_DRES         J7.10 RN6.3
-AMI_SEL2         J7.9 RN6.1
+AMI_SEL2         J7.9 JP3.2 RN6.1
 AMI_SEL3         J7.20 RN6.2
 FDD_12V          J7.23
 FDD_5V           J7.12 JP2.3
 FD_DENSITY       J6.2
 FD_DIR           D11.1 J6.18 J7.19
 FD_DRATE         JP1.1
-FD_DRVSEL_A      J6.14
+FD_DRVSEL_A      D11.6 J6.14 JP3.1
 FD_DRVSEL_B      D11.3 J6.12 J7.21
 FD_DSKCHG        D9.5 J6.34 J7.11
 FD_INDEX         D11.4 J6.8 J7.22

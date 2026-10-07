@@ -528,7 +528,8 @@ def build_fdd_conn() -> Sheet:
             "   resp. DS0/DS1/DS2/MOTOR (Shugart, DS3 = pin 6 via JP1); the drive type selects the bus.\n"
             "   Pin 34 = DSKCHG (PC) / READY (Shugart); Shugart /DCD on pin 2 is not readable (DENSITY output).\n"
             "J: Amiga external drive, 2x12 header, pin n = DB23 pin n (Amiga HRM pinout), pin 24 GND.\n"
-            "   Adapter cable to DB23. SEL1B shares DRVSEL_B, MTRXD shares MOTOR_B. Only one drive at a time.\n"
+            "   Adapter cable to DB23. SEL1B shares DRVSEL_B, SEL2B = DRVSEL_A via JP3 (DF2),\n"
+            "   MTRXD shares MOTOR_B (each drive latches it on its select edge). Only one drive at a time.\n"
             "   CHECK: docs/Amiga_DB23_Adapter_Cable.md uses a different (inconsistent) pinout.", 20, 20, 1.5)
     pc = {str(n): "GND" for n in range(1, 34, 2)}
     pc.update({"2": "FD_DENSITY", "3": "FD_PIN3", "4": "NC", "6": "FD_PIN6", "8": "FD_INDEX", "10": "FD_MOTOR_A",
@@ -557,7 +558,7 @@ def build_fdd_conn() -> Sheet:
             20, 230, 1.27)
     esd_nets = [f"G:FD_{n}" for n in ("READY", "RDATA", "MOTOR_B", "DSKCHG", "SIDE", "WPROT", "TRK0",
                                       "WGATE", "WDATA", "STEP", "DIR", "DRVSEL_B", "INDEX",
-                                      "MOTOR_A")]  # DRVSEL_A only reaches internal J6
+                                      "MOTOR_A", "DRVSEL_A")]  # v0.7: DRVSEL_A reaches J7 via JP3
     for i in range(3):
         esd5(sh, f"D{9 + i}", esd_nets[i * 5:(i + 1) * 5], 120 + i * 40, 250)
 
@@ -572,6 +573,13 @@ def build_fdd_conn() -> Sheet:
     sh.part("Jumper", "SolderJumper_3_Bridged12", "JP2", "PIN3_GND/5V", 160, 300,
             {"1": "GND", "2": "FD_PIN3", "3": "G:FDD_5V"},
             "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm", in_bom=False)
+    # v0.7: second external Amiga drive (DF2) on J7 pin 9 SEL2B, selected by DRVSEL_A
+    sh.text("v0.7: JP3 open = J7 pin 9 SEL2B idle (pull-up); bridge = SEL2B driven by DRVSEL_A (second\n"
+            "Amiga drive DF2, drive type amiga2). DRVSEL_A also selects J6 drive A / DS2: one bus user at a time.",
+            20, 320, 1.27)
+    sh.part("Jumper", "SolderJumper_2_Open", "JP3", "AMI_SEL2", 200, 300,
+            {"1": "G:FD_DRVSEL_A", "2": "AMI_SEL2"}, "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm",
+            in_bom=False)
     return sh
 
 

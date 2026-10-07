@@ -5,8 +5,9 @@
  * Pins and polarity come from board.h: bus_out(pin, true) asserts a line (low on the
  * cable), bus_in(pin) is true while the drive asserts it.
  *
- * Amiga J7 wiring: MTRXD = MOTOR_B, SEL1B = DRV_SEL_B.  Amiga drives latch MTRXD on
- * the falling edge of their select line, so the motor is switched via a select pulse.
+ * Amiga J7 wiring: MTRXD = MOTOR_B, SEL1B = DRV_SEL_B, SEL2B = DRV_SEL_A (v0.7, only
+ * with JP3 bridged).  Amiga drives latch MTRXD on the falling edge of their select line,
+ * so the motor is switched via a select pulse and each drive keeps its own motor state.
  */
 
 #include "ufi_firmware.h"
@@ -112,6 +113,17 @@ static bool is_shugart(drive_type_t t)
     return t >= DRIVE_SHUGART_DS0 && t <= DRIVE_SHUGART_DS3;
 }
 
+static bool is_amiga(drive_type_t t)
+{
+    return t == DRIVE_AMIGA || t == DRIVE_AMIGA2;
+}
+
+/* Amiga select line: DF1 SEL1B = DRV_SEL_B, DF2 SEL2B = DRV_SEL_A (JP3) */
+static const gpio_pin_t* amiga_sel(drive_type_t t)
+{
+    return t == DRIVE_AMIGA2 ? &PIN_FDD_DRV_SEL_A : &PIN_FDD_DRV_SEL_B;
+}
+
 int ufi_drive_select(drive_type_t type)
 {
     bus_out(&PIN_FDD_DRV_SEL_A, false);
@@ -137,7 +149,14 @@ int ufi_drive_select(drive_type_t type)
             break;
         case DRIVE_SHUGART_B:
         case DRIVE_AMIGA:                   /* J7 SEL1B = DRV_SEL_B */
-            bus_out(&PIN_FDD_DRV_SEL_B, true);
+        case DRIVE_AMIGA2:                  /* J7 SEL2B = DRV_SEL_A via JP3 */
+            /* the select edge latches MTRXD: present the drive's own motor state so
+             * re-selecting (copy DF1 <-> DF2) does not stop it */
+            bus_out(&PIN_FDD_MOTOR_B, g_drive_status[type].motor_on);
+            delay_us(2);
+            bus_out(amiga_sel(type), true);
+            delay_us(2);
+            bus_out(&PIN_FDD_MOTOR_B, false);
             break;
         case DRIVE_IEC:                     /* IEC needs no select */
             break;
@@ -173,11 +192,12 @@ drive_type_t ufi_drive_get_current(void)
 /* Amiga: MTRXD level is latched by the drive on the select falling edge */
 static void amiga_motor(bool on)
 {
-    bus_out(&PIN_FDD_DRV_SEL_B, false);
+    const gpio_pin_t* sel = amiga_sel(g_current_drive);
+    bus_out(sel, false);
     delay_us(2);
     bus_out(&PIN_FDD_MOTOR_B, on);
     delay_us(2);
-    bus_out(&PIN_FDD_DRV_SEL_B, true);      /* latch */
+    bus_out(sel, true);                     /* latch */
     delay_us(2);
     bus_out(&PIN_FDD_MOTOR_B, false);       /* MTRXD may be released after the latch */
 }
@@ -192,6 +212,7 @@ int ufi_drive_motor(bool on)
             bus_out(&PIN_FDD_MOTOR_B, on);
             break;
         case DRIVE_AMIGA:
+        case DRIVE_AMIGA2:
             amiga_motor(on);
             break;
         case DRIVE_IEC:                     /* 1541 controls its own motor */
@@ -431,6 +452,14 @@ void ufi_drive_safe_state(void)
     if (ufi_drive_motor_is_on()) {
         ufi_drive_motor(false);
     }
+    /* Amiga drives keep their latched motor state while deselected */
+    static const drive_type_t amiga_drives[2] = {DRIVE_AMIGA, DRIVE_AMIGA2};
+    for (int i = 0; i < 2; i++) {
+        if (g_drive_status[amiga_drives[i]].motor_on) {
+            ufi_drive_select(amiga_drives[i]);
+            ufi_drive_motor(false);
+        }
+    }
     bus_out(&PIN_FDD_WGATE, false);
     bus_out(&PIN_FDD_STEP, false);
     bus_out(&PIN_FDD_MOTOR_A, false);
@@ -523,10 +552,10 @@ int ufi_drive_check_disk(bool* changed, bool* present)
  * (HD media), 0x55555555 5.25" 40 track, 0x00000000 no drive. */
 int ufi_drive_amiga_id(uint32_t* id)
 {
-    if (g_current_drive != DRIVE_AMIGA) {
+    if (!is_amiga(g_current_drive)) {
         return UFI_ERR_NO_DRIVE;
     }
-    const gpio_pin_t* sel = &PIN_FDD_DRV_SEL_B;
+    const gpio_pin_t* sel = amiga_sel(g_current_drive);
     bus_out(sel, false);
     for (int on = 1; on >= 0; on--) {           /* motor on, then off: resets the ID */
         bus_out(&PIN_FDD_MOTOR_B, on);
@@ -545,7 +574,7 @@ int ufi_drive_amiga_id(uint32_t* id)
         delay_us(2);
     }
     bus_out(sel, true);                         /* leave the drive selected, motor off */
-    g_drive_status[DRIVE_AMIGA].motor_on = false;
+    g_drive_status[g_current_drive].motor_on = false;
     *id = v;
     return UFI_OK;
 }

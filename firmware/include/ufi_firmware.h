@@ -91,6 +91,7 @@ typedef enum {
     DRIVE_SHUGART_DS1,
     DRIVE_SHUGART_DS2,
     DRIVE_SHUGART_DS3,
+    DRIVE_AMIGA2,           // second Amiga drive DF2: J7 pin 9 SEL2B = DRV_SEL_A (board v0.7, JP3)
     DRIVE_TYPE_COUNT
 } drive_type_t;
 
