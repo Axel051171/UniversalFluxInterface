@@ -45,6 +45,7 @@ Upload: **BOM** `UFI_Headless-bom-jlc.csv`, **CPL** `UFI_Headless-cpl-jlc.csv`.
 | J7 | Wannenstecker 2×12, 2,54 mm | Amiga-Header (Adapterkabel: `docs/Amiga_DB23_Adapter_Cable.md` im Repo-Hauptordner) |
 | J9 | Stiftleiste 2×5, 2,54 mm | Erweiterung, optional |
 | J11 | Stiftleiste 1×2 + Jumper | WRITE LOCK |
+| J12 | Stiftleiste 2×4, 2,54 mm | Front-LEDs im Gehäuse (je LED eine Reihe: ungerade Pin = +, gerade = −) |
 
 - Testpunkte TP1–TP8 und Lötbrücken JP1/JP2 sind blankes Kupfer – nichts zu bestücken.
 

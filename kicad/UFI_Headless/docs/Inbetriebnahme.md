@@ -60,6 +60,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 4.4 | J11 gesteckt / gezogen | Flag Bit0 = 1 / 0 | |
 | 4.5 | Taster A/B während des Betriebs gedrückt | Flag Bit4 / Bit5 | |
 | 4.6 | Last 10 Ω/5 W an FDD_5V (≈ 0,5 A), dann 3,3 Ω (≈ 1,5 A) | i5_mA ≈ 500; bei > 1,5 A nach 50 ms aus, Flag Bit1, ERR-LED | |
+| 4.6a | Front-LEDs an J12 (1+/2− PWR, 3+/4− ACT, 5+/6− FDD, 7+/8− ERR), LED-Test `d.command(0xD0, 2)` | grün dauerhaft, gelbe LEDs leuchten mit ACT/FDD/ERR mit; zu dunkel → R34–R37 kleiner (min. 150 Ω) | |
 | 4.7 | `st()` Flag Bit3 | 1 = SD-NAND U15 initialisiert | |
 | 4.8 | `SD_INFO` | ready 1, status 0, bus 4, capacity 3500–4000 MB (4 GB) bzw. 900–1000 MB (1 GB) | |
 | 4.9 | Taster **A** beim Einschalten | DFU-Gerät erscheint (`dfu-util -l`) | |

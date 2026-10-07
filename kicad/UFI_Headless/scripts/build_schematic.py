@@ -31,7 +31,7 @@ LCSC = {
     ("5.1k", R0603): "C23186", ("100k 1%", R0603): "C25803", ("13.3k 1%", R0603): "C25952",
     ("33k 1%", R0603): "C4216", ("33k", R0603): "C4216", ("10k 1%", R0603): "C25804",
     ("10k", R0603): "C25804", ("22k", R0603): "C31850", ("1k", R0603): "C21190",
-    ("2.2k", R0603): "C4190", ("4.7k", R0603): "C23162", ("1k", RPACK4_FP): "C20197",
+    ("2.2k", R0603): "C4190", ("4.7k", R0603): "C23162", ("330", R0603): "C23138", ("1k", RPACK4_FP): "C20197",
     # capacitors
     ("100nF", C0603): "C14663", ("100nF/50V", C0603): "C14663", ("1uF", C0603): "C15849",
     ("18pF C0G", C0603): "C1647", ("1uF", C0805): "C28323", ("2.2uF", C0805): "C87994",
@@ -366,6 +366,18 @@ def build_core() -> Sheet:
                 {"2": f"{name}_A", "1": "GND"}, LED0603)
     R(sh, "2.2k", 310, 205, "+3V3", "LED_PWR_A")
     sh.part("Device", "LED", ref("D"), "green PWR", 330, 205, {"2": "LED_PWR_A", "1": "GND"}, LED0603)
+    # v0.6: front panel LEDs of the enclosure (one row per LED: + / -), parallel to the board
+    # LEDs, 330R each (~4 mA at Vf 2 V)
+    sh.text("v0.6: J12 front panel LEDs, 2 pins per LED: 1/2 PWR (green), 3/4 ACT, 5/6 FDD, 7/8 ERR\n"
+            "(odd pin = anode via 330R, even pin = GND).", 290, 225, 1.27)
+    for i, (src, net) in enumerate([("+3V3", "FRONT_PWR"), ("LED_ACT", "FRONT_ACT"),
+                                    ("LED_FDD", "FRONT_FDD"), ("LED_ERR", "FRONT_ERR")]):
+        sh.part("Device", "R", f"R{34 + i}", "330", 300 + i * 8, 240, {"1": src, "2": net}, R0603)
+    sh.part("Connector_Generic", "Conn_02x04_Odd_Even", "J12", "FRONT_LED", 345, 245, {
+        "1": "FRONT_PWR", "2": "GND", "3": "FRONT_ACT", "4": "GND",
+        "5": "FRONT_FDD", "6": "GND", "7": "FRONT_ERR", "8": "GND"},
+        "Connector_PinHeader_2.54mm:PinHeader_2x04_P2.54mm_Vertical",
+        {"Note": "front LEDs: 1+ 2- PWR, 3+ 4- ACT, 5+ 6- FDD, 7+ 8- ERR"})
 
     # v0.2: QSPI PSRAM, 8 MB (OCTOSPI1 quad mode, memory-mapped at 0x90000000)
     sh.text("v0.2: APS6404L 8 MB QSPI PSRAM on OCTOSPIM P1 (PB2 CLK, PB10 NCS, PD11/PD12/PB13/PD13 IO0-3).\n"
