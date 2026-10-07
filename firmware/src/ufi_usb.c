@@ -154,7 +154,7 @@ static uint16_t str_add(char* buf, uint16_t n, const char* s) {
 }
 
 #ifndef UFI_FW_VERSION
-#define UFI_FW_VERSION "1.6"
+#define UFI_FW_VERSION "1.7"
 #endif
 #ifndef UFI_GIT_REV
 #define UFI_GIT_REV "dev"

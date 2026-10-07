@@ -14,7 +14,7 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | Schreiben | Timer + DMA, Precompensation, Verify, WRITE-LOCK-Jumper |
 | Platine v0.6 | 110 × 85 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader |
 | Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher, danach als USB-Laufwerk am PC abholen |
-| USB-Floppy | Betriebsart-Schalter: PC-Disketten (360K–1,44 MB) erscheinen am PC als normales USB-Diskettenlaufwerk, ohne Treiber |
+| USB-Floppy | Betriebsart-Schalter: PC-Disketten (360K–2,88 MB, DMF) erscheinen am PC als normales USB-Diskettenlaufwerk, ohne Treiber; Atari ST, Commodore 1581 und Amiga 880K als Block-Laufwerk (Sektorabbild wie ST/D81/ADF) |
 
 ## Aufbau des Repos
 

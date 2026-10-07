@@ -2,9 +2,12 @@
  * UFI Flux Engine - USB floppy mode: PC disks as a USB mass storage device
  *
  * The stand-alone drive (UFI.CFG drive=, default A) is read and written track by track:
- *  - format detection on track 0 side 0: data rate (decode with 500k / 250k / 300k,
- *    most ID fields wins), sectors per track, then the boot sector BPB for heads and
- *    cylinders: 1.44M, 720K, 1.2M, 360K (300k = 360K disk in a 1.2M drive, double step)
+ *  - format detection on track 0 side 0: IBM decode at 500k / 250k / 300k / 1M and Amiga
+ *    decode at 250k, most good headers wins; sectors per track from the IDs, then the boot
+ *    sector BPB (PC, Atari ST) for heads and cylinders.  PC 360K / 720K / 1.2M / 1.44M,
+ *    DMF 1.68M, ED 2.88M (read only: the write pulse is too long for 1 Mbit), Atari ST
+ *    9 / 10 sectors (up to 83 cylinders) and 11 sectors (read only), Commodore 1581 800K
+ *    (ID side field swapped), Amiga 880K (block device in ADF order)
  *  - two cached tracks (one cylinder); a missing track is read with 2 revolutions,
  *    up to 3 captures until every sector has a good CRC
  *  - writes go to the cache; a dirty track is written back as a whole new IBM track
@@ -12,7 +15,7 @@
  *    then read back and compared (one more write on a mismatch)
  *  - DSKCHG (disk change line) drops the cache and the format; without a disk the
  *    check that steps the head runs at most every 2 s
- * Only standard 512-byte-sector disks; everything else stays with the flux mode.
+ * Only 512-byte sectors; copy protection and other formats stay with the flux mode.
  * Called from the main loop (the USB stack is polled in this mode, see ufi_usb.c), so
  * the blocking drive accesses do not hold up any interrupt.
  */
@@ -21,7 +24,7 @@
 #include "ufi_mfm.h"
 #include <string.h>
 
-#define MAX_SPT             18u
+#define MAX_SPT             36u     /* ED 2.88M */
 #define SECTOR              512u
 #define READ_TRIES          3u
 #define FLUSH_IDLE_MS       1000u
@@ -32,18 +35,23 @@
 
 extern capture_context_t g_capture;
 
+#define BIT(s)              (1ull << (s))
+
 typedef struct {
     uint32_t rate;              /* bits per second */
     uint32_t rev_ticks;         /* measured revolution */
     uint8_t spt, heads, cyls, gap3;
     bool dstep;                 /* 40-track disk in an 80-track drive */
+    bool amiga;                 /* Amiga trackdisk instead of IBM sectors */
+    bool head_id_swap;          /* Commodore 1581 */
+    bool writable;              /* false: ED (write pulse too long), Atari 11 sectors */
 } fmt_t;
 
 typedef struct {
     int16_t cyl;                /* -1 = empty */
     uint8_t head;
     bool dirty;
-    uint32_t ok;                /* bit s = sector s+1 valid */
+    uint64_t ok;                /* bit s = sector s+1 valid */
     uint32_t used;              /* LRU stamp */
     uint8_t data[MAX_SPT * SECTOR];
 } slot_t;
@@ -51,9 +59,11 @@ typedef struct {
 typedef struct {
     slot_t* slot;               /* fill mode */
     const uint8_t* expect;      /* compare mode (verify) */
-    uint8_t cyl, spt;
-    uint32_t match;
+    uint8_t cyl, head, spt;
+    bool amiga;
+    uint64_t match;
     uint8_t max_r;
+    uint8_t head_ids;           /* IBM: head numbers seen in ID fields */
     bool wrong_cyl;
 } dec_ctx_t;
 
@@ -119,26 +129,31 @@ static void on_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc
     if (!crc_ok || id->n != 2u || id->r < 1u || id->r > c->spt) {
         return;
     }
-    if (id->c != c->cyl) {
+    /* IBM: the ID head field is not checked (1581 swaps it); Amiga: track = cyl/head */
+    if (id->c != c->cyl || (c->amiga && id->h != c->head)) {
         c->wrong_cyl = true;
         return;
     }
     const uint32_t s = id->r - 1u;
     if (c->slot) {
-        if (!(c->slot->ok & (1u << s))) {
+        if (!(c->slot->ok & BIT(s))) {
             memcpy(&c->slot->data[s * SECTOR], data, SECTOR);
-            c->slot->ok |= 1u << s;
+            c->slot->ok |= BIT(s);
         }
     } else if (c->expect && !memcmp(&c->expect[s * SECTOR], data, SECTOR)) {
-        c->match |= 1u << s;
+        c->match |= BIT(s);
     }
 }
 
 /* decode all captured revolutions as one continuous flux stream */
 static uint32_t decode_capture(uint32_t rate, dec_ctx_t* c)
 {
-    static mfm_decoder_t d;                            /* ~1 KB, keep it off the stack */
-    mfm_dec_init(&d, rate, on_sector, c);
+    static mfm_decoder_t d;                            /* ~2 KB, keep it off the stack */
+    if (c->amiga) {
+        mfm_dec_init_amiga(&d, rate, on_sector, c);
+    } else {
+        mfm_dec_init(&d, rate, on_sector, c);
+    }
     uint32_t carry = 0;
     const uint8_t n = ufi_flux_get_revolution_count();
     for (uint8_t k = 0; k < n; k++) {
@@ -152,7 +167,13 @@ static uint32_t decode_capture(uint32_t rate, dec_ctx_t* c)
         }
         carry = r->index_time - prev;                  /* gap across the index pulse */
     }
+    c->head_ids = d.head_ids;
     return d.ids_seen;
+}
+
+static uint64_t all_sectors(void)
+{
+    return (fmt.spt >= 64u) ? ~0ull : (BIT(fmt.spt) - 1u);
 }
 
 static int read_track(slot_t* s, uint8_t cyl, uint8_t head)
@@ -161,14 +182,14 @@ static int read_track(slot_t* s, uint8_t cyl, uint8_t head)
     s->head = head;
     s->dirty = false;
     s->ok = 0;
-    const uint32_t all = (1u << fmt.spt) - 1u;
+    const uint64_t all = all_sectors();
     int ret = UFI_ERR_NO_INDEX;
     for (uint32_t tries = 0; tries < READ_TRIES && s->ok != all; tries++) {
         ret = capture(cyl, head, 2);
         if (ret != UFI_OK) {
             continue;
         }
-        dec_ctx_t c = {.slot = s, .cyl = cyl, .spt = fmt.spt};
+        dec_ctx_t c = {.slot = s, .cyl = cyl, .head = head, .spt = fmt.spt, .amiga = fmt.amiga};
         decode_capture(fmt.rate, &c);
         g_capture.state = CAPTURE_IDLE;
         if (c.wrong_cyl) {
@@ -181,15 +202,15 @@ static int read_track(slot_t* s, uint8_t cyl, uint8_t head)
 
 static int write_track(slot_t* s)
 {
-    if (ufi_drive_write_protected() || ufi_board_write_locked()) {
+    if (!fmt.writable || ufi_drive_write_protected() || ufi_board_write_locked()) {
         return UFI_ERR_WRITE_PROT;
     }
-    const uint32_t all = (1u << fmt.spt) - 1u;
+    const uint64_t all = all_sectors();
     if (s->ok != all) {
         return UFI_ERR_DMA;                            /* never write a half-known track */
     }
     const mfm_track_fmt_t f = {
-        .rate_bps = fmt.rate, .spt = fmt.spt, .gap3 = fmt.gap3,
+        .rate_bps = fmt.rate, .spt = fmt.spt, .gap3 = fmt.gap3, .head_id_swap = fmt.head_id_swap,
         /* 98 % of the revolution: the splice stays in gap 4b at drive speed tolerance */
         .track_cells = (uint32_t)(((uint64_t)fmt.rev_ticks * 2u * fmt.rate / MFM_TICK_HZ) * 98u / 100u),
     };
@@ -198,7 +219,9 @@ static int write_track(slot_t* s)
         motor_ready();
         uint32_t words = 0;
         uint32_t* store = ufi_flux_store(&words);
-        const uint32_t n = mfm_encode_track(&f, (uint8_t)s->cyl, s->head, s->data, store, words);
+        const uint32_t n = fmt.amiga
+            ? mfm_encode_amiga_track(fmt.rate, f.track_cells, (uint8_t)s->cyl, s->head, s->data, store, words)
+            : mfm_encode_track(&f, (uint8_t)s->cyl, s->head, s->data, store, words);
         if (n == 0) {
             return UFI_ERR_BUFFER_FULL;
         }
@@ -210,7 +233,8 @@ static int write_track(slot_t* s)
         if (ret != UFI_OK) {
             continue;
         }
-        dec_ctx_t c = {.expect = s->data, .cyl = (uint8_t)s->cyl, .spt = fmt.spt};
+        dec_ctx_t c = {.expect = s->data, .cyl = (uint8_t)s->cyl, .head = s->head,
+                       .spt = fmt.spt, .amiga = fmt.amiga};
         decode_capture(fmt.rate, &c);
         g_capture.state = CAPTURE_IDLE;
         ret = (c.match == all) ? UFI_OK : UFI_ERR_DMA;
@@ -234,7 +258,8 @@ static uint16_t le16(const uint8_t* p)
 
 static int detect(void)
 {
-    static const uint32_t rates[] = {500000u, 250000u, 300000u};
+    /* IBM at every rate (ED 1 Mbit too), Amiga at DD; most good headers wins */
+    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u};
     set_double_step(false);
     motor_ready();
     ufi_drive_recalibrate();
@@ -242,13 +267,13 @@ static int detect(void)
     if (ret != UFI_OK) {
         return ret;
     }
-    uint32_t best = 0, best_rate = 0;
-    for (uint32_t i = 0; i < 3; i++) {
-        dec_ctx_t c = {.cyl = 0, .spt = MAX_SPT};
+    uint32_t best = 0, best_i = 0;
+    for (uint32_t i = 0; i < 5; i++) {
+        dec_ctx_t c = {.cyl = 0, .spt = MAX_SPT, .amiga = (i == 4u)};
         const uint32_t ids = decode_capture(rates[i], &c);
         if (ids > best) {
             best = ids;
-            best_rate = rates[i];
+            best_i = i;
         }
     }
     if (best < 4u) {
@@ -258,32 +283,49 @@ static int detect(void)
     /* sectors per track from the IDs, sector data into cache slot 0 */
     slot_t* s = &slots[0];
     memset(s, 0, sizeof(*s) - sizeof(s->data));
-    dec_ctx_t c = {.slot = s, .cyl = 0, .spt = MAX_SPT};
-    decode_capture(best_rate, &c);
+    dec_ctx_t c = {.slot = s, .cyl = 0, .head = 0, .spt = MAX_SPT, .amiga = (best_i == 4u)};
+    decode_capture(rates[best_i], &c);
     fmt.rev_ticks = ufi_flux_get_revolution(0)->index_time;
     g_capture.state = CAPTURE_IDLE;
     led_set(&PIN_LED_FDD, false);
 
-    fmt.rate = best_rate;
+    fmt.rate = rates[best_i];
+    fmt.amiga = (best_i == 4u);
     fmt.spt = c.max_r;
     fmt.heads = 2;
-    if (fmt.rate == 500000u && fmt.spt == 18u) {
-        fmt.gap3 = 0x6C;  fmt.cyls = 80;               /* 1.44M */
+    fmt.cyls = 80;
+    fmt.writable = true;
+    /* physical head 0 carries ID side 1 only: Commodore 1581 */
+    fmt.head_id_swap = !fmt.amiga && c.head_ids == 0x02u;
+    if (fmt.amiga) {
+        if (fmt.spt != AMIGA_SECTORS) {
+            return UFI_ERR_NOT_IMPL;                   /* Amiga 880K (HD 1.76M not yet) */
+        }
+    } else if (fmt.rate == 1000000u && fmt.spt == 36u) {
+        fmt.gap3 = 0x53;  fmt.writable = false;        /* ED 2.88M: write pulse too long */
+    } else if (fmt.rate == 500000u && fmt.spt == 21u) {
+        fmt.gap3 = 0x0C;                               /* DMF 1.68M */
+    } else if (fmt.rate == 500000u && fmt.spt == 18u) {
+        fmt.gap3 = 0x6C;                               /* 1.44M */
     } else if (fmt.rate == 500000u && fmt.spt == 15u) {
-        fmt.gap3 = 0x54;  fmt.cyls = 80;               /* 1.2M */
-    } else if (fmt.spt == 9u) {
-        fmt.gap3 = 0x50;  fmt.cyls = (fmt.rate == 300000u) ? 40 : 80;   /* 360K / 720K */
+        fmt.gap3 = 0x54;                               /* 1.2M */
+    } else if (fmt.rate != 500000u && fmt.spt == 9u) {
+        fmt.gap3 = 0x50;  fmt.cyls = (fmt.rate == 300000u) ? 40 : 80;   /* 360K / 720K / ST */
+    } else if (fmt.rate == 250000u && fmt.spt == 10u) {
+        fmt.gap3 = fmt.head_id_swap ? 0x23 : 0x28;     /* 1581 800K / Atari ST 10 sectors */
+    } else if (fmt.rate == 250000u && fmt.spt == 11u) {
+        fmt.gap3 = 0x02;  fmt.writable = false;        /* Atari ST 11 sectors: read only */
     } else {
         return UFI_ERR_NOT_IMPL;
     }
-    if (s->ok & 1u) {                                  /* boot sector BPB, if plausible */
+    if (!fmt.amiga && !fmt.head_id_swap && (s->ok & 1u)) {   /* boot sector BPB (PC, ST) */
         const uint8_t* b = s->data;
         const uint16_t bps = le16(&b[11]), spt = le16(&b[24]), heads = le16(&b[26]);
         const uint16_t total = le16(&b[19]);
         if (bps == SECTOR && spt == fmt.spt && (heads == 1 || heads == 2) && total &&
             total % (spt * heads) == 0) {
             const uint32_t cyls = total / (spt * heads);
-            if (cyls >= 35u && cyls <= 84u) {
+            if (cyls >= 35u && cyls <= 83u) {           /* Atari ST disks often 81-83 */
                 fmt.heads = (uint8_t)heads;
                 fmt.cyls = (uint8_t)cyls;
             }
@@ -293,7 +335,7 @@ static int detect(void)
     set_double_step(fmt.dstep);
     s->cyl = 0;
     s->head = 0;
-    s->ok &= (1u << fmt.spt) - 1u;
+    s->ok &= all_sectors();
     s->used = ++stamp;
     slots[1].cyl = -1;
     fmt_ok = true;
@@ -331,7 +373,7 @@ static slot_t* get_slot(uint8_t cyl, uint8_t head, int* ret)
         if (slots[i].cyl == cyl && slots[i].head == head) {
             slots[i].used = ++stamp;
             *ret = UFI_OK;
-            if (slots[i].ok != (1u << fmt.spt) - 1u && !slots[i].dirty) {
+            if (slots[i].ok != all_sectors() && !slots[i].dirty) {
                 *ret = read_track(&slots[i], cyl, head);   /* earlier read was incomplete */
             }
             return &slots[i];
@@ -446,7 +488,7 @@ uint32_t ufi_floppy_blocks(void)
 
 bool ufi_floppy_write_protected(void)
 {
-    return ufi_board_write_locked() || ufi_drive_write_protected();
+    return ufi_board_write_locked() || ufi_drive_write_protected() || (fmt_ok && !fmt.writable);
 }
 
 int ufi_floppy_read(uint8_t* buf, uint32_t lba, uint32_t count)
@@ -458,7 +500,7 @@ int ufi_floppy_read(uint8_t* buf, uint32_t lba, uint32_t count)
         }
         int ret;
         slot_t* sl = get_slot(c, h, &ret);
-        if (!sl || !(sl->ok & (1u << s))) {
+        if (!sl || !(sl->ok & BIT(s))) {
             return ret != UFI_OK ? ret : UFI_ERR_DMA;
         }
         memcpy(buf + i * SECTOR, &sl->data[s * SECTOR], SECTOR);
@@ -482,7 +524,7 @@ int ufi_floppy_write(const uint8_t* buf, uint32_t lba, uint32_t count)
             return ret;
         }
         memcpy(&sl->data[s * SECTOR], buf + i * SECTOR, SECTOR);
-        sl->ok |= 1u << s;
+        sl->ok |= BIT(s);
         sl->dirty = true;
     }
     last_write_ms = HAL_GetTick();
