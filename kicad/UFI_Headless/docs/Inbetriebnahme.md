@@ -35,8 +35,8 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 | 3.1 | `cmake -S firmware -B firmware/build -G Ninja && cmake --build firmware/build` | `ufi_firmware.bin`, keine Warnungen | |
 | 3.2 | Flashen: ST-Link an J4 (SWD) **oder** BOOT-Taster (SW2) halten + RESET (SW1) → `dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin` | erfolgreich | |
 | 3.3 | Nach dem Start (12 V an, Netzteil 500 mA) | 3 ERR-Blinker = PSRAM-Fehler; sonst keine ERR-LED | |
-| 3.4 | `ufi info` | `UFI Flux Engine v1.8 <rev> <datum>` · `UFI Headless v0.6` · `STM32H723` · `PSRAM 8 MB ok` | |
-| 3.5 | Bei „rev ?“: Spannung an PA4 (R17/R18) messen | 1,06 V | |
+| 3.4 | `ufi info` | `UFI Flux Engine v1.11 <rev> <datum>` · `UFI Headless v0.7` · `STM32H723` · `PSRAM 8 MB ok` | |
+| 3.5 | Bei „rev ?“: Spannung an PA4 (R17/R18) messen | 0,60 V (v0.7, R18 = 2,2k) | |
 | 3.6 | `ufi selftest`, `ufi status` | keine Fehler | |
 
 Neue v0.5-Befehle (Host-Tool hat dafür noch keine Kommandos) – in Python:
@@ -108,7 +108,12 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 7.2b | `UFI.CFG` im SD-Laufwerk-Modus auf `drive=ds1` ändern, Neustart, Dump mit Taster A | Dump läuft auf dem DS1-Laufwerk | |
 | 7.2c | Nach einem Dump `DUMPnnnn.LOG` im SD-Laufwerk-Modus öffnen | Format erkannt, gute Disketten: alle Spuren voll, Drehzahl ≈ 300 | |
 | 7.2d | Zwei Laufwerke, `button_a=copy`, `copy_from=a`, `copy_to=b`, Neustart, Schrott-Diskette in B, Taster A | Kopie läuft, ACT dauerhaft an; Kopie im PC lesbar | |
-| 7.2e | `UFI.CFG` `protocol=gw`, Neustart (Schalter Mitte), Greaseweazle-Werkzeuge installiert: `gw info`, `gw read --drive A --revs 3 t.scp`, `gw write --drive B t.scp` auf eine Schrott-Diskette | ACT blinkt 4×; `gw info` zeigt Firmware 1.10, Modell „Unknown (0x5501)“; Lesen/Schreiben fehlerfrei, Kopie im PC lesbar | |
+| 7.2e | `UFI.CFG` `protocol=gw`, Neustart (Schalter Mitte), Greaseweazle-Werkzeuge installiert: `gw info`, `gw read --drive A --revs 3 t.scp`, `gw write --drive B t.scp` auf eine Schrott-Diskette | ACT blinkt 4×; `gw info` zeigt Firmware 1.11, Modell „Unknown (0x5501)“; Lesen/Schreiben fehlerfrei, Kopie im PC lesbar | |
+| 7.2f | Apple-Port **ohne** Laufwerk: Laufwerksversorgung an, J14 Pin 9 gegen GND, Pin 11/12 und 13 | −11…−12 V, +5 V, +12 V | |
+| 7.2g | Oszi an J14 Pin 2/4/6/8 bei `ufi select apple`, `ufi motor on`, `ufi recal` | Phasen nacheinander 0→3 rückwärts (80 Halbschritte), danach alle low; Pin 14 (/ENABLE) low solange Motor an | |
+| 7.2h | Disk II an J14 (Originalkabel, rote Ader = Pin 1), `ufi select apple`, `ufi motor on`, `ufi recal`, `ufi read 0 0 -r 2` (Firmware nimmt bei Apple automatisch 200-ms-Abschnitte statt Index) | Kopf klackert an Spur 0, Fluss 4-µs-Raster (GCR), ~50 000 Wechsel je 200 ms | |
+| 7.2i | `UFI.CFG` `drive=apple`, `tracks=35`, `sides=1`, Dump mit Taster A, SCP am PC mit `a2r`/Applesauce-Tools bzw. HxC öffnen | DOS-3.3/ProDOS-Diskette dekodierbar | |
+| 7.2j | Schreiben (J11 ziehen, Schrott-Diskette): eine gelesene Spur zurückschreiben, erneut lesen | gleiche Flussanzahl ±5 %; WRDATA an Pin 18 wechselt je Flusswechsel den Pegel | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |
 

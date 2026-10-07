@@ -17,7 +17,7 @@ from netlist import read_netlist  # noqa: E402
 STD = Path(r"C:\Program Files\KiCad\10.0\share\kicad\footprints")
 UFI_LIB = Path(__file__).resolve().parents[2] / "footprints"
 MM = pcbnew.FromMM
-W, H, CORNER = 110.0, 85.0, 2.0
+W, H, CORNER = 110.0, 97.0, 2.0   # v0.7: +12 mm at the bottom for the Apple Disk II port
 
 comps, nets = read_netlist(sys.argv[1])
 OUT = sys.argv[2]
@@ -367,7 +367,8 @@ for p in fps["U5"].Pads():
     via("GND", vx, vy, 0.48, 0.25)
 
 # Mounting holes (M3, plated) - added as board items, not in the schematic
-for i, (hx, hy) in enumerate([(3.5, 3.5), (W - 3.5, 3.5), (3.5, H - 14.0), (W - 3.5, H - 14.0)], 1):
+for i, (hx, hy) in enumerate([(3.5, 3.5), (W - 3.5, 3.5), (3.5, 71.0), (W - 3.5, 71.0),
+                               (3.5, H - 3.5), (W - 3.5, H - 3.5)], 1):   # H5/H6 since v0.7
     h = pcbnew.FootprintLoad(str(STD / "MountingHole.pretty"), "MountingHole_3.2mm_M3_Pad_Via")
     h.SetReference(f"H{i}")
     h.SetValue("M3")

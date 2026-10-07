@@ -75,6 +75,21 @@ SEL1B teilt sich DRVSEL_B, MTRXD teilt sich MOTOR_B mit dem 34-pol Bus → nur e
 
 Belegung bestätigt gegen Amiga Hardware Reference Manual, Appendix E „External Disk Interface Specification“ (alle 23 Pins). `docs/Amiga_DB23_Adapter_Cable.md` wurde entsprechend korrigiert (vorher GND auf DB23 12/15/20/23 und falsches Steckergeschlecht).
 
+## Apple-Disk-II-Port (J14, J15) – ab v0.7
+
+Platine dafür unten um 12 mm verlängert (110 × 97 mm, zusätzliche Befestigungslöcher H5/H6). J14 = 2×10-Wannenstecker mit der Belegung des Laufwerkssteckers der Disk-II-Controllerkarte – ein Disk-II-Laufwerk wird mit seinem Originalkabel direkt angesteckt:
+
+1/3/5/7 GND · 2/4/6/8 PH0–PH3 · 9 −12 V · 10 /WRREQ · 11/12 +5 V · 13/15/17/19 +12 V · 14 /ENABLE · 16 RDDATA · 18 WRDATA · 20 WRPROT
+
+- Ausgänge über SN74AHCT244 (U16) an FDD_5V: TTL-Pegel, ohne Laufwerksversorgung stromlos (keine Rückspeisung). Phasen aktiv high, /ENABLE und /WRREQ aktiv low, WRDATA wechselt je Flusswechsel den Pegel (TIM3_CH2 im Toggle-Modus). 10k auf der MCU-Seite halten beim Reset alles inaktiv (RN9/RN10).
+- Eingänge RDDATA/WRPROT: 10k nach FDD_5V, 74LVC2G17 (U17) an 3V3. RDDATA auf TIM2_CH3 – gleicher Zähler wie die 34-pol Flusserfassung. Ohne Laufwerk meldet WRPROT „geschützt“.
+- −12 V (Pin 9) aus FDD_12V mit ICL7662 (U18), Innenwiderstand ≈ 100 Ω – nur für die Disk-II-Analogkarte (wenige mA). Das „Apple 5.25 Drive“ (DB19) braucht keine −12 V.
+- **J15** (1×2): /ENABLE eines zweiten Laufwerks (U16 Ausgang 2Y1) + GND – für ein Adapterkabel auf einen zweiten Disk-II-Stecker oder DB19 Pin 9 (/DRIVE2, Daisy-Chain wie am Apple-5.25-Controller).
+- DB19-Laufwerke (Apple 5.25 Drive, UniDisk 5.25) über Adapterkabel 20-pol → DB19. **Nicht** unterstützt: Apple 3.5 Drive / UniDisk 3.5 (/EN3.5, SmartPort; DB19 Pin 4 bleibt GND), Macintosh-Laufwerke.
+- ESD auf allen Signalleitungen am Stecker (D15, D16).
+- **Schreibschutz**: Der WRITE-LOCK-Jumper J11 sperrt in Hardware nur WGATE des 34-pol Busses; für den Apple-Port prüft die Firmware den Jumper (kein Schreiben mit gestecktem Jumper), die Hardware nicht.
+- Firmware 1.11: Laufwerke `apple` (J14) und `apple2` (J15), `ufi select apple`, `UFI.CFG drive=apple` (`tracks=35`, `sides=1`). Kein Indexloch: Umdrehungen = 200-ms-Abschnitte, SCP mit Disk-Typ Apple II ohne Index-Flag. Kopf: 4-Phasen-Schrittmotor, 2 Halbschritte je Spur, Rekalibrieren = 80 Halbschritte gegen den Anschlag (Klackern, wie beim Original). Schreiben startet sofort (kein Index), Löschen = /WRREQ ohne Pegelwechsel. Board-ID 10k/2,2k = 0,6 V → „v0.7“, nur dann sind die Apple-Laufwerke wählbar.
+
 ## Stromaufnahme +5V (Abschätzung)
 
 3× LS07 ≈ 0,12 A · Pull-ups worst case ≈ 0,1 A · MCU über LDO ≈ 0,35 A · 3,5"-Laufwerk ≈ 0,5–1 A Spitze → ≈ 1,5 A. TPS2116 (2,5 A) und Buck (2 A) reichen; an USB-only über dem 500-mA-Default.
@@ -97,7 +112,7 @@ cd kicad/UFI_Headless
 
 ![top](docs/top.png)
 
-- 110 × 85 mm, 4 Lagen, 115 Bauteile (inkl. 6 Messpunkt-Pads), 4× M3
+- 110 × 85 mm (v0.1–v0.6; ab v0.7 110 × 97 mm, 6× M3), 4 Lagen, 115 Bauteile (inkl. 6 Messpunkt-Pads), 4× M3
 - DRC: **0 Fehler, 0 Warnungen, 0 unverbundene Elemente, Schaltplan-Parität ok**, kein Via-in-Pad. IDC-Konturen von J6/J7 ragen absichtlich über den Rand: per Regel `idc_edge_silk` in `UFI_Headless.kicad_dru` ausgenommen (Fertiger clippt), Bibliotheks-Footprints unverändert
 - Fertigungsdaten in `fertigung/`: `UFI_Headless_gerber.zip` (Gerber + Excellon), `UFI_Headless-bom.csv`, `UFI_Headless-pos.csv` (KiCad) und `UFI_Headless-cpl-jlc.csv` (JLC-Spaltennamen + Gehäuse-Rotationsoffsets, `scripts/jlc_cpl.py`), `JLC_Rotation_Check.md` (Pin-1-Checkliste für den JLC-Viewer)
 
@@ -130,7 +145,7 @@ bash scripts/make_pcb.sh all                               # Neu-Layout von Null
 
 **Das geprüfte Board ist die Layout-Quelle.** Schaltplanänderungen kommen per `eco` hinein: `add_parts.py` setzt alle Pad-Netze aus der Netzliste neu, platziert neue Referenzen nahe dem angegebenen Punkt (frei von Courtyards, Löchern und gesperrten Leiterbahnen, möglichst wenige Bahnen im Weg), entfernt nur die Bahnen darunter; danach Pours entfernen, inkrementell routen (Schritte 2–6), Pours neu. Handkorrekturen bleiben dabei erhalten. `all` erzeugt ein neues Layout, das ein neues Review braucht. Netzklassen (Power/Supply) stehen in `.kicad_pro` und `build_pcb.py`.
 
-1. `build_pcb.py` – Footprints aus der Schaltplan-Netlist (mit KIID-Pfaden → Schaltplan-Parität), Platzierung, 110×85 mm Outline, M3-Löcher, In1-GND-Plane, vorgeroutete USB-C-Auffächerung (gesperrt)
+1. `build_pcb.py` – Footprints aus der Schaltplan-Netlist (mit KIID-Pfaden → Schaltplan-Parität), Platzierung, Outline (seit v0.7 110×97 mm), M3-Löcher, In1-GND-Plane, vorgeroutete USB-C-Auffächerung (gesperrt)
 2. Freerouting 2.4.1 (Java 25) – F.Cu / In2.Cu / B.Cu als Signallagen, In1.Cu GND-Plane
 3. `drop_violations.py` – Freerouting-Leiterbahnen mit DRC-Verstoß löschen und neu routen (bis sauber)
 4. `widen_power.py` – Versorgungsnetze auf 0,8 mm (GND/3V3 0,5 mm) verbreitern, wo DRC es erlaubt
@@ -168,6 +183,12 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | FDD_STEP / DIR / SIDE | PE11 / PE12 / PE13 | GPIO out |
 | FDD_WGATE / DENSITY | PE14 / PE15 | GPIO out |
 | FDD_DRATE | PF11 | GPIO out → U7.11, J6 Pin 6 nur über JP1 (v0.4) |
+| APL_PH0 / PH1 / PH2 / PH3 | PF12 / PF13 / PG6 / PF15 | GPIO out → U16 (AHCT244) → J14 Pin 2/4/6/8, high = Phase an (v0.7) |
+| APL_EN1 / APL_EN2 | PG5 / PB12 | GPIO out, low = /ENABLE J14 Pin 14 / J15 Pin 1 (v0.7) |
+| APL_WRREQ | PB14 | GPIO out, low = /WRREQ J14 Pin 10 (v0.7) |
+| APL_WRDATA | PA7 | TIM3_CH2 (AF2) Toggle → J14 Pin 18 (v0.7) |
+| APL_RDDATA | PA2 | TIM2_CH3 (AF1) Input Capture ← U17 ← J14 Pin 16 (v0.7) |
+| APL_WRPROT | PB15 | GPIO in ← U17 ← J14 Pin 20, high = geschützt (v0.7) |
 | FDD5_EN / FDD12_EN | PE2 / PE3 | GPIO out, high = Laufwerksversorgung an (v0.5) |
 | I_FDD5 / I_FDD12 | PC0 / PC1 | ADC1 INP10/INP11, INA180A1 2 V/A (v0.5) |
 | WLOCK | PE4 | GPIO in, high = WRITE-LOCK-Jumper gesteckt (v0.5) |

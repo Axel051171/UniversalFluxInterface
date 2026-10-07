@@ -56,6 +56,9 @@ LCSC = {
     ("47k", R0603): "C25819", "BTN_A": "C2886898", "BTN_B": "C2886898",
     # v0.6 (looked up 2026-10-07): SD NAND replaces the microSD slot
     "CSNP32GCR01-AOW": "C2841139",
+    # v0.7 Apple Disk II port
+    "SN74AHCT244PWR": "C484743", "74LVC2G17GW": "C19829576", "ICL7662EBA+T": "C28595",
+    "DISK_II": "C2977593", ("10uF/25V", C1206): "C14860", ("10k", RPACK4_FP): "C29718",
     # no LCSC match (hand-sourced): AMIGA_FDD 2x12 shrouded header, 12V barrel jack
     # test points are bare pads (TestPoint_Pad_D1.5mm), nothing to place
 }
@@ -288,6 +291,12 @@ GPIO = {
     # (PG13 card detect dropped with the slot)
     "PD6": "SD_CLK", "PD7": "SD_CMD", "PG9": "SD_D0", "PG10": "SD_D1", "PG11": "SD_D2",
     "PG12": "SD_D3",
+    # v0.7: Apple Disk II port J14 (Apple_Port sheet).  RDDATA on TIM2_CH3 (same timebase as
+    # the flux capture), WRDATA on TIM3_CH2 (toggle output: one level change per flux transition)
+    "PF12": "G:APL_PH0", "PF13": "G:APL_PH1", "PG6": "G:APL_PH2", "PF15": "G:APL_PH3",
+    "PG5": "G:APL_EN1", "PB12": "G:APL_EN2", "PB14": "G:APL_WRREQ", "PB15": "G:APL_WRPROT",   # PG5/PG6: PB11/PF14 not reachable in the layout
+    "PA7": "G:APL_WRDATA",    # TIM3_CH2 (AF2)
+    "PA2": "G:APL_RDDATA",    # TIM2_CH3 (AF1)
 }
 
 
@@ -390,12 +399,13 @@ def build_core() -> Sheet:
     sh.part("Device", "R", "R16", "10k", 90, 250, {"1": "+3V3", "2": "PSRAM_CS"}, R0603)
 
     # v0.5: board ID divider (10k/10k = 1.65 V = rev v0.5), expansion header, buttons, microSD
-    sh.text("BOARD_ID divider on PA4 (10k/10k -> v0.5, 10k/4.7k -> v0.6). J9 expansion: I2C1 (2.2k pull-ups), 2 GPIO,\n"
+    sh.text("BOARD_ID divider on PA4 (10k/10k -> v0.5, 10k/4.7k -> v0.6, 10k/2.2k -> v0.7). J9 expansion: I2C1 (2.2k pull-ups), 2 GPIO,\n"
             "button lines, 3V3/5V. SW3/SW4 front buttons (active low, MCU pull-ups). v0.6: SD NAND U15 on\n"
             "SDMMC2 (soldered, 4 GB), 4 bit, 47k pull-ups on CMD/DAT.", 20, 280, 1.27)
     sh.part("Device", "R", "R17", "10k", 30, 300, {"1": "+3V3", "2": "BOARD_ID"}, R0603)
-    # board revision divider: 10k/10k = 1650 mV (v0.5), 10k/4.7k = 1055 mV (v0.6, SD NAND)
-    sh.part("Device", "R", "R18", "4.7k", 30, 315, {"1": "BOARD_ID", "2": "GND"}, R0603)
+    # board revision divider: 10k/10k = 1650 mV (v0.5), 10k/4.7k = 1055 mV (v0.6, SD NAND),
+    # 10k/2.2k = 595 mV (v0.7, Apple Disk II port)
+    sh.part("Device", "R", "R18", "2.2k", 30, 315, {"1": "BOARD_ID", "2": "GND"}, R0603)
     sh.part("Device", "R", "R19", "2.2k", 60, 300, {"1": "+3V3", "2": "I2C_SCL"}, R0603)
     sh.part("Device", "R", "R20", "2.2k", 60, 315, {"1": "+3V3", "2": "I2C_SDA"}, R0603)
     sh.part("Connector_Generic", "Conn_02x05_Odd_Even", "J9", "EXPANSION", 100, 300, {
@@ -620,17 +630,99 @@ def sheet_block(name, file, x, y, w, h, page, root_uuid):
         f'(instances (project "{PROJECT}" (path "/{root_uuid}" (page "{page}")))))')
 
 
+# ----------------------------------------------------------------------------
+# v0.7: Apple II Disk II port (20-pin, as on the Disk II controller card)
+# ----------------------------------------------------------------------------
+TSSOP20 = "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+SOT363 = "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+SOIC8 = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+APPLE_OUT = ["PH0", "PH1", "PH2", "PH3", "EN1", "EN2", "WRREQ", "WRDATA"]
+
+
+def build_apple() -> Sheet:
+    sh = Sheet("UFI Headless - Apple Disk II Port", PROJECT)
+    sh.text("APPLE II DISK II PORT (v0.7) - J14 2x10, pinout of the Disk II controller card drive connector:\n"
+            "1/3/5/7 GND, 2/4/6/8 PH0-PH3, 9 -12V, 10 /WRREQ, 11/12 +5V, 13/15/17/19 +12V, 14 /ENABLE,\n"
+            "16 RDDATA, 18 WRDATA, 20 WRPROT.  J15: /ENABLE of a second drive (DB19 pin 9 /DRIVE2 or a\n"
+            "second Disk II header via adapter cable).  DB19 drives (Apple 5.25 Drive) via adapter cable;\n"
+            "Apple 3.5 / UniDisk 3.5 (/EN3.5, SmartPort) are not supported.\n"
+            "Outputs: SN74AHCT244 at FDD_5V (TTL levels, unpowered with the drive supply; inputs 5.5 V\n"
+            "tolerant at any VCC).  MCU side 10k: phases pulled low, enables and /WRREQ pulled high (reset safe).\n"
+            "PH0-3 active high, /ENABLE and /WRREQ active low, WRDATA toggles once per flux transition.\n"
+            "Inputs: RDDATA, WRPROT 10k to FDD_5V -> 74LVC2G17 at 3V3 (5 V tolerant) -> MCU.\n"
+            "-12V: ICL7662 inverter from FDD_12V (~100 R source, Disk II analog card load only).",
+            20, 20, 1.27)
+
+    # output buffer, both halves always enabled
+    conn = {"1": "GND", "19": "GND", "10": "GND", "20": "G:FDD_5V"}
+    a_pins = ["2", "4", "6", "8", "17", "15", "13", "11"]   # 1A0..1A3, 2A0..2A3
+    y_pins = ["18", "16", "14", "12", "3", "5", "7", "9"]   # 1Y0..1Y3, 2Y0..2Y3
+    for s, a, y in zip(APPLE_OUT, a_pins, y_pins):
+        conn[a] = f"G:APL_{s}"
+        conn[y] = f"AP_{s}"
+    sh.part("74xx", "74AHCT244", "U16", "SN74AHCT244PWR", 80, 90, conn, TSSOP20,
+            {"MPN": "SN74AHCT244PWR"})
+    sh.part("Device", "C", "C52", "100nF", 120, 70, {"1": "G:FDD_5V", "2": "GND"}, C0603)
+    # FDD_5V / FDD_12V come from the shunts (passive) on the power sheet
+    sh.pwr_flag("G:FDD_5V", 140, 60)
+    sh.pwr_flag("G:FDD_12V", 150, 60)
+    # reset-safe levels on the MCU side (floating GPIOs at power-up)
+    sh.part("Device", "R_Pack04", "RN9", "10k", 40, 150, {
+        "1": "G:APL_PH0", "8": "GND", "2": "G:APL_PH1", "7": "GND",
+        "3": "G:APL_PH2", "6": "GND", "4": "G:APL_PH3", "5": "GND"}, RPACK4)
+    sh.part("Device", "R_Pack04", "RN10", "10k", 60, 150, {
+        "1": "G:APL_EN1", "8": "+3V3", "2": "G:APL_EN2", "7": "+3V3",
+        "3": "G:APL_WRREQ", "6": "+3V3", "4": "NC", "5": "NC"}, RPACK4)
+
+    # input buffer
+    props = {"MPN": "74LVC2G17GW,125"}
+    sh.part("74xGxx", "74LVC2G17", "U17", "74LVC2G17GW", 180, 90, {"1": "AP_RDDATA", "6": "G:APL_RDDATA"},
+            SOT363, props, unit=1)
+    sh.part("74xGxx", "74LVC2G17", "U17", "74LVC2G17GW", 180, 110, {"3": "AP_WRPROT", "4": "G:APL_WRPROT"},
+            SOT363, props, unit=2)
+    sh.part("74xGxx", "74LVC2G17", "U17", "74LVC2G17GW", 210, 100, {"5": "+3V3", "2": "GND"},
+            SOT363, props, unit=3)
+    sh.part("Device", "C", "C53", "100nF", 230, 100, {"1": "+3V3", "2": "GND"}, C0603)
+    sh.part("Device", "R", "R38", "10k", 160, 80, {"1": "G:FDD_5V", "2": "AP_RDDATA"}, R0603)
+    sh.part("Device", "R", "R39", "10k", 160, 120, {"1": "G:FDD_5V", "2": "AP_WRPROT"}, R0603)
+
+    # -12V charge pump (ICL7662: up to 20 V in, LV and OSC open)
+    sh.part("Regulator_SwitchedCapacitor", "ICL7660", "U18", "ICL7662EBA+T", 80, 220, {
+        "1": "NC", "2": "M12_CP", "3": "GND", "4": "M12_CN", "5": "AP_M12V", "6": "NC", "7": "NC",
+        "8": "G:FDD_12V"}, SOIC8, {"MPN": "ICL7662EBA+T"})
+    sh.part("Device", "C", "C54", "100nF", 40, 220, {"1": "G:FDD_12V", "2": "GND"}, C0603)
+    sh.part("Device", "C", "C55", "10uF/25V", 120, 210, {"1": "M12_CP", "2": "M12_CN"}, C1206)
+    sh.part("Device", "C", "C56", "10uF/25V", 120, 235, {"1": "GND", "2": "AP_M12V"}, C1206)
+
+    # connectors
+    hdr = {"1": "GND", "3": "GND", "5": "GND", "7": "GND",
+           "2": "AP_PH0", "4": "AP_PH1", "6": "AP_PH2", "8": "AP_PH3", "9": "AP_M12V", "10": "AP_WRREQ",
+           "11": "G:FDD_5V", "12": "G:FDD_5V", "13": "G:FDD_12V", "15": "G:FDD_12V", "17": "G:FDD_12V",
+           "19": "G:FDD_12V", "14": "AP_EN1", "16": "AP_RDDATA", "18": "AP_WRDATA", "20": "AP_WRPROT"}
+    sh.part("Connector_Generic", "Conn_02x10_Odd_Even", "J14", "DISK_II", 300, 120, hdr,
+            "UFI_Headless:IDC-Header_2x10_P2.54mm_Vertical_UFI",  # silk edge clears the J7 pin-1 mark
+            {"Note": "Apple Disk II drive connector (controller card pinout)"})
+    sh.part("Connector_Generic", "Conn_01x02", "J15", "APPLE_EN2", 300, 190,
+            {"1": "AP_EN2", "2": "GND"}, "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+            {"Note": "/ENABLE second drive (DB19 pin 9 /DRIVE2)"})
+    # ESD on everything that leaves the board
+    esd5(sh, "D15", ["AP_PH0", "AP_PH1", "AP_PH2", "AP_PH3", "AP_EN1"], 250, 230)
+    esd5(sh, "D16", ["AP_EN2", "AP_WRREQ", "AP_WRDATA", "AP_RDDATA", "AP_WRPROT"], 290, 230)
+    return sh
+
+
 def main():
     root = Sheet("UFI Headless", PROJECT)
     root.text("UFI Headless - STM32H723 flux engine without CM5.\n"
-              "Sheets: Power, MCU_Core, Flux_Interface, FDD_Connectors, IEC_Bus.",
+              "Sheets: Power, MCU_Core, Flux_Interface, FDD_Connectors, IEC_Bus, Apple_Port.",
               20, 20, 2)
     blocks = []
     subs = [("Power", "Power.kicad_sch", build_power()),
             ("MCU_Core", "MCU_Core.kicad_sch", build_core()),
             ("Flux_Interface", "Flux_Interface.kicad_sch", build_flux()),
             ("FDD_Connectors", "FDD_Connectors.kicad_sch", build_fdd_conn()),
-            ("IEC_Bus", "IEC_Bus.kicad_sch", build_iec())]
+            ("IEC_Bus", "IEC_Bus.kicad_sch", build_iec()),
+            ("Apple_Port", "Apple_Port.kicad_sch", build_apple())]
     for i, (name, file, sh) in enumerate(subs):
         u, blk = sheet_block(name, file, 30 + i * 70, 50, 50, 30, str(i + 2), root.uuid)
         blocks.append(blk)

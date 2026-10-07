@@ -10,10 +10,11 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | Auflösung | 275 MHz Timer-Capture (3,6 ns), Index auf derselben Zeitbasis |
 | Puffer | 8 MB QSPI-PSRAM (Ringpuffer beim Streamen, bis 200 Umdrehungen) |
 | USB | USB-C, Full Speed, Datenstrom ~2 Byte je Flusswechsel, sendet während die Diskette dreht |
-| Laufwerke | 34-pol PC/Shugart (DENSITY, DRATE), Amiga DB23 (Header), Commodore IEC (1541) |
+| Laufwerke | 34-pol PC/Shugart (DENSITY, DRATE, bis 4 Laufwerke), Amiga DB23 (Header, 2 Laufwerke), Apple Disk II (20-pol, 2 Laufwerke), Commodore IEC (1541) |
 | Schreiben | Timer + DMA, Precompensation, Verify, WRITE-LOCK-Jumper |
-| Platine v0.6 | 110 × 85 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader |
-| Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher, danach als USB-Laufwerk am PC abholen |
+| Platine v0.7 | 110 × 97 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader, Apple-Disk-II-Port, zweites Amiga-Laufwerk (JP3) |
+| Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher (mit Qualitätsbericht) oder Disk-zu-Disk-Kopie, danach als USB-Laufwerk am PC abholen |
+| Greaseweazle-kompatibel | `UFI.CFG protocol=gw`: die Greaseweazle-Werkzeuge (`gw read`, `gw write`, …) erkennen das Board direkt |
 | USB-Floppy | Betriebsart-Schalter: PC-Disketten (360K–2,88 MB, DMF) erscheinen am PC als normales USB-Diskettenlaufwerk, ohne Treiber; Atari ST, Commodore 1581 und Amiga 880K als Block-Laufwerk (Sektorabbild wie ST/D81/ADF) |
 
 ## Aufbau des Repos

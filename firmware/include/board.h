@@ -20,7 +20,7 @@
 #include <stdint.h>
 
 #define BOARD_NAME              "UFI Headless"
-#define BOARD_HAS_APPLE         0       /* no Apple Disk II port on this board */
+#define BOARD_HAS_APPLE         1       /* Apple Disk II port J14 from v0.7 (checked at run time) */
 
 typedef struct {
     GPIO_TypeDef* port;
@@ -53,6 +53,24 @@ extern const gpio_pin_t PIN_FDD_READY;      /* PF3 */
 #define FDD_WDATA_AF            GPIO_AF2_TIM3   /* TIM3_CH1 */
 #define FLUX_RDATA_CHANNEL      TIM_CHANNEL_1
 #define FLUX_INDEX_CHANNEL      TIM_CHANNEL_2
+
+/* ---- Apple Disk II port J14 (board v0.7) ----------------------------------
+ * Push-pull GPIOs into an SN74AHCT244 (non-inverting, 5 V TTL): PHx high = phase on,
+ * EN1/EN2/WRREQ low = asserted.  Inputs through a 74LVC2G17 (non-inverting): WRPROT
+ * high = protected.  RDDATA on TIM2_CH3 (same counter as RDATA), WRDATA = TIM3_CH2 in
+ * toggle mode (Disk II writes a level change per flux transition). */
+extern const gpio_pin_t PIN_APL_PH0;        /* PF12 */
+extern const gpio_pin_t PIN_APL_PH1;        /* PF13 */
+extern const gpio_pin_t PIN_APL_PH2;        /* PG6 */
+extern const gpio_pin_t PIN_APL_PH3;        /* PF15 */
+extern const gpio_pin_t PIN_APL_EN1;        /* PG5, /ENABLE drive 1 (J14 pin 14) */
+extern const gpio_pin_t PIN_APL_EN2;        /* PB12, /ENABLE drive 2 (J15) */
+extern const gpio_pin_t PIN_APL_WRREQ;      /* PB14 */
+extern const gpio_pin_t PIN_APL_WRPROT;     /* PB15 */
+extern const gpio_pin_t PIN_APL_RDDATA;     /* PA2, TIM2_CH3 (AF1) */
+extern const gpio_pin_t PIN_APL_WRDATA;     /* PA7, TIM3_CH2 (AF2) */
+#define APL_RDDATA_AF           GPIO_AF1_TIM2
+#define APL_WRDATA_AF           GPIO_AF2_TIM3
 
 /* ---- IEC bus: separate driver outputs and receiver inputs ---------------- */
 extern const gpio_pin_t PIN_IEC_ATN_OUT;    /* PD0 */
@@ -88,6 +106,7 @@ extern const gpio_pin_t PIN_EXP_IO2;        /* PE1, J13 pin 3 / J9 pin 6: mode s
 #define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */
 #define BOARD_ID_V05_MV         1650u
 #define BOARD_ID_V06_MV         1055u   /* 10k/4.7k, SD NAND instead of the microSD slot */
+#define BOARD_ID_V07_MV         595u    /* 10k/2.2k, Apple Disk II port */
 
 /* ---- QSPI PSRAM (board v0.2): APS6404L 8 MB on OCTOSPIM port 1 ---------- */
 #define BOARD_HAS_PSRAM         1

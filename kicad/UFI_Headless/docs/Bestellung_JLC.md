@@ -4,12 +4,12 @@ Dateien: `kicad/UFI_Headless/fertigung/` bzw. Anhang des GitHub-Release **v0.6**
 
 ## 1 Leiterplatte
 
-Auf jlcpcb.com → *Order now* → `UFI_Headless_gerber.zip` hochladen. Größe (110 × 85 mm) und Lagen erkennt JLC selbst.
+Auf jlcpcb.com → *Order now* → `UFI_Headless_gerber.zip` hochladen. Größe (110 × 97 mm ab v0.7) und Lagen erkennt JLC selbst.
 
 | Option | Einstellung | Warum |
 |---|---|---|
 | Layers | **4** | GND-Fläche In1, Signale/+3V3 In2 |
-| Dimensions | 110 × 85 mm | aus Gerber |
+| Dimensions | 110 × 97 mm | aus Gerber |
 | PCB Qty | 5 (Minimum) | |
 | PCB Thickness | **1.6 mm** | Board-Aufbau in KiCad |
 | Impedance Control | **No** / Standard-Lagenaufbau | USB Full Speed, keine kontrollierte Impedanz nötig |

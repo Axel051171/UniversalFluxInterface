@@ -409,6 +409,7 @@ int ufi_usb_process_command(void) {
             const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
             n = str_add(info, n, (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? BOARD_NAME " v0.5"
                                : (id + 200u > BOARD_ID_V06_MV && id < BOARD_ID_V06_MV + 200u) ? BOARD_NAME " v0.6"
+                               : (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? BOARD_NAME " v0.7"
                                : BOARD_NAME " rev ?");
             n = str_add(info, n, "STM32H723");
             n = str_add(info, n, ufi_psram_result());

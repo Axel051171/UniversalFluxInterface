@@ -113,6 +113,17 @@ board_status_t ufi_board_status(void)
     return s;
 }
 
+/* v0.7: Apple Disk II port fitted (board ID divider 10k/2.2k); read once */
+bool ufi_board_has_apple(void)
+{
+    static int8_t has = -1;
+    if (has < 0) {
+        const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
+        has = (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 1 : 0;
+    }
+    return has == 1;
+}
+
 /* ============================================================================
  * SAFETY SERVICE (main loop)
  * ============================================================================ */

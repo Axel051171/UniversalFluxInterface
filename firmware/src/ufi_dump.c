@@ -24,6 +24,7 @@
 #define SCP_TABLE_LEN       (4u * SCP_TRACKS)
 #define SCP_FLAG_INDEX      0x01u
 #define SCP_DISK_OTHER      0x80u
+#define SCP_DISK_APPLE2     0x40u   /* manufacturer Apple, Apple II */
 #define SCP_VERSION         0x22u
 #define HOLD_START_MS       1000u   /* button A */
 #define HOLD_MSC_MS         2000u   /* button B: USB mass storage mode on/off */
@@ -212,8 +213,11 @@ static int finish_file(void)
         checksum += t[i];
     }
     const uint8_t last = (uint8_t)((cfg.tracks - 1u) * 2u + (cfg.sides - 1u));
-    uint8_t hdr[SCP_HDR_LEN] = {'S', 'C', 'P', SCP_VERSION, SCP_DISK_OTHER, cfg.revs, 0, last,
-                                SCP_FLAG_INDEX, 0, (uint8_t)(cfg.sides == 2 ? 0 : 1), 0,
+    /* Apple Disk II: SCP disk type Apple II, no index pulse (200 ms slices, not index cued) */
+    const bool apple = (cfg.drive == DRIVE_APPLE_II || cfg.drive == DRIVE_APPLE2);
+    uint8_t hdr[SCP_HDR_LEN] = {'S', 'C', 'P', SCP_VERSION, apple ? SCP_DISK_APPLE2 : SCP_DISK_OTHER,
+                                cfg.revs, 0, last,
+                                apple ? 0u : SCP_FLAG_INDEX, 0, (uint8_t)(cfg.sides == 2 ? 0 : 1), 0,
                                 (uint8_t)checksum, (uint8_t)(checksum >> 8),
                                 (uint8_t)(checksum >> 16), (uint8_t)(checksum >> 24)};
     UINT bw = 0;
@@ -482,6 +486,7 @@ static void fail(uint8_t code)
 static bool drive_ok(uint8_t d)
 {
     return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA || d == DRIVE_AMIGA2 ||
+           ((d == DRIVE_APPLE_II || d == DRIVE_APPLE2) && ufi_board_has_apple()) ||
            (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3);
 }
 
@@ -508,7 +513,8 @@ bool ufi_config_protocol_gw(void)
 
 static const char cfg_default[] =
     "# UFI stand-alone settings (dump with button A, USB floppy mode)\r\n"
-    "# drive: a, b (PC cable), amiga, amiga2 (DF2, needs JP3), ds0-ds3 (Shugart bus; ds3 needs JP1)\r\n"
+    "# drive: a, b (PC cable), amiga, amiga2 (DF2, needs JP3), ds0-ds3 (Shugart bus; ds3 needs JP1),\r\n"
+    "#        apple, apple2 (Disk II port, board v0.7: use tracks=35 sides=1)\r\n"
     "drive=a\r\n"
     "tracks=80\r\n"
     "sides=2\r\n"
@@ -525,6 +531,7 @@ static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
     {"ds0", DRIVE_SHUGART_DS0}, {"ds1", DRIVE_SHUGART_DS1},
     {"ds2", DRIVE_SHUGART_DS2}, {"ds3", DRIVE_SHUGART_DS3}, {"amiga2", DRIVE_AMIGA2},
+    {"apple", DRIVE_APPLE_II}, {"apple2", DRIVE_APPLE2},
 };
 
 static bool word_is(const char* p, const char* w)

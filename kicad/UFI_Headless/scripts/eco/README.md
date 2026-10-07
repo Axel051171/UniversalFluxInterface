@@ -17,6 +17,7 @@ Netznamen mit `/` (z. B. `/MCU_Core/SD_D3`) unter Git Bash mit `MSYS_NO_PATHCONV
 | `remove_part.py board REF[,REF] [NET ...]` | im Schaltplan entfernte Bauteile vom Board nehmen und Netze komplett aufreißen (vor `make_pcb.sh eco`) |
 | `set_value.py board REF VALUE [FELD=WERT ...]` | geänderten Bauteilwert ins Layout übernehmen (Schaltplan-Parität) |
 | `hide_ref.py board REF [REF ...]` | Referenz kleiner Bauteile im Bestückungsdruck ausblenden (Platzmangel), F.Fab behält sie |
+| `extend_outline.py board Y_FROM DY [SRC:NEU:x:y ...]` | Platine nach unten verlängern: Umriss und flächige Ebenen unterhalb Y_FROM um DY schieben, Befestigungslöcher kopieren (v0.7: `80 12 H3:H5:3.5:93.5 H4:H6:106.5:93.5`) |
 | `probe_region.py board x0 y0 x1 y1` | Courtyards und Kupfer in einem Fenster auflisten |
 | `check_via_in_pad.py board` | Vias, die ein SMD-Pad berühren (muss 0 sein) |
 

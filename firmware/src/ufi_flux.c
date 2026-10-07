@@ -60,6 +60,24 @@ static volatile bool stream_scratch;    /* no free chunk: the DMA runs into dma_
  * boundaries every `period` ticks from the capture start instead of index pulses */
 static uint32_t period;
 
+/* Flux input: RDATA on TIM2_CH1 (34-pin / Amiga) or Apple RDDATA on TIM2_CH3 (v0.7);
+ * both share the counter, only the DMA request and source register change */
+static uint32_t rd_de = TIM_DIER_CC1DE;
+static volatile uint32_t* rd_ccr = &TIM2->CCR1;
+
+void ufi_flux_select_apple(bool apple)
+{
+    if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+        return;
+    }
+    TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC3DE);
+    rd_de = apple ? TIM_DIER_CC3DE : TIM_DIER_CC1DE;
+    rd_ccr = apple ? &TIM2->CCR3 : &TIM2->CCR1;
+    /* DMA1_Stream0 <-> DMAMUX1 channel 0 */
+    DMAMUX1_Channel0->CCR = (DMAMUX1_Channel0->CCR & ~DMAMUX_CxCR_DMAREQ_ID) |
+                            (apple ? DMA_REQUEST_TIM2_CH3 : DMA_REQUEST_TIM2_CH1);
+}
+
 /* No disk or motor off: no index within this time ends the capture (error_code 3) */
 #define INDEX_TIMEOUT_MS    600     /* > 1 revolution at 300 rpm (200 ms) with margin */
 
@@ -116,6 +134,7 @@ void ufi_flux_init(void)
     ic.ICPrescaler = TIM_ICPSC_DIV1;
     ic.ICFilter = 0;                        /* RDATA: no filter, full resolution */
     HAL_TIM_IC_ConfigChannel(&htim2, &ic, FLUX_RDATA_CHANNEL);
+    HAL_TIM_IC_ConfigChannel(&htim2, &ic, TIM_CHANNEL_3);  /* v0.7 Apple RDDATA (PA2) */
     ic.ICFilter = INDEX_FILTER;
     HAL_TIM_IC_ConfigChannel(&htim2, &ic, FLUX_INDEX_CHANNEL);
 
@@ -135,6 +154,7 @@ void ufi_flux_init(void)
 
     /* Free-running counter, both capture channels enabled; DMA/IRQ armed per capture */
     HAL_TIM_IC_Start(&htim2, FLUX_RDATA_CHANNEL);
+    HAL_TIM_IC_Start(&htim2, TIM_CHANNEL_3);
     HAL_TIM_IC_Start(&htim2, FLUX_INDEX_CHANNEL);
 
     HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
@@ -181,7 +201,7 @@ static void dma_arm(void)
     dma_stop();
     chunks_done = 0;
     next_chunk = 2;
-    DMA1_Stream0->PAR = (uint32_t)&TIM2->CCR1;
+    DMA1_Stream0->PAR = (uint32_t)rd_ccr;
     DMA1_Stream0->M0AR = (uint32_t)&flux_store[0];
     DMA1_Stream0->M1AR = (uint32_t)&flux_store[chunk_words];
     DMA1_Stream0->NDTR = chunk_words;
@@ -219,7 +239,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
     SCB_CleanInvalidateDCache();
 
     /* Arm the stream; transfers only start once CC1DE is set at the first index */
-    TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+    TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
     dma_arm();
 
     if (period) {                           /* index-less: revolution 0 starts now */
@@ -227,7 +247,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
         idx_time[0] = TIM2->CNT;
         idx_pos[0] = 0;
         idx_count = 1;
-        TIM2->DIER |= TIM_DIER_CC1DE;
+        TIM2->DIER |= rd_de;
         g_capture.state = CAPTURE_RUNNING;
         __enable_irq();
         return UFI_OK;
@@ -241,7 +261,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
 
 static void capture_halt(void)
 {
-    TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+    TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
     end_pos = dma_pos();
     dma_stop();
 }
@@ -276,7 +296,7 @@ void ufi_flux_tim2_irq(void)
         idx_pos[0] = 0;
         idx_count = 1;
         last_index_ms = HAL_GetTick();
-        TIM2->DIER |= TIM_DIER_CC1DE;       /* start streaming RDATA timestamps */
+        TIM2->DIER |= rd_de;       /* start streaming RDATA timestamps */
         g_capture.state = CAPTURE_RUNNING;
     } else if (g_capture.state == CAPTURE_RUNNING && !period) {
         idx_time[idx_count] = t;
@@ -298,7 +318,7 @@ void ufi_flux_dma_irq(void)
 
     if (isr & (DMA_LISR_TEIF0 | DMA_LISR_DMEIF0)) {
         DMA1->LIFCR = DMA_LIFCR_CTEIF0 | DMA_LIFCR_CDMEIF0;
-        TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+        TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
         dma_stop();
         g_capture.error_code = 2;
         g_capture.state = CAPTURE_ERROR;
@@ -312,7 +332,7 @@ void ufi_flux_dma_irq(void)
 
     if (stream_scratch || (!streaming && chunks_done >= n_chunks)) {
         /* Store full before all revolutions were captured: keep the complete ones */
-        TIM2->DIER &= ~(TIM_DIER_CC1DE | TIM_DIER_CC2IE);
+        TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
         dma_stop();
         if (g_capture.state == CAPTURE_RUNNING) {
             end_pos = chunks_done * chunk_words;    /* logical: == store_words without ring */

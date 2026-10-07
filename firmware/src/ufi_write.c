@@ -49,6 +49,7 @@ typedef struct {
     uint8_t code[5];            // compact: multi-byte code being assembled
     uint8_t code_len, code_need;
     bool bad;                   // compact: reserved / index code seen
+    bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
 } write_context_t;
 
 static write_context_t g_write;
@@ -65,6 +66,25 @@ static DMA_HandleTypeDef hdma_tim3_up;
 /* ============================================================================
  * WRITE INITIALISIERUNG
  * ============================================================================ */
+
+/* v0.7 Apple port: PA7 as TIM3_CH2 in toggle mode while writing, plain GPIO otherwise */
+static void apple_wrdata(bool on) {
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = PIN_APL_WRDATA.pin;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    if (on) {
+        TIM3->CCR2 = 0;
+        TIM3->CCMR1 = (TIM3->CCMR1 & ~(TIM_CCMR1_OC2M | TIM_CCMR1_CC2S)) | (TIM_OCMODE_TOGGLE << 8);
+        TIM3->CCER |= TIM_CCER_CC2E;
+        gpio.Mode = GPIO_MODE_AF_PP;
+        gpio.Alternate = APL_WRDATA_AF;
+    } else {
+        TIM3->CCER &= ~TIM_CCER_CC2E;
+        gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    }
+    HAL_GPIO_Init(PIN_APL_WRDATA.port, &gpio);
+}
 
 static void wdata_idle(void) {
     /* Forced inactive: active-low channel -> PA6 high -> LS07 releases WDATA */
@@ -132,7 +152,7 @@ void ufi_write_init(void) {
  * ============================================================================ */
 
 static uint32_t apply_precomp(uint32_t timing, uint32_t prev_timing, uint32_t next_timing, uint8_t track) {
-    if (!g_write.use_precomp || track < 40) {
+    if (!g_write.use_precomp || g_write.apple || track < 40) {   /* Disk II: no precomp */
         return timing;
     }
 
@@ -318,6 +338,7 @@ int ufi_write_start(void) {
         return UFI_ERR_SEEK_FAIL;
     }
     ufi_drive_select_side(g_write.side);
+    g_write.apple = ufi_drive_is_apple();
     pack_deltas();
 
     /* Timer: first two intervals by hand (UG loads the shadow ARR), DMA feeds the rest */
@@ -327,19 +348,35 @@ int ufi_write_start(void) {
     TIM3->EGR = TIM_EGR_UG;                 // shadow ARR = interval 0, CNT = ARR (down)
     TIM3->SR = 0;
     TIM3->ARR = write_arr[1];               // preload = interval 1
-    TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_PWM1;
+    if (g_write.apple) {
+        /* Disk II: WRDATA level change at every update (CNT reaches CCR2 = 0 once per
+         * interval) on TIM3_CH2 / PA7; the 34-pin WDATA (CH1) stays idle */
+        apple_wrdata(true);
+    } else {
+        TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_PWM1;
+    }
 
     HAL_DMA_Abort(&hdma_tim3_up);
     if (HAL_DMA_Start_IT(&hdma_tim3_up, (uint32_t)&write_arr[2], (uint32_t)&TIM3->ARR,
                          g_write.flux_count - 2) != HAL_OK) {
         wdata_idle();
+        apple_wrdata(false);
         g_write.state = WRITE_ERROR;
         return UFI_ERR_DMA;
     }
     HAL_Delay(20);                          // head settle after side select
 
-    g_write.state = WRITE_WAITING_INDEX;
     led_set(&PIN_LED_FDD, true);
+    if (g_write.apple) {
+        /* no index pulse: start right away, /WRREQ low; ends after the last interval */
+        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
+        g_write.state = WRITE_ACTIVE;
+        g_write.updates_left = 0;
+        TIM3->DIER |= TIM_DIER_UDE;
+        __HAL_TIM_ENABLE(&htim3);
+        return UFI_OK;
+    }
+    g_write.state = WRITE_WAITING_INDEX;
     return UFI_OK;
 }
 
@@ -348,6 +385,8 @@ static void write_finish(write_state_t final_state) {
     TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
     wdata_idle();
     bus_out(&PIN_FDD_WGATE, false);
+    HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
+    apple_wrdata(false);
     led_set(&PIN_LED_FDD, false);
     g_write.state = final_state;
 }
@@ -355,6 +394,9 @@ static void write_finish(write_state_t final_state) {
 /* Called from the TIM2 index-capture interrupt */
 void ufi_write_index_handler(uint32_t t) {
     (void)t;
+    if (g_write.apple) {
+        return;                             /* Disk II write: no index involved */
+    }
     if (g_write.state == WRITE_WAITING_INDEX) {
         bus_out(&PIN_FDD_WGATE, true);
         g_write.state = WRITE_ACTIVE;
@@ -420,6 +462,14 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
     HAL_Delay(20);
 
     led_set(&PIN_LED_FDD, true);
+
+    if (ufi_drive_is_apple()) {             /* Disk II: /WRREQ without level changes */
+        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
+        HAL_Delay(220);
+        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
+        led_set(&PIN_LED_FDD, false);
+        return UFI_OK;
+    }
 
     const uint32_t start = HAL_GetTick();
 
@@ -599,6 +649,9 @@ int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_
     }
     if (!ufi_drive_motor_is_on()) {
         return UFI_ERR_NO_DRIVE;
+    }
+    if (ufi_drive_is_apple()) {
+        return UFI_ERR_NOT_IMPL;            /* pattern test drives the 34-pin WDATA only */
     }
     const uint32_t ticks = ((uint32_t)interval_ns * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL;
     if (ticks < WRITE_MIN_DELTA || ticks > WRITE_MAX_DELTA) {

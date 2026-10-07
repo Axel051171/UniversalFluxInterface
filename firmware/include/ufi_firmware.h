@@ -92,6 +92,7 @@ typedef enum {
     DRIVE_SHUGART_DS2,
     DRIVE_SHUGART_DS3,
     DRIVE_AMIGA2,           // second Amiga drive DF2: J7 pin 9 SEL2B = DRV_SEL_A (board v0.7, JP3)
+    DRIVE_APPLE2,           // second Apple drive: /ENABLE on J15 (board v0.7); DRIVE_APPLE_II = J14
     DRIVE_TYPE_COUNT
 } drive_type_t;
 
@@ -333,6 +334,7 @@ void ufi_board_activity(void);                  // host command / transfer seen
 void ufi_board_power(uint8_t mask);
 board_status_t ufi_board_status(void);
 bool ufi_board_write_locked(void);
+bool ufi_board_has_apple(void);                 // v0.7 board: Apple Disk II port J14
 uint16_t ufi_adc_mv(uint32_t channel);          // ufi_power.c, 0 if the ADC is not available
 int ufi_sd_info(sd_info_t* info);               // ufi_sd.c
 bool ufi_sd_present(void);                      // SD NAND initialised
@@ -418,9 +420,9 @@ bool ufi_drive_motor_is_on(void);
 int ufi_drive_probe_tracks(uint8_t* highest);
 void ufi_drive_safe_state(void);    // motor off, deselect, all write lines released
 int ufi_drive_seek_test(uint8_t a, uint8_t b, uint8_t cycles);
-#if BOARD_HAS_APPLE
-int ufi_drive_apple_step(int direction);
-#endif
+int ufi_drive_apple_step(int direction);    // one track in/out (two half steps)
+bool ufi_drive_is_apple(void);              // current drive is on the Apple port J14/J15
+void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead of RDATA
 
 // IEC Bus (C64)
 int ufi_iec_reset(void);

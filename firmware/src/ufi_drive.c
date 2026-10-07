@@ -42,47 +42,96 @@ static void delay_us(uint32_t us)
 }
 
 /* ============================================================================
- * APPLE DISK II (nur Boards mit Apple-Port; board.h liefert dann APPLE_PORT und
- * APPLE_{ENABLE,PH0..PH3,WRREQ}_PIN)
+ * APPLE DISK II (board v0.7: J14 = drive 1, J15 = /ENABLE of drive 2)
+ * Four-phase stepper, one phase step = half a track, track n sits at phase (2n) & 3.
+ * No track 0 sensor: recalibrate = 80 half steps outwards against the stop, ending on
+ * phase 0 (as the Apple RWTS does).  /ENABLE runs the spindle and powers the stepper.
  * ============================================================================ */
 
-#if BOARD_HAS_APPLE
-static uint8_t apple_phase = 0;
+#define APL_HALFSTEP_US     4000u       /* per half track (RWTS: ~2.5-3 ms at full speed) */
+#define APL_OVERLAP_US      1000u       /* next phase on before the previous goes off */
+#define APL_SETTLE_US       25000u
+#define APL_MAX_TRACK       39
 
-int ufi_drive_apple_step(int direction)
+static const gpio_pin_t* const apl_ph[4] = {&PIN_APL_PH0, &PIN_APL_PH1, &PIN_APL_PH2, &PIN_APL_PH3};
+static int16_t apl_ht[2] = {-1, -1};    /* half-track position per drive, -1 = unknown */
+
+static bool is_apple(drive_type_t t)
 {
-    // Apple verwendet 4-Phasen Stepper
-    // Phase-Sequenz: 0-1-2-3-0-1-2-3 (vorwärts)
-    //                0-3-2-1-0-3-2-1 (rückwärts)
-    static const uint16_t phase_pins[4] = {
-        APPLE_PH0_PIN, APPLE_PH1_PIN, APPLE_PH2_PIN, APPLE_PH3_PIN
-    };
+    return t == DRIVE_APPLE_II || t == DRIVE_APPLE2;
+}
 
-    HAL_GPIO_WritePin(APPLE_PORT, phase_pins[apple_phase], GPIO_PIN_RESET);
-    if (direction > 0) {
-        apple_phase = (apple_phase + 1) & 3;
-    } else {
-        apple_phase = (apple_phase - 1) & 3;
+static const gpio_pin_t* apl_en(drive_type_t t)
+{
+    return t == DRIVE_APPLE2 ? &PIN_APL_EN2 : &PIN_APL_EN1;
+}
+
+static void apl_phase(int p, bool on)
+{
+    HAL_GPIO_WritePin(apl_ph[p & 3]->port, apl_ph[p & 3]->pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void apl_release(void)
+{
+    for (int p = 0; p < 4; p++) {
+        apl_phase(p, false);
     }
-    HAL_GPIO_WritePin(APPLE_PORT, phase_pins[apple_phase], GPIO_PIN_SET);
+    HAL_GPIO_WritePin(PIN_APL_EN1.port, PIN_APL_EN1.pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(PIN_APL_EN2.port, PIN_APL_EN2.pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
+}
 
-    delay_us(5000);  // 5ms Phase-Zeit
+/* Move the current Apple drive to half track `target` (from ht, which may be assumed) */
+static void apl_move(int ht, int target)
+{
+    while (ht != target) {
+        const int next = ht + (target > ht ? 1 : -1);
+        apl_phase(next, true);
+        delay_us(APL_OVERLAP_US);
+        apl_phase(ht, false);
+        delay_us(APL_HALFSTEP_US);
+        ht = next;
+    }
+    delay_us(APL_SETTLE_US);
+    apl_phase(ht, false);               /* stepper unpowered between seeks: no heating */
+    apl_ht[g_current_drive == DRIVE_APPLE2] = (int16_t)ht;
+    g_drive_status[g_current_drive].current_track = (uint8_t)(ht / 2);
+}
 
-    // Track-Counter (2 Phasen = 1 Track)
-    static uint8_t phase_count = 0;
-    phase_count++;
-    if (phase_count >= 2) {
-        phase_count = 0;
-        drive_status_t* status = &g_drive_status[DRIVE_APPLE_II];
-        if (direction > 0 && status->current_track < 39) {
-            status->current_track++;
-        } else if (direction < 0 && status->current_track > 0) {
-            status->current_track--;
-        }
+static int apl_recalibrate(void)
+{
+    apl_move(2 * (APL_MAX_TRACK + 1), 0);   /* assume the far end: hits the stop on the way */
+    g_drive_status[g_current_drive].track0 = true;
+    return UFI_OK;
+}
+
+static int apl_seek(uint8_t track)
+{
+    if (track > APL_MAX_TRACK) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    const int ht = apl_ht[g_current_drive == DRIVE_APPLE2];
+    if (ht < 0) {
+        apl_recalibrate();
+        apl_move(0, 2 * track);
+    } else {
+        apl_move(ht, 2 * track);
     }
     return UFI_OK;
 }
-#endif
+
+int ufi_drive_apple_step(int direction)
+{
+    const int ht = apl_ht[g_current_drive == DRIVE_APPLE2];
+    if (ht < 0) {
+        return apl_recalibrate();
+    }
+    int target = ht + 2 * (direction > 0 ? 1 : -1);
+    if (target < 0) target = 0;
+    if (target > 2 * APL_MAX_TRACK) target = 2 * APL_MAX_TRACK;
+    apl_move(ht, target);
+    return UFI_OK;
+}
 
 /* ============================================================================
  * INITIALISIERUNG
@@ -128,9 +177,11 @@ int ufi_drive_select(drive_type_t type)
 {
     bus_out(&PIN_FDD_DRV_SEL_A, false);
     bus_out(&PIN_FDD_DRV_SEL_B, false);
-#if BOARD_HAS_APPLE
-    HAL_GPIO_WritePin(APPLE_PORT, APPLE_ENABLE_PIN, GPIO_PIN_RESET);
-#endif
+    if (is_apple(g_current_drive) || is_apple(type)) {
+        apl_release();                      /* both /ENABLE high: spindles stop */
+        g_drive_status[DRIVE_APPLE_II].motor_on = false;
+        g_drive_status[DRIVE_APPLE2].motor_on = false;
+    }
     if (is_shugart(type) || is_shugart(g_current_drive)) {
         bus_out(&PIN_FDD_MOTOR_A, false);   /* DS0 line (PC: motor A) */
         bus_out(&PIN_FDD_DRATE, false);     /* DS3 line */
@@ -161,13 +212,13 @@ int ufi_drive_select(drive_type_t type)
         case DRIVE_IEC:                     /* IEC needs no select */
             break;
         case DRIVE_APPLE_II:
-#if BOARD_HAS_APPLE
-            HAL_GPIO_WritePin(APPLE_PORT, APPLE_ENABLE_PIN, GPIO_PIN_SET);
+        case DRIVE_APPLE2:
+            if (!ufi_board_has_apple()) {
+                g_current_drive = DRIVE_NONE;   /* no Apple port on this board */
+                return UFI_ERR_NOT_IMPL;
+            }
+            /* /ENABLE starts the spindle and powers the stepper: on with the motor */
             break;
-#else
-            g_current_drive = DRIVE_NONE;   /* no Apple port on this board */
-            return UFI_ERR_NOT_IMPL;
-#endif
         case DRIVE_NONE:
         default:
             g_current_drive = DRIVE_NONE;
@@ -217,11 +268,11 @@ int ufi_drive_motor(bool on)
             break;
         case DRIVE_IEC:                     /* 1541 controls its own motor */
             break;
-#if BOARD_HAS_APPLE
-        case DRIVE_APPLE_II:                /* Apple: motor follows ENABLE */
-            HAL_GPIO_WritePin(APPLE_PORT, APPLE_ENABLE_PIN, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+        case DRIVE_APPLE_II:                /* Apple: motor follows /ENABLE (active low) */
+        case DRIVE_APPLE2:
+            HAL_GPIO_WritePin(apl_en(g_current_drive)->port, apl_en(g_current_drive)->pin,
+                              on ? GPIO_PIN_RESET : GPIO_PIN_SET);
             break;
-#endif
         case DRIVE_SHUGART_DS0:
         case DRIVE_SHUGART_DS1:
         case DRIVE_SHUGART_DS2:
@@ -257,11 +308,9 @@ int ufi_drive_step(int direction)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
-#if BOARD_HAS_APPLE
-    if (g_current_drive == DRIVE_APPLE_II) {
+    if (is_apple(g_current_drive)) {
         return ufi_drive_apple_step(direction);
     }
-#endif
 
     /* DIR asserted = step in (towards the spindle) */
     bus_out(&PIN_FDD_DIR, direction > 0);
@@ -294,11 +343,13 @@ int ufi_drive_seek(uint8_t track)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
-    const uint8_t max_track = (g_current_drive == DRIVE_APPLE_II) ? 39 : 83;
+    if (is_apple(g_current_drive)) {
+        return apl_seek(track);
+    }
+    const uint8_t max_track = 83;
     /* double step: logical track n sits at physical track 2n (40-track disk, 80-track drive);
      * current_track counts physical tracks */
-    const uint32_t phys = (g_timing.double_step && g_current_drive != DRIVE_APPLE_II)
-                          ? 2u * track : track;
+    const uint32_t phys = g_timing.double_step ? 2u * track : track;
     if (phys > max_track) {
         return UFI_ERR_SEEK_FAIL;
     }
@@ -333,6 +384,9 @@ int ufi_drive_recalibrate(void)
 {
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
+    }
+    if (is_apple(g_current_drive)) {
+        return apl_recalibrate();
     }
 
     /* Three phases (concept from FloppyControl's seektrk00): out to TRK0, a few steps in
@@ -373,6 +427,9 @@ int ufi_drive_select_side(uint8_t side)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
+    if (is_apple(g_current_drive)) {
+        return side ? UFI_ERR_NOT_IMPL : UFI_OK;   /* Disk II: one head */
+    }
     /* SIDE asserted (low) = head 1 */
     bus_out(&PIN_FDD_SIDE_SEL, side != 0);
     g_drive_status[g_current_drive].current_side = side;
@@ -392,24 +449,39 @@ int ufi_drive_density_line(bool assert)
 
 bool ufi_drive_at_track0(void)
 {
+    if (is_apple(g_current_drive)) {
+        return apl_ht[g_current_drive == DRIVE_APPLE2] == 0;   /* no sensor: position count */
+    }
     return bus_in(&PIN_FDD_TRACK0);
 }
 
 bool ufi_drive_write_protected(void)
 {
+    if (is_apple(g_current_drive)) {        /* WRPROT high = protected (also: no drive) */
+        return HAL_GPIO_ReadPin(PIN_APL_WRPROT.port, PIN_APL_WRPROT.pin) == GPIO_PIN_SET;
+    }
     return bus_in(&PIN_FDD_WPROT);
 }
 
 /* J6 pin 34 is DSKCHG on the PC bus but READY on the Shugart bus (same input PF2);
- * the Shugart disk change output on pin 2 is not readable (pin 2 = DENSITY output) */
+ * the Shugart disk change output on pin 2 is not readable (pin 2 = DENSITY output).
+ * The Disk II has neither line. */
 bool ufi_drive_disk_changed(void)
 {
-    return is_shugart(g_current_drive) ? false : bus_in(&PIN_FDD_DKCHG);
+    return (is_shugart(g_current_drive) || is_apple(g_current_drive)) ? false : bus_in(&PIN_FDD_DKCHG);
 }
 
 bool ufi_drive_ready(void)
 {
+    if (is_apple(g_current_drive)) {
+        return true;
+    }
     return bus_in(is_shugart(g_current_drive) ? &PIN_FDD_DKCHG : &PIN_FDD_READY);
+}
+
+bool ufi_drive_is_apple(void)
+{
+    return is_apple(g_current_drive);
 }
 
 bool ufi_drive_is_shugart_bus(void)
@@ -461,6 +533,9 @@ void ufi_drive_safe_state(void)
         }
     }
     bus_out(&PIN_FDD_WGATE, false);
+    apl_release();                          /* Apple: /WRREQ, both /ENABLE high, phases off */
+    g_drive_status[DRIVE_APPLE_II].motor_on = false;
+    g_drive_status[DRIVE_APPLE2].motor_on = false;
     bus_out(&PIN_FDD_STEP, false);
     bus_out(&PIN_FDD_MOTOR_A, false);
     bus_out(&PIN_FDD_MOTOR_B, false);

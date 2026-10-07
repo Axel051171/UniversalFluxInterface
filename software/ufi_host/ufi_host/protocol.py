@@ -36,7 +36,8 @@ DEBUG_GPIO, DEBUG_TIMER, RESET, BOOTLOADER = 0xD0, 0xD1, 0xF0, 0xFF
 
 DRIVES = {"none": 0, "a": 1, "b": 2, "apple": 3, "amiga": 4, "iec": 5,
           "ds0": 6, "ds1": 7, "ds2": 8, "ds3": 9,   # ds*: Shugart bus (straight cable)
-          "amiga2": 10}                             # J7 SEL2B, board v0.7 with JP3
+          "amiga2": 10,                             # J7 SEL2B, board v0.7 with JP3
+          "apple2": 11}                             # Disk II port: apple = J14, apple2 = J15 enable
 
 # status byte = -ufi_error_t (firmware/include/ufi_fixes.h)
 ERRORS = {
