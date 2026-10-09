@@ -306,6 +306,22 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
 int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
                         uint8_t quarter);   // 1.14: Apple quarter track offset
 void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
+// track analysis (ufi_analyze.c, 1.14): ANALYZE 0x25, blocking capture of `revs` revolutions
+typedef struct {
+    uint8_t revs;
+    uint8_t encoding;           // 0 unknown, 1 FM, 2 MFM, 3 GCR
+    uint16_t bitcell_ns;
+    uint16_t rpm_x100;
+    uint16_t peak_ns[4];        // interval histogram peaks, ascending (0 = none)
+    uint32_t index_ticks;       // revolution time
+    uint32_t transitions;       // revolution 0
+    uint32_t bitcells;          // track length in bit cells (0 = unknown encoding)
+    uint8_t sectors;            // IBM MFM sectors with good CRC (revolution 0)
+    uint8_t weak_count;         // 1/64-revolution windows whose counts differ between revs
+    uint32_t first_sector_us;   // index -> first good sector ID
+    uint64_t weak_mask;         // bit w = window w weak
+} analyze_result_t;             // 40 bytes, packed little endian on the wire
+int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r);
 // head steps on a schedule during the next READ / WRITE (ufi_sched.c, 1.14)
 int ufi_sched_set(const uint8_t* items, uint8_t n, bool quarter_units);   // n x (at_ms u16, pos u8)
 uint8_t ufi_sched_pending(void);

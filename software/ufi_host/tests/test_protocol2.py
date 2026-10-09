@@ -133,6 +133,9 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.ANALYZE:
+            r(0, P2.ANALYZE_FMT.pack(a[2] or 3, 2, 2000, 30012, 4000, 6000, 8000, 0, 55_000_000,
+                                     50_000, 100_000, 18, 2, 1234, 0x11))
         elif cmd == P2.STEP_SCHEDULE:
             r(0 if len(a) == 2 + 3 * a[1] else P2.BAD_ARGS)
         elif cmd == P2.SET_RPM:
@@ -317,6 +320,10 @@ def test_diagnostics():
     dev.write_track(17, 0, [1000, 1000, 1000], quarter=3)
     req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
     assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS
+    r = dev.analyze(5, 1, 4)
+    assert fake.requests[-1].payload == bytes([5, 1, 4]) and r["revs"] == 4
+    assert r["encoding"] == "MFM" and r["peaks_ns"] == [4000, 6000, 8000] and r["rpm"] == 300.12
+    assert r["sectors"] == 18 and r["weak_windows"] == 2 and r["weak_mask"] == 0x11
     dev.step_schedule([(50, 17 * 4 + 1), (100, 17 * 4 + 2)], quarter=True)
     assert fake.requests[-1].cmd == P2.STEP_SCHEDULE
     assert fake.requests[-1].payload == bytes([1, 2]) + struct.pack("<HBHB", 50, 69, 100, 70)
@@ -470,6 +477,9 @@ def test_cli_diagnostics(monkeypatch, capsys):
     assert "300 rpm, internal" in capsys.readouterr().out and fake.requests[-1].payload[4] == 2
     assert cli.main(["index-sim", "off"]) == 0
     assert "off" in capsys.readouterr().out
+    assert cli.main(["analyze", "5", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "MFM, bit cell 2000 ns" in out and "MFM sectors: 18" in out and "weak-bit windows: 2/64" in out
     assert cli.main(["rpm-select", "360"]) == 0
     assert "DENSITY" in capsys.readouterr().out and fake.rpm_set == 360
     assert cli.main(["rpm-select"]) == 0

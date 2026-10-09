@@ -191,7 +191,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib",
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze",
            "dump-abort", "copy", "power"}
 
 
@@ -204,6 +204,10 @@ def main(argv: list[str] | None = None) -> int:
         "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
     sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
+    p = sub.add_parser("analyze", help="track analysis: rpm, encoding, bit cells, weak bits, sector timing (firmware 1.14)")
+    p.add_argument("track", type=int)
+    p.add_argument("side", type=int, choices=(0, 1))
+    p.add_argument("-r", "--revs", type=int, default=3)
     p = sub.add_parser("iec-nib", help="1541 raw GCR tracks over IEC into a G64 (firmware 1.14, drive code upload)")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=35, choices=range(35, 43), metavar="35-42")
@@ -313,6 +317,16 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "analyze":
+            r = dev.analyze(a.track, a.side, a.revs)
+            print(f"track {a.track}.{a.side}: {r['rpm']:.2f} rpm, {r['transitions']} transitions, "
+                  f"{r['revs']} revs")
+            print(f"  intervals: {', '.join(f'{p / 1000:.2f} us' for p in r['peaks_ns']) or '-'}"
+                  f"  -> {r['encoding']}, bit cell {r['bitcell_ns']} ns, {r['bitcells']} bit cells per track")
+            if r["sectors"]:
+                print(f"  MFM sectors: {r['sectors']}, first ID {r['first_sector_us'] / 1000:.2f} ms after index")
+            w = r["weak_windows"]
+            print(f"  weak-bit windows: {w}/64" + (f"  (mask 0x{r['weak_mask']:016x})" if w else ""))
         elif a.cmd == "iec-nib":
             from .nib import NibReader, write_g64
             rd = NibReader(dev, a.device)

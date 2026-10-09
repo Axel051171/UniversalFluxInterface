@@ -57,6 +57,9 @@ SET_RPM = 0x1E                                              # firmware 1.14: 3-m
 STEP_SCHEDULE = 0x1F                                        # firmware 1.14: head steps during READ/WRITE
 RPM_LINES = {0: "none", 1: "DENSITY (pin 2)", 2: "DRATE (pin 6, JP1)"}
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
+ANALYZE = 0x25                          # firmware 1.14: track analysis
+ANALYZE_FMT = struct.Struct("<BBHH4HIIIBBIQ")
+ENCODINGS = {0: "unknown", 1: "FM", 2: "MFM", 3: "GCR"}
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
 IEC_MEM, IEC_NIB = 0x33, 0x34           # firmware 1.14: drive memory, 1541 raw GCR chunks
 NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
@@ -584,6 +587,16 @@ class Device2:
         p = self.request(IEC_NIB, bytes([halftrack, sync, mode, flags, device]), timeout=12.0)
         status, synclen, maxlen, ht = struct.unpack_from("<BBHB", p)
         return NibChunk(status, synclen, maxlen, ht, bytes(p[5:5 + 512]))
+
+    def analyze(self, track: int, side: int, revs: int = 3) -> dict:
+        """Track analysis (firmware 1.14): rpm, interval peaks, encoding guess, bit cells,
+        weak-bit windows, MFM sectors and the index-to-first-sector time."""
+        p = self.request(ANALYZE, bytes([track, side, revs]), timeout=8.0)
+        v = ANALYZE_FMT.unpack_from(p)
+        return dict(revs=v[0], encoding=ENCODINGS.get(v[1], str(v[1])), bitcell_ns=v[2],
+                    rpm=v[3] / 100, peaks_ns=[x for x in v[4:8] if x], index_ticks=v[8],
+                    transitions=v[9], bitcells=v[10], sectors=v[11], weak_windows=v[12],
+                    first_sector_us=v[13], weak_mask=v[14])
 
     def step_schedule(self, steps: list[tuple[int, int]], quarter: bool = False) -> None:
         """Head steps during the next READ/WRITE (firmware 1.14): [(ms after the start index,

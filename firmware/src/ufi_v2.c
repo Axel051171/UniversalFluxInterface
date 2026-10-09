@@ -61,7 +61,7 @@ enum {
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
-    V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24,
+    V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
@@ -381,7 +381,7 @@ static bool allowed_during_dump(uint8_t cmd)
 static bool uses_drive(uint8_t cmd)
 {
     return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
-           cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN ||
+           cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN || cmd == V2_ANALYZE ||
            cmd == V2_DUMP_START || cmd == V2_COPY_START;
 }
 
@@ -680,6 +680,31 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         case V2_ERASE:
             ret = (len < 2u) ? UFI_ERR_BAD_ARGS : ufi_erase_track(p[0], p[1]);
             break;
+        case V2_ANALYZE: {                  /* track, side u8, revs u8 (0 = 3, max 8) -> 40 bytes */
+            static analyze_result_t a;
+            if (len < 2u) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            ret = ufi_analyze_track(p[0], p[1], len >= 3u ? p[2] : 0u, &a);
+            if (ret == UFI_OK) {
+                out[0] = a.revs;
+                out[1] = a.encoding;
+                put16(&out[2], a.bitcell_ns);
+                put16(&out[4], a.rpm_x100);
+                for (int i = 0; i < 4; i++) put16(&out[6 + 2 * i], a.peak_ns[i]);
+                put32(&out[14], a.index_ticks);
+                put32(&out[18], a.transitions);
+                put32(&out[22], a.bitcells);
+                out[26] = a.sectors;
+                out[27] = a.weak_count;
+                put32(&out[28], a.first_sector_us);
+                put32(&out[32], (uint32_t)a.weak_mask);
+                put32(&out[36], (uint32_t)(a.weak_mask >> 32));
+                n = 40u;
+            }
+            break;
+        }
         case V2_PATTERN:
             ret = (len < 6u) ? UFI_ERR_BAD_ARGS
                              : ufi_write_pattern(p[0], p[1], (uint16_t)get16(&p[2]),

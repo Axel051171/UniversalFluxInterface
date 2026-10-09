@@ -251,6 +251,7 @@ static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (
 static bool rpm_360_low = true;         /* UFI.CFG rpm_360=low|high */
 static uint16_t rpm_start;              /* UFI.CFG rpm=300|360 applied at start, 0 = untouched */
 static uint8_t iec_device = 8;          /* UFI.CFG iec_device=8..30: 1541 for drive=iec dumps */
+static bool track_search;               /* UFI.CFG track_search=1: weak track -> try +-1 physical track */
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -475,6 +476,53 @@ int ufi_copy_start(void)
     return ret;
 }
 
+/* Blocking re-capture at the current physical position (no seek); quality or 0 */
+static uint8_t recapture(void)
+{
+    g_capture.state = CAPTURE_IDLE;
+    if (ufi_flux_capture_start(cfg.revs, 0) != UFI_OK) {
+        return 0;
+    }
+    const uint32_t t0 = HAL_GetTick();
+    capture_state_t cs;
+    while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
+        if (HAL_GetTick() - t0 > 3000u) {
+            ufi_flux_capture_stop();
+            return 0;
+        }
+    }
+    return cs == CAPTURE_COMPLETE ? track_quality() : 0u;
+}
+
+/* 40-track disk in an 80-track drive (double_step): the wide track may read better one
+ * physical track in or out.  Tries both, ends on the best position with its capture. */
+static uint8_t search_track(uint8_t good)
+{
+    uint8_t best = good;
+    int best_pos = 0;
+    ufi_drive_step(-1);
+    const uint8_t q_out = recapture();
+    if (q_out > best) { best = q_out; best_pos = -1; }
+    ufi_drive_step(1);
+    ufi_drive_step(1);
+    const uint8_t q_in = recapture();
+    if (q_in > best) { best = q_in; best_pos = 1; }
+    if (best_pos != 1) {
+        ufi_drive_step(-1);
+        if (best_pos == -1) {
+            ufi_drive_step(-1);
+        }
+        best = recapture();                 /* the capture must match the final position */
+        ufi_drive_step(1);                  /* back to the nominal track for the next seek */
+        if (best_pos == -1) {
+            ufi_drive_step(1);
+        }
+    } else {
+        ufi_drive_step(-1);
+    }
+    return best;
+}
+
 static void fail(uint8_t code)
 {
     close_log();
@@ -503,7 +551,7 @@ static bool drive_ok(uint8_t d)
 
 static bool config_valid(const dump_config_t* c)
 {
-    return drive_ok(c->drive) && c->tracks >= 1 && c->tracks <= 84 && c->sides >= 1 &&
+    return drive_ok(c->drive) && c->tracks <= 84 && c->sides >= 1 &&      /* 0 = probe */
            c->sides <= 2 && c->revs >= 1 && c->revs <= REVOLUTIONS_BUFFER;
 }
 
@@ -572,7 +620,11 @@ static const char cfg_default[] =
     "rpm=0\r\n"
     "# drive=iec: 1541/1571 on J8, dump via the drive's own controller to DUMPnnnn.D64\r\n"
     "# (tracks=35 or 40, sides=1); device number on the bus\r\n"
-    "iec_device=8\r\n";
+    "iec_device=8\r\n"
+    "# tracks=0: find the highest readable track first (80-83); track_search=1: with\r\n"
+    "# double_step (40-track disk in an 80-track drive) re-read weak tracks one physical\r\n"
+    "# track in and out and keep the best position\r\n"
+    "track_search=0\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA}, {"iec", DRIVE_IEC},
@@ -640,6 +692,8 @@ static void parse_line(const char* k, dump_config_t* c)
         rpm_start = (num == 300u || num == 360u) ? (uint16_t)num : 0u;
     } else if (!strncmp(k, "iec_device=", 11)) {
         iec_device = (num >= 4u && num <= 30u) ? (uint8_t)num : 8u;
+    } else if (!strncmp(k, "track_search=", 13)) {
+        track_search = (num == 1u);
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -770,6 +824,15 @@ void ufi_dump_service(void)
                 open_log();
                 log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
                 if (prepare_drive(cfg.drive) != UFI_OK) { fail(2); break; }
+                if (cfg.tracks == 0) {                      /* tracks=0: highest readable + 1 */
+                    uint8_t hi = 79;
+                    if (ufi_drive_probe_tracks(&hi) != UFI_OK) { fail(2); break; }
+                    cfg.tracks = (uint8_t)(hi + 1u > 84u ? 84u : hi + 1u);
+                    ufi_drive_recalibrate();
+                }
+            }
+            if (cfg.tracks == 0) {
+                cfg.tracks = cfg.drive == DRIVE_IEC ? 35u : 80u;
             }
             cyl = 0;
             head = 0;
@@ -792,7 +855,11 @@ void ufi_dump_service(void)
             switch (ufi_capture_get_state()) {
                 case CAPTURE_COMPLETE: {
                     /* quality: decode the track (format probed on 0.0); retry weak tracks */
-                    const uint8_t good = track_quality();
+                    uint8_t good = track_quality();
+                    if (q_known && good < q_spt && tries == 0 && track_search && !copying &&
+                        ufi_drive_get_timing().double_step && !ufi_drive_is_apple()) {
+                        good = search_track(good);          /* +-1 physical track */
+                    }
                     if (q_known && good < q_spt && tries < 2u) {
                         tries++;
                         g_capture.state = CAPTURE_IDLE;
