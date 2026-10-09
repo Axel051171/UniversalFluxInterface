@@ -297,6 +297,15 @@ def test_diagnostics():
     dev.write_track(1, 0, [1000, 1000, 1000], hard_sectors=10)
     req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
     assert req[2] == P2.HARD_SECTORS and req[-1] == 10 and len(req) == 12
+    dev.seek(17, 2)
+    assert fake.requests[-1].cmd == P2.SEEK and fake.requests[-1].payload == bytes([17, 2])
+    dev.seek(17)
+    assert fake.requests[-1].payload == bytes([17])
+    dev.read_track(17, 0, 1, quarter=1)
+    assert fake.requests[-1].payload == P2.READ_REQ.pack(17 * 4 + 1, 0, 1, P2.QUARTER_TRACKS, 0)
+    dev.write_track(17, 0, [1000, 1000, 1000], quarter=3)
+    req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
+    assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS
 
 
 def test_drive_commands_and_payloads():

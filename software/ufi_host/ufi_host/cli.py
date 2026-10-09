@@ -204,7 +204,10 @@ def main(argv: list[str] | None = None) -> int:
         "set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
-    sub.add_parser("seek").add_argument("track", type=int)
+    q_help = "Apple Disk II quarter-track offset 0-3 (2 = half track), firmware >= 1.14"
+    p = sub.add_parser("seek")
+    p.add_argument("track", type=int)
+    p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     sub.add_parser("side").add_argument("side", type=int, choices=(0, 1))
     hs_help = "hard-sectored disk: number of sector holes (10/16/32), firmware >= 1.14"
     p = sub.add_parser("read")
@@ -213,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("-o", "--output")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
+    p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     p = sub.add_parser("read-disk")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=80)
@@ -226,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("--verify", action="store_true")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
+    p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -296,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "motor":
             dev.motor(a.state == "on")
         elif a.cmd == "seek":
-            dev.seek(a.track)
+            dev.seek(a.track, a.quarter)
         elif a.cmd == "recal":
             dev.recalibrate()
         elif a.cmd == "side":
@@ -315,8 +320,8 @@ def main(argv: list[str] | None = None) -> int:
             for k, v in dev.timing(**changes).items():
                 print(f"{k:18} {v}")
         elif a.cmd == "read":
-            cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors)
-            print(f"track {a.track}.{a.side}:\n{_summary(cap)}")
+            cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter)
+            print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
             if a.output:
                 write_scp(a.output, {a.track * 2 + a.side: [_to_scp(r) for r in cap.revolutions]},
                           len(cap.revolutions))
@@ -329,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
             if n not in tracks:
                 raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
             dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
-                            hard_sectors=a.hard_sectors)
+                            hard_sectors=a.hard_sectors, quarter=a.quarter)
             print("written" + (" + verified" if a.verify else ""))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)

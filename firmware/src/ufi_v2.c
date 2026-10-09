@@ -406,7 +406,10 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         sectors = p[6];
     }
     ufi_flux_hard_sectors(sectors);
-    const int ret = ufi_capture_start(p[0], p[1], revs, period_ticks);
+    /* bit2: track field in quarter tracks (Apple), 1.14 */
+    const uint8_t track = (len >= 4u && (p[3] & 0x04u)) ? p[0] >> 2 : p[0];
+    const uint8_t quarter = (len >= 4u && (p[3] & 0x04u)) ? p[0] & 3u : 0u;
+    const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
     if (ret == UFI_OK) {
         op_read = true;
         read_seq = seq;
@@ -431,9 +434,15 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         sectors = p[11];
     }
     ufi_flux_hard_sectors(sectors);
-    const int ret = ufi_write_prepare_compact(p[0], p[1], get32(&p[3]), get32(&p[7]),
+    const uint8_t track = (p[2] & 0x04u) ? p[0] >> 2 : p[0];    /* bit2: quarter tracks (1.14) */
+    const uint8_t quarter = (p[2] & 0x04u) ? p[0] & 3u : 0u;
+    if (quarter && !ufi_drive_is_apple()) {
+        return UFI_ERR_BAD_ARGS;
+    }
+    const int ret = ufi_write_prepare_compact(track, p[1], get32(&p[3]), get32(&p[7]),
                                               (p[2] & 0x01u) != 0);
     if (ret == UFI_OK) {
+        ufi_write_set_quarter(quarter);
         op_write = true;
         write_seq = seq;
     }
@@ -542,8 +551,8 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         case V2_MOTOR:
             ret = (len < 1u) ? UFI_ERR_BAD_ARGS : ufi_drive_motor(p[0] != 0);
             break;
-        case V2_SEEK:
-            ret = (len < 1u) ? UFI_ERR_BAD_ARGS : ufi_drive_seek(p[0]);
+        case V2_SEEK:                       /* track u8 [, quarter u8 (Apple, 1.14)] */
+            ret = (len < 1u) ? UFI_ERR_BAD_ARGS : ufi_drive_seek_q(p[0], len >= 2u ? p[1] : 0u);
             break;
         case V2_RECAL:
             ret = ufi_drive_recalibrate();

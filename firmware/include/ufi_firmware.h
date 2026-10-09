@@ -303,6 +303,9 @@ void ufi_main_loop(void);
 
 // Flux-Capture (high level, ufi_main.c: seek + side + capture)
 int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks);
+int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
+                        uint8_t quarter);   // 1.14: Apple quarter track offset
+void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
 int ufi_capture_abort(void);
 capture_state_t ufi_capture_get_state(void);
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution);
@@ -432,6 +435,7 @@ int ufi_drive_select(drive_type_t type);
 int ufi_drive_motor(bool on);
 int ufi_drive_step(int direction);  // +1 = in, -1 = out
 int ufi_drive_seek(uint8_t track);
+int ufi_drive_seek_q(uint8_t track, uint8_t quarter);   // 1.14: Apple quarter tracks (0-3), else BAD_ARGS
 int ufi_drive_recalibrate(void);
 int ufi_drive_select_side(uint8_t side);
 drive_status_t ufi_drive_get_status(void);

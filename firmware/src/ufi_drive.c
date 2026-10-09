@@ -44,6 +44,8 @@ static void delay_us(uint32_t us)
 /* ============================================================================
  * APPLE DISK II (board v0.7: J14 = drive 1, J15 = /ENABLE of drive 2)
  * Four-phase stepper, one phase step = half a track, track n sits at phase (2n) & 3.
+ * Positions are kept in quarter tracks (1.14): even quarters = one phase, odd quarters =
+ * the two neighbouring phases energised together (head between the poles, phases stay on).
  * No track 0 sensor: recalibrate = 80 half steps outwards against the stop, ending on
  * phase 0 (as the Apple RWTS does).  /ENABLE runs the spindle and powers the stepper.
  * ============================================================================ */
@@ -54,7 +56,8 @@ static void delay_us(uint32_t us)
 #define APL_MAX_TRACK       39
 
 static const gpio_pin_t* const apl_ph[4] = {&PIN_APL_PH0, &PIN_APL_PH1, &PIN_APL_PH2, &PIN_APL_PH3};
-static int16_t apl_ht[2] = {-1, -1};    /* half-track position per drive, -1 = unknown */
+static int16_t apl_qt[2] = {-1, -1};    /* quarter-track position per drive, -1 = unknown */
+#define APL_MAX_QT          (4 * APL_MAX_TRACK)
 
 static bool is_apple(drive_type_t t)
 {
@@ -76,61 +79,98 @@ static void apl_release(void)
     for (int p = 0; p < 4; p++) {
         apl_phase(p, false);
     }
+    for (int d = 0; d < 2; d++) {
+        if (apl_qt[d] > 0 && (apl_qt[d] & 1)) {
+            apl_qt[d] = -1;                 /* unpowered on a quarter: head snaps to a pole */
+        }
+    }
     HAL_GPIO_WritePin(PIN_APL_EN1.port, PIN_APL_EN1.pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(PIN_APL_EN2.port, PIN_APL_EN2.pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
 }
 
-/* Move the current Apple drive to half track `target` (from ht, which may be assumed) */
-static void apl_move(int ht, int target)
+/* Move the current Apple drive to quarter track `target` (from qt, which may be assumed) */
+static void apl_move_qt(int qt, int target)
 {
-    while (ht != target) {
-        const int next = ht + (target > ht ? 1 : -1);
+    int h = qt / 2;                         /* half track; an odd qt sits between h and h+1 */
+    if (qt & 1) {
+        apl_phase(h + 1, false);            /* back onto the pole of h first */
+        delay_us(APL_HALFSTEP_US);
+    }
+    const int th = target / 2;
+    while (h != th) {
+        const int next = h + (th > h ? 1 : -1);
         apl_phase(next, true);
         delay_us(APL_OVERLAP_US);
-        apl_phase(ht, false);
+        apl_phase(h, false);
         delay_us(APL_HALFSTEP_US);
-        ht = next;
+        h = next;
     }
-    delay_us(APL_SETTLE_US);
-    apl_phase(ht, false);               /* stepper unpowered between seeks: no heating */
-    apl_ht[g_current_drive == DRIVE_APPLE2] = (int16_t)ht;
-    g_drive_status[g_current_drive].current_track = (uint8_t)(ht / 2);
+    if (target & 1) {
+        apl_phase(th, true);                /* both poles: the head settles in between and */
+        apl_phase(th + 1, true);            /* the phases stay energised while it is there */
+        delay_us(APL_SETTLE_US);
+    } else {
+        delay_us(APL_SETTLE_US);
+        apl_phase(th, false);               /* stepper unpowered between seeks: no heating */
+    }
+    apl_qt[g_current_drive == DRIVE_APPLE2] = (int16_t)target;
+    g_drive_status[g_current_drive].current_track = (uint8_t)(target / 4);
 }
 
 static int apl_recalibrate(void)
 {
-    apl_move(2 * (APL_MAX_TRACK + 1), 0);   /* assume the far end: hits the stop on the way */
+    apl_move_qt(4 * (APL_MAX_TRACK + 1), 0);    /* assume the far end: hits the stop on the way */
     g_drive_status[g_current_drive].track0 = true;
+    return UFI_OK;
+}
+
+static int apl_seek_qt(int target)
+{
+    if (target < 0 || target > APL_MAX_QT) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
+    if (qt < 0) {
+        apl_recalibrate();
+        apl_move_qt(0, target);
+    } else {
+        apl_move_qt(qt, target);
+    }
     return UFI_OK;
 }
 
 static int apl_seek(uint8_t track)
 {
-    if (track > APL_MAX_TRACK) {
-        return UFI_ERR_SEEK_FAIL;
-    }
-    const int ht = apl_ht[g_current_drive == DRIVE_APPLE2];
-    if (ht < 0) {
-        apl_recalibrate();
-        apl_move(0, 2 * track);
-    } else {
-        apl_move(ht, 2 * track);
-    }
-    return UFI_OK;
+    return apl_seek_qt(4 * track);
 }
 
 int ufi_drive_apple_step(int direction)
 {
-    const int ht = apl_ht[g_current_drive == DRIVE_APPLE2];
-    if (ht < 0) {
+    const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
+    if (qt < 0) {
         return apl_recalibrate();
     }
-    int target = ht + 2 * (direction > 0 ? 1 : -1);
+    int target = qt + 4 * (direction > 0 ? 1 : -1);
     if (target < 0) target = 0;
-    if (target > 2 * APL_MAX_TRACK) target = 2 * APL_MAX_TRACK;
-    apl_move(ht, target);
+    if (target > APL_MAX_QT) target = APL_MAX_QT;
+    apl_move_qt(qt, target);
     return UFI_OK;
+}
+
+/* Seek with a quarter-track offset (Apple only; quarter 0 = plain seek on any drive) */
+int ufi_drive_seek_q(uint8_t track, uint8_t quarter)
+{
+    if (quarter == 0) {
+        return ufi_drive_seek(track);
+    }
+    if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    if (!is_apple(g_current_drive) || quarter > 3u) {
+        return UFI_ERR_BAD_ARGS;
+    }
+    return apl_seek_qt(4 * track + quarter);
 }
 
 /* ============================================================================
@@ -450,7 +490,7 @@ int ufi_drive_density_line(bool assert)
 bool ufi_drive_at_track0(void)
 {
     if (is_apple(g_current_drive)) {
-        return apl_ht[g_current_drive == DRIVE_APPLE2] == 0;   /* no sensor: position count */
+        return apl_qt[g_current_drive == DRIVE_APPLE2] == 0;   /* no sensor: position count */
     }
     return bus_in(&PIN_FDD_TRACK0);
 }

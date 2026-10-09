@@ -52,6 +52,7 @@ typedef struct {
     bool bad;                   // compact: reserved / index code seen
     bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
     uint32_t wait_since;        // HAL tick when the wait for the index pulse began
+    uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
 } write_context_t;
 
 static write_context_t g_write;
@@ -225,9 +226,14 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.bytes_received = 0;
     g_write.verify_after = verify;
     g_write.compact = false;
+    g_write.quarter = 0;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
+}
+
+void ufi_write_set_quarter(uint8_t quarter) {
+    g_write.quarter = quarter;
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
@@ -243,6 +249,7 @@ int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,
         return UFI_ERR_BUFFER_FULL;
     }
     g_write.compact = true;
+    g_write.quarter = 0;
     g_write.bytes_expected = byte_count;
     g_write.decoded = 0;
     g_write.code_len = 0;
@@ -335,9 +342,10 @@ int ufi_write_start(void) {
         g_write.state = WRITE_ERROR;
         return UFI_ERR_WRITE_PROT;
     }
-    if (ufi_drive_seek(g_write.track) != 0) {
+    const int sret = ufi_drive_seek_q(g_write.track, g_write.quarter);
+    if (sret != 0) {
         g_write.state = WRITE_ERROR;
-        return UFI_ERR_SEEK_FAIL;
+        return sret == UFI_ERR_BAD_ARGS ? UFI_ERR_BAD_ARGS : UFI_ERR_SEEK_FAIL;
     }
     ufi_drive_select_side(g_write.side);
     g_write.apple = ufi_drive_is_apple();
@@ -521,7 +529,7 @@ int ufi_write_verify(void) {
 
     g_write.state = WRITE_VERIFYING;
 
-    int ret = ufi_capture_start(g_write.track, g_write.side, 1, 0);
+    int ret = ufi_capture_start_q(g_write.track, g_write.side, 1, 0, g_write.quarter);
     if (ret != 0) {
         g_write.state = WRITE_ERROR;
         return ret;

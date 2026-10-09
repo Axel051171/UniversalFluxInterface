@@ -110,6 +110,12 @@ void ufi_init(void)
 
 int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks)
 {
+    return ufi_capture_start_q(track, side, revolutions, period_ticks, 0);
+}
+
+int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
+                        uint8_t quarter)
+{
     if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
         ufi_stream_active()) {
         return UFI_ERR_BUSY;
@@ -117,8 +123,9 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
     if (ufi_drive_get_current() == DRIVE_NONE) {
         return UFI_ERR_NO_DRIVE;
     }
-    if (ufi_drive_seek(track) != 0) {
-        return UFI_ERR_SEEK_FAIL;
+    const int sret = ufi_drive_seek_q(track, quarter);
+    if (sret != 0) {
+        return sret == UFI_ERR_BAD_ARGS ? UFI_ERR_BAD_ARGS : UFI_ERR_SEEK_FAIL;
     }
     ufi_drive_select_side(side);
 

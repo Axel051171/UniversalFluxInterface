@@ -90,6 +90,7 @@ EVENTS_ALL = sum(1 << (c - 0x80) for c in EVENT_NAMES)
 USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
+QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 FILE_CREATE = 0x01
 ATTR_DIR = 0x10
 MAX_READ_REVS = 200                     # firmware ring buffer (v1 READ_TRACK)
@@ -479,7 +480,11 @@ class Device2:
     def motor(self, on: bool) -> None:
         self.request(MOTOR, bytes([int(on)]), timeout=3.0)
 
-    def seek(self, track: int) -> None:
+    def seek(self, track: int, quarter: int = 0) -> None:
+        """quarter 1-3: Apple Disk II quarter-track offset (firmware 1.14)."""
+        if quarter:
+            self.request(SEEK, bytes([track, quarter]), timeout=5.0)
+            return
         self.request(SEEK, bytes([track]), timeout=3.0)
 
     def recalibrate(self) -> None:
@@ -542,11 +547,16 @@ class Device2:
 
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,
-                   no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0) -> Capture:
+                   no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
+                   quarter: int = 0) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
-        hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts."""
+        hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
+        quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5)."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0)
+        if quarter:
+            flags |= QUARTER_TRACKS
+            track = track * 4 + quarter
         seq = self._next_seq()
         self.send(T_REQUEST, READ, seq, READ_REQ.pack(track, side, revolutions, flags, period_ms)
                   + (bytes([hard_sectors]) if hard_sectors else b""))
@@ -568,11 +578,14 @@ class Device2:
             return Capture(revs, f.status)
 
     def write_track(self, track: int, side: int, deltas: list[int], verify: bool = False,
-                    hard_sectors: int = 0) -> None:
+                    hard_sectors: int = 0, quarter: int = 0) -> None:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index)."""
         code = encode_flux(deltas)
         seq = self._next_seq()
         flags = (WRITE_VERIFY if verify else 0) | (HARD_SECTORS if hard_sectors else 0)
+        if quarter:
+            flags |= QUARTER_TRACKS
+            track = track * 4 + quarter
         self.send(T_REQUEST, WRITE, seq, WRITE_REQ.pack(track, side, flags, len(deltas), len(code))
                   + (bytes([hard_sectors]) if hard_sectors else b""))
         f = self._wait(WRITE, seq, (T_RESPONSE,), 5.0)
