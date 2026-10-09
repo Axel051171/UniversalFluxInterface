@@ -22,7 +22,7 @@ v0.5 (neue Teile mit festen Referenzen ab Q1, U12, R17, C47, D13, J9, SW3, TP7):
 | Strommessung | R26/R29 0,1 Ω + U12/U13 INA180A1 (2 V/A) → PC0/PC1 | > 1,5 A für 50 ms → Schiene aus, ERR-LED |
 | TVS an den Laufwerksausgängen | D13 SMF5.0CA (FDD_5V), D14 SMAJ15CA (FDD_12V) | – |
 | WRITE LOCK | J11 (Jumper), U14 74LVC1G32, R33 | Jumper gesteckt = WGATE in Hardware gesperrt, Firmware meldet „write protected“ |
-| Erweiterung | J9 2×5: 3V3, 5V, I²C1 (PB6/PB7, 2,2k), GPIO PE0/PE1, Taster-Leitungen | z. B. OLED-Display + Taster für Betrieb ohne PC |
+| Erweiterung | J9 2×5: 3V3, 5V, I²C1 (PB6/PB7, 2,2k), GPIO PE0/PE1, Taster-Leitungen | z. B. OLED-Display + Taster für Betrieb ohne PC; Pin 6 (PE1) ab Firmware 1.13 wahlweise Index-Simulation (Open-Drain, `ufi index-sim 300`/`UFI.CFG index_sim=300`) → Draht an den Indexsensor-Ausgang eines PC-Laufwerks für Flippy-Disketten; dann kein Betriebsart-Schalter an J13 |
 | Taster | SW3/SW4 (PB8/PB9, aktiv low) | frei für Firmware-Funktionen |
 | ~~microSD~~ | in v0.6 durch SD-NAND U15 ersetzt (s. u.) | – |
 | Board-ID | R17/R18 an PA4 | 10k/10k = 1,65 V = v0.5, 10k/4,7k = 1,06 V = v0.6; steht in `GET_INFO` |

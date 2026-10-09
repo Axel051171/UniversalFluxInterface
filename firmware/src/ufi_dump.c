@@ -239,6 +239,7 @@ static int finish_file(void)
 
 static FIL logfile;
 static bool log_open, copying, button_copy, protocol_gw, apple_sync;
+static uint16_t index_sim;              /* UFI.CFG index_sim=300|360 (J9 pin 6), 0 = off */
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -511,6 +512,11 @@ bool ufi_config_apple_sync(void)
     return apple_sync;
 }
 
+uint16_t ufi_config_index_sim(void)
+{
+    return index_sim;
+}
+
 /* ============================================================================
  * UFI.CFG on the SD NAND: drive and dump settings for stand-alone use, editable in the
  * SD drive mode.  Lines "key=value", '#' comments; written with defaults if missing.
@@ -532,7 +538,10 @@ static const char cfg_default[] =
     "# (Greaseweazle host tools: gw read, gw write, ...)\r\n"
     "protocol=ufi\r\n"
     "# Disk II sync (index) sensor on J19: 1 = Apple reads/writes use its index pulse\r\n"
-    "apple_sync=0\r\n";
+    "apple_sync=0\r\n"
+    "# index simulation on J9 pin 6 (open drain, wire to a drive's index sensor output for\r\n"
+    "# flippy disks): 0 = off, 300 or 360 rpm; not with the mode switch on J13\r\n"
+    "index_sim=0\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
@@ -587,6 +596,8 @@ static void parse_line(const char* k, dump_config_t* c)
         protocol_gw = word_is(v, "gw");
     } else if (!strncmp(k, "apple_sync=", 11)) {
         apple_sync = (num == 1u);
+    } else if (!strncmp(k, "index_sim=", 10)) {
+        index_sim = (uint16_t)num;
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -607,6 +618,7 @@ void ufi_config_load(void)
         f_close(&file);
         stage[n] = 0;
         dump_config_t c = cfg;
+        index_sim = 0;
         for (char* p = (char*)stage; *p; ) {
             while (*p == ' ' || *p == '\t') {
                 p++;
@@ -629,6 +641,7 @@ void ufi_config_load(void)
         f_close(&file);
     }
     unmount();
+    ufi_index_sim_set(index_sim, 0);    /* refused (stays off) with the switch on SD */
 }
 
 int ufi_dump_start(const dump_config_t* c)

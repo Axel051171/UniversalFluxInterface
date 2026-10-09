@@ -135,6 +135,9 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x18 | PROBE_TRACKS | – | höchste erreichbare Spur u8 |
 | 0x19 | SEEK_TEST | `a` u8, `b` u8, `cycles` u8 | – |
 | 0x1A | AMIGA_ID | – | ID u32 |
+| 0x1B | DIAG_RPM (1.13) | `revs` u8 (0 = 5, max 50) | `revs` u8, `period_min` u32, `period_avg` u32, `period_max` u32, `pulse` u32 (Ticks 275 MHz), `rpm_x100` u16 |
+| 0x1C | DRIVE_SCAN (1.13) | `flags` u8 (Bit0 = Shugart-Bus DS0–DS3 statt a/b/amiga/amiga2) | 4 × (`drive` u8, `found` u8: Bit0 TRK0 gefunden, Bit1 Indeximpulse, Bit2 schreibgeschützt) |
+| 0x1D | INDEX_SIM (1.13) | – (Abfrage) oder `rpm` u16 (0 = aus, 200–400), `pulse_us` u16 (0 = 2000) | `rpm` u16 aktueller Zustand |
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index), `period_ms` u16 | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -161,9 +164,9 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x62 | DUMP_ABORT | – | – |
 | 0x63 | COPY_START | – | – |
 
-**caps (INFO):** Bit0 PSRAM ok, Bit1 SD-NAND bereit, Bit2 IEC, Bit3 Amiga, Bit4 Amiga2/JP3-fähig (v0.7), Bit5 Shugart-Bus, Bit6 Apple-Port (v0.7), Bit7 Sync-Sensor aktiviert (`apple_sync=1`), Bit8 Greaseweazle-Modus verfügbar, Bit9 Dateizugriff, Bit10 Ereignisse.
+**caps (INFO):** Bit0 PSRAM ok, Bit1 SD-NAND bereit, Bit2 IEC, Bit3 Amiga, Bit4 Amiga2/JP3-fähig (v0.7), Bit5 Shugart-Bus, Bit6 Apple-Port (v0.7), Bit7 Sync-Sensor aktiviert (`apple_sync=1`), Bit8 Greaseweazle-Modus verfügbar, Bit9 Dateizugriff, Bit10 Ereignisse, Bit11 Laufwerksdiagnose und Indexsimulation (DIAG_RPM, DRIVE_SCAN, INDEX_SIM; Firmware 1.13).
 
-**Beschäftigt (Status 1):** Während eines Dumps/einer Kopie werden nur PING, INFO, STATUS, EVENTS, POWER, USB_POWER, SD_INFO, DUMP_STATUS und DUMP_ABORT ausgeführt; während READ/WRITE (bis zum Ende-Rahmen) werden Laufwerks- und Flussbefehle (0x10–0x1A, 0x20, 0x22–0x24, DUMP_START, COPY_START) abgewiesen. WRITE wartet höchstens 1 s auf den Indeximpuls (sonst Ende-Status 4); schlägt das Positionieren vor dem Schreiben fehl, endet WRITE mit Status 3.
+**Beschäftigt (Status 1):** Während eines Dumps/einer Kopie werden nur PING, INFO, STATUS, EVENTS, POWER, USB_POWER, SD_INFO, DUMP_STATUS und DUMP_ABORT ausgeführt; während READ/WRITE (bis zum Ende-Rahmen) werden Laufwerks- und Flussbefehle (0x10–0x1C, 0x20, 0x22–0x24, DUMP_START, COPY_START) abgewiesen; INDEX_SIM (0x1D) ist jederzeit erlaubt. WRITE wartet höchstens 1 s auf den Indeximpuls (sonst Ende-Status 4); schlägt das Positionieren vor dem Schreiben fehl, endet WRITE mit Status 3.
 
 ### 3.3 Statuscodes
 
@@ -226,7 +229,10 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 - **WRITE_FILE:** `flags` Bit0 legt die Datei neu an bzw. kürzt sie auf 0 (auch mit 0 Datenbytes). Weniger geschriebene als gesendete Bytes = Speicher voll; die Antwort trägt dann Status 13.
 - **EVENTS:** Unbekannte Bits in `mask` werden ignoriert; `mask = 0` schaltet alle Ereignisse ab.
 - **DUMP_START:** Nutzdaten leer (Werte aus UFI.CFG) oder genau 4 Byte.
-- **UFI.CFG:** Textdatei, Zeilen `schlüssel=wert` (Schlüssel klein), `#` beginnt einen Kommentar, CRLF; unbekannte Schlüssel werden ignoriert. Schlüssel: `drive, tracks, sides, revs, button_a, copy_from, copy_to, protocol, apple_sync`.
+- **UFI.CFG:** Textdatei, Zeilen `schlüssel=wert` (Schlüssel klein), `#` beginnt einen Kommentar, CRLF; unbekannte Schlüssel werden ignoriert. Schlüssel: `drive, tracks, sides, revs, button_a, copy_from, copy_to, protocol, apple_sync, index_sim` (`index_sim=300|360` schaltet die Indexsimulation beim Start ein, 1.13).
+- **DIAG_RPM (1.13):** misst am gewählten Laufwerk `revs` Umdrehungen über die INDEX-Leitung (Motor wird gestartet und läuft weiter); Status 2 ohne Laufwerk oder bei IEC, Status 4 ohne Indeximpuls (auch Apple ohne `apple_sync=1`), Status 5 bei Abbruch der Impulsfolge. `rpm_x100` = 6000 × 275 000 000 / `period_avg`, gerundet; `pulse` ist die mittlere Impulsbreite (Low-Zeit auf dem Kabel).
+- **DRIVE_SCAN (1.13):** wählt nacheinander jedes der vier Laufwerke, startet den Motor, rekalibriert (TRK0 = Laufwerk antwortet), wartet bis 600 ms auf zwei Indeximpulse (= Diskette eingelegt und dreht) und liest den Schreibschutz; anschließend ist wieder das zuvor gewählte Laufwerk aktiv. Dauert bis zu einigen Sekunden je Laufwerk, bewegt die Köpfe.
+- **INDEX_SIM (1.13):** Open-Drain-Ausgang auf J9 Pin 6 (PE1) mit `rpm` Impulsen je Minute, Impuls = Low für `pulse_us`. Für Flippy-Disketten: Draht an den Indexsensor-Ausgang eines PC-Laufwerks, das ohne Index nicht schreibt. Derselbe Pin ist die SD-Stellung des Betriebsart-Schalters an J13: steht der Schalter auf SD, antwortet INDEX_SIM mit Status 1; solange die Simulation läuft, wird der Schalter dort als „nicht SD“ gelesen. Die Antwort enthält immer den aktuellen Zustand (auch bei Status 16 für `rpm` außerhalb 200–400 oder `pulse_us` ≥ halbe Umdrehung).
 - **Nicht in v2:** Selbsttest und Timer-/GPIO-Diagnose gibt es nur in v1; die Drehzahl berechnet der Host aus den Indexabständen eines READ.
 
 ### 3.7 Beispiel: Spur lesen

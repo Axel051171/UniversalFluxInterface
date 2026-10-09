@@ -73,7 +73,8 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 |---|---|---|---|
 | 5.1 | 3,5"-Laufwerk an J6 + Strom an J3, `ufi select a`, `ufi motor on` | Motor läuft, Strom i5/i12 plausibel (Anlauf kurz höher) | |
 | 5.2 | `ufi recal`, `ufi seek 79`, `ufi seek 0` | Kopf fährt, TRK0 erkannt | |
-| 5.3 | `ufi rpm` | 300 ± 3 (bzw. 360 bei HD-5,25") | |
+| 5.3 | `ufi rpm` (Firmware ≥ 1.13: aus den Indeximpulsen, mit min/max und Impulsbreite) | 300 ± 3 (bzw. 360 bei HD-5,25"), Schwankung < ±1 ms, Impuls 1–8 ms | |
+| 5.3a | `ufi scan` (Firmware ≥ 1.13; Köpfe bewegen sich) | Zeile `a`: answers yes, spins, Schreibschutz passend zur Diskette; b/amiga/amiga2 ohne Laufwerk `-` | |
 | 5.4 | Oszi TP6 (INDEX) | ein Puls je Umdrehung, 200 ms, saubere Flanken | |
 | 5.5 | Oszi TP5 (RDATA) während `ufi read 0 0 -r 3` | Abstände der Pulse 4/6/8 µs (DD) bzw. 2/3/4 µs (HD), keine Prellungen | |
 | 5.6 | `ufi read 0 0 -r 3` mit bekannter Diskette | 3 Umdrehungen, Flusswechsel/Umdrehung plausibel (DD ≈ 35k, HD ≈ 70k) | |

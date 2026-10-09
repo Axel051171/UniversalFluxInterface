@@ -52,6 +52,7 @@ T_REQUEST, T_RESPONSE, T_EVENT, T_DATA, T_END = 1, 2, 3, 4, 5
 PING, INFO, STATUS, RESET, BOOTLOADER, USB_MODE, EVENTS = 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
 CHECK_DISK, PROBE_TRACKS, SEEK_TEST, AMIGA_ID = 0x17, 0x18, 0x19, 0x1A
+DIAG_RPM, DRIVE_SCAN, INDEX_SIM = 0x1B, 0x1C, 0x1D          # firmware 1.13
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
@@ -75,9 +76,9 @@ STATUS_TEXT = {
 # INFO caps bits
 CAPS = ("PSRAM ok", "SD NAND ready", "IEC", "Amiga", "Amiga2 / JP3 capable", "Shugart bus",
         "Apple port", "sync sensor enabled (apple_sync=1)", "Greaseweazle mode available",
-        "file access", "events")
+        "file access", "events", "drive diagnostics + index simulation")
 CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_SYNC, \
-    CAP_GW, CAP_FILES, CAP_EVENTS = (1 << i for i in range(len(CAPS)))
+    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG = (1 << i for i in range(len(CAPS)))
 
 # events (3.5); EVENTS mask bit = code - 0x80
 EV_DISK_CHANGED, EV_BUTTON, EV_PROGRESS, EV_POWER_OFF, EV_MODE_SWITCH = 0x80, 0x81, 0x82, 0x83, 0x84
@@ -93,6 +94,23 @@ ATTR_DIR = 0x10
 MAX_READ_REVS = 200                     # firmware ring buffer (v1 READ_TRACK)
 
 INFO_HDR = struct.Struct("<BBBBIIIH")   # proto, fw_major, fw_minor, board_rev, caps, sample_hz, store, max_payload
+DIAG_RPM_REPLY = struct.Struct("<BIIIIH")   # revs, period min/avg/max, pulse width (ticks), rpm*100
+DIAG_TRACK0, DIAG_INDEX, DIAG_WPROT = 1, 2, 4   # DRIVE_SCAN flags
+
+
+@dataclass
+class RpmResult:
+    revolutions: int
+    period_min_us: float
+    period_avg_us: float
+    period_max_us: float
+    pulse_us: float
+    rpm: float
+
+    def __str__(self) -> str:
+        jitter = (self.period_max_us - self.period_min_us) / 2
+        return (f"{self.rpm:.2f} rpm  ({self.period_avg_us / 1000:.3f} ms per revolution, "
+                f"+/-{jitter:.0f} us over {self.revolutions} revs, index pulse {self.pulse_us:.0f} us)")
 BOARD = struct.Struct("<BBHHH")         # power, flags, i5_mA, i12_mA, board_id_mV (v1 0x1B)
 STATUS_HDR = struct.Struct("<8B")
 DUMP = struct.Struct("<BBBBHBB")
@@ -496,6 +514,25 @@ class Device2:
     def amiga_id(self) -> tuple[int, str]:
         (v,) = struct.unpack("<I", self.request(AMIGA_ID)[:4])
         return v, AMIGA_IDS.get(v, "unknown")
+
+    # -- diagnostics (firmware 1.13) ------------------------------------------
+    def diag_rpm(self, revolutions: int = 5) -> RpmResult:
+        """Revolution time of the selected drive from its index pulses (motor is started)."""
+        p = self.request(DIAG_RPM, bytes([max(1, min(revolutions, 50))]), timeout=3.0 + revolutions)
+        revs, pmin, pavg, pmax, pulse, rpm100 = DIAG_RPM_REPLY.unpack_from(p)
+        us = 1e6 / P.FLUX_CLOCK_HZ
+        return RpmResult(revs, pmin * us, pavg * us, pmax * us, pulse * us, rpm100 / 100)
+
+    def drive_scan(self, shugart_bus: bool = False) -> list[tuple[str, int]]:
+        """Probe a/b/amiga/amiga2 (or ds0-ds3): [(drive, DIAG_* flags)].  Moves the heads."""
+        p = self.request(DRIVE_SCAN, bytes([1 if shugart_bus else 0]), timeout=20.0)
+        names = {v: k for k, v in P.DRIVES.items()}
+        return [(names.get(p[i], str(p[i])), p[i + 1]) for i in range(0, len(p) - 1, 2)]
+
+    def index_sim(self, rpm: int | None = None, pulse_us: int = 0) -> int:
+        """Index simulation on J9 pin 6: rpm 300/360 on, 0 off, None = query.  -> current rpm."""
+        payload = b"" if rpm is None else struct.pack("<HH", rpm, pulse_us)
+        return struct.unpack("<H", self.request(INDEX_SIM, payload)[:2])[0]
 
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,

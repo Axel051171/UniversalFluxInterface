@@ -176,7 +176,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status",
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim",
            "dump-abort", "copy", "power"}
 
 
@@ -185,7 +185,14 @@ def main(argv: list[str] | None = None) -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("info", "status", "selftest", "rpm", "recal", "abort", "iec-reset", "iec-recv",
+    sub.add_parser("rpm", help="spindle speed from the index pulses").add_argument(
+        "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
+    sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
+        "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
+    p = sub.add_parser("index-sim", help="index pulses on J9 pin 6 for flippy disks (needs firmware 1.13)")
+    p.add_argument("rpm", nargs="?", choices=("300", "360", "off"), help="omit to query")
+    p.add_argument("--pulse", type=int, default=0, help="pulse width in us (default 2000)")
+    for name in ("info", "status", "selftest", "recal", "abort", "iec-reset", "iec-recv",
                  "reset", "bootloader", "check-disk", "amiga-id", "usb-power", "caps", "events",
                  "dump-status", "dump-abort", "copy"):
         sub.add_parser(name)
@@ -258,7 +265,18 @@ def main(argv: list[str] | None = None) -> int:
             print(" ".join(f"{n}={'OK' if r & (1 << i) else 'FAIL'}"
                            for i, n in enumerate(("timer", "dma", "usb", "gpio"))))
         elif a.cmd == "rpm":
-            print(f"{dev.rpm()} rpm")
+            if isinstance(dev, P2.Device2) and dev.caps() & P2.CAP_DIAG:
+                print(dev.diag_rpm(a.revs))
+            else:
+                print(f"{dev.rpm()} rpm")
+        elif a.cmd == "scan":
+            print("drive    answers  disk  write-protect")
+            for name, fl in dev.drive_scan(a.bus == "ds"):
+                print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
+                      f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "index-sim":
+            rpm = dev.index_sim(None if a.rpm is None else (0 if a.rpm == "off" else int(a.rpm)), a.pulse)
+            print(f"index simulation on J9 pin 6: {rpm} rpm" if rpm else "index simulation off")
         elif a.cmd == "select":
             dev.select(a.drive)
         elif a.cmd == "motor":

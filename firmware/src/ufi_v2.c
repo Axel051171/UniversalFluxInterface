@@ -52,13 +52,15 @@ extern capture_context_t g_capture;
 #define CAP_GW          (1u << 8)
 #define CAP_FILES       (1u << 9)
 #define CAP_EVENTS      (1u << 10)
+#define CAP_DIAG        (1u << 11)   /* 1.13: DIAG_RPM, DRIVE_SCAN, INDEX_SIM */
 
 enum {
     V2_PING = 0x00, V2_INFO = 0x01, V2_STATUS = 0x02, V2_RESET = 0x03, V2_BOOTLOADER = 0x04,
     V2_USB_MODE = 0x05, V2_EVENTS = 0x06,
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
-    V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A,
+    V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
+    V2_INDEX_SIM = 0x1D,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
@@ -158,7 +160,7 @@ static uint8_t board_rev(void)
 
 static uint32_t caps(uint8_t rev)
 {
-    uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS;
+    uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS | CAP_DIAG;
     c |= ufi_flux_store_is_psram() ? CAP_PSRAM : 0u;
     c |= ufi_sd_present() ? CAP_SD : 0u;
     c |= (rev >= 7u) ? CAP_AMIGA2 : 0u;
@@ -367,6 +369,7 @@ static bool allowed_during_dump(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
         case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT:
+        case V2_INDEX_SIM:
             return true;
         default:
             return false;
@@ -376,7 +379,7 @@ static bool allowed_during_dump(uint8_t cmd)
 /* Commands that move or use the drive: refused while a READ / WRITE runs */
 static bool uses_drive(uint8_t cmd)
 {
-    return (cmd >= V2_SELECT && cmd <= V2_AMIGA_ID) || cmd == UFI_V2_READ ||
+    return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == UFI_V2_READ ||
            cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN ||
            cmd == V2_DUMP_START || cmd == V2_COPY_START;
 }
@@ -577,6 +580,33 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = (ret == UFI_OK) ? 4u : 0u;
             break;
         }
+        case V2_DIAG_RPM: {                 /* revs u8 -> revs, min/avg/max, pulse, rpm*100 */
+            diag_rpm_t r;
+            ret = ufi_diag_rpm(len >= 1u ? p[0] : 0u, &r);
+            if (ret == UFI_OK) {
+                out[0] = r.revs;
+                put32(&out[1], r.period_min);
+                put32(&out[5], r.period_avg);
+                put32(&out[9], r.period_max);
+                put32(&out[13], r.pulse_avg);
+                put16(&out[17], r.rpm_x100);
+                n = 19u;
+            }
+            break;
+        }
+        case V2_DRIVE_SCAN: {               /* flags u8 (bit0: Shugart bus DS0-DS3) */
+            uint8_t cnt = 0;
+            ret = ufi_diag_scan(len >= 1u && (p[0] & 0x01u), out, &cnt);
+            n = (ret == UFI_OK) ? cnt : 0u;
+            break;
+        }
+        case V2_INDEX_SIM:                  /* rpm u16 (0 = off), pulse_us u16; - = query */
+            if (len >= 2u) {
+                ret = ufi_index_sim_set(get16(p), len >= 4u ? get16(&p[2]) : 0u);
+            }
+            put16(out, ufi_index_sim_rpm());
+            n = 2u;
+            break;
 
         /* ---- flux ---- */
         case UFI_V2_READ:

@@ -51,6 +51,7 @@ class FakeV2:
         self.write_frames = 0
         self.events_mask = 0
         self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF)
+        self.index_sim = 0
         self.garbage = b""
         self.corrupt_next = False
         self.pending_events: list[tuple[int, bytes]] = []
@@ -105,8 +106,8 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 12, 7, 0x7FF, 275_000_000, 8 << 20, 4096)
-              + b"UFI Flux Engine 1.12 (abc1234, 2026-10-07)\0PSRAM ok\0")
+            r(0, P2.INFO_HDR.pack(2, 1, 13, 7, 0xFFF, 275_000_000, 8 << 20, 4096)
+              + b"UFI Flux Engine 1.13 (abc1234, 2026-10-09)\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
         elif cmd == P2.TIMING_CMD:
@@ -117,6 +118,18 @@ class FakeV2:
             r(0, b"\x01\x01")
         elif cmd == P2.AMIGA_ID:
             r(0, struct.pack("<I", 0xAAAAAAAA))
+        elif cmd == P2.DIAG_RPM:
+            r(0, P2.DIAG_RPM_REPLY.pack(a[0], 54_900_000, 55_000_000, 55_100_000, 1_100_000, 30000))
+        elif cmd == P2.DRIVE_SCAN:
+            r(0, bytes([6, 3, 7, 0, 8, 0, 9, 0]) if a and a[0] & 1 else bytes([1, 7, 2, 1, 4, 0, 10, 0]))
+        elif cmd == P2.INDEX_SIM:
+            if len(a) >= 2:
+                rpm = struct.unpack_from("<H", a)[0]
+                if rpm and not 200 <= rpm <= 400:
+                    r(P2.BAD_ARGS, struct.pack("<H", self.index_sim))
+                    return
+                self.index_sim = rpm
+            r(0, struct.pack("<H", self.index_sim))
         elif cmd == P2.USB_POWER:
             r(0, struct.pack("<3H", 0, 1350, 3000))
         elif cmd == P2.IEC_RECV:
@@ -250,14 +263,33 @@ def test_bad_request_frame_gets_frame_error():
 def test_info_caps_status():
     dev = P2.Device2(FakeV2())
     lines = dev.info()
-    assert lines[0] == "UFI v2 protocol, firmware 1.12, board v0.7"
+    assert lines[0] == "UFI v2 protocol, firmware 1.13, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
-    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x7FF
+    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0xFFF
     assert all(on for _, on in i.caps_list())
     st = dev.status()
     assert st.drive == 1 and st.motor_on and st.track0 and st.track == 5
     assert st.board.flags == 8 and st.board.board_id_mv == 2200
+
+
+def test_diagnostics():
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    r = dev.diag_rpm(7)
+    assert r.revolutions == 7 and abs(r.rpm - 300.0) < 1e-9
+    assert abs(r.period_avg_us - 200_000) < 1e-6 and abs(r.pulse_us - 4000) < 1e-6
+    assert "300.00 rpm" in str(r) and "7 revs" in str(r)
+    assert fake.requests[-1].payload == b"\x07"
+    assert dev.drive_scan() == [("a", 7), ("b", 1), ("amiga", 0), ("amiga2", 0)]
+    assert dev.drive_scan(shugart_bus=True)[0] == ("ds0", 3)
+    assert fake.requests[-1].payload == b"\x01"
+    assert dev.index_sim() == 0
+    assert dev.index_sim(300) == 300 and fake.requests[-1].payload == struct.pack("<HH", 300, 0)
+    assert dev.index_sim(360, 1500) == 360
+    with pytest.raises(P2.DeviceError):
+        dev.index_sim(1000)
+    assert dev.index_sim() == 360 and dev.index_sim(0) == 0
 
 
 def test_drive_commands_and_payloads():
@@ -383,6 +415,20 @@ def test_cli_get_and_caps(monkeypatch, tmp_path, capsys):
     assert cli.main(["caps"]) == 0
     text = capsys.readouterr().out
     assert "board v0.7" in text and "file access" in text
+
+
+def test_cli_diagnostics(monkeypatch, capsys):
+    fake = FakeV2()
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["rpm", "3"]) == 0
+    assert "300.00 rpm" in capsys.readouterr().out and fake.requests[-1].cmd == P2.DIAG_RPM
+    assert cli.main(["scan"]) == 0
+    out = capsys.readouterr().out
+    assert "a        yes      spins yes" in out and "amiga    -" in out
+    assert cli.main(["index-sim", "360"]) == 0
+    assert "360 rpm" in capsys.readouterr().out
+    assert cli.main(["index-sim", "off"]) == 0
+    assert "off" in capsys.readouterr().out
 
 
 # -- events ---------------------------------------------------------------------

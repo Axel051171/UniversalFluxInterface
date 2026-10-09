@@ -545,6 +545,26 @@ memory_info_t ufi_debug_memory_read(void);
 void ufi_debug_led_test(void);
 uint8_t ufi_debug_selftest(void);
 
+/* Drive diagnostics and index simulation (ufi_diag.c, firmware 1.13) */
+typedef struct {
+    uint8_t revs;           // revolutions measured
+    uint32_t period_min;    // revolution time in FLUX_TIMER_FREQ ticks
+    uint32_t period_avg;
+    uint32_t period_max;
+    uint32_t pulse_avg;     // index pulse width in ticks
+    uint16_t rpm_x100;      // rpm * 100 from period_avg
+} diag_rpm_t;
+
+#define DIAG_TRACK0     0x01u   // recalibration found TRK0: drive answers
+#define DIAG_INDEX      0x02u   // index pulses: disk inserted and spinning
+#define DIAG_WPROT      0x04u   // write protect asserted
+
+int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r);
+int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n);   // out: 4 x (type, flags)
+int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us);           // rpm 0 = off
+uint16_t ufi_index_sim_rpm(void);
+uint16_t ufi_config_index_sim(void);    // UFI.CFG index_sim=300|360 (0 = off)
+
 /* ============================================================================
  * INTERRUPT HANDLER
  * ============================================================================ */

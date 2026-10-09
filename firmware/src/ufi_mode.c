@@ -30,7 +30,8 @@ static uint8_t blink_n;
 static uint8_t read_switch(void)
 {
     const bool io1 = HAL_GPIO_ReadPin(PIN_EXP_IO1.port, PIN_EXP_IO1.pin) == GPIO_PIN_SET;
-    const bool io2 = HAL_GPIO_ReadPin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin) == GPIO_PIN_SET;
+    const bool io2 = HAL_GPIO_ReadPin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin) == GPIO_PIN_SET &&
+                     !ufi_index_sim_rpm();  /* PE1 is the index simulation output */
     if (io1 && io2) {
         return 0xFF;                    /* not a valid position (wiring fault): ignore */
     }

@@ -31,6 +31,14 @@ ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | cop
 ufi power [MASKE]                         # Board-Status; Maske Bit0 FDD_5V, Bit1 FDD_12V
 ```
 
+Laufwerksdiagnose (Firmware ≥ 1.13, caps-Bit 11):
+
+```bash
+ufi rpm [UMDREHUNGEN]                     # Drehzahl aus den Indeximpulsen: min/mittel/max, Impulsbreite
+ufi scan [pc|ds]                          # welche Laufwerke antworten (a/b/amiga/amiga2 bzw. ds0-ds3): TRK0, Diskette dreht, Schreibschutz
+ufi index-sim 300|360|off [--pulse 2000]  # Indeximpulse auf J9 Pin 6 (Flippy-Disketten), ohne Argument: Abfrage
+```
+
 ## Protokoll UFI v2 (Standard)
 
 `ufi` spricht **UFI v2** – Spezifikation: [docs/USB_Protokoll.md](../../docs/USB_Protokoll.md), Abschnitt 3 (Rahmen `55 AA`, type/cmd/seq/status/len, CRC-16/CCITT-FALSE, Daten-/Ende-Rahmen für Lesen und Schreiben, Ereignisse, Dateien). Implementierung: `ufi_host/protocol2.py` (`Device2`, `FrameParser`, `connect`).
@@ -38,7 +46,7 @@ ufi power [MASKE]                         # Board-Status; Maske Bit0 FDD_5V, Bit
 - Beim Öffnen: Kanal-Reset (10000 Baud), dann `PING` als v2-Rahmen. Antwortet das Gerät nicht in v2 (alte Firmware), nimmt `ufi` das v1-Protokoll (unten) und weist auf ein Firmware-Update hin; v2-Befehle (`caps`, `files`, `cfg`, …) melden dann einen Fehler.
 - Lesen: `READ` → Annahme, Daten-Rahmen mit dem Flusscode (275 MHz, wie v1-Stream), Ende-Rahmen mit Umdrehungszahl. SCP-Ausgabe identisch zum v1-Weg.
 - Schreiben: `WRITE` mit `flux_count`/`byte_count`, dann Daten-Rahmen im Flusscode (≤ 4096 Byte je Rahmen), Ende-Rahmen nach dem Schreiben (bzw. Prüflesen mit `--verify`).
-- `selftest` gibt es in v2 nicht (PSRAM-Test steht in `ufi info`); `rpm` misst in v2 eine Umdrehung der aktuellen Spur (Motor muss laufen).
+- `selftest` gibt es in v2 nicht (PSRAM-Test steht in `ufi info`); `rpm` nutzt ab Firmware 1.13 `DIAG_RPM` (Indeximpulse, Motor wird gestartet), davor liest es eine Umdrehung der aktuellen Spur (Motor muss laufen).
 
 ## Protokoll UFI v1 (alt, Firmware < 1.12; Stream-Lesen braucht eine Firmware mit `ufi_stream.c`)
 
