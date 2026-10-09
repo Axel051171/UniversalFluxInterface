@@ -486,14 +486,15 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
 
     const uint32_t start = HAL_GetTick();
 
-    /* Wait for the start of an index pulse (INDEX pin stays readable in AF mode) */
-    while (bus_in(&PIN_FDD_INDEX)) {
+    /* Wait for the start of an index pulse (INDEX pin stays readable in AF mode; or the
+     * internal index simulation) */
+    while (ufi_flux_index_asserted()) {
         if (HAL_GetTick() - start > 500) {
             led_set(&PIN_LED_FDD, false);
             return UFI_ERR_NO_INDEX;
         }
     }
-    while (!bus_in(&PIN_FDD_INDEX)) {
+    while (!ufi_flux_index_asserted()) {
         if (HAL_GetTick() - start > 500) {
             led_set(&PIN_LED_FDD, false);
             return UFI_ERR_NO_INDEX;

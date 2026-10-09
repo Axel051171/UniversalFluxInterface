@@ -561,9 +561,17 @@ typedef struct {
 
 int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r);
 int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n);   // out: 4 x (type, flags)
-int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us);           // rpm 0 = off
+#define INDEX_SIM_PIN       0x01u   // pulses on J9 pin 6 (PE1, open drain)
+#define INDEX_SIM_INTERNAL  0x02u   // pulses replace the drive's INDEX line in capture/write
+int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode);   // rpm 0 = off, mode 0 = PIN
 uint16_t ufi_index_sim_rpm(void);
+uint8_t ufi_index_sim_mode(void);
+bool ufi_index_sim_pulse(void);         // simulated index currently asserted
 uint16_t ufi_config_index_sim(void);    // UFI.CFG index_sim=300|360 (0 = off)
+uint8_t ufi_config_index_sim_mode(void);    // UFI.CFG index_sim_mode=pin|internal|both
+void ufi_flux_index_event(uint32_t t);  // ufi_flux.c: one index pulse at flux-timer time t
+void ufi_flux_index_source(bool internal);
+bool ufi_flux_index_asserted(void);     // INDEX line, or the simulation when internal
 
 /* ============================================================================
  * INTERRUPT HANDLER

@@ -26,10 +26,10 @@ extern TIM_HandleTypeDef htim2;
  * REVOLUTION TIME
  * ============================================================================ */
 
-/* wait for the level of the index input; false on timeout */
+/* wait for the level of the index input (or the internal simulation); false on timeout */
 static bool wait_index(bool asserted, uint32_t t0_ms)
 {
-    while (bus_in(&PIN_FDD_INDEX) != asserted) {
+    while (ufi_flux_index_asserted() != asserted) {
         if (HAL_GetTick() - t0_ms > INDEX_WAIT_MS) {
             return false;
         }
@@ -130,6 +130,7 @@ int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n)
 
 static TIM_HandleTypeDef htim7;
 static volatile uint16_t sim_rpm, sim_low_ticks, sim_high_ticks;
+static volatile uint8_t sim_mode;           /* INDEX_SIM_PIN / INDEX_SIM_INTERNAL */
 static volatile bool sim_pulse;
 
 static void sim_pin(bool output)
@@ -153,22 +154,36 @@ void TIM7_IRQHandler(void)
     if (__HAL_TIM_GET_FLAG(&htim7, TIM_FLAG_UPDATE)) {
         __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
         sim_pulse = !sim_pulse;                 /* pulse = output low (index asserted) */
-        HAL_GPIO_WritePin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin,
-                          sim_pulse ? GPIO_PIN_RESET : GPIO_PIN_SET);
+        if (sim_mode & INDEX_SIM_PIN) {
+            HAL_GPIO_WritePin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin,
+                              sim_pulse ? GPIO_PIN_RESET : GPIO_PIN_SET);
+        }
         __HAL_TIM_SET_AUTORELOAD(&htim7, (sim_pulse ? sim_low_ticks : sim_high_ticks) - 1u);
+        if (sim_pulse && (sim_mode & INDEX_SIM_INTERNAL)) {
+            ufi_flux_index_event(TIM2->CNT);    /* counts as the drive's index pulse */
+        }
     }
 }
 
-int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us)
+int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode)
 {
     if (rpm == 0) {
         if (sim_rpm) {
             HAL_TIM_Base_Stop_IT(&htim7);
             HAL_NVIC_DisableIRQ(TIM7_IRQn);
-            sim_pin(false);
+            ufi_flux_index_source(false);
+            if (sim_mode & INDEX_SIM_PIN) {
+                sim_pin(false);
+            }
             sim_rpm = 0;
+            sim_mode = 0;
+            sim_pulse = false;
         }
         return UFI_OK;
+    }
+    if (mode == 0) mode = INDEX_SIM_PIN;
+    if (mode & ~(INDEX_SIM_PIN | INDEX_SIM_INTERNAL)) {
+        return UFI_ERR_BAD_ARGS;
     }
     if (rpm < 200u || rpm > 400u) {
         return UFI_ERR_BAD_ARGS;
@@ -179,7 +194,8 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us)
     if (low < 1u || low >= period / 2u) {
         return UFI_ERR_BAD_ARGS;
     }
-    if (!sim_rpm && HAL_GPIO_ReadPin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin) == GPIO_PIN_SET) {
+    const bool pin_was = (sim_mode & INDEX_SIM_PIN) != 0, pin_now = (mode & INDEX_SIM_PIN) != 0;
+    if (pin_now && !pin_was && HAL_GPIO_ReadPin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin) == GPIO_PIN_SET) {
         return UFI_ERR_BUSY;                    /* mode switch on J13 in the SD position */
     }
 
@@ -189,9 +205,11 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us)
     sim_low_ticks = (uint16_t)low;
     sim_high_ticks = (uint16_t)(period - low);
     sim_pulse = false;
-    if (!sim_rpm) {
-        sim_pin(true);
+    if (pin_now != pin_was) {
+        sim_pin(pin_now);
     }
+    sim_mode = mode;
+    ufi_flux_index_source((mode & INDEX_SIM_INTERNAL) != 0);
     __HAL_RCC_TIM7_CLK_ENABLE();
     htim7.Instance = TIM7;                      /* APB1 timer clock = TIM2 clock */
     htim7.Init.Prescaler = FLUX_TIMER_FREQ / SIM_TICK_HZ - 1u;
@@ -203,7 +221,8 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us)
         return UFI_ERR_NOT_IMPL;
     }
     __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
-    HAL_NVIC_SetPriority(TIM7_IRQn, 6, 0);
+    /* same preemption level as the TIM2 index capture: above the flux DMA ISR */
+    HAL_NVIC_SetPriority(TIM7_IRQn, 0, 3);
     HAL_NVIC_EnableIRQ(TIM7_IRQn);
     sim_rpm = rpm;
     HAL_TIM_Base_Start_IT(&htim7);
@@ -213,4 +232,14 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us)
 uint16_t ufi_index_sim_rpm(void)
 {
     return sim_rpm;
+}
+
+uint8_t ufi_index_sim_mode(void)
+{
+    return sim_mode;
+}
+
+bool ufi_index_sim_pulse(void)
+{
+    return sim_rpm && sim_pulse;
 }

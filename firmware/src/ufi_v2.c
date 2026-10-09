@@ -600,12 +600,14 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = (ret == UFI_OK) ? cnt : 0u;
             break;
         }
-        case V2_INDEX_SIM:                  /* rpm u16 (0 = off), pulse_us u16; - = query */
+        case V2_INDEX_SIM:                  /* rpm u16 (0 = off), pulse_us u16, mode u8; - = query */
             if (len >= 2u) {
-                ret = ufi_index_sim_set(get16(p), len >= 4u ? get16(&p[2]) : 0u);
+                ret = ufi_index_sim_set(get16(p), len >= 4u ? get16(&p[2]) : 0u,
+                                        len >= 5u ? p[4] : 0u);
             }
             put16(out, ufi_index_sim_rpm());
-            n = 2u;
+            out[2] = ufi_index_sim_mode();
+            n = 3u;
             break;
 
         /* ---- flux ---- */

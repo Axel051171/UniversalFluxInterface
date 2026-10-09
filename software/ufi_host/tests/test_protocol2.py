@@ -52,6 +52,7 @@ class FakeV2:
         self.events_mask = 0
         self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF)
         self.index_sim = 0
+        self.index_sim_mode = 0
         self.garbage = b""
         self.corrupt_next = False
         self.pending_events: list[tuple[int, bytes]] = []
@@ -106,8 +107,8 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 13, 7, 0xFFF, 275_000_000, 8 << 20, 4096)
-              + b"UFI Flux Engine 1.13 (abc1234, 2026-10-09)\0PSRAM ok\0")
+            r(0, P2.INFO_HDR.pack(2, 1, 14, 7, 0xFFF, 275_000_000, 8 << 20, 4096)
+              + b"UFI Flux Engine 1.14 (abc1234, 2026-10-09)\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
         elif cmd == P2.TIMING_CMD:
@@ -126,10 +127,11 @@ class FakeV2:
             if len(a) >= 2:
                 rpm = struct.unpack_from("<H", a)[0]
                 if rpm and not 200 <= rpm <= 400:
-                    r(P2.BAD_ARGS, struct.pack("<H", self.index_sim))
+                    r(P2.BAD_ARGS, struct.pack("<HB", self.index_sim, self.index_sim_mode))
                     return
                 self.index_sim = rpm
-            r(0, struct.pack("<H", self.index_sim))
+                self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
+            r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
         elif cmd == P2.USB_POWER:
             r(0, struct.pack("<3H", 0, 1350, 3000))
         elif cmd == P2.IEC_RECV:
@@ -263,7 +265,7 @@ def test_bad_request_frame_gets_frame_error():
 def test_info_caps_status():
     dev = P2.Device2(FakeV2())
     lines = dev.info()
-    assert lines[0] == "UFI v2 protocol, firmware 1.13, board v0.7"
+    assert lines[0] == "UFI v2 protocol, firmware 1.14, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
     assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0xFFF
@@ -284,12 +286,12 @@ def test_diagnostics():
     assert dev.drive_scan() == [("a", 7), ("b", 1), ("amiga", 0), ("amiga2", 0)]
     assert dev.drive_scan(shugart_bus=True)[0] == ("ds0", 3)
     assert fake.requests[-1].payload == b"\x01"
-    assert dev.index_sim() == 0
-    assert dev.index_sim(300) == 300 and fake.requests[-1].payload == struct.pack("<HH", 300, 0)
-    assert dev.index_sim(360, 1500) == 360
+    assert dev.index_sim() == (0, 0)
+    assert dev.index_sim(300) == (300, 1) and fake.requests[-1].payload == struct.pack("<HHB", 300, 0, 1)
+    assert dev.index_sim(360, 1500, P2.INDEX_SIM_INTERNAL) == (360, 2)
     with pytest.raises(P2.DeviceError):
         dev.index_sim(1000)
-    assert dev.index_sim() == 360 and dev.index_sim(0) == 0
+    assert dev.index_sim() == (360, 2) and dev.index_sim(0) == (0, 0)
 
 
 def test_drive_commands_and_payloads():
@@ -426,7 +428,9 @@ def test_cli_diagnostics(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "a        yes      spins yes" in out and "amiga    -" in out
     assert cli.main(["index-sim", "360"]) == 0
-    assert "360 rpm" in capsys.readouterr().out
+    assert "360 rpm, J9 pin 6" in capsys.readouterr().out
+    assert cli.main(["index-sim", "300", "--internal", "--no-pin"]) == 0
+    assert "300 rpm, internal" in capsys.readouterr().out and fake.requests[-1].payload[4] == 2
     assert cli.main(["index-sim", "off"]) == 0
     assert "off" in capsys.readouterr().out
 

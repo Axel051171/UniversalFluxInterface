@@ -96,6 +96,8 @@ MAX_READ_REVS = 200                     # firmware ring buffer (v1 READ_TRACK)
 INFO_HDR = struct.Struct("<BBBBIIIH")   # proto, fw_major, fw_minor, board_rev, caps, sample_hz, store, max_payload
 DIAG_RPM_REPLY = struct.Struct("<BIIIIH")   # revs, period min/avg/max, pulse width (ticks), rpm*100
 DIAG_TRACK0, DIAG_INDEX, DIAG_WPROT = 1, 2, 4   # DRIVE_SCAN flags
+INDEX_SIM_PIN, INDEX_SIM_INTERNAL = 1, 2        # INDEX_SIM mode bits
+INDEX_SIM_MODES = {1: "J9 pin 6", 2: "internal", 3: "J9 pin 6 + internal"}
 
 
 @dataclass
@@ -529,10 +531,13 @@ class Device2:
         names = {v: k for k, v in P.DRIVES.items()}
         return [(names.get(p[i], str(p[i])), p[i + 1]) for i in range(0, len(p) - 1, 2)]
 
-    def index_sim(self, rpm: int | None = None, pulse_us: int = 0) -> int:
-        """Index simulation on J9 pin 6: rpm 300/360 on, 0 off, None = query.  -> current rpm."""
-        payload = b"" if rpm is None else struct.pack("<HH", rpm, pulse_us)
-        return struct.unpack("<H", self.request(INDEX_SIM, payload)[:2])[0]
+    def index_sim(self, rpm: int | None = None, pulse_us: int = 0,
+                  mode: int = INDEX_SIM_PIN) -> tuple[int, int]:
+        """Index simulation: rpm 300/360 on, 0 off, None = query.  mode: INDEX_SIM_PIN (J9 pin 6)
+        and/or INDEX_SIM_INTERNAL (replaces the drive's INDEX line).  -> (rpm, mode)."""
+        payload = b"" if rpm is None else struct.pack("<HHB", rpm, pulse_us, mode)
+        rpm_now, mode_now = struct.unpack("<HB", self.request(INDEX_SIM, payload)[:3])
+        return rpm_now, mode_now
 
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,

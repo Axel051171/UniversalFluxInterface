@@ -192,6 +192,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("index-sim", help="index pulses on J9 pin 6 for flippy disks (needs firmware 1.13)")
     p.add_argument("rpm", nargs="?", choices=("300", "360", "off"), help="omit to query")
     p.add_argument("--pulse", type=int, default=0, help="pulse width in us (default 2000)")
+    p.add_argument("--internal", action="store_true",
+                   help="pulses also replace the drive's INDEX line for reading/writing (no wire)")
+    p.add_argument("--no-pin", action="store_true", help="internal only, J9 pin 6 stays an input")
     for name in ("info", "status", "selftest", "recal", "abort", "iec-reset", "iec-recv",
                  "reset", "bootloader", "check-disk", "amiga-id", "usb-power", "caps", "events",
                  "dump-status", "dump-abort", "copy"):
@@ -275,8 +278,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
         elif a.cmd == "index-sim":
-            rpm = dev.index_sim(None if a.rpm is None else (0 if a.rpm == "off" else int(a.rpm)), a.pulse)
-            print(f"index simulation on J9 pin 6: {rpm} rpm" if rpm else "index simulation off")
+            mode = (0 if a.no_pin else P2.INDEX_SIM_PIN) | (P2.INDEX_SIM_INTERNAL if a.internal else 0)
+            if a.rpm is not None and a.rpm != "off" and not mode:
+                raise SystemExit("index-sim: --no-pin needs --internal")
+            rpm, mode = dev.index_sim(None if a.rpm is None else (0 if a.rpm == "off" else int(a.rpm)),
+                                      a.pulse, mode)
+            print(f"index simulation {rpm} rpm, {P2.INDEX_SIM_MODES.get(mode, mode)}" if rpm
+                  else "index simulation off")
         elif a.cmd == "select":
             dev.select(a.drive)
         elif a.cmd == "motor":

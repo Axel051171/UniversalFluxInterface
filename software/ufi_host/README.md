@@ -37,6 +37,7 @@ Laufwerksdiagnose (Firmware ≥ 1.13, caps-Bit 11):
 ufi rpm [UMDREHUNGEN]                     # Drehzahl aus den Indeximpulsen: min/mittel/max, Impulsbreite
 ufi scan [pc|ds]                          # welche Laufwerke antworten (a/b/amiga/amiga2 bzw. ds0-ds3): TRK0, Diskette dreht, Schreibschutz
 ufi index-sim 300|360|off [--pulse 2000]  # Indeximpulse auf J9 Pin 6 (Flippy-Disketten), ohne Argument: Abfrage
+ufi index-sim 300 --internal [--no-pin]   # Firmware ≥ 1.14: Impulse gelten intern als Index (Lesen/Schreiben ohne Draht)
 ```
 
 ## Protokoll UFI v2 (Standard)

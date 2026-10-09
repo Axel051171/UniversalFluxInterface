@@ -277,6 +277,18 @@ int ufi_flux_capture_stop(void)
  * INTERRUPTS
  * ============================================================================ */
 
+static volatile bool index_internal;    /* index pulses come from the simulation (ufi_diag.c) */
+
+void ufi_flux_index_source(bool internal)
+{
+    index_internal = internal;
+}
+
+bool ufi_flux_index_asserted(void)
+{
+    return index_internal ? ufi_index_sim_pulse() : bus_in(&PIN_FDD_INDEX);
+}
+
 void ufi_flux_tim2_irq(void)
 {
     if (!(TIM2->SR & TIM_SR_CC2IF)) {
@@ -284,7 +296,16 @@ void ufi_flux_tim2_irq(void)
     }
     const uint32_t t = TIM2->CCR2;          /* reading CCR2 clears CC2IF */
     TIM2->SR = ~TIM_SR_CC2OF;
+    if (index_internal) {
+        return;                             /* the drive's INDEX line is ignored */
+    }
+    ufi_flux_index_event(t);
+}
 
+/* One index pulse at flux-timer time t: from the TIM2 capture or from the internal index
+ * simulation (TIM7 ISR at the same preemption level, so dma_pos() stays consistent) */
+void ufi_flux_index_event(uint32_t t)
+{
     write_state_t ws = ufi_write_get_state();
     if (ws == WRITE_WAITING_INDEX || ws == WRITE_ACTIVE) {
         ufi_write_index_handler(t);
