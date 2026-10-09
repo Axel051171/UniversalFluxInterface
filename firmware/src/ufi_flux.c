@@ -279,6 +279,32 @@ int ufi_flux_capture_stop(void)
 
 static volatile bool index_internal;    /* index pulses come from the simulation (ufi_diag.c) */
 
+/* Hard-sectored disks: n sector holes plus one index hole halfway between two of them.
+ * Only the index hole counts as index; it is the pulse that follows its predecessor after
+ * less than 3/4 of the previous gap (the sector hole after it has the same short gap, but
+ * then the previous gap was short too). */
+static uint8_t hard_sectors;
+static uint32_t hs_last, hs_gap;        /* last hole time, gap before it */
+static uint8_t hs_n;                    /* holes seen since the setting (0..2) */
+
+void ufi_flux_hard_sectors(uint8_t n)
+{
+    hard_sectors = n;
+    hs_n = 0;
+}
+
+static bool hs_is_index(uint32_t t)
+{
+    const uint32_t gap = t - hs_last, prev = hs_gap;
+    hs_last = t;
+    hs_gap = gap;
+    if (hs_n < 2u) {
+        hs_n++;
+        return false;
+    }
+    return gap < prev - prev / 4u;
+}
+
 void ufi_flux_index_source(bool internal)
 {
     index_internal = internal;
@@ -306,6 +332,9 @@ void ufi_flux_tim2_irq(void)
  * simulation (TIM7 ISR at the same preemption level, so dma_pos() stays consistent) */
 void ufi_flux_index_event(uint32_t t)
 {
+    if (hard_sectors && !hs_is_index(t)) {
+        return;                             /* sector hole */
+    }
     write_state_t ws = ufi_write_get_state();
     if (ws == WRITE_WAITING_INDEX || ws == WRITE_ACTIVE) {
         ufi_write_index_handler(t);

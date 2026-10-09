@@ -144,7 +144,7 @@ class FakeV2:
             for code, payload in self.pending_events:
                 self.emit_event(code, payload)
         elif cmd == P2.READ:
-            _track, _side, revs, _flags, _period = P2.READ_REQ.unpack(a)
+            _track, _side, revs, _flags, _period = P2.READ_REQ.unpack_from(a)
             r()
             data = encode_stream(self.revs[:revs])
             for k in range(0, len(data), self.data_chunk):
@@ -292,6 +292,11 @@ def test_diagnostics():
     with pytest.raises(P2.DeviceError):
         dev.index_sim(1000)
     assert dev.index_sim() == (360, 2) and dev.index_sim(0) == (0, 0)
+    dev.read_track(1, 0, 1, hard_sectors=16)
+    assert fake.requests[-1].payload == P2.READ_REQ.pack(1, 0, 1, P2.HARD_SECTORS, 0) + b"\x10"
+    dev.write_track(1, 0, [1000, 1000, 1000], hard_sectors=10)
+    req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
+    assert req[2] == P2.HARD_SECTORS and req[-1] == 10 and len(req) == 12
 
 
 def test_drive_commands_and_payloads():

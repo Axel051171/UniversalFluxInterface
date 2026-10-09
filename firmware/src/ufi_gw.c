@@ -664,6 +664,7 @@ void ufi_gw_begin(void)
     rx_tail = rx_head = 0;
     rx_paused = clear_req = false;
     reset_parser();
+    ufi_flux_hard_sectors(0);           /* gw has no hard-sector support here */
     drive_timing_t t = ufi_drive_get_timing();
     t.double_step = 0;                  /* gw steps by itself */
     ufi_drive_set_timing(&t);

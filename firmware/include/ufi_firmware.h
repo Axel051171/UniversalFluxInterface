@@ -570,6 +570,7 @@ bool ufi_index_sim_pulse(void);         // simulated index currently asserted
 uint16_t ufi_config_index_sim(void);    // UFI.CFG index_sim=300|360 (0 = off)
 uint8_t ufi_config_index_sim_mode(void);    // UFI.CFG index_sim_mode=pin|internal|both
 void ufi_flux_index_event(uint32_t t);  // ufi_flux.c: one index pulse at flux-timer time t
+void ufi_flux_hard_sectors(uint8_t n);  // 0 = soft-sectored; n sector holes + 1 index hole (1.14)
 void ufi_flux_index_source(bool internal);
 bool ufi_flux_index_asserted(void);     // INDEX line, or the simulation when internal
 

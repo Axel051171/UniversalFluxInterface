@@ -398,6 +398,14 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         if (ms == 0 || ms > 2000u) ms = 200u;
         period_ticks = ms * (FLUX_TIMER_FREQ / 1000u);
     }
+    uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes in p[6] */
+    if (len >= 4u && (p[3] & 0x02u)) {
+        if (len < 7u || p[6] < 2u) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        sectors = p[6];
+    }
+    ufi_flux_hard_sectors(sectors);
     const int ret = ufi_capture_start(p[0], p[1], revs, period_ticks);
     if (ret == UFI_OK) {
         op_read = true;
@@ -415,6 +423,14 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     if (ufi_board_write_locked() || ufi_drive_write_protected()) {
         return UFI_ERR_WRITE_PROT;
     }
+    uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes in p[11] */
+    if (p[2] & 0x02u) {
+        if (len < 12u || p[11] < 2u) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        sectors = p[11];
+    }
+    ufi_flux_hard_sectors(sectors);
     const int ret = ufi_write_prepare_compact(p[0], p[1], get32(&p[3]), get32(&p[7]),
                                               (p[2] & 0x01u) != 0);
     if (ret == UFI_OK) {

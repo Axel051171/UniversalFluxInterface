@@ -71,7 +71,7 @@ def cmd_read_disk(dev, a) -> None:
     try:
         for cyl in range(a.tracks):
             for head in range(a.sides):
-                cap = dev.read_track(cyl, head, a.revs)
+                cap = dev.read_track(cyl, head, a.revs, hard_sectors=a.hard_sectors)
                 tracks[cyl * 2 + head] = [_to_scp(r) for r in cap.revolutions]
                 print(f"track {cyl:2d}.{head}: {len(cap.revolutions)} revs, "
                       f"{cap.revolutions[0].rpm if cap.revolutions else 0:5.1f} rpm", flush=True)
@@ -87,7 +87,8 @@ def cmd_write_disk(dev, a) -> None:
     _prepare(dev, a.drive)
     try:
         for n in sorted(tracks):
-            dev.write_track(n // 2, n % 2, scp_to_ticks(tracks[n][0].cells), a.verify)
+            dev.write_track(n // 2, n % 2, scp_to_ticks(tracks[n][0].cells), a.verify,
+                            hard_sectors=a.hard_sectors)
             print(f"track {n // 2:2d}.{n % 2}: written" + (" + verified" if a.verify else ""), flush=True)
     finally:
         dev.motor(False)
@@ -205,24 +206,29 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
     sub.add_parser("seek").add_argument("track", type=int)
     sub.add_parser("side").add_argument("side", type=int, choices=(0, 1))
+    hs_help = "hard-sectored disk: number of sector holes (10/16/32), firmware >= 1.14"
     p = sub.add_parser("read")
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("-o", "--output")
+    p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p = sub.add_parser("read-disk")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=80)
     p.add_argument("--sides", type=int, default=2, choices=(1, 2))
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("--drive", default="a", choices=list(P.DRIVES))
+    p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p = sub.add_parser("write")
     p.add_argument("image")
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("--verify", action="store_true")
+    p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p = sub.add_parser("write-disk")
     p.add_argument("image")
+    p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--verify", action="store_true")
     p.add_argument("--drive", default="a", choices=list(P.DRIVES))
     p = sub.add_parser("erase")
@@ -309,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
             for k, v in dev.timing(**changes).items():
                 print(f"{k:18} {v}")
         elif a.cmd == "read":
-            cap = dev.read_track(a.track, a.side, a.revs)
+            cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors)
             print(f"track {a.track}.{a.side}:\n{_summary(cap)}")
             if a.output:
                 write_scp(a.output, {a.track * 2 + a.side: [_to_scp(r) for r in cap.revolutions]},
@@ -322,7 +328,8 @@ def main(argv: list[str] | None = None) -> int:
             n = a.track * 2 + a.side
             if n not in tracks:
                 raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
-            dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify)
+            dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
+                            hard_sectors=a.hard_sectors)
             print("written" + (" + verified" if a.verify else ""))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)

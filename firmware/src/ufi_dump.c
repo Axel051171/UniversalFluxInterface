@@ -662,6 +662,7 @@ int ufi_dump_start(const dump_config_t* c)
     if (state != D_IDLE && state != D_DONE && state != D_ERROR) {
         return UFI_ERR_BUSY;
     }
+    ufi_flux_hard_sectors(0);               /* dumps and copies are soft-sectored */
     if (ufi_usb_msc_active() || ufi_stream_active() ||
         g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
         return UFI_ERR_BUSY;
