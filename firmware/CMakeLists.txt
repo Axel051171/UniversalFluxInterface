@@ -141,6 +141,7 @@ set(PROJECT_SOURCES
     src/ufi_drive.c
     src/ufi_iec.c
     src/ufi_nib.c
+    src/ufi_sched.c
     src/ufi_write.c
     src/ufi_debug.c
     src/ufi_diag.c

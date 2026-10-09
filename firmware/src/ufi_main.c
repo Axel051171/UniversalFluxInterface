@@ -200,6 +200,7 @@ void ufi_main_loop(void)
         ufi_usb_process_command();
         ufi_write_process();
         ufi_write_service();
+        ufi_sched_service();            /* head steps on a schedule during read / write */
         ufi_board_service();            /* overcurrent, USB loss, motor timeout */
 
         ufi_buttons_service();          /* A hold = dump, B = abort / USB mass storage */

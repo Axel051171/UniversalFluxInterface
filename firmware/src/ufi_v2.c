@@ -60,7 +60,7 @@ enum {
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
-    V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E,
+    V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34,
@@ -634,6 +634,13 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             put16(out, ufi_index_sim_rpm());
             out[2] = ufi_index_sim_mode();
             n = 3u;
+            break;
+        case V2_STEP_SCHEDULE:              /* flags u8 (bit0 quarter tracks), n u8, n x (at_ms u16, pos u8) */
+            if (len < 2u || len != 2u + 3u * p[1]) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            ret = ufi_sched_set(&p[2], p[1], (p[0] & 0x01u) != 0);
             break;
         case V2_SET_RPM:                    /* rpm u16 (300/360; 0 or - = query) -> rpm u16, line u8 */
             if (len >= 2u && get16(p) != 0u) {

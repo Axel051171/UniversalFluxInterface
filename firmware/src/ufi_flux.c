@@ -250,6 +250,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
         TIM2->DIER |= rd_de;
         g_capture.state = CAPTURE_RUNNING;
         __enable_irq();
+        ufi_sched_arm(idx_time[0]);
         return UFI_OK;
     }
 
@@ -348,6 +349,7 @@ void ufi_flux_index_event(uint32_t t)
         last_index_ms = HAL_GetTick();
         TIM2->DIER |= rd_de;       /* start streaming RDATA timestamps */
         g_capture.state = CAPTURE_RUNNING;
+        ufi_sched_arm(t);
     } else if (g_capture.state == CAPTURE_RUNNING && !period) {
         idx_time[idx_count] = t;
         idx_pos[idx_count] = dma_pos();

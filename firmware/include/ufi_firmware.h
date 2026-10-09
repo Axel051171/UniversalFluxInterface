@@ -306,6 +306,12 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
 int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
                         uint8_t quarter);   // 1.14: Apple quarter track offset
 void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
+// head steps on a schedule during the next READ / WRITE (ufi_sched.c, 1.14)
+int ufi_sched_set(const uint8_t* items, uint8_t n, bool quarter_units);   // n x (at_ms u16, pos u8)
+uint8_t ufi_sched_pending(void);
+void ufi_sched_arm(uint32_t t);             // operation start (flux-timer time)
+void ufi_sched_clear(void);
+void ufi_sched_service(void);               // main loop
 int ufi_capture_abort(void);
 capture_state_t ufi_capture_get_state(void);
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution);

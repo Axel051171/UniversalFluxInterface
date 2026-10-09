@@ -384,6 +384,7 @@ int ufi_write_start(void) {
         g_write.updates_left = 0;
         TIM3->DIER |= TIM_DIER_UDE;
         __HAL_TIM_ENABLE(&htim3);
+        ufi_sched_arm(TIM2->CNT);
         return UFI_OK;
     }
     g_write.wait_since = HAL_GetTick();
@@ -404,7 +405,6 @@ static void write_finish(write_state_t final_state) {
 
 /* Called from the TIM2 index-capture interrupt */
 void ufi_write_index_handler(uint32_t t) {
-    (void)t;
     if (g_write.apple && g_write.state == WRITE_WAITING_INDEX) {
         /* Disk II with sync sensor: start at the sensor pulse (track alignment kept);
          * the end comes from the last interval, not from the next pulse */
@@ -413,6 +413,7 @@ void ufi_write_index_handler(uint32_t t) {
         g_write.updates_left = 0;
         TIM3->DIER |= TIM_DIER_UDE;
         __HAL_TIM_ENABLE(&htim3);
+        ufi_sched_arm(t);
         return;
     }
     if (g_write.apple) {
@@ -424,6 +425,7 @@ void ufi_write_index_handler(uint32_t t) {
         g_write.updates_left = 0;
         TIM3->DIER |= TIM_DIER_UDE;         // DMA: next interval on every update
         __HAL_TIM_ENABLE(&htim3);           // first pulse after interval 0
+        ufi_sched_arm(t);
     }
     else if (g_write.state == WRITE_ACTIVE) {
         write_finish(WRITE_COMPLETE);       // safety: never write past one revolution

@@ -65,6 +65,20 @@ def edit_cfg(text: str, changes: dict[str, str]) -> str:
     return nl.join(lines) + nl
 
 
+def _parse_steps(spec: str) -> tuple[list[tuple[int, int]], bool]:
+    """'MS:TRACK[.Q],...' -> ([(ms, pos)], quarter_units); any '.Q' switches to quarter tracks."""
+    quarter = any("." in part.split(":", 1)[1] for part in spec.split(","))
+    steps = []
+    for part in spec.split(","):
+        ms, pos = part.split(":", 1)
+        if quarter:
+            t, _, q = pos.partition(".")
+            steps.append((int(ms), int(t) * 4 + (int(q) if q else 0)))
+        else:
+            steps.append((int(ms), int(pos)))
+    return steps, quarter
+
+
 def cmd_read_disk(dev, a) -> None:
     _prepare(dev, a.drive)
     tracks = {}
@@ -224,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--output")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
+    st_help = "head steps during the operation (firmware >= 1.14): MS:TRACK[.Q],... e.g. 50:17.1,100:17.2"
+    p.add_argument("--steps", metavar="SPEC", help=st_help)
     p = sub.add_parser("read-disk")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=80)
@@ -238,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--verify", action="store_true")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
+    p.add_argument("--steps", metavar="SPEC", help=st_help)
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -341,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
             for k, v in dev.timing(**changes).items():
                 print(f"{k:18} {v}")
         elif a.cmd == "read":
+            if a.steps:
+                dev.step_schedule(*_parse_steps(a.steps))
             cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter)
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
             if a.output:
@@ -354,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
             n = a.track * 2 + a.side
             if n not in tracks:
                 raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
+            if a.steps:
+                dev.step_schedule(*_parse_steps(a.steps))
             dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
                             hard_sectors=a.hard_sectors, quarter=a.quarter)
             print("written" + (" + verified" if a.verify else ""))

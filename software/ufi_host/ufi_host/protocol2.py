@@ -54,6 +54,7 @@ SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x
 CHECK_DISK, PROBE_TRACKS, SEEK_TEST, AMIGA_ID = 0x17, 0x18, 0x19, 0x1A
 DIAG_RPM, DRIVE_SCAN, INDEX_SIM = 0x1B, 0x1C, 0x1D          # firmware 1.13
 SET_RPM = 0x1E                                              # firmware 1.14: 3-mode drives
+STEP_SCHEDULE = 0x1F                                        # firmware 1.14: head steps during READ/WRITE
 RPM_LINES = {0: "none", 1: "DENSITY (pin 2)", 2: "DRATE (pin 6, JP1)"}
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
@@ -583,6 +584,15 @@ class Device2:
         p = self.request(IEC_NIB, bytes([halftrack, sync, mode, flags, device]), timeout=12.0)
         status, synclen, maxlen, ht = struct.unpack_from("<BBHB", p)
         return NibChunk(status, synclen, maxlen, ht, bytes(p[5:5 + 512]))
+
+    def step_schedule(self, steps: list[tuple[int, int]], quarter: bool = False) -> None:
+        """Head steps during the next READ/WRITE (firmware 1.14): [(ms after the start index,
+        position)], position in tracks or, with quarter=True, in quarter tracks (track*4+q).
+        One-shot; up to 32 entries in time order."""
+        if len(steps) > 32:
+            raise ValueError("at most 32 steps")
+        body = b"".join(struct.pack("<HB", ms, pos) for ms, pos in steps)
+        self.request(STEP_SCHEDULE, bytes([1 if quarter else 0, len(steps)]) + body)
 
     def set_rpm(self, rpm: int | None = None) -> tuple[int, int]:
         """3-mode drive speed select (firmware 1.14): 300/360, None = query.  -> (rpm, line);

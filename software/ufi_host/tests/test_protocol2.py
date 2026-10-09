@@ -133,6 +133,8 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.STEP_SCHEDULE:
+            r(0 if len(a) == 2 + 3 * a[1] else P2.BAD_ARGS)
         elif cmd == P2.SET_RPM:
             if len(a) >= 2 and struct.unpack_from("<H", a)[0]:
                 rpm = struct.unpack_from("<H", a)[0]
@@ -315,6 +317,14 @@ def test_diagnostics():
     dev.write_track(17, 0, [1000, 1000, 1000], quarter=3)
     req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
     assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS
+    dev.step_schedule([(50, 17 * 4 + 1), (100, 17 * 4 + 2)], quarter=True)
+    assert fake.requests[-1].cmd == P2.STEP_SCHEDULE
+    assert fake.requests[-1].payload == bytes([1, 2]) + struct.pack("<HBHB", 50, 69, 100, 70)
+    with pytest.raises(ValueError):
+        dev.step_schedule([(0, 0)] * 33)
+    from ufi_host.cli import _parse_steps
+    assert _parse_steps("50:17.1,100:17.2") == ([(50, 69), (100, 70)], True)
+    assert _parse_steps("30:40,60:41") == ([(30, 40), (60, 41)], False)
     assert dev.set_rpm() == (0, 1)
     assert dev.set_rpm(360) == (360, 1) and fake.requests[-1].payload == struct.pack("<H", 360)
     with pytest.raises(P2.DeviceError):
