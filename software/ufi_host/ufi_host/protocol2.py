@@ -57,6 +57,8 @@ SET_RPM = 0x1E                                              # firmware 1.14: 3-m
 RPM_LINES = {0: "none", 1: "DENSITY (pin 2)", 2: "DRATE (pin 6, JP1)"}
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
+IEC_MEM, IEC_NIB = 0x33, 0x34           # firmware 1.14: drive memory, 1541 raw GCR chunks
+NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
 DUMP_START, DUMP_STATUS, DUMP_ABORT, COPY_START = 0x60, 0x61, 0x62, 0x63
@@ -102,6 +104,15 @@ DIAG_RPM_REPLY = struct.Struct("<BIIIIH")   # revs, period min/avg/max, pulse wi
 DIAG_TRACK0, DIAG_INDEX, DIAG_WPROT = 1, 2, 4   # DRIVE_SCAN flags
 INDEX_SIM_PIN, INDEX_SIM_INTERNAL = 1, 2        # INDEX_SIM mode bits
 INDEX_SIM_MODES = {1: "J9 pin 6", 2: "internal", 3: "J9 pin 6 + internal"}
+
+
+@dataclass
+class NibChunk:
+    status: int                 # 0 ok, 1 no sync / no bytes, 2 origin not found, 3 raw
+    synclen: int                # ~11 us units
+    maxlen: int                 # longest non-sync stretch in bytes
+    halftrack: int              # drive's position counter
+    data: bytes                 # 512 raw GCR bytes (syncs as 0xFF runs)
 
 
 @dataclass
@@ -546,6 +557,32 @@ class Device2:
         payload = b"" if rpm is None else struct.pack("<HHB", rpm, pulse_us, mode)
         rpm_now, mode_now = struct.unpack("<HB", self.request(INDEX_SIM, payload)[:3])
         return rpm_now, mode_now
+
+    # -- IEC drive memory / 1541 raw reads (firmware 1.14) ------------------------
+    def iec_mem_write(self, addr: int, data: bytes) -> None:
+        """M-W: up to 32 bytes into the drive's RAM."""
+        self.request(IEC_MEM, bytes([0]) + struct.pack("<H", addr) + bytes(data), timeout=5.0)
+
+    def iec_mem_read(self, addr: int, n: int) -> bytes:
+        """M-R: n (1-255) bytes from the drive's RAM."""
+        return self.request(IEC_MEM, bytes([1]) + struct.pack("<H", addr) + bytes([n]), timeout=5.0)[:n]
+
+    def iec_mem_exec(self, addr: int) -> None:
+        self.request(IEC_MEM, bytes([2]) + struct.pack("<H", addr), timeout=5.0)
+
+    def iec_command(self, cmd: bytes | str) -> None:
+        """DOS command on channel 15, e.g. b'I0'."""
+        if isinstance(cmd, str):
+            cmd = cmd.encode("ascii")
+        self.request(IEC_MEM, bytes([3, 0, 0]) + cmd, timeout=5.0)
+
+    def iec_nib(self, halftrack: int, sync: int = 0, mode: int = 0, flags: int = 0,
+                device: int = 0) -> NibChunk:
+        """One 512-byte raw GCR chunk from the 1541 drive code: mode 0 at sync index `sync`
+        after the track origin, 1 raw, 2 step only.  flags: NIB_REUPLOAD, NIB_REVERSE."""
+        p = self.request(IEC_NIB, bytes([halftrack, sync, mode, flags, device]), timeout=12.0)
+        status, synclen, maxlen, ht = struct.unpack_from("<BBHB", p)
+        return NibChunk(status, synclen, maxlen, ht, bytes(p[5:5 + 512]))
 
     def set_rpm(self, rpm: int | None = None) -> tuple[int, int]:
         """3-mode drive speed select (firmware 1.14): 300/360, None = query.  -> (rpm, line);

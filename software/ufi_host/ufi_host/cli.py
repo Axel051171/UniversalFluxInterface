@@ -177,7 +177,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select",
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib",
            "dump-abort", "copy", "power"}
 
 
@@ -190,6 +190,11 @@ def main(argv: list[str] | None = None) -> int:
         "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
     sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
+    p = sub.add_parser("iec-nib", help="1541 raw GCR tracks over IEC into a G64 (firmware 1.14, drive code upload)")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--tracks", type=int, default=35, choices=range(35, 43), metavar="35-42")
+    p.add_argument("--halftracks", action="store_true", help="also read the half tracks")
+    p.add_argument("--device", type=int, default=0, help="IEC device number (default: UFI.CFG iec_device)")
     sub.add_parser("rpm-select", help="3-mode drive: select 300/360 rpm via UFI.CFG rpm_line (firmware 1.14)").add_argument(
         "rpm", nargs="?", choices=("300", "360"), help="omit to query")
     p = sub.add_parser("index-sim", help="index pulses on J9 pin 6 for flippy disks (needs firmware 1.13)")
@@ -291,6 +296,15 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "iec-nib":
+            from .nib import NibReader, write_g64
+            rd = NibReader(dev, a.device)
+            rd.calibrate()
+            res = rd.read_disk(a.tracks, a.halftracks)
+            write_g64(a.output, res)
+            good = sum(1 for r in res if r.data)
+            print(f"wrote {a.output}: {good}/{len(res)} tracks stitched, "
+                  f"{sum(1 for r in res if r.raw)} raw")
         elif a.cmd == "rpm-select":
             rpm, line = dev.set_rpm(None if a.rpm is None else int(a.rpm))
             print(f"speed select line: {P2.RPM_LINES.get(line, line)}, "

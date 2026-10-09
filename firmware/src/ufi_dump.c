@@ -532,6 +532,11 @@ uint8_t ufi_config_index_sim_mode(void)
     return index_sim_mode;
 }
 
+uint8_t ufi_config_iec_device(void)
+{
+    return iec_device;
+}
+
 /* ============================================================================
  * UFI.CFG on the SD NAND: drive and dump settings for stand-alone use, editable in the
  * SD drive mode.  Lines "key=value", '#' comments; written with defaults if missing.

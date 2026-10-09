@@ -62,7 +62,8 @@ enum {
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24,
-    V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32,
+    V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
+    V2_IEC_NIB = 0x34,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
@@ -690,6 +691,54 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = ufi_iec_receive_byte(&out[0], &eoi);
             out[1] = eoi ? 1u : 0u;
             n = (ret == UFI_OK) ? 2u : 0u;
+            break;
+        }
+        case V2_IEC_MEM: {                  /* op u8 (0 M-W, 1 M-R, 2 M-E), addr u16, n u8 | data; 1.14 */
+            if (len < 3u) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            const uint16_t addr = get16(&p[1]);
+            const uint8_t dev = ufi_config_iec_device();
+            if (p[0] == 0u) {
+                ret = (len < 4u || len - 3u > 32u) ? UFI_ERR_BAD_ARGS
+                                                   : ufi_iec_mem_write(dev, addr, &p[3], (uint8_t)(len - 3u));
+            } else if (p[0] == 1u) {
+                const uint8_t cnt = (len >= 4u) ? p[3] : 0u;
+                if (cnt == 0u) {
+                    ret = UFI_ERR_BAD_ARGS;
+                    break;
+                }
+                ret = ufi_iec_mem_read(dev, addr, out, cnt);
+                n = (ret == UFI_OK) ? cnt : 0u;
+            } else if (p[0] == 2u) {
+                ret = ufi_iec_mem_exec(dev, addr);
+            } else if (p[0] == 3u) {        /* DOS command string on channel 15 (addr unused) */
+                ret = (len < 4u) ? UFI_ERR_BAD_ARGS
+                                 : ufi_iec_command(dev, (const char*)&p[3], (uint8_t)(len - 3u));
+            } else {
+                ret = UFI_ERR_BAD_ARGS;
+            }
+            break;
+        }
+        case V2_IEC_NIB: {                  /* halftrack, sync, mode u8, flags u8 (bit0 re-upload, bit1 reverse stepper), device u8 */
+            static nib_result_t nib;
+            if (len < 3u) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            const uint8_t flags = (len >= 4u) ? p[3] : 0u;
+            const uint8_t dev = (len >= 5u && p[4]) ? p[4] : ufi_config_iec_device();
+            ret = ufi_nib_chunk(dev, p[0], p[1], p[2], (flags & 0x02u) ? 0xFFu : 1u,
+                                (flags & 0x01u) != 0, &nib);
+            if (ret == UFI_OK) {
+                out[0] = nib.status;
+                out[1] = nib.synclen;
+                put16(&out[2], nib.maxlen);
+                out[4] = nib.halftrack;
+                memcpy(&out[5], nib.data, sizeof(nib.data));
+                n = 5u + sizeof(nib.data);
+            }
             break;
         }
 

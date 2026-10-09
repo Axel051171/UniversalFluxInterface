@@ -83,6 +83,7 @@ int ufi_iec_reset(void) {
     bus_out(&PIN_IEC_RESET_OUT, false);
 
     HAL_Delay(500);                         // 1541 boot time
+    ufi_nib_invalidate();                   // drive RAM is gone
 
     iec_release_clk();
     iec_release_data();
@@ -371,4 +372,52 @@ int ufi_iec_read_directory(uint8_t device, uint8_t* buffer, uint16_t max_len,
     int ret2 = iec_close_file(device, 0);
     if (got < 0) return got;
     return ret2;
+}
+
+/* ============================================================================
+ * DRIVE MEMORY (M-W / M-R / M-E) - 1541 raw track reads, ufi_nib.c (1.14)
+ * ============================================================================ */
+
+int ufi_iec_mem_write(uint8_t device, uint16_t addr, const uint8_t* data, uint8_t n) {
+    if (n == 0 || n > 32u) {
+        return UFI_ERR_BAD_ARGS;            /* DOS command buffer: 6 + 32 bytes */
+    }
+    uint8_t cmd[6 + 32];
+    cmd[0] = 'M'; cmd[1] = '-'; cmd[2] = 'W';
+    cmd[3] = (uint8_t)addr;
+    cmd[4] = (uint8_t)(addr >> 8);
+    cmd[5] = n;
+    memcpy(&cmd[6], data, n);
+    return ufi_iec_command(device, (const char*)cmd, (uint8_t)(6u + n));
+}
+
+int ufi_iec_mem_read(uint8_t device, uint16_t addr, uint8_t* buf, uint8_t n) {
+    const uint8_t cmd[6] = {'M', '-', 'R', (uint8_t)addr, (uint8_t)(addr >> 8), n};
+    int ret = ufi_iec_command(device, (const char*)cmd, sizeof(cmd));
+    if (ret != UFI_OK) return ret;
+    int got = iec_read_channel(device, 15, buf, n);
+    if (got < 0) return got;
+    return (got == n) ? UFI_OK : UFI_ERR_TIMEOUT;
+}
+
+int ufi_iec_mem_exec(uint8_t device, uint16_t addr) {
+    const uint8_t cmd[5] = {'M', '-', 'E', (uint8_t)addr, (uint8_t)(addr >> 8)};
+    return ufi_iec_command(device, (const char*)cmd, sizeof(cmd));
+}
+
+/* Drive code runs with interrupts off: poll until the drive answers ATN again */
+int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms) {
+    const uint32_t t0 = HAL_GetTick();
+    HAL_Delay(200);
+    for (;;) {
+        const int ret = ufi_iec_listen(device);
+        const int ret2 = ufi_iec_unlisten();
+        if (ret == UFI_OK && ret2 == UFI_OK) {
+            return UFI_OK;
+        }
+        if (HAL_GetTick() - t0 > timeout_ms) {
+            return UFI_ERR_TIMEOUT;
+        }
+        HAL_Delay(50);
+    }
 }

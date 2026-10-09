@@ -466,6 +466,24 @@ void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead
 // IEC Bus (C64)
 int ufi_iec_reset(void);
 int ufi_iec_command(uint8_t device, const char* cmd, uint8_t len);   // command channel 15
+// drive memory (1.14): M-W (<= 32 bytes), M-R, M-E; wait until the drive answers ATN again
+int ufi_iec_mem_write(uint8_t device, uint16_t addr, const uint8_t* data, uint8_t n);
+int ufi_iec_mem_read(uint8_t device, uint16_t addr, uint8_t* buf, uint8_t n);
+int ufi_iec_mem_exec(uint8_t device, uint16_t addr);
+int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms);
+// 1541 raw GCR chunks (ufi_nib.c, drive code tools/iec_nib.s)
+typedef struct {
+    uint8_t status;         // 0 ok, 1 no sync / no bytes, 2 origin not found, 3 raw (mode 1)
+    uint8_t synclen;        // sync length in ~11 us units
+    uint8_t halftrack;      // drive's own position counter after the step
+    uint16_t maxlen;        // longest non-sync stretch (bytes)
+    uint8_t data[512];
+} nib_result_t;
+int ufi_nib_chunk(uint8_t dev, uint8_t halftrack, uint8_t sync, uint8_t mode, uint8_t dir,
+                  bool force, nib_result_t* r);   // mode 0 chunk at sync, 1 raw, 2 step only
+int ufi_nib_upload(uint8_t dev);
+void ufi_nib_invalidate(void);
+uint8_t ufi_config_iec_device(void);        // UFI.CFG iec_device (default 8)
 int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
                        uint8_t* buffer, uint16_t* len);              // "#" + U1, 256 bytes
 int ufi_iec_send_byte(uint8_t byte, bool eoi);
