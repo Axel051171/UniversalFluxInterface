@@ -53,6 +53,8 @@ PING, INFO, STATUS, RESET, BOOTLOADER, USB_MODE, EVENTS = 0x00, 0x01, 0x02, 0x03
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
 CHECK_DISK, PROBE_TRACKS, SEEK_TEST, AMIGA_ID = 0x17, 0x18, 0x19, 0x1A
 DIAG_RPM, DRIVE_SCAN, INDEX_SIM = 0x1B, 0x1C, 0x1D          # firmware 1.13
+SET_RPM = 0x1E                                              # firmware 1.14: 3-mode drives
+RPM_LINES = {0: "none", 1: "DENSITY (pin 2)", 2: "DRATE (pin 6, JP1)"}
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
@@ -544,6 +546,13 @@ class Device2:
         payload = b"" if rpm is None else struct.pack("<HHB", rpm, pulse_us, mode)
         rpm_now, mode_now = struct.unpack("<HB", self.request(INDEX_SIM, payload)[:3])
         return rpm_now, mode_now
+
+    def set_rpm(self, rpm: int | None = None) -> tuple[int, int]:
+        """3-mode drive speed select (firmware 1.14): 300/360, None = query.  -> (rpm, line);
+        line per UFI.CFG rpm_line (0 = none: setting raises UNSUPPORTED)."""
+        payload = b"" if rpm is None else struct.pack("<H", rpm)
+        rpm_now, line = struct.unpack("<HB", self.request(SET_RPM, payload, timeout=3.0)[:3])
+        return rpm_now, line
 
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,

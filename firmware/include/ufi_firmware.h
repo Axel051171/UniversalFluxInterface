@@ -436,6 +436,11 @@ int ufi_drive_motor(bool on);
 int ufi_drive_step(int direction);  // +1 = in, -1 = out
 int ufi_drive_seek(uint8_t track);
 int ufi_drive_seek_q(uint8_t track, uint8_t quarter);   // 1.14: Apple quarter tracks (0-3), else BAD_ARGS
+// 3-mode drives (1.14): speed-select line 0 none / 1 DENSITY / 2 DRATE; low_is_360 = asserted -> 360 rpm
+void ufi_drive_rpm_config(uint8_t line, bool low_is_360);
+uint8_t ufi_drive_rpm_line(void);
+int ufi_drive_set_rpm(uint16_t rpm);        // 300 / 360; NOT_IMPL without a configured line
+uint16_t ufi_drive_get_rpm(void);           // 0 = not set
 int ufi_drive_recalibrate(void);
 int ufi_drive_select_side(uint8_t side);
 drive_status_t ufi_drive_get_status(void);

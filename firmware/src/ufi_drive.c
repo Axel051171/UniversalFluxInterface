@@ -477,6 +477,48 @@ int ufi_drive_select_side(uint8_t side)
     return UFI_OK;
 }
 
+/* 3-mode drives (1.14): spindle speed 300/360 rpm selected by a bus line.  Which line and
+ * which level mean 360 rpm depends on the drive's jumpers: UFI.CFG rpm_line=density|drate,
+ * rpm_360=low|high.  DRATE is J6 pin 6 (JP1) and doubles as the Shugart DS3 line. */
+static uint8_t rpm_line;                /* 0 none, 1 DENSITY (pin 2), 2 DRATE (pin 6) */
+static bool rpm_360_low = true;         /* line asserted (low on the cable) = 360 rpm */
+static uint16_t rpm_set;                /* 0 = not set since start */
+
+void ufi_drive_rpm_config(uint8_t line, bool low_is_360)
+{
+    rpm_line = line > 2u ? 0u : line;
+    rpm_360_low = low_is_360;
+    rpm_set = 0;
+}
+
+uint8_t ufi_drive_rpm_line(void)
+{
+    return rpm_line;
+}
+
+uint16_t ufi_drive_get_rpm(void)
+{
+    return rpm_set;
+}
+
+int ufi_drive_set_rpm(uint16_t rpm)
+{
+    if (rpm != 300u && rpm != 360u) {
+        return UFI_ERR_BAD_ARGS;
+    }
+    if (!rpm_line) {
+        return UFI_ERR_NOT_IMPL;            /* no speed-select line configured */
+    }
+    const bool assert = (rpm == 360u) == rpm_360_low;
+    bus_out(rpm_line == 2u ? &PIN_FDD_DRATE : &PIN_FDD_DENSITY, assert);
+    const bool changed = rpm_set != rpm;
+    rpm_set = rpm;
+    if (changed && g_current_drive != DRIVE_NONE && g_drive_status[g_current_drive].motor_on) {
+        HAL_Delay(MOTOR_SPINUP_MS);         /* let the spindle settle at the new speed */
+    }
+    return UFI_OK;
+}
+
 int ufi_drive_density_line(bool assert)
 {
     bus_out(&PIN_FDD_DENSITY, assert);

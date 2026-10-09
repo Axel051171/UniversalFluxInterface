@@ -60,7 +60,7 @@ enum {
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
-    V2_INDEX_SIM = 0x1D,
+    V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
@@ -379,7 +379,7 @@ static bool allowed_during_dump(uint8_t cmd)
 /* Commands that move or use the drive: refused while a READ / WRITE runs */
 static bool uses_drive(uint8_t cmd)
 {
-    return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == UFI_V2_READ ||
+    return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
            cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN ||
            cmd == V2_DUMP_START || cmd == V2_COPY_START;
 }
@@ -632,6 +632,14 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             }
             put16(out, ufi_index_sim_rpm());
             out[2] = ufi_index_sim_mode();
+            n = 3u;
+            break;
+        case V2_SET_RPM:                    /* rpm u16 (300/360; 0 or - = query) -> rpm u16, line u8 */
+            if (len >= 2u && get16(p) != 0u) {
+                ret = ufi_drive_set_rpm(get16(p));
+            }
+            put16(out, ufi_drive_get_rpm());
+            out[2] = ufi_drive_rpm_line();
             n = 3u;
             break;
 

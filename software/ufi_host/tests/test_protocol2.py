@@ -53,6 +53,7 @@ class FakeV2:
         self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF)
         self.index_sim = 0
         self.index_sim_mode = 0
+        self.rpm_set = 0
         self.garbage = b""
         self.corrupt_next = False
         self.pending_events: list[tuple[int, bytes]] = []
@@ -132,6 +133,14 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.SET_RPM:
+            if len(a) >= 2 and struct.unpack_from("<H", a)[0]:
+                rpm = struct.unpack_from("<H", a)[0]
+                if rpm not in (300, 360):
+                    r(P2.BAD_ARGS, struct.pack("<HB", self.rpm_set, 1))
+                    return
+                self.rpm_set = rpm
+            r(0, struct.pack("<HB", self.rpm_set, 1))
         elif cmd == P2.USB_POWER:
             r(0, struct.pack("<3H", 0, 1350, 3000))
         elif cmd == P2.IEC_RECV:
@@ -306,6 +315,10 @@ def test_diagnostics():
     dev.write_track(17, 0, [1000, 1000, 1000], quarter=3)
     req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
     assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS
+    assert dev.set_rpm() == (0, 1)
+    assert dev.set_rpm(360) == (360, 1) and fake.requests[-1].payload == struct.pack("<H", 360)
+    with pytest.raises(P2.DeviceError):
+        dev.set_rpm(333)
 
 
 def test_drive_commands_and_payloads():
@@ -447,6 +460,10 @@ def test_cli_diagnostics(monkeypatch, capsys):
     assert "300 rpm, internal" in capsys.readouterr().out and fake.requests[-1].payload[4] == 2
     assert cli.main(["index-sim", "off"]) == 0
     assert "off" in capsys.readouterr().out
+    assert cli.main(["rpm-select", "360"]) == 0
+    assert "DENSITY" in capsys.readouterr().out and fake.rpm_set == 360
+    assert cli.main(["rpm-select"]) == 0
+    assert "360 rpm selected" in capsys.readouterr().out
 
 
 # -- events ---------------------------------------------------------------------

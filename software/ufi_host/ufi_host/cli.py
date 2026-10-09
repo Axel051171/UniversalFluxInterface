@@ -177,7 +177,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim",
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select",
            "dump-abort", "copy", "power"}
 
 
@@ -190,6 +190,8 @@ def main(argv: list[str] | None = None) -> int:
         "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
     sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
+    sub.add_parser("rpm-select", help="3-mode drive: select 300/360 rpm via UFI.CFG rpm_line (firmware 1.14)").add_argument(
+        "rpm", nargs="?", choices=("300", "360"), help="omit to query")
     p = sub.add_parser("index-sim", help="index pulses on J9 pin 6 for flippy disks (needs firmware 1.13)")
     p.add_argument("rpm", nargs="?", choices=("300", "360", "off"), help="omit to query")
     p.add_argument("--pulse", type=int, default=0, help="pulse width in us (default 2000)")
@@ -288,6 +290,10 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "rpm-select":
+            rpm, line = dev.set_rpm(None if a.rpm is None else int(a.rpm))
+            print(f"speed select line: {P2.RPM_LINES.get(line, line)}, "
+                  + (f"{rpm} rpm selected" if rpm else "not set"))
         elif a.cmd == "index-sim":
             mode = (0 if a.no_pin else P2.INDEX_SIM_PIN) | (P2.INDEX_SIM_INTERNAL if a.internal else 0)
             if a.rpm is not None and a.rpm != "off" and not mode:

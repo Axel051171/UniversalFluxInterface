@@ -40,6 +40,7 @@ ufi index-sim 300|360|off [--pulse 2000]  # Indeximpulse auf J9 Pin 6 (Flippy-Di
 ufi index-sim 300 --internal [--no-pin]   # Firmware ≥ 1.14: Impulse gelten intern als Index (Lesen/Schreiben ohne Draht)
 ufi read-disk -o d.scp --hard-sectors 16  # Firmware ≥ 1.14: hartsektoriert (10/16/32 Löcher), auch bei read/write/write-disk
 ufi read 17 0 --quarter 2                 # Firmware ≥ 1.14: Apple-Viertelspur (17,5); auch seek/write --quarter 1-3
+ufi rpm-select 360                        # Firmware ≥ 1.14: 3-Mode-Laufwerk 300/360 U/min (UFI.CFG rpm_line, rpm_360); Kontrolle: ufi rpm
 ```
 
 ## Protokoll UFI v2 (Standard)

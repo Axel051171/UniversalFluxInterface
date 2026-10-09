@@ -241,6 +241,9 @@ static FIL logfile;
 static bool log_open, copying, button_copy, protocol_gw, apple_sync;
 static uint16_t index_sim;              /* UFI.CFG index_sim=300|360 (J9 pin 6), 0 = off */
 static uint8_t index_sim_mode;          /* UFI.CFG index_sim_mode=pin|internal|both */
+static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (3-mode drives) */
+static bool rpm_360_low = true;         /* UFI.CFG rpm_360=low|high */
+static uint16_t rpm_start;              /* UFI.CFG rpm=300|360 applied at start, 0 = untouched */
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -550,7 +553,12 @@ static const char cfg_default[] =
     "index_sim=0\r\n"
     "# pin: pulses on J9 pin 6; internal: pulses replace the drive's INDEX line for\r\n"
     "# reading/writing (no wire needed); both\r\n"
-    "index_sim_mode=pin\r\n";
+    "index_sim_mode=pin\r\n"
+    "# 3-mode drive (300/360 rpm): which bus line selects the speed (none, density = pin 2,\r\n"
+    "# drate = pin 6 via JP1), which level means 360 rpm (low|high), speed at start (0 = untouched)\r\n"
+    "rpm_line=none\r\n"
+    "rpm_360=low\r\n"
+    "rpm=0\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
@@ -610,6 +618,12 @@ static void parse_line(const char* k, dump_config_t* c)
     } else if (!strncmp(k, "index_sim_mode=", 15)) {
         index_sim_mode = word_is(v, "internal") ? INDEX_SIM_INTERNAL
                        : word_is(v, "both") ? (INDEX_SIM_PIN | INDEX_SIM_INTERNAL) : INDEX_SIM_PIN;
+    } else if (!strncmp(k, "rpm_line=", 9)) {
+        rpm_line = word_is(v, "density") ? 1u : word_is(v, "drate") ? 2u : 0u;
+    } else if (!strncmp(k, "rpm_360=", 8)) {
+        rpm_360_low = !word_is(v, "high");
+    } else if (!strncmp(k, "rpm=", 4)) {
+        rpm_start = (num == 300u || num == 360u) ? (uint16_t)num : 0u;
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -632,6 +646,9 @@ void ufi_config_load(void)
         dump_config_t c = cfg;
         index_sim = 0;
         index_sim_mode = INDEX_SIM_PIN;
+        rpm_line = 0;
+        rpm_360_low = true;
+        rpm_start = 0;
         for (char* p = (char*)stage; *p; ) {
             while (*p == ' ' || *p == '\t') {
                 p++;
@@ -655,6 +672,10 @@ void ufi_config_load(void)
     }
     unmount();
     ufi_index_sim_set(index_sim, 0, index_sim_mode);    /* pin mode: refused with the switch on SD */
+    ufi_drive_rpm_config(rpm_line, rpm_360_low);
+    if (rpm_start) {
+        ufi_drive_set_rpm(rpm_start);
+    }
 }
 
 int ufi_dump_start(const dump_config_t* c)
