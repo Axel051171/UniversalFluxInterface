@@ -41,6 +41,7 @@ ufi index-sim 300 --internal [--no-pin]   # Firmware ≥ 1.14: Impulse gelten in
 ufi read-disk -o d.scp --hard-sectors 16  # Firmware ≥ 1.14: hartsektoriert (10/16/32 Löcher), auch bei read/write/write-disk
 ufi read 17 0 --quarter 2                 # Firmware ≥ 1.14: Apple-Viertelspur (17,5); auch seek/write --quarter 1-3
 ufi rpm-select 360                        # Firmware ≥ 1.14: 3-Mode-Laufwerk 300/360 U/min (UFI.CFG rpm_line, rpm_360); Kontrolle: ufi rpm
+ufi dump --drive iec --tracks 35          # Firmware ≥ 1.14: 1541 an J8 über den Laufwerkscontroller nach DUMPnnnn.D64 (+ .LOG mit Fehlerblöcken)
 ```
 
 ## Protokoll UFI v2 (Standard)

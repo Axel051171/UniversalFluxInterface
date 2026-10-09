@@ -31,7 +31,13 @@
 
 extern capture_context_t g_capture;
 
-typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR, D_COPY } dump_state_t;
+typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR, D_COPY,
+               D_IEC } dump_state_t;
+
+/* drive=iec (1.14): D64 dump through the 1541's own controller, one block per service call */
+static const char* file_ext = ".SCP";
+static uint8_t iec_sec, iec_tracks;
+static uint16_t iec_bad;
 
 /* CPU-polled SD transfers: the staging buffer may live in DTCM (not zeroed at start) */
 __attribute__((section(".dtcm"), aligned(4))) static uint8_t stage[32 * 1024];
@@ -179,7 +185,7 @@ static int open_next_file(void)
         name[5] = (char)('0' + n / 100u % 10u);
         name[6] = (char)('0' + n / 10u % 10u);
         name[7] = (char)('0' + n % 10u);
-        memcpy(&name[8], ".SCP", 5);
+        memcpy(&name[8], file_ext, 5);
         if (f_stat(name, &fi) == FR_NO_FILE) {
             if (f_open(&file, name, FA_WRITE | FA_CREATE_NEW) != FR_OK) {
                 return UFI_ERR_STORAGE;
@@ -244,6 +250,7 @@ static uint8_t index_sim_mode;          /* UFI.CFG index_sim_mode=pin|internal|b
 static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (3-mode drives) */
 static bool rpm_360_low = true;         /* UFI.CFG rpm_360=low|high */
 static uint16_t rpm_start;              /* UFI.CFG rpm=300|360 applied at start, 0 = untouched */
+static uint8_t iec_device = 8;          /* UFI.CFG iec_device=8..30: 1541 for drive=iec dumps */
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
 static bool q_known, q_amiga;
@@ -363,7 +370,6 @@ static void open_log(void)
     name[6] = (char)('0' + file_no / 10u % 10u);
     name[7] = (char)('0' + file_no % 10u);
     log_open = (f_open(&logfile, name, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK);
-    log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
 }
 
 static void log_track(uint8_t good)
@@ -492,7 +498,7 @@ static bool drive_ok(uint8_t d)
 {
     return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA || d == DRIVE_AMIGA2 ||
            ((d == DRIVE_APPLE_II || d == DRIVE_APPLE2) && ufi_board_has_apple()) ||
-           (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3);
+           (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3) || d == DRIVE_IEC;
 }
 
 static bool config_valid(const dump_config_t* c)
@@ -534,7 +540,7 @@ uint8_t ufi_config_index_sim_mode(void)
 static const char cfg_default[] =
     "# UFI stand-alone settings (dump with button A, USB floppy mode)\r\n"
     "# drive: a, b (PC cable), amiga, amiga2 (DF2, needs JP3), ds0-ds3 (Shugart bus; ds3 needs JP1),\r\n"
-    "#        apple, apple2 (Disk II port, board v0.7: use tracks=35 sides=1)\r\n"
+    "#        apple, apple2 (Disk II port, board v0.7: use tracks=35 sides=1), iec (D64 dump)\r\n"
     "drive=a\r\n"
     "tracks=80\r\n"
     "sides=2\r\n"
@@ -558,10 +564,13 @@ static const char cfg_default[] =
     "# drate = pin 6 via JP1), which level means 360 rpm (low|high), speed at start (0 = untouched)\r\n"
     "rpm_line=none\r\n"
     "rpm_360=low\r\n"
-    "rpm=0\r\n";
+    "rpm=0\r\n"
+    "# drive=iec: 1541/1571 on J8, dump via the drive's own controller to DUMPnnnn.D64\r\n"
+    "# (tracks=35 or 40, sides=1); device number on the bus\r\n"
+    "iec_device=8\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
-    {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA},
+    {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA}, {"iec", DRIVE_IEC},
     {"ds0", DRIVE_SHUGART_DS0}, {"ds1", DRIVE_SHUGART_DS1},
     {"ds2", DRIVE_SHUGART_DS2}, {"ds3", DRIVE_SHUGART_DS3}, {"amiga2", DRIVE_AMIGA2},
     {"apple", DRIVE_APPLE_II}, {"apple2", DRIVE_APPLE2},
@@ -624,6 +633,8 @@ static void parse_line(const char* k, dump_config_t* c)
         rpm_360_low = !word_is(v, "high");
     } else if (!strncmp(k, "rpm=", 4)) {
         rpm_start = (num == 300u || num == 360u) ? (uint16_t)num : 0u;
+    } else if (!strncmp(k, "iec_device=", 11)) {
+        iec_device = (num >= 4u && num <= 30u) ? (uint8_t)num : 8u;
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -730,10 +741,29 @@ void ufi_dump_service(void)
                     fail(2);
                     break;
                 }
+            } else if (cfg.drive == DRIVE_IEC) {
+                file_ext = ".D64";
+                if (mount() != UFI_OK) { fail(1); break; }
+                if (open_next_file() != UFI_OK) { fail(1); break; }
+                file_ext = ".SCP";
+                checksum = 0;
+                stage_len = 0;
+                open_log();
+                log_puts("UFI 1541 dump via IEC (U1 block reads)\r\nunreadable blocks (track sector):\r\n");
+                ufi_drive_select(DRIVE_IEC);
+                if (ufi_iec_command(iec_device, "I0", 2) != UFI_OK) { fail(2); break; }
+                iec_tracks = (cfg.tracks == 40u) ? 40u : 35u;
+                iec_sec = 0;
+                iec_bad = 0;
+                cyl = 1;                                /* 1541 tracks are 1-based */
+                head = 0;
+                state = D_IEC;
+                break;
             } else {
                 if (mount() != UFI_OK) { fail(1); break; }
                 if (open_next_file() != UFI_OK || begin_file() != UFI_OK) { fail(1); break; }
                 open_log();
+                log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
                 if (prepare_drive(cfg.drive) != UFI_OK) { fail(2); break; }
             }
             cyl = 0;
@@ -823,6 +853,46 @@ void ufi_dump_service(void)
             led_set(&PIN_LED_ACT, true);
             state = D_DONE;
             break;
+
+        case D_IEC: {                                   /* one 256-byte block per call */
+            ufi_board_activity();
+            led_set(&PIN_LED_FDD, true);
+            uint8_t block[256];
+            uint16_t got = 0;
+            if (ufi_iec_read_block(iec_device, cyl, iec_sec, block, &got) != UFI_OK || got != 256u) {
+                memset(block, 0, sizeof(block));        /* unreadable: zeros, noted in the log */
+                iec_bad++;
+                char line[16], *p = line;
+                p = put_num(p, cyl, 2);
+                *p++ = ' ';
+                p = put_num(p, iec_sec, 2);
+                *p++ = '\r'; *p++ = '\n'; *p = 0;
+                log_puts(line);
+            }
+            if (put(block, sizeof(block)) != UFI_OK) { fail(3); break; }
+            const uint8_t spt = cyl <= 17u ? 21u : cyl <= 24u ? 19u : cyl <= 30u ? 18u : 17u;
+            if (++iec_sec >= spt) {
+                iec_sec = 0;
+                cyl++;
+                led_set(&PIN_LED_FDD, false);
+                HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
+            }
+            if (cyl > iec_tracks) {
+                char line[32], *p = line;
+                memcpy(p, "unreadable blocks: ", 19); p += 19;
+                p = put_num(p, iec_bad, 1);
+                *p++ = '\r'; *p++ = '\n'; *p = 0;
+                log_puts(line);
+                if (log_open) { f_close(&logfile); log_open = false; }
+                if (flush_stage() != UFI_OK || f_close(&file) != FR_OK) { fail(3); break; }
+                file_open = 0;
+                unmount();
+                led_set(&PIN_LED_FDD, false);
+                led_set(&PIN_LED_ACT, true);
+                state = D_DONE;
+            }
+            break;
+        }
 
         default:
             break;

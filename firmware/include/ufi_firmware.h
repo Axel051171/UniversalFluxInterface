@@ -465,6 +465,9 @@ void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead
 
 // IEC Bus (C64)
 int ufi_iec_reset(void);
+int ufi_iec_command(uint8_t device, const char* cmd, uint8_t len);   // command channel 15
+int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
+                       uint8_t* buffer, uint16_t* len);              // "#" + U1, 256 bytes
 int ufi_iec_send_byte(uint8_t byte, bool eoi);
 int ufi_iec_receive_byte(uint8_t* byte, bool* eoi);
 int ufi_iec_atn(bool state);

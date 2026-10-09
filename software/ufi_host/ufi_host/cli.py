@@ -255,7 +255,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("cfg", help="show UFI.CFG, or set KEY=VALUE lines and reload").add_argument(
         "set", nargs="*", metavar="KEY=VALUE")
     sub.add_parser("mode", help="switch USB personality").add_argument("mode", choices=list(P2.USB_MODES))
-    p = sub.add_parser("dump", help="standalone dump to DUMPnnnn.SCP on the SD NAND")
+    p = sub.add_parser("dump", help="standalone dump to DUMPnnnn.SCP on the SD NAND "
+                                    "(--drive iec: 1541 to DUMPnnnn.D64, --tracks 35|40, firmware >= 1.14)")
     p.add_argument("--drive", choices=list(P.DRIVES))
     p.add_argument("--tracks", type=int, default=80)
     p.add_argument("--sides", type=int, default=2, choices=(1, 2))
