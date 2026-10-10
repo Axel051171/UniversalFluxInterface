@@ -53,6 +53,7 @@ typedef struct {
     bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
     uint32_t wait_since;        // HAL tick when the wait for the index pulse began
     uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
+    uint16_t scale;             // time scale of the deltas in 1/1000 (1000 = as sent), 1.14
 } write_context_t;
 
 static write_context_t g_write;
@@ -190,6 +191,14 @@ static uint32_t precomp_for_data(void) {
 
 static void pack_deltas(void) {
     const uint16_t pc = ufi_drive_get_timing().precomp_ns;    /* host override (B11) */
+    if (g_write.scale != 1000u) {       /* time scale (1.14): zoned Mac disks, 300 <-> 360 rpm */
+        uint32_t rem = 0;
+        for (uint32_t i = 0; i < g_write.flux_count; i++) {
+            const uint64_t s = (uint64_t)write_buffer[i] * g_write.scale + rem;
+            write_buffer[i] = (uint32_t)(s / 1000u);
+            rem = (uint32_t)(s % 1000u);    /* the remainder carries: no drift */
+        }
+    }
     g_write.precomp_ns = (pc == PRECOMP_AUTO) ? precomp_for_data() : pc;
     uint32_t prev = 0;
     for (uint32_t i = 0; i < g_write.flux_count; i++) {
@@ -227,6 +236,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.verify_after = verify;
     g_write.compact = false;
     g_write.quarter = 0;
+    g_write.scale = 1000;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -234,6 +244,10 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
 
 void ufi_write_set_quarter(uint8_t quarter) {
     g_write.quarter = quarter;
+}
+
+void ufi_write_set_scale(uint16_t per_mille) {
+    g_write.scale = per_mille ? per_mille : 1000u;
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index

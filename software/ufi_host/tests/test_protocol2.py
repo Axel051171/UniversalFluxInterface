@@ -518,3 +518,20 @@ def test_cli_v2_only_command_on_v1(monkeypatch, capsys):
                         lambda s, timeout=5.0: P.Device(s, timeout))
     assert cli.main(["files"]) == 1
     assert "needs UFI v2" in capsys.readouterr().err
+
+
+def test_write_track_time_scale_flag_and_u16():
+    import pytest
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    dev.write_track(4, 0, [1000, 1000, 1000], scale=1.2)
+    req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
+    assert req[2] & P2.TIME_SCALE and req[11:13] == struct.pack("<H", 1200)
+    dev.write_track(4, 0, [1000, 1000, 1000], hard_sectors=10, scale=0.8333)
+    req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
+    assert req[11] == 10 and req[12:14] == struct.pack("<H", 833)
+    dev.write_track(4, 0, [1000, 1000, 1000], scale=1.0)
+    req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
+    assert not (req[2] & P2.TIME_SCALE) and len(req) == 11
+    with pytest.raises(ValueError):
+        dev.write_track(4, 0, [1000, 1000, 1000], scale=3.0)

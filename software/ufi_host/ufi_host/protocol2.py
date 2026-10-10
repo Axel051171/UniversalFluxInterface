@@ -99,6 +99,7 @@ USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
+TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
 FILE_CREATE = 0x01
 ATTR_DIR = 0x10
 MAX_READ_REVS = 200                     # firmware ring buffer (v1 READ_TRACK)
@@ -647,16 +648,24 @@ class Device2:
             return Capture(revs, f.status)
 
     def write_track(self, track: int, side: int, deltas: list[int], verify: bool = False,
-                    hard_sectors: int = 0, quarter: int = 0) -> None:
-        """deltas: flux intervals in 275 MHz ticks (first one measured from the index)."""
+                    hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0) -> None:
+        """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
+        scale: the firmware multiplies every interval (0.5..2.0; firmware 1.14), e.g.
+        rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive."""
         code = encode_flux(deltas)
         seq = self._next_seq()
         flags = (WRITE_VERIFY if verify else 0) | (HARD_SECTORS if hard_sectors else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
-        self.send(T_REQUEST, WRITE, seq, WRITE_REQ.pack(track, side, flags, len(deltas), len(code))
-                  + (bytes([hard_sectors]) if hard_sectors else b""))
+        extra = bytes([hard_sectors]) if hard_sectors else b""
+        per_mille = round(scale * 1000)
+        if per_mille != 1000:
+            if not 500 <= per_mille <= 2000:
+                raise ValueError("scale must be between 0.5 and 2.0")
+            flags |= TIME_SCALE
+            extra += struct.pack("<H", per_mille)
+        self.send(T_REQUEST, WRITE, seq, WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra)
         f = self._wait(WRITE, seq, (T_RESPONSE,), 5.0)
         if f.status:
             raise DeviceError(WRITE, f.status)

@@ -306,6 +306,7 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
 int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
                         uint8_t quarter);   // 1.14: Apple quarter track offset
 void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
+void ufi_write_set_scale(uint16_t per_mille);   // after ufi_write_prepare*(): time scale, 1000 = 1.0 (1.14)
 // track analysis (ufi_analyze.c, 1.14): ANALYZE 0x25, blocking capture of `revs` revolutions
 typedef struct {
     uint8_t revs;

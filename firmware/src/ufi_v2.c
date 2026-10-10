@@ -427,12 +427,24 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     if (ufi_board_write_locked() || ufi_drive_write_protected()) {
         return UFI_ERR_WRITE_PROT;
     }
-    uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes in p[11] */
+    uint16_t at = 11;                       /* optional fields follow in flag order */
+    uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes u8 */
     if (p[2] & 0x02u) {
-        if (len < 12u || p[11] < 2u) {
+        if (len < at + 1u || p[at] < 2u) {
             return UFI_ERR_BAD_ARGS;
         }
-        sectors = p[11];
+        sectors = p[at++];
+    }
+    uint16_t scale = 1000;                  /* bit3: time scale u16 in 1/1000 (1.14) */
+    if (p[2] & 0x08u) {
+        if (len < at + 2u) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        scale = (uint16_t)get16(&p[at]);
+        at = (uint16_t)(at + 2u);
+        if (scale < 500u || scale > 2000u) {
+            return UFI_ERR_BAD_ARGS;
+        }
     }
     ufi_flux_hard_sectors(sectors);
     const uint8_t track = (p[2] & 0x04u) ? p[0] >> 2 : p[0];    /* bit2: quarter tracks (1.14) */
@@ -444,6 +456,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
                                               (p[2] & 0x01u) != 0);
     if (ret == UFI_OK) {
         ufi_write_set_quarter(quarter);
+        ufi_write_set_scale(scale);
         op_write = true;
         write_seq = seq;
     }
