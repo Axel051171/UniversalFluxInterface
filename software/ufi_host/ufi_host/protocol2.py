@@ -58,6 +58,9 @@ STEP_SCHEDULE = 0x1F                                        # firmware 1.14: hea
 RPM_LINES = {0: "none", 1: "DENSITY (pin 2)", 2: "DRATE (pin 6, JP1)"}
 READ, ABORT, WRITE, ERASE, PATTERN = 0x20, 0x21, 0x22, 0x23, 0x24
 ANALYZE = 0x25                          # firmware 1.14: track analysis
+FORMAT = 0x26                           # firmware 1.14: the firmware encodes and writes a track
+FORMAT_REQ = struct.Struct("<BBBHBBB")  # track, side, flags, rate_kbps, spt, gap3, fill
+FORMAT_VERIFY, FORMAT_AMIGA, FORMAT_HEAD_SWAP = 0x01, 0x02, 0x04
 ANALYZE_FMT = struct.Struct("<BBHH4HIIIBBIQ")
 ENCODINGS = {0: "unknown", 1: "FM", 2: "MFM", 3: "GCR"}
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
@@ -84,9 +87,10 @@ STATUS_TEXT = {
 # INFO caps bits
 CAPS = ("PSRAM ok", "SD NAND ready", "IEC", "Amiga", "Amiga2 / JP3 capable", "Shugart bus",
         "Apple port", "sync sensor enabled (apple_sync=1)", "Greaseweazle mode available",
-        "file access", "events", "drive diagnostics + index simulation")
+        "file access", "events", "drive diagnostics + index simulation",
+        "FORMAT (firmware encodes tracks)", "SELFTEST")
 CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_SYNC, \
-    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG = (1 << i for i in range(len(CAPS)))
+    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG, CAP_FORMAT, CAP_SELFTEST = (1 << i for i in range(len(CAPS)))
 
 # events (3.5); EVENTS mask bit = code - 0x80
 EV_DISK_CHANGED, EV_BUTTON, EV_PROGRESS, EV_POWER_OFF, EV_MODE_SWITCH = 0x80, 0x81, 0x82, 0x83, 0x84
@@ -598,6 +602,19 @@ class Device2:
                     rpm=v[3] / 100, peaks_ns=[x for x in v[4:8] if x], index_ticks=v[8],
                     transitions=v[9], bitcells=v[10], sectors=v[11], weak_windows=v[12],
                     first_sector_us=v[13], weak_mask=v[14])
+
+    def format_track(self, track: int, side: int, rate_kbps: int, spt: int, gap3: int = 0,
+                     fill: int = 0xF6, verify: bool = False, amiga: bool = False,
+                     head_id_swap: bool = False) -> tuple[int, int | None]:
+        """Firmware 1.14: lay out and write one IBM MFM (or Amiga, spt 11) track with
+        512-byte sectors 1..spt filled with `fill`.  Returns (flux transitions written,
+        sectors read back with good CRCs or None without verify)."""
+        flags = (FORMAT_VERIFY if verify else 0) | (FORMAT_AMIGA if amiga else 0) | \
+                (FORMAT_HEAD_SWAP if head_id_swap else 0)
+        p = self.request(FORMAT, FORMAT_REQ.pack(track, side, flags, rate_kbps, spt, gap3, fill & 0xFF),
+                         timeout=10.0)
+        count, good = struct.unpack_from("<IB", p)
+        return count, (None if good == 0xFF else good)
 
     def step_schedule(self, steps: list[tuple[int, int]], quarter: bool = False) -> None:
         """Head steps during the next READ/WRITE (firmware 1.14): [(ms after the start index,

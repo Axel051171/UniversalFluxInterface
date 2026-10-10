@@ -614,6 +614,20 @@ typedef struct {
 #define DIAG_WPROT      0x04u   // write protect asserted
 
 int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r);
+
+// FORMAT (1.14, ufi_format.c): the firmware encodes and writes one MFM / Amiga track
+#define FORMAT_VERIFY       0x01u
+#define FORMAT_AMIGA        0x02u
+#define FORMAT_HEAD_SWAP    0x04u   // Commodore 1581: ID side = 1 - physical head
+typedef struct __packed {
+    uint8_t track, side;
+    uint8_t flags;              // FORMAT_*
+    uint16_t rate_kbps;         // 250, 300, 500, 1000
+    uint8_t spt;                // 512-byte sectors per track (Amiga: 11)
+    uint8_t gap3;               // 0 = by layout
+    uint8_t fill;               // data byte
+} format_req_t;
+int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good);  // good 0xFF = not verified
 int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n);   // out: 4 x (type, flags)
 #define INDEX_SIM_PIN       0x01u   // pulses on J9 pin 6 (PE1, open drain)
 #define INDEX_SIM_INTERNAL  0x02u   // pulses replace the drive's INDEX line in capture/write

@@ -53,6 +53,8 @@ extern capture_context_t g_capture;
 #define CAP_FILES       (1u << 9)
 #define CAP_EVENTS      (1u << 10)
 #define CAP_DIAG        (1u << 11)   /* 1.13: DIAG_RPM, DRIVE_SCAN, INDEX_SIM */
+#define CAP_FORMAT      (1u << 12)   /* 1.14: FORMAT */
+#define CAP_SELFTEST    (1u << 13)   /* 1.14: SELFTEST */
 
 enum {
     V2_PING = 0x00, V2_INFO = 0x01, V2_STATUS = 0x02, V2_RESET = 0x03, V2_BOOTLOADER = 0x04,
@@ -61,7 +63,7 @@ enum {
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
-    V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25,
+    V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25, V2_FORMAT = 0x26,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
@@ -161,7 +163,8 @@ static uint8_t board_rev(void)
 
 static uint32_t caps(uint8_t rev)
 {
-    uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS | CAP_DIAG;
+    uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS | CAP_DIAG |
+                 CAP_FORMAT | CAP_SELFTEST;
     c |= ufi_flux_store_is_psram() ? CAP_PSRAM : 0u;
     c |= ufi_sd_present() ? CAP_SD : 0u;
     c |= (rev >= 7u) ? CAP_AMIGA2 : 0u;
@@ -382,6 +385,7 @@ static bool uses_drive(uint8_t cmd)
 {
     return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
            cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN || cmd == V2_ANALYZE ||
+           cmd == V2_FORMAT ||
            cmd == V2_DUMP_START || cmd == V2_COPY_START;
 }
 
@@ -693,6 +697,23 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         case V2_ERASE:
             ret = (len < 2u) ? UFI_ERR_BAD_ARGS : ufi_erase_track(p[0], p[1]);
             break;
+        case V2_FORMAT: {                   /* format_req_t (8 bytes) -> flux_count u32, good u8 */
+            if (len != sizeof(format_req_t)) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            format_req_t q;
+            memcpy(&q, p, sizeof(q));
+            uint32_t fc = 0;
+            uint8_t good = 0xFF;
+            ret = ufi_format_track(&q, &fc, &good);
+            if (ret == UFI_OK) {
+                put32(out, fc);
+                out[4] = good;
+                n = 5u;
+            }
+            break;
+        }
         case V2_ANALYZE: {                  /* track, side u8, revs u8 (0 = 3, max 8) -> 40 bytes */
             static analyze_result_t a;
             if (len < 2u) {

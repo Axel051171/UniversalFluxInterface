@@ -108,7 +108,7 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 14, 7, 0xFFF, 275_000_000, 8 << 20, 4096)
+            r(0, P2.INFO_HDR.pack(2, 1, 14, 7, 0x3FFF, 275_000_000, 8 << 20, 4096)
               + b"UFI Flux Engine 1.14 (abc1234, 2026-10-09)\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
@@ -133,6 +133,12 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.FORMAT:
+            if len(a) != 8:
+                r(P2.BAD_ARGS)
+            else:
+                q = P2.FORMAT_REQ.unpack(a)
+                r(0, struct.pack("<IB", q[4] * 1000, q[4] if q[2] & 1 else 0xFF))
         elif cmd == P2.ANALYZE:
             r(0, P2.ANALYZE_FMT.pack(a[2] or 3, 2, 2000, 30012, 4000, 6000, 8000, 0, 55_000_000,
                                      50_000, 100_000, 18, 2, 1234, 0x11))
@@ -282,7 +288,7 @@ def test_info_caps_status():
     assert lines[0] == "UFI v2 protocol, firmware 1.14, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
-    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0xFFF
+    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x3FFF
     assert all(on for _, on in i.caps_list())
     st = dev.status()
     assert st.drive == 1 and st.motor_on and st.track0 and st.track == 5
@@ -535,3 +541,14 @@ def test_write_track_time_scale_flag_and_u16():
     assert not (req[2] & P2.TIME_SCALE) and len(req) == 11
     with pytest.raises(ValueError):
         dev.write_track(4, 0, [1000, 1000, 1000], scale=3.0)
+
+
+def test_format_track_request_and_reply():
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.format_track(3, 1, 500, 18, verify=True) == (18000, 18)
+    assert fake.requests[-1].payload == P2.FORMAT_REQ.pack(3, 1, P2.FORMAT_VERIFY, 500, 18, 0, 0xF6)
+    assert dev.format_track(0, 0, 250, 11, amiga=True, fill=0) == (11000, None)
+    assert fake.requests[-1].payload[2] == P2.FORMAT_AMIGA and fake.requests[-1].payload[-1] == 0
+    assert dev.format_track(0, 0, 250, 10, head_id_swap=True)[0] == 10000
+    assert fake.requests[-1].payload[2] == P2.FORMAT_HEAD_SWAP
