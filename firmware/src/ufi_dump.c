@@ -38,6 +38,17 @@ typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_
  * service call.  iec_type: 0 = auto (DOS message after a bus reset), 41, 71, 81 */
 static const char* file_ext = ".SCP";
 static uint8_t iec_sec, iec_tracks, iec_type, iec_kind;
+
+/* UFI.CFG auto_dump=1 (1.14): a dump starts by itself when a disk is inserted (DSKCHG) */
+static bool auto_dump;
+static uint8_t ad_state;                /* 0 wait for the slot to empty, 1 wait for a disk, 2 settle */
+static uint32_t ad_t;
+#define AD_POLL_MS          500u
+#define AD_STEP_MS          2000u       /* step pair that clears the DSKCHG latch */
+#define AD_SETTLE_MS        1000u
+/* UFI.CFG double_step=0|1|auto (1.14): 0/1 fixed, 2 = detect a 40-track disk on track 0 */
+static uint8_t dstep_cfg;
+static bool dstep_pending, tracks_auto;
 static char iec_msg[40];                /* DOS power-up message for the log */
 static uint16_t iec_bad;
 
@@ -316,7 +327,23 @@ static void q_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_
     }
 }
 
-/* good sectors of the captured track (all revolutions as one stream) */
+/* the captured track (all revolutions as one stream) through a decoder */
+static void feed_capture(mfm_decoder_t* d)
+{
+    uint32_t carry = 0;
+    for (uint8_t k = 0; k < ufi_flux_get_revolution_count(); k++) {
+        const flux_revolution_t* r = ufi_flux_get_revolution(k);
+        uint32_t prev = 0;
+        for (uint32_t i = 0; i < r->count; i++) {
+            mfm_dec_interval(d, r->samples[i].timestamp - prev + carry);
+            carry = 0;
+            prev = r->samples[i].timestamp;
+        }
+        carry = r->index_time - prev;
+    }
+}
+
+/* good sectors of the captured track */
 static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
 {
     static mfm_decoder_t d;
@@ -326,17 +353,7 @@ static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
     } else {
         mfm_dec_init(&d, rate, q_sector, &q);
     }
-    uint32_t carry = 0;
-    for (uint8_t k = 0; k < ufi_flux_get_revolution_count(); k++) {
-        const flux_revolution_t* r = ufi_flux_get_revolution(k);
-        uint32_t prev = 0;
-        for (uint32_t i = 0; i < r->count; i++) {
-            mfm_dec_interval(&d, r->samples[i].timestamp - prev + carry);
-            carry = 0;
-            prev = r->samples[i].timestamp;
-        }
-        carry = r->index_time - prev;
-    }
+    feed_capture(&d);
     *max_r = q.max_r;
     uint8_t n = 0;
     for (uint64_t g = q.good; g; g &= g - 1u) {
@@ -365,6 +382,46 @@ static uint8_t track_quality(void)
         return best;
     }
     return q_known ? count_good(q_rate, q_amiga, &max_r) : 0u;
+}
+
+static void ds_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
+{
+    (void)data;
+    uint8_t* n = p;                     /* n[0] = IDs saying cylinder 1, n[1] = cylinder 2 */
+    if (crc_ok && (id->c == 1u || id->c == 2u) && n[id->c - 1u] < 255u) {
+        n[id->c - 1u]++;
+    }
+}
+
+/* double_step=auto: on physical track 2 a 48-tpi (40-track) disk still shows cylinder 1
+ * in its sector IDs; an 80-track disk shows cylinder 2.  Format from the track-0 probe. */
+static bool probe_double_step(void)
+{
+    static mfm_decoder_t d;
+    uint8_t n[2] = {0, 0};
+    g_capture.state = CAPTURE_IDLE;
+    if (ufi_capture_start(2, 0, 1, 0) != UFI_OK) {
+        return false;
+    }
+    const uint32_t t0 = HAL_GetTick();
+    capture_state_t cs;
+    while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
+        if (HAL_GetTick() - t0 > 3000u) {
+            ufi_capture_abort();
+            g_capture.state = CAPTURE_IDLE;
+            return false;
+        }
+    }
+    if (cs == CAPTURE_COMPLETE) {
+        if (q_amiga) {
+            mfm_dec_init_amiga(&d, q_rate, ds_sector, n);
+        } else {
+            mfm_dec_init(&d, q_rate, ds_sector, n);
+        }
+        feed_capture(&d);
+    }
+    g_capture.state = CAPTURE_IDLE;
+    return n[0] >= 2u && n[0] > n[1];
 }
 
 static void log_puts(const char* s)
@@ -553,6 +610,56 @@ static uint8_t search_track(uint8_t good)
     return best;
 }
 
+/* auto_dump=1: PC/Amiga drive with a DSKCHG line.  The latch is set without a disk and
+ * after a change; a step pair clears it once a disk is in.  Idle polling is silent, the
+ * step pair (a click) only while waiting for a disk; a finished dump waits for the disk
+ * to be taken out before it arms again. */
+static void auto_dump_service(void)
+{
+    if (!auto_dump || copying || protocol_gw || cfg.drive == DRIVE_IEC ||
+        cfg.drive == DRIVE_APPLE_II || cfg.drive == DRIVE_APPLE2) {
+        return;
+    }
+    if (ufi_usb_msc_active() || ufi_stream_active() ||
+        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+        return;
+    }
+    const drive_type_t cur = ufi_drive_get_current();
+    if (cur != DRIVE_NONE && cur != (drive_type_t)cfg.drive) {
+        return;                                     /* the host works with another drive */
+    }
+    const uint32_t now = HAL_GetTick();
+    const uint32_t wait = ad_state == 1u ? AD_STEP_MS : ad_state == 2u ? AD_SETTLE_MS : AD_POLL_MS;
+    if (now - ad_t < wait) {
+        return;
+    }
+    ad_t = now;
+    if (cur == DRIVE_NONE && ufi_drive_select((drive_type_t)cfg.drive) != UFI_OK) {
+        return;
+    }
+    switch (ad_state) {
+        case 0:                                     /* slot empty (latch set): arm */
+            if (ufi_drive_disk_changed()) {
+                ad_state = 1;
+            }
+            break;
+        case 1:                                     /* clear the latch; still set = no disk */
+            ufi_drive_step(1);
+            ufi_drive_step(-1);
+            if (!ufi_drive_disk_changed()) {
+                ad_state = 2;
+            }
+            break;
+        default:                                    /* disk in and settled: go */
+            ad_state = 0;
+            ufi_dump_start(NULL);
+            return;                                 /* the dump keeps the drive selected */
+    }
+    if (cur == DRIVE_NONE) {
+        ufi_drive_select(DRIVE_NONE);
+    }
+}
+
 static void fail(uint8_t code)
 {
     close_log();
@@ -656,7 +763,14 @@ static const char cfg_default[] =
     "# tracks=0: find the highest readable track first (80-83); track_search=1: with\r\n"
     "# double_step (40-track disk in an 80-track drive) re-read weak tracks one physical\r\n"
     "# track in and out and keep the best position\r\n"
-    "track_search=0\r\n";
+    "track_search=0\r\n"
+    "# double_step: 0 = 96-tpi disk, 1 = 40-track disk in an 80-track drive (two steps per\r\n"
+    "# track), auto = detect on track 0 (sector IDs on physical track 2); tracks > 42 are\r\n"
+    "# then cut to 40 (tracks=0) or 42\r\n"
+    "double_step=auto\r\n"
+    "# auto_dump=1: start a dump by itself when a disk is inserted (PC/Amiga drive with\r\n"
+    "# a disk-change line; waits for the disk to be taken out before the next one)\r\n"
+    "auto_dump=0\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA}, {"iec", DRIVE_IEC},
@@ -728,6 +842,10 @@ static void parse_line(const char* k, dump_config_t* c)
         iec_type = num == 1541u ? 41u : num == 1571u ? 71u : num == 1581u ? 81u : 0u;
     } else if (!strncmp(k, "track_search=", 13)) {
         track_search = (num == 1u);
+    } else if (!strncmp(k, "double_step=", 12)) {
+        dstep_cfg = word_is(v, "auto") ? 2u : (num == 1u) ? 1u : 0u;
+    } else if (!strncmp(k, "auto_dump=", 10)) {
+        auto_dump = (num == 1u);
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -750,6 +868,9 @@ void ufi_config_load(void)
         dump_config_t c = cfg;
         index_sim = 0;
         index_sim_mode = INDEX_SIM_PIN;
+        dstep_cfg = 0;
+        auto_dump = false;
+        ad_state = 0;
         rpm_line = 0;
         rpm_360_low = true;
         rpm_start = 0;
@@ -877,6 +998,12 @@ void ufi_dump_service(void)
                 if (open_next_file() != UFI_OK || begin_file() != UFI_OK) { fail(1); break; }
                 open_log();
                 log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
+                drive_timing_t dt = ufi_drive_get_timing();
+                dt.double_step = (dstep_cfg == 1u) ? 1u : 0u;
+                ufi_drive_set_timing(&dt);
+                dstep_pending = (dstep_cfg == 2u) &&
+                                cfg.drive != DRIVE_APPLE_II && cfg.drive != DRIVE_APPLE2;
+                tracks_auto = (cfg.tracks == 0);
                 if (prepare_drive(cfg.drive) != UFI_OK) { fail(2); break; }
                 if (cfg.tracks == 0) {                      /* tracks=0: highest readable + 1 */
                     uint8_t hi = 79;
@@ -963,6 +1090,19 @@ void ufi_dump_service(void)
             g_capture.state = CAPTURE_IDLE;
             if (ret != UFI_OK) { fail(ret == UFI_ERR_NO_INDEX ? 2 : 3); break; }
             HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
+            if (dstep_pending && cyl == 0 && head == 0) {
+                dstep_pending = false;
+                if (q_known && probe_double_step()) {
+                    drive_timing_t dt = ufi_drive_get_timing();
+                    dt.double_step = 1;
+                    ufi_drive_set_timing(&dt);
+                    ufi_drive_recalibrate();
+                    if (cfg.tracks > 42u) {
+                        cfg.tracks = tracks_auto ? 40u : 42u;
+                    }
+                    log_puts("double step: on (40-track disk)\r\n");
+                }
+            }
             if (++head >= cfg.sides) {
                 head = 0;
                 cyl++;
@@ -1019,7 +1159,8 @@ void ufi_dump_service(void)
             break;
         }
 
-        default:
+        default:                                    /* idle, done, error */
+            auto_dump_service();
             break;
     }
 }
