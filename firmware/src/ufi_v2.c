@@ -58,7 +58,7 @@ extern capture_context_t g_capture;
 
 enum {
     V2_PING = 0x00, V2_INFO = 0x01, V2_STATUS = 0x02, V2_RESET = 0x03, V2_BOOTLOADER = 0x04,
-    V2_USB_MODE = 0x05, V2_EVENTS = 0x06,
+    V2_USB_MODE = 0x05, V2_EVENTS = 0x06, V2_SELFTEST = 0x07,
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
@@ -385,7 +385,7 @@ static bool uses_drive(uint8_t cmd)
 {
     return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
            cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN || cmd == V2_ANALYZE ||
-           cmd == V2_FORMAT ||
+           cmd == V2_FORMAT || cmd == V2_SELFTEST ||
            cmd == V2_DUMP_START || cmd == V2_COPY_START;
 }
 
@@ -509,8 +509,13 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = text_add(out, n, UFI_GIT_REV, false);
             n = text_add(out, n, __DATE__, false);
             n = text_add(out, n, ufi_psram_result(), false);
+            n = text_add(out, n, ufi_crash_last(), false);      /* 1.14: reset cause */
             break;
         }
+        case V2_SELFTEST:                   /* -> n u8, n x (id u8, status u8, value u32) */
+            out[0] = ufi_selftest(&out[1], 16);
+            n = (uint16_t)(1u + 6u * out[0]);
+            break;
         case V2_STATUS: {
             const drive_status_t s = ufi_drive_get_status();
             out[0] = (uint8_t)s.type;

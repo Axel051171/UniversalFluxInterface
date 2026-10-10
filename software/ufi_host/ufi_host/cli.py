@@ -140,6 +140,19 @@ def cmd_format(dev: P2.Device2, a) -> None:
         raise SystemExit(f"{bad} track(s) failed verification")
 
 
+def cmd_selftest(dev: P2.Device2) -> int:
+    fails = 0
+    for id_, name, st, val in dev.selftest():
+        text = P2.SELFTEST_ITEMS.get(id_, (name, ""))[1]
+        v = f"{val - (1 << 32) if id_ == 2 and val >= 1 << 31 else val}"
+        if id_ in (9, 10):
+            v = f"0x{val:02X}"
+        print(f"{id_:2d} {name:<11} {P2.SELFTEST_STATUS.get(st, str(st)):<4} {v:>10}  {text}")
+        fails += st == 1
+    print("self-test: " + (f"{fails} FAILED" if fails else "no failures"))
+    return fails
+
+
 def cmd_caps(dev: P2.Device2) -> None:
     i = dev.device_info()
     print(f"protocol v{i.proto}, firmware {i.fw_major}.{i.fw_minor}, "
@@ -353,9 +366,13 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "status":
             print(dev.status())
         elif a.cmd == "selftest":
-            r = dev.selftest()
-            print(" ".join(f"{n}={'OK' if r & (1 << i) else 'FAIL'}"
-                           for i, n in enumerate(("timer", "dma", "usb", "gpio"))))
+            if isinstance(dev, P2.Device2):     # v2: board self-test table (firmware 1.14)
+                if cmd_selftest(dev):
+                    raise SystemExit(1)
+            else:
+                r = dev.selftest()
+                print(" ".join(f"{n}={'OK' if r & (1 << i) else 'FAIL'}"
+                               for i, n in enumerate(("timer", "dma", "usb", "gpio"))))
         elif a.cmd == "rpm":
             if isinstance(dev, P2.Device2) and dev.caps() & P2.CAP_DIAG:
                 print(dev.diag_rpm(a.revs))

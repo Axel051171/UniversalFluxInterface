@@ -50,6 +50,23 @@ T_REQUEST, T_RESPONSE, T_EVENT, T_DATA, T_END = 1, 2, 3, 4, 5
 
 # command codes (3.2)
 PING, INFO, STATUS, RESET, BOOTLOADER, USB_MODE, EVENTS = 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
+SELFTEST = 0x07                         # firmware 1.14: board self-test
+SELFTEST_ITEMS = {
+    1: ("timer", "TIM2 ticks per ms (275000 expected)"),
+    2: ("usb_sof", "crystal vs. USB frames, ppm (skip = not enumerated)"),
+    3: ("psram", "flux store bytes; fresh pattern test (fail value = offset)"),
+    4: ("sd", "SD NAND capacity MB"),
+    5: ("rail_5v", "FDD 5 V current mA (fail = overcurrent trip, skip = off)"),
+    6: ("rail_12v", "FDD 12 V current mA"),
+    7: ("board_id", "BOARD_ID divider mV (warn = no known revision)"),
+    8: ("usbc_cc", "USB-C advertised mA (warn = no CC, USB-A cable)"),
+    9: ("fdd_lines", "drive inputs low with nothing selected: bit0 INDEX bit1 TRK0 bit2 WPROT bit3 DSKCHG bit4 READY bit5 RDATA"),
+    10: ("iec_loop", "IEC transceivers: bit0-3 ATN/CLK/DATA/SRQ not asserted, bit4-7 not released"),
+    11: ("index_loop", "index simulation J9 pin 6 -> INDEX (skip = no wire)"),
+    12: ("last_reset", "fault record at start-up (1 HardFault 2 MemManage 3 BusFault 4 UsageFault)"),
+    13: ("log", "SELFTEST.LOG written (bytes)"),
+}
+SELFTEST_STATUS = {0: "ok", 1: "FAIL", 2: "skip", 3: "warn"}
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
 CHECK_DISK, PROBE_TRACKS, SEEK_TEST, AMIGA_ID = 0x17, 0x18, 0x19, 0x1A
 DIAG_RPM, DRIVE_SCAN, INDEX_SIM = 0x1B, 0x1C, 0x1D          # firmware 1.13
@@ -708,8 +725,15 @@ class Device2:
         cap = self.read_track(st.track, st.side, 1)
         return round(cap.revolutions[0].rpm) if cap.revolutions else 0
 
-    def selftest(self) -> int:
-        raise DeviceError(0xD0, UNSUPPORTED)    # v1 debug command; v2 reports PSRAM in INFO
+    def selftest(self) -> list[tuple[int, str, int, int]]:
+        """Firmware 1.14: board self-test -> [(id, name, status, value)]; status 0 ok,
+        1 fail, 2 skipped, 3 warning.  Also writes SELFTEST.LOG on the SD NAND."""
+        p = self.request(SELFTEST, timeout=8.0)
+        out = []
+        for i in range(p[0]):
+            id_, st, val = struct.unpack_from("<BBI", p, 1 + 6 * i)
+            out.append((id_, SELFTEST_ITEMS.get(id_, (f"item{id_}", ""))[0], st, val))
+        return out
 
     # -- IEC ----------------------------------------------------------------
     def iec_reset(self) -> None:

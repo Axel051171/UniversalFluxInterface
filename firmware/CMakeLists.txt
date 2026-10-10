@@ -144,6 +144,8 @@ set(PROJECT_SOURCES
     src/ufi_sched.c
     src/ufi_analyze.c
     src/ufi_format.c
+    src/ufi_selftest.c
+    src/ufi_crash.c
     src/ufi_write.c
     src/ufi_debug.c
     src/ufi_diag.c

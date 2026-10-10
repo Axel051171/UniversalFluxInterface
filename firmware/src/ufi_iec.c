@@ -406,6 +406,28 @@ int ufi_iec_mem_exec(uint8_t device, uint16_t addr) {
 }
 
 /* Drive code runs with interrupts off: poll until the drive answers ATN again */
+/* Self-test: drive each line through its transceiver and read it back on the receiver.
+ * Bit0-3: ATN/CLK/DATA/SRQ did not read asserted; bit4-7: did not read released (no
+ * pull-up on an empty bus is a warning, not a fault).  RESET is left alone. */
+uint8_t ufi_iec_loopback(void) {
+    const gpio_pin_t* outs[] = {&PIN_IEC_ATN_OUT, &PIN_IEC_CLK_OUT, &PIN_IEC_DATA_OUT, &PIN_IEC_SRQ_OUT};
+    const gpio_pin_t* ins[] = {&PIN_IEC_ATN_IN, &PIN_IEC_CLK_IN, &PIN_IEC_DATA_IN, &PIN_IEC_SRQ_IN};
+    uint8_t mask = 0;
+    for (int i = 0; i < 4; i++) {
+        bus_out(outs[i], true);
+        iec_delay_us(20);
+        if (!bus_in(ins[i])) {
+            mask |= (uint8_t)(1u << i);
+        }
+        bus_out(outs[i], false);
+        iec_delay_us(20);
+        if (bus_in(ins[i])) {
+            mask |= (uint8_t)(0x10u << i);
+        }
+    }
+    return mask;
+}
+
 int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms) {
     const uint32_t t0 = HAL_GetTick();
     HAL_Delay(200);

@@ -72,7 +72,7 @@ static int revolution(uint32_t* ticks)
 /* read the track back: good = sectors 1..spt with valid CRCs (bit mask count) */
 static int verify(const format_req_t* q, uint32_t rate, uint8_t* good)
 {
-    static mfm_decoder_t d;
+    __attribute__((section(".dtcm"))) static mfm_decoder_t d;
     vctx_t v = {.cyl = q->track};
     g_capture.state = CAPTURE_IDLE;
     int ret = ufi_capture_start(q->track, q->side, FORMAT_VERIFY_REVS, 0);

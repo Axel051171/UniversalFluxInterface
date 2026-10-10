@@ -88,6 +88,7 @@ void ufi_init(void)
     ufi_usb_init();
     ufi_sd_init();              /* v0.6 SD NAND; failure shows in SD_INFO / dump error 1 */
     ufi_config_load();          /* UFI.CFG: stand-alone drive (a/b/amiga/ds0-ds3), dump settings */
+    ufi_crash_boot();           /* reset cause; fault record from DTCM -> CRASH.LOG (1.14) */
     ufi_mode_init();            /* mode switch on J13: flux / USB floppy / SD drive */
 
     /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,

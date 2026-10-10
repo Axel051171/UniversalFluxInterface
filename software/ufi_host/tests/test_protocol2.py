@@ -133,6 +133,9 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.SELFTEST:
+            r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
+              + struct.pack("<BBI", 13, 1, 0))
         elif cmd == P2.FORMAT:
             if len(a) != 8:
                 r(P2.BAD_ARGS)
@@ -552,3 +555,11 @@ def test_format_track_request_and_reply():
     assert fake.requests[-1].payload[2] == P2.FORMAT_AMIGA and fake.requests[-1].payload[-1] == 0
     assert dev.format_track(0, 0, 250, 10, head_id_swap=True)[0] == 10000
     assert fake.requests[-1].payload[2] == P2.FORMAT_HEAD_SWAP
+
+
+def test_selftest_items():
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    items = dev.selftest()
+    assert items == [(1, "timer", 0, 275000), (2, "usb_sof", 0, 0xFFFFFFF6), (13, "log", 1, 0)]
+    assert fake.requests[-1].cmd == P2.SELFTEST and fake.requests[-1].payload == b""

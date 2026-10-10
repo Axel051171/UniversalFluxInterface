@@ -24,25 +24,22 @@ void NMI_Handler(void)
     while (1) {}
 }
 
-void HardFault_Handler(void)
-{
-    while (1) {}
-}
-
-void MemManage_Handler(void)
-{
-    while (1) {}
-}
-
-void BusFault_Handler(void)
-{
-    while (1) {}
-}
-
-void UsageFault_Handler(void)
-{
-    while (1) {}
-}
+/* Faults: hand the exception frame (MSP or PSP) and a kind code to ufi_crash.c, which
+ * stores them in DTCM and resets; CRASH.LOG and INFO report it after the restart. */
+#define UFI_FAULT_HANDLER(name, kind)                                   \
+    __attribute__((naked)) void name(void)                              \
+    {                                                                   \
+        __asm volatile("tst lr, #4\n\t"                                 \
+                       "ite eq\n\t"                                     \
+                       "mrseq r0, msp\n\t"                              \
+                       "mrsne r0, psp\n\t"                              \
+                       "mov r1, #" #kind "\n\t"                        \
+                       "b ufi_crash_fault");                            \
+    }
+UFI_FAULT_HANDLER(HardFault_Handler, 1)
+UFI_FAULT_HANDLER(MemManage_Handler, 2)
+UFI_FAULT_HANDLER(BusFault_Handler, 3)
+UFI_FAULT_HANDLER(UsageFault_Handler, 4)
 
 void SVC_Handler(void)
 {

@@ -346,7 +346,7 @@ static void feed_capture(mfm_decoder_t* d)
 /* good sectors of the captured track */
 static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
 {
-    static mfm_decoder_t d;
+    __attribute__((section(".dtcm"))) static mfm_decoder_t d;
     qctx_t q = {.cyl = cyl};
     if (amiga) {
         mfm_dec_init_amiga(&d, rate, q_sector, &q);
@@ -397,7 +397,7 @@ static void ds_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc
  * in its sector IDs; an 80-track disk shows cylinder 2.  Format from the track-0 probe. */
 static bool probe_double_step(void)
 {
-    static mfm_decoder_t d;
+    __attribute__((section(".dtcm"))) static mfm_decoder_t d;
     uint8_t n[2] = {0, 0};
     g_capture.state = CAPTURE_IDLE;
     if (ufi_capture_start(2, 0, 1, 0) != UFI_OK) {
