@@ -34,9 +34,11 @@ extern capture_context_t g_capture;
 typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR, D_COPY,
                D_IEC } dump_state_t;
 
-/* drive=iec (1.14): D64 dump through the 1541's own controller, one block per service call */
+/* drive=iec (1.14): D64/D71/D81 dump through the drive's own controller, one block per
+ * service call.  iec_type: 0 = auto (DOS message after a bus reset), 41, 71, 81 */
 static const char* file_ext = ".SCP";
-static uint8_t iec_sec, iec_tracks;
+static uint8_t iec_sec, iec_tracks, iec_type, iec_kind;
+static char iec_msg[40];                /* DOS power-up message for the log */
 static uint16_t iec_bad;
 
 /* CPU-polled SD transfers: the staging buffer may live in DTCM (not zeroed at start) */
@@ -251,6 +253,34 @@ static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (
 static bool rpm_360_low = true;         /* UFI.CFG rpm_360=low|high */
 static uint16_t rpm_start;              /* UFI.CFG rpm=300|360 applied at start, 0 = untouched */
 static uint8_t iec_device = 8;          /* UFI.CFG iec_device=8..30: 1541 for drive=iec dumps */
+
+/* sectors on a 1541/1571 track (1-based; 1571 side 2 = 36-70) or a 1581 track */
+static uint8_t iec_spt(uint8_t t)
+{
+    if (iec_kind == 81u) {
+        return 40u;
+    }
+    if (t > 35u) {
+        t = (uint8_t)(t - 35u);
+    }
+    return t <= 17u ? 21u : t <= 24u ? 19u : t <= 30u ? 18u : 17u;
+}
+
+/* which drive answers: UFI.CFG iec_type, or the power-up message ("73,CBM DOS V2.6 1541",
+ * "73,CBM DOS V3.0 1571", "73,COPYRIGHT CBM DOS V10 1581") after a bus reset */
+static uint8_t iec_detect(void)
+{
+    if (iec_type) {
+        return iec_type;
+    }
+    iec_msg[0] = 0;
+    ufi_iec_reset();
+    if (ufi_iec_wait_ready(iec_device, 5000u) != UFI_OK ||
+        ufi_iec_read_status(iec_device, iec_msg, sizeof(iec_msg)) <= 0) {
+        return 41u;
+    }
+    return strstr(iec_msg, "1581") ? 81u : strstr(iec_msg, "1571") ? 71u : 41u;
+}
 static bool track_search;               /* UFI.CFG track_search=1: weak track -> try +-1 physical track */
 static uint8_t copy_src = DRIVE_SHUGART_A, copy_dst = DRIVE_SHUGART_B;
 static uint8_t tries, q_spt, bad_tracks;
@@ -618,9 +648,11 @@ static const char cfg_default[] =
     "rpm_line=none\r\n"
     "rpm_360=low\r\n"
     "rpm=0\r\n"
-    "# drive=iec: 1541/1571 on J8, dump via the drive's own controller to DUMPnnnn.D64\r\n"
-    "# (tracks=35 or 40, sides=1); device number on the bus\r\n"
+    "# drive=iec: 1541/1571/1581 on J8, dump via the drive's own controller to\r\n"
+    "# DUMPnnnn.D64/.D71/.D81 (tracks=0: whole disk; 1541: 35 or 40; 1571: 35 = one side);\r\n"
+    "# device number on the bus; iec_type=auto (DOS message after a bus reset), 1541, 1571, 1581\r\n"
     "iec_device=8\r\n"
+    "iec_type=auto\r\n"
     "# tracks=0: find the highest readable track first (80-83); track_search=1: with\r\n"
     "# double_step (40-track disk in an 80-track drive) re-read weak tracks one physical\r\n"
     "# track in and out and keep the best position\r\n"
@@ -692,6 +724,8 @@ static void parse_line(const char* k, dump_config_t* c)
         rpm_start = (num == 300u || num == 360u) ? (uint16_t)num : 0u;
     } else if (!strncmp(k, "iec_device=", 11)) {
         iec_device = (num >= 4u && num <= 30u) ? (uint8_t)num : 8u;
+    } else if (!strncmp(k, "iec_type=", 9)) {
+        iec_type = num == 1541u ? 41u : num == 1571u ? 71u : num == 1581u ? 81u : 0u;
     } else if (!strncmp(k, "track_search=", 13)) {
         track_search = (num == 1u);
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
@@ -801,17 +835,37 @@ void ufi_dump_service(void)
                     break;
                 }
             } else if (cfg.drive == DRIVE_IEC) {
-                file_ext = ".D64";
                 if (mount() != UFI_OK) { fail(1); break; }
+                ufi_drive_select(DRIVE_IEC);
+                /* the log is numbered with the image: find the number first */
+                file_no = 0;
+                log_open = false;
+                iec_kind = iec_detect();
+                file_ext = iec_kind == 81u ? ".D81"
+                         : (iec_kind == 71u && cfg.tracks != 35u && cfg.tracks != 40u) ? ".D71" : ".D64";
                 if (open_next_file() != UFI_OK) { fail(1); break; }
                 file_ext = ".SCP";
                 checksum = 0;
                 stage_len = 0;
                 open_log();
-                log_puts("UFI 1541 dump via IEC (U1 block reads)\r\nunreadable blocks (track sector):\r\n");
-                ufi_drive_select(DRIVE_IEC);
+                log_puts(iec_kind == 81u ? "UFI 1581 dump via IEC (U1 block reads)\r\n"
+                       : iec_kind == 71u ? "UFI 1571 dump via IEC (U1 block reads)\r\n"
+                                         : "UFI 1541 dump via IEC (U1 block reads)\r\n");
+                if (iec_msg[0]) {
+                    log_puts("drive: ");
+                    log_puts(iec_msg);
+                    log_puts("\r\n");
+                }
+                log_puts("unreadable blocks (track sector):\r\n");
                 if (ufi_iec_command(iec_device, "I0", 2) != UFI_OK) { fail(2); break; }
-                iec_tracks = (cfg.tracks == 40u) ? 40u : 35u;
+                if (iec_kind == 71u && cfg.tracks != 35u && cfg.tracks != 40u &&
+                    ufi_iec_command(iec_device, "U0>M1", 5) != UFI_OK) {   /* double-sided mode */
+                    fail(2);
+                    break;
+                }
+                iec_tracks = iec_kind == 81u ? 80u
+                           : iec_kind == 71u ? ((cfg.tracks == 35u || cfg.tracks == 40u) ? cfg.tracks : 70u)
+                           : (cfg.tracks == 40u) ? 40u : 35u;
                 iec_sec = 0;
                 iec_bad = 0;
                 cyl = 1;                                /* 1541 tracks are 1-based */
@@ -942,8 +996,7 @@ void ufi_dump_service(void)
                 log_puts(line);
             }
             if (put(block, sizeof(block)) != UFI_OK) { fail(3); break; }
-            const uint8_t spt = cyl <= 17u ? 21u : cyl <= 24u ? 19u : cyl <= 30u ? 18u : 17u;
-            if (++iec_sec >= spt) {
+            if (++iec_sec >= iec_spt(cyl)) {
                 iec_sec = 0;
                 cyl++;
                 led_set(&PIN_LED_FDD, false);

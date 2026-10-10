@@ -494,6 +494,7 @@ int ufi_iec_mem_write(uint8_t device, uint16_t addr, const uint8_t* data, uint8_
 int ufi_iec_mem_read(uint8_t device, uint16_t addr, uint8_t* buf, uint8_t n);
 int ufi_iec_mem_exec(uint8_t device, uint16_t addr);
 int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms);
+int ufi_iec_read_status(uint8_t device, char* buffer, uint8_t max_len);   // channel 15, returns length
 // 1541 raw GCR chunks (ufi_nib.c, drive code tools/iec_nib.s)
 typedef struct {
     uint8_t status;         // 0 ok, 1 no sync / no bytes, 2 origin not found, 3 raw (mode 1)
