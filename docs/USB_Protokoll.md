@@ -1,6 +1,6 @@
 # USB-Protokoll der UFI Flux Engine (UFI Headless)
 
-Stand: Firmware 1.12, Board v0.7. Alle Mehrbyte-Werte **little endian**.
+Stand: Firmware 1.14, Board v0.7. Alle Mehrbyte-Werte **little endian**.
 
 ## 1 USB-Personalitäten
 
@@ -61,11 +61,14 @@ Unabhängige Umsetzung des Greaseweazle-Protokolls (Keir Fraser, `cdc_acm_protoc
 | 15 | SET_PIN | `pin` u8 (nur 2 = DENSITY), `level` u8 | – |
 | 16 | RESET | – | – (Einschaltzustand) |
 | 17 | ERASE_FLUX | `ticks` u32 | nach dem Löschen: 1 Statusbyte |
+| 18 | SOURCE_BYTES (1.14) | `len` u32, `seed` u32 | `len` Bytes aus dem Generator von `gw bandwidth` (`r&255`, dann `r = r>>1 ^ 0x80000062` bei gesetztem Bit 0, sonst `r>>1`) |
+| 19 | SINK_BYTES (1.14) | `len` u32, `seed` u32, danach `len` Datenbytes | nach den Daten 1 Statusbyte: 0 = alle Bytes passten zum Generator, 1 = verfälscht |
 | 20 | GET_PIN | `pin` u8 (8 INDEX, 26 TRK0, 28 WRPROT, 34 DSKCHG/READY) | `level` u8 (0 = low = aktiv) |
+| 22 | NOCLICK_STEP (1.14) | – | – (ein Schritt nach außen auf Zylinder 0 für Flippy-Umbauten; ack 11 auf anderen Zylindern) |
 
-Nicht unterstützt (ack 1): 1 UPDATE, 11 SWITCH_FW_MODE, 18/19 SOURCE/SINK_BYTES (`gw bandwidth`), 21 TEST_MODE, 22 NOCLICK_STEP (Flippy).
+Nicht unterstützt (ack 1): 1 UPDATE, 11 SWITCH_FW_MODE, 21 TEST_MODE.
 
-**GET_INFO idx 0:** `fw_major, fw_minor` (= UFI-Firmware, z. B. 1.12), `is_main=1`, `max_cmd=22`, `sample_freq` u32 = **68 750 000**, `hw_model=0x55`, `hw_submodel=1` (gw zeigt „Unknown (0x5501)“), `usb_speed=0` (Full Speed), `mcu_id=0`, `mcu_mhz` u16 = 550, `sram_kb` u16 = 564, `usb_buf_kb` u16 = 8, Rest 0. **idx 1:** Bandbreite (fester Nennwert). **idx 7 / 8+n:** Laufwerk aktuell / Einheit n: `flags` u32 (Bit0 Zylinder gültig, Bit1 Motor an), `cyl` s32.
+**GET_INFO idx 0:** `fw_major, fw_minor` (= UFI-Firmware, z. B. 1.14), `is_main=1`, `max_cmd=22`, `sample_freq` u32 = **68 750 000**, `hw_model=0x55`, `hw_submodel=1` (gw zeigt „Unknown (0x5501)“), `usb_speed=0` (Full Speed), `mcu_id=0`, `mcu_mhz` u16 = 550, `sram_kb` u16 = 564, `usb_buf_kb` u16 = 8, Rest 0. **idx 1:** Bandbreite: `min_bytes, min_us, max_bytes, max_us` (je u32) der letzten SOURCE/SINK-Übertragung (eine Messung, min = max; vor der ersten ein Nennwert von 8 KB je 8 ms). **idx 7 / 8+n:** Laufwerk aktuell / Einheit n: `flags` u32 (Bit0 Zylinder gültig, Bit1 Motor an), `cyl` s32.
 
 **Bus/Einheiten:** IBM-PC: 0 = Laufwerk A, 1 = B (Kabel mit Twist). Shugart: 0–3 = DS0–DS3 (gerades Kabel, DS3 nur mit JP1). Amiga-Port, IEC und Apple-Port sind im Greaseweazle-Modus nicht erreichbar.
 
