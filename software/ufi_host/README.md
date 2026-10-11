@@ -41,6 +41,7 @@ ufi index-sim 300 --internal [--no-pin]   # Firmware ≥ 1.14: Impulse gelten in
 ufi read-disk -o d.scp --hard-sectors 16  # Firmware ≥ 1.14: hartsektoriert (10/16/32 Löcher), auch bei read/write/write-disk
 ufi read 17 0 --quarter 2                 # Firmware ≥ 1.14: Apple-Viertelspur (17,5); auch seek/write --quarter 1-3
 ufi read 17 0 --steps 50:17.1,100:17.2    # Firmware ≥ 1.14: Kopfschritte nach Zeitplan während des Lesens (Spiradisc); auch write
+ufi write-limits                          # Firmware ≥ 1.15: was der Schreibpfad annimmt (Takt, max. Intervalle, 1,6–238 µs); ufi write prüft damit vor dem Senden
 ufi selftest                              # Firmware ≥ 1.14: Platinen-Selbsttest (Takt, PSRAM, SD, Versorgungen, USB-C, Laufwerksleitungen, IEC-Rückschleife, Index-Schleife), schreibt SELFTEST.LOG
 ufi format 1440 --verify                  # Firmware ≥ 1.14: Diskette in der Firmware formatieren (1440 720 1200 360 dmf amiga 1581 st720 st800; --track T für eine Spur)
 ufi analyze 0 0 -r 5                      # Firmware ≥ 1.14: Drehzahl, Abstands-Spitzen, Kodierung/Bitzelle, Spurlänge, schwache Bits, Index→erster Sektor

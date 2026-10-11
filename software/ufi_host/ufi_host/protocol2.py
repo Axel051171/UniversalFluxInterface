@@ -51,6 +51,8 @@ T_REQUEST, T_RESPONSE, T_EVENT, T_DATA, T_END = 1, 2, 3, 4, 5
 # command codes (3.2)
 PING, INFO, STATUS, RESET, BOOTLOADER, USB_MODE, EVENTS = 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
 SELFTEST = 0x07                         # firmware 1.14: board self-test
+WRITE_LIMITS = 0x08                     # firmware 1.15: effective write backend limits
+WRITE_LIMITS_FMT = struct.Struct("<BBIIII")
 SELFTEST_ITEMS = {
     1: ("timer", "TIM2 ticks per ms (275000 expected)"),
     2: ("usb_sof", "crystal vs. USB frames, ppm (skip = not enumerated)"),
@@ -101,15 +103,17 @@ STATUS_TEXT = {
     13: "storage (SD NAND / file system) error", 14: "frame error (CRC/length)",
     15: "unknown command", 16: "invalid arguments", 17: "file not found",
     18: "flux interval not representable (1.6-238 us); write with clamp=True to force",
+    19: "track longer than one revolution: the index ended the write",
 }
 
 # INFO caps bits
 CAPS = ("PSRAM ok", "SD NAND ready", "IEC", "Amiga", "Amiga2 / JP3 capable", "Shugart bus",
         "Apple port", "sync sensor enabled (apple_sync=1)", "Greaseweazle mode available",
         "file access", "events", "drive diagnostics + index simulation",
-        "FORMAT (firmware encodes tracks)", "SELFTEST")
+        "FORMAT (firmware encodes tracks)", "SELFTEST", "WRITE_LIMITS query")
 CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_SYNC, \
-    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG, CAP_FORMAT, CAP_SELFTEST = (1 << i for i in range(len(CAPS)))
+    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG, CAP_FORMAT, CAP_SELFTEST, CAP_WRITE_LIMITS = \
+    (1 << i for i in range(len(CAPS)))
 
 # events (3.5); EVENTS mask bit = code - 0x80
 EV_DISK_CHANGED, EV_BUTTON, EV_PROGRESS, EV_POWER_OFF, EV_MODE_SWITCH = 0x80, 0x81, 0x82, 0x83, 0x84
@@ -302,6 +306,21 @@ class DeviceInfo:
 
 
 @dataclass
+class WriteLimits:
+    """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
+    schema: int
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag
+    sample_hz: int
+    max_flux: int               # flux_count limit (flux store)
+    min_ticks: int
+    max_ticks: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> "WriteLimits":
+        return cls(*WRITE_LIMITS_FMT.unpack_from(b))
+
+
+@dataclass
 class WriteResult:
     """END frame of a WRITE (firmware 1.15; older firmware: level 0, clamped 0)."""
     verify_level: int = 0
@@ -414,6 +433,9 @@ class Device2:
     """UFI v2 command layer over any byte stream (pyserial port or a test double)."""
 
     proto = 2
+
+    _limits: "WriteLimits | None" = None
+    _limits_checked = False
 
     def __init__(self, stream: Stream, timeout: float = 5.0):
         self.s = stream
@@ -703,6 +725,31 @@ class Device2:
                 revs = revs[:f.payload[0]]
             return Capture(revs, f.status)
 
+    def write_limits(self) -> WriteLimits:
+        """Effective limits of the write backend (firmware 1.15, caps bit 14)."""
+        return WriteLimits.unpack(self.request(WRITE_LIMITS))
+
+    def _preflight(self, deltas: list[int], scale: float, clamp: bool) -> None:
+        """Refuse locally what firmware 1.15 would refuse (status 10/18); older firmware
+        without the query is left alone."""
+        if not self._limits_checked:
+            self._limits_checked = True
+            if self.caps() & CAP_WRITE_LIMITS:
+                self._limits = self.write_limits()
+        lim = self._limits
+        if lim is None:
+            return
+        if len(deltas) < 3 or len(deltas) > lim.max_flux:
+            raise ValueError(f"{len(deltas)} flux intervals: the firmware takes 3..{lim.max_flux}")
+        if clamp:
+            return
+        for i, d in enumerate(deltas):
+            s = round(d * scale)
+            if s < lim.min_ticks or s > lim.max_ticks:
+                raise ValueError(f"interval {i} = {d} ticks ({s} after scaling) outside "
+                                 f"{lim.min_ticks}..{lim.max_ticks} ({lim.min_ticks / lim.sample_hz * 1e6:.1f}"
+                                 f"-{lim.max_ticks / lim.sample_hz * 1e6:.0f} us); use clamp=True to force")
+
     def write_track(self, track: int, side: int, deltas: list[int], verify: bool = False,
                     hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0,
                     clamp: bool = False) -> WriteResult:
@@ -711,6 +758,7 @@ class Device2:
         rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
         clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
         status 18 otherwise); the result counts the clamped ones."""
+        self._preflight(deltas, scale, clamp)
         code = encode_flux(deltas)
         seq = self._next_seq()
         flags = (WRITE_VERIFY if verify else 0) | (HARD_SECTORS if hard_sectors else 0)

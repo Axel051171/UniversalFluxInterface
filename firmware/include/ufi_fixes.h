@@ -42,6 +42,7 @@ typedef enum {
     UFI_ERR_BAD_ARGS    = -16,  /* UFI v2: invalid arguments */
     UFI_ERR_NOT_FOUND   = -17,  /* file not found */
     UFI_ERR_RANGE       = -18,  /* write: flux interval not representable (1.6-238 us) */
+    UFI_ERR_TRACK_LONG  = -19,  /* write: the index came before the last interval (track cut) */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

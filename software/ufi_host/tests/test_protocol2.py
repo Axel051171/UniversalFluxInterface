@@ -108,7 +108,7 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 15, 7, 0x3FFF, 275_000_000, 8 << 20, 4096)
+            r(0, P2.INFO_HDR.pack(2, 1, 15, 7, 0x7FFF, 275_000_000, 8 << 20, 4096)
               + b"UFI Flux Engine 1.14 (abc1234, 2026-10-09)\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
@@ -133,6 +133,8 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.WRITE_LIMITS:
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -291,7 +293,7 @@ def test_info_caps_status():
     assert lines[0] == "UFI v2 protocol, firmware 1.15, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
-    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x3FFF
+    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x7FFF
     assert all(on for _, on in i.caps_list())
     st = dev.status()
     assert st.drive == 1 and st.motor_on and st.track0 and st.track == 5
@@ -411,6 +413,7 @@ def test_read_to_scp_equals_v1_path(tmp_path):
 def test_write_track_sends_data_frames_and_waits_for_end():
     fake = FakeV2()
     dev = P2.Device2(fake)
+    dev._limits_checked = True              # encoder test: no preflight
     deltas = [1100] * 3000 + [300, 3567, 3568, 100_000, 0xEF, 0xF0]
     dev.write_track(3, 1, deltas, verify=True)
     req = fake.requests[-1]
@@ -576,3 +579,26 @@ def test_write_track_result_and_clamp_flag():
     assert "count only" in r.verify_text
     assert P2.WriteResult.unpack(b"") == P2.WriteResult(0, 0)
     assert "18" not in P2.STATUS_TEXT or "not representable" in P2.STATUS_TEXT[18]
+
+
+def test_write_limits_and_preflight():
+    import pytest
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    lim = dev.write_limits()
+    assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
+        (1, 7, 275_000_000, 1 << 21, 440, 65536)
+    n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
+    with pytest.raises(ValueError):
+        dev.write_track(1, 0, [1000, 439, 1000])
+    with pytest.raises(ValueError):
+        dev.write_track(1, 0, [1000, 65537, 1000])
+    with pytest.raises(ValueError):
+        dev.write_track(1, 0, [1000, 800, 1000], scale=0.5)
+    with pytest.raises(ValueError):
+        dev.write_track(1, 0, [1000, 1000])
+    assert len([q for q in fake.requests if q.cmd == P2.WRITE]) == n_before, "no WRITE went out"
+    dev.write_track(1, 0, [1000, 439, 1000], clamp=True)
+    dev.write_track(1, 0, [1000, 800, 1000], scale=0.5, clamp=True)
+    assert len([q for q in fake.requests if q.cmd == P2.WRITE]) == n_before + 2
+    assert P2.STATUS_TEXT[19].startswith("track longer")

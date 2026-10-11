@@ -248,7 +248,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format",
+V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power"}
 
 
@@ -261,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
         "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
     sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
+    sub.add_parser("write-limits", help="what the write backend accepts (firmware 1.15): clock, max intervals, min/max interval")
     p = sub.add_parser("format", help="format a disk or one track in the firmware (MFM/Amiga, firmware 1.14): "
                        "ufi format 1440 [--verify]; one track: --track T --side S")
     p.add_argument("layout", choices=list(FORMATS), help="1440 720 1200 360 dmf amiga 1581 st720 st800")
@@ -399,6 +400,14 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "write-limits":
+            lim = dev.write_limits()
+            print(f"schema {lim.schema}, flags 0x{lim.flags:02X}"
+                  f" (content verify {'yes' if lim.flags & 1 else 'no'}, long tracks {'yes' if lim.flags & 2 else 'no'},"
+                  f" clamp flag {'yes' if lim.flags & 4 else 'no'})")
+            print(f"clock {lim.sample_hz} Hz, max {lim.max_flux} intervals per track")
+            print(f"interval {lim.min_ticks}..{lim.max_ticks} ticks = "
+                  f"{lim.min_ticks / lim.sample_hz * 1e6:.2f}..{lim.max_ticks / lim.sample_hz * 1e6:.2f} us")
         elif a.cmd == "format":
             cmd_format(dev, a)
         elif a.cmd == "analyze":

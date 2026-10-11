@@ -55,10 +55,11 @@ extern capture_context_t g_capture;
 #define CAP_DIAG        (1u << 11)   /* 1.13: DIAG_RPM, DRIVE_SCAN, INDEX_SIM */
 #define CAP_FORMAT      (1u << 12)   /* 1.14: FORMAT */
 #define CAP_SELFTEST    (1u << 13)   /* 1.14: SELFTEST */
+#define CAP_WRITE_LIMITS (1u << 14)  /* 1.15: WRITE_LIMITS */
 
 enum {
     V2_PING = 0x00, V2_INFO = 0x01, V2_STATUS = 0x02, V2_RESET = 0x03, V2_BOOTLOADER = 0x04,
-    V2_USB_MODE = 0x05, V2_EVENTS = 0x06, V2_SELFTEST = 0x07,
+    V2_USB_MODE = 0x05, V2_EVENTS = 0x06, V2_SELFTEST = 0x07, V2_WRITE_LIMITS = 0x08,
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
@@ -164,7 +165,7 @@ static uint8_t board_rev(void)
 static uint32_t caps(uint8_t rev)
 {
     uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS | CAP_DIAG |
-                 CAP_FORMAT | CAP_SELFTEST;
+                 CAP_FORMAT | CAP_SELFTEST | CAP_WRITE_LIMITS;
     c |= ufi_flux_store_is_psram() ? CAP_PSRAM : 0u;
     c |= ufi_sd_present() ? CAP_SD : 0u;
     c |= (rev >= 7u) ? CAP_AMIGA2 : 0u;
@@ -373,7 +374,7 @@ static bool allowed_during_dump(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
         case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT:
-        case V2_INDEX_SIM:
+        case V2_INDEX_SIM: case V2_WRITE_LIMITS:
             return true;
         default:
             return false;
@@ -511,6 +512,22 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = text_add(out, n, __DATE__, false);
             n = text_add(out, n, ufi_psram_result(), false);
             n = text_add(out, n, ufi_crash_last(), false);      /* 1.14: reset cause */
+            break;
+        }
+        case V2_WRITE_LIMITS: {             /* 1.15: effective limits of the write backend */
+            if (len != 0) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            uint32_t words = 0;
+            ufi_flux_store(&words);
+            out[0] = 1;                     /* schema */
+            out[1] = 0x07;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag */
+            put32(&out[2], FLUX_TIMER_FREQ);
+            put32(&out[6], words);          /* max flux_count */
+            put32(&out[10], WRITE_MIN_DELTA);
+            put32(&out[14], WRITE_MAX_DELTA);
+            n = 18u;
             break;
         }
         case V2_SELFTEST:                   /* -> n u8, n x (id u8, status u8, value u32) */

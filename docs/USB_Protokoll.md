@@ -126,6 +126,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |
 | 0x05 | USB_MODE | `mode` u8 (0 Flux, 1 SD-Laufwerk, 2 USB-Floppy, 3 Greaseweazle) | Antwort, danach Neuanmeldung |
 | 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80) | – |
+| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -174,7 +175,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x62 | DUMP_ABORT | – | – |
 | 0x63 | COPY_START | – | – |
 
-**caps (INFO):** Bit0 PSRAM ok, Bit1 SD-NAND bereit, Bit2 IEC, Bit3 Amiga, Bit4 Amiga2/JP3-fähig (v0.7), Bit5 Shugart-Bus, Bit6 Apple-Port (v0.7), Bit7 Sync-Sensor aktiviert (`apple_sync=1`), Bit8 Greaseweazle-Modus verfügbar, Bit9 Dateizugriff, Bit10 Ereignisse, Bit11 Laufwerksdiagnose und Indexsimulation (DIAG_RPM, DRIVE_SCAN, INDEX_SIM; Firmware 1.13), Bit12 FORMAT (1.14), Bit13 SELFTEST (1.14).
+**caps (INFO):** Bit0 PSRAM ok, Bit1 SD-NAND bereit, Bit2 IEC, Bit3 Amiga, Bit4 Amiga2/JP3-fähig (v0.7), Bit5 Shugart-Bus, Bit6 Apple-Port (v0.7), Bit7 Sync-Sensor aktiviert (`apple_sync=1`), Bit8 Greaseweazle-Modus verfügbar, Bit9 Dateizugriff, Bit10 Ereignisse, Bit11 Laufwerksdiagnose und Indexsimulation (DIAG_RPM, DRIVE_SCAN, INDEX_SIM; Firmware 1.13), Bit12 FORMAT (1.14), Bit13 SELFTEST (1.14), Bit14 WRITE_LIMITS (1.15).
 
 **Beschäftigt (Status 1):** Während eines Dumps/einer Kopie werden nur PING, INFO, STATUS, EVENTS, POWER, USB_POWER, SD_INFO, DUMP_STATUS und DUMP_ABORT ausgeführt; während READ/WRITE (bis zum Ende-Rahmen) werden Laufwerks- und Flussbefehle (0x10–0x1C, 0x1E, 0x20, 0x22–0x24, DUMP_START, COPY_START) abgewiesen; INDEX_SIM (0x1D) ist jederzeit erlaubt. WRITE wartet höchstens 1 s auf den Indeximpuls (sonst Ende-Status 4); schlägt das Positionieren vor dem Schreiben fehl, endet WRITE mit Status 3.
 
@@ -201,6 +202,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 16 | ungültige Argumente |
 | 17 | Datei nicht gefunden |
 | 18 | Flussabstand nicht darstellbar (1,6–238 µs; WRITE ohne Bit4), nichts geschrieben (1.15) |
+| 19 | Spur länger als eine Umdrehung: der Index hat das Schreiben beendet, die Spur ist abgeschnitten (1.15) |
 
 ### 3.4 Flusscode (READ-Daten, WRITE-Daten), 275 MHz
 Gleich dem v1-Stream (`ufi_stream.c`): Zeit 0 = erster Indeximpuls (bzw. Start ohne Index).
@@ -234,6 +236,8 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 - **INFO:** `store_bytes` = Größe des Flussspeichers (8 MB PSRAM, sonst interner Ersatzpuffer), nicht der SD-NAND (dafür SD_INFO). Der Text danach ist ASCII, Zeilen durch `\n` getrennt, ohne abschließendes Nullbyte: Name/Version, Git-Stand, Build-Datum, PSRAM-Ergebnis, ab 1.14 die Reset-Ursache (`reset: …`).
 - **board_status (8 Byte):** `power` u8 (Bit0 FDD_5V an, Bit1 FDD_12V an), `flags` u8 (Bit0 WRITE-LOCK gesteckt, Bit1/2 Überstrom 5 V/12 V ausgelöst, Bit3 SD-NAND bereit, Bit4/5 Taster A/B gedrückt, Bit6 Sicherheitsmodus), `i5_ma` u16, `i12_ma` u16, `board_id_mv` u16.
 - **READ:** `revs` 1…200. Der Ende-Rahmen ist maßgeblich: Nur so viele Umdrehungen gelten, wie er meldet (bei Überlauf können `FD`-Marken fehlen oder überzählig sein). Ende-Status 4 = kein Index **oder** per ABORT abgebrochen; 10 = Überlauf (Host las zu langsam).
+- **WRITE_LIMITS (1.15):** reine Abfrage (auch während eines Dumps), Nutzdaten müssen leer sein (sonst 16). Der Host (`ufi write`, `write-disk`) holt die Grenzen einmal je Verbindung und weist Aufträge lokal ab, die die Firmware mit Status 10 oder 18 ablehnen würde – mit Spur, Index und Wert; mit Kappen-Flag entfällt die Intervallprüfung. Ältere Firmware ohne Bit 14: keine Vorprüfung.
+- **WRITE Index während des Schreibens (1.15):** Kommt der nächste Indeximpuls, bevor die letzte Periode ausgegeben ist, fällt das Schreibtor sofort und der Auftrag endet mit Status 19 (zuvor galt dieser Sicherheitsstopp als Erfolg). Die Spur war länger als eine Umdrehung; Abhilfe: Zeitskala < 1 oder weniger Flusswechsel.
 - **WRITE Bereichsprüfung (1.15):** Nach Zeitskala und Präkompensation muss jede Periode 440…65 536 Takte (1,6…238 µs) betragen. Liegt eine außerhalb, wird der Auftrag **vor** Kopfbewegung und Schreibtor mit Ende-Status 18 abgewiesen; nichts auf der Diskette ändert sich. Mit `flags` Bit4 werden solche Perioden stattdessen auf die Grenze gesetzt, und der Ende-Rahmen meldet ihre Zahl in `clamped`. Firmware ≤ 1.14 kappte still. Der Greaseweazle-Modus kappt weiterhin (er hat keinen Rückkanal für eine Abweisung).
 - **WRITE Ende-Nutzdaten (1.15):** `verify_level` u8: 0 keine Aussage, 1 Schreiben abgeschlossen (Timer/DMA ohne Fehler), 2 Rücklesen plausibel (nur Zahl der Flusswechsel ±5 %), 3 Inhalt geprüft, 4 nicht prüfbar; `clamped` u32. Stufe 3: Die Firmware dekodiert vor dem Rücklesen die gepackte Spur selbst (IBM-MFM, sonst Amiga; Datenrate 250/300/500/1000 kbit/s aus dem kürzesten häufigen Abstand) und merkt sich Sektorkennung und CRC-32 der 512 Datenbytes (bis 64 Sektoren). Dann liest sie zwei Umdrehungen zurück: Alle Referenzsektoren wieder mit gültiger CRC und gleichen Daten gefunden → 3 (Jitter stört nicht, die Zahl der Flusswechsel ist dann unerheblich); ein fehlender oder veränderter Sektor → Ende-Status 6. Spuren ohne dekodierbare Sektoren (GCR, Schutzspuren, nur Flux) erhalten höchstens Stufe 2 (Zahl der Flusswechsel ±5 %, mindestens 100), sonst Status 6 – „verifiziert“ heißt das nicht. Der Ende-Rahmen trägt die Nutzdaten auch bei Fehlerstatus; Firmware ≤ 1.14 sendet keine.
 - **WRITE Zeitskala (Bit3, 1.14):** Die Firmware multipliziert jeden Flussabstand mit `scale`/1000 (Rest wird mitgeführt, kein Drift), bevor Präkompensation und Grenzen greifen. Damit lassen sich Abbilder mit anderer Drehzahl auf einem Laufwerk mit fester Drehzahl schreiben (Faktor = Drehzahl der Quelle / Drehzahl des Ziels, z. B. 360-U/min-Abbild auf 300-U/min-Laufwerk: 1,2) und die Zonen von Macintosh-400K/800K-Disketten (variable Drehzahl) auf einem PC-Laufwerk nachbilden (Faktor je Spurzone). Außerhalb 0,5…2,0 Status 16.

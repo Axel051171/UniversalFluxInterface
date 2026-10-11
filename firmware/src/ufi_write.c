@@ -62,6 +62,7 @@ typedef struct {
  * not per write: the native paths leave it at 0. */
 static uint32_t cfg_pre_ticks, cfg_post_ticks;
 static bool post_pending;           /* the silent post_write period is running */
+static bool index_cut;              /* the index ended an active write: track too long */
 
 static write_context_t g_write;
 
@@ -343,6 +344,7 @@ int ufi_write_start(void) {
         write_arr[0] = (uint16_t)((a > WRITE_MAX_DELTA ? WRITE_MAX_DELTA : a) - 1u);
     }
     post_pending = false;
+    index_cut = false;
     TIM3->ARR = write_arr[0];
     TIM3->EGR = TIM_EGR_UG;                 // shadow ARR = interval 0, CNT = ARR (down)
     TIM3->SR = 0;
@@ -449,7 +451,8 @@ void ufi_write_index_handler(uint32_t t) {
         ufi_sched_arm(t);
     }
     else if (g_write.state == WRITE_ACTIVE) {
-        write_finish(WRITE_COMPLETE);       // safety: never write past one revolution
+        index_cut = true;                   /* the track did not fit one revolution */
+        write_finish(WRITE_ERROR);          /* never write past the index, never call it success */
     }
 }
 
@@ -732,7 +735,7 @@ void ufi_write_service(void) {
     }
     if (g_write.state == WRITE_COMPLETE || g_write.state == WRITE_ERROR) {
         const uint8_t cmd = write_event_cmd();
-        int ret = UFI_ERR_DMA;
+        int ret = index_cut ? UFI_ERR_TRACK_LONG : UFI_ERR_DMA;
         if (g_write.state == WRITE_COMPLETE) {
             g_write.verify_level = 1;           /* timer and DMA finished */
             ret = g_write.verify_after ? ufi_write_verify() : UFI_OK;
