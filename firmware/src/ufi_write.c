@@ -7,7 +7,11 @@
  *  - TIM3 counts DOWN in PWM mode 1 with active-low output: the channel is active
  *    while CNT <= CCR1, so every period ends with a WRITE_PULSE_TICKS pulse.
  *  - Period k = flux interval k.  ARR is preloaded; DMA1_Stream1 (TIM3_UP request)
- *    writes the next interval into ARR on every update.
+ *    writes the next interval into ARR on every update, circularly from a ring of two
+ *    2048-period halves in SRAM2 that the HT/TC interrupts refill from the packed track
+ *    (a DMA transfer is limited to 65535 items; tracks are limited by the flux store).
+ *    The update interrupt counts the last periods against the DMA counter and stops
+ *    the timer exactly after the last one (ufi_write_stream.c, tested on the host).
  *  - Started from the index interrupt; stopped after the last interval, WGATE drops
  *    right away.  The next index releases WGATE as a safety net.
  * Host deltas are TIM2/TIM3 ticks (u32); they are packed in place to u16 (ARR values)
@@ -16,6 +20,7 @@
 
 #include "ufi_firmware.h"
 #include "ufi_verify.h"
+#include "ufi_write_stream.h"
 #include <string.h>
 
 /* ============================================================================
@@ -59,6 +64,13 @@ static uint32_t cfg_pre_ticks, cfg_post_ticks;
 static bool post_pending;           /* the silent post_write period is running */
 
 static write_context_t g_write;
+
+/* streaming ring (DMA1 reaches D2 SRAM2; nothing else lives there) and its bookkeeping */
+__attribute__((section(".sram2"), aligned(32))) static uint16_t write_ring[2u * WSTREAM_HALF];
+static wstream_t ws;
+static uint32_t last_ndtr;          /* DMA counter at the previous update interrupt */
+static void dma_stop(void);
+static void ring_fill(const wstream_fill_t* f);
 
 /* Write data lives in the shared flux store (ufi_flux.c); capture and write never
  * run at the same time.  A verify capture overwrites it (only counts are compared). */
@@ -106,6 +118,7 @@ void ufi_write_init(void) {
 
     __HAL_RCC_TIM3_CLK_ENABLE();
     __HAL_RCC_DMA1_CLK_ENABLE();
+    __HAL_RCC_D2SRAM2_CLK_ENABLE();         /* write ring */
 
     htim3.Instance = TIM3;
     htim3.Init.Prescaler = 0;
@@ -140,7 +153,7 @@ void ufi_write_init(void) {
     hdma_tim3_up.Init.MemInc = DMA_MINC_ENABLE;
     hdma_tim3_up.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
     hdma_tim3_up.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
-    hdma_tim3_up.Init.Mode = DMA_NORMAL;
+    hdma_tim3_up.Init.Mode = DMA_CIRCULAR;      /* over the ring; HT/TC refill (1.15) */
     hdma_tim3_up.Init.Priority = DMA_PRIORITY_VERY_HIGH;
     hdma_tim3_up.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
     if (HAL_DMA_Init(&hdma_tim3_up) != HAL_OK) {
@@ -187,8 +200,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
         g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
         return UFI_ERR_BUSY;
     }
-    if (flux_count < 3 || flux_count > write_buffer_words ||
-        flux_count - 2u > WRITE_DMA_ITEMS_MAX) {    /* F02: one DMA transfer only */
+    if (flux_count < 3 || flux_count > write_buffer_words) {
         return UFI_ERR_BUFFER_FULL;
     }
 
@@ -343,13 +355,24 @@ int ufi_write_start(void) {
         TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_PWM1;
     }
 
-    HAL_DMA_Abort(&hdma_tim3_up);
-    if (HAL_DMA_Start_IT(&hdma_tim3_up, (uint32_t)&write_arr[2], (uint32_t)&TIM3->ARR,
-                         g_write.flux_count - 2) != HAL_OK) {
+    /* ring: the first two halves of the stream; the DMA circles over the ring and the
+     * HT/TC interrupts refill the half it has left (ufi_write_stream.c) */
+    wstream_fill_t fills[2];
+    wstream_init(&ws, g_write.flux_count - 2u, WSTREAM_HALF, fills);
+    ring_fill(&fills[0]);
+    ring_fill(&fills[1]);
+    dma_stop();
+    if (HAL_DMA_Start_IT(&hdma_tim3_up, (uint32_t)write_ring, (uint32_t)&TIM3->ARR,
+                         2u * WSTREAM_HALF) != HAL_OK) {
         wdata_idle();
         apple_wrdata(false);
         g_write.state = WRITE_ERROR;
         return UFI_ERR_DMA;
+    }
+    DMA1_Stream1->CR |= DMA_SxCR_HTIE;      /* HAL arms TC/TE only */
+    last_ndtr = 2u * WSTREAM_HALF;
+    if (ws.tail) {                          /* short stream: count every update */
+        TIM3->DIER |= TIM_DIER_UIE;
     }
     HAL_Delay(20);                          // head settle after side select
 
@@ -369,9 +392,30 @@ int ufi_write_start(void) {
     return UFI_OK;
 }
 
+static void dma_stop(void) {
+    DMA1_Stream1->CR &= ~DMA_SxCR_EN;
+    while (DMA1_Stream1->CR & DMA_SxCR_EN) {
+    }
+    DMA1->LIFCR = DMA_LIFCR_CTCIF1 | DMA_LIFCR_CHTIF1 | DMA_LIFCR_CTEIF1 | DMA_LIFCR_CDMEIF1 |
+                  DMA_LIFCR_CFEIF1;
+    hdma_tim3_up.State = HAL_DMA_STATE_READY;
+    __HAL_UNLOCK(&hdma_tim3_up);
+}
+
+/* copy stream items into a ring half (the DMA reads SRAM2 behind the data cache) */
+static void ring_fill(const wstream_fill_t* f) {
+    if (f->count == 0) {
+        return;
+    }
+    uint16_t* dst = &write_ring[(uint32_t)f->half * WSTREAM_HALF];
+    memcpy(dst, &write_arr[2u + f->from], (size_t)f->count * 2u);
+    SCB_CleanDCache_by_Addr((uint32_t*)dst, (int32_t)(WSTREAM_HALF * 2u));
+}
+
 static void write_finish(write_state_t final_state) {
     __HAL_TIM_DISABLE(&htim3);
     TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
+    dma_stop();
     wdata_idle();
     bus_out(&PIN_FDD_WGATE, false);
     HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
@@ -409,46 +453,87 @@ void ufi_write_index_handler(uint32_t t) {
     }
 }
 
-/* DMA has loaded the last interval: two more updates (end of n-2, end of n-1) */
-static void write_dma_done(void) {
-    TIM3->DIER &= ~TIM_DIER_UDE;
-    g_write.updates_left = 2;
-    TIM3->SR = ~TIM_SR_UIF;
-    TIM3->DIER |= TIM_DIER_UIE;
+/* The last period has ended: gw post_write keeps WGATE on for one silent period */
+static void end_of_data(void) {
+    if (cfg_post_ticks && !g_write.apple && !post_pending) {
+        post_pending = true;
+        TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_FORCED_INACTIVE;
+        TIM3->ARR = cfg_post_ticks - 1u;    /* after the running (stale) period */
+        g_write.updates_left = 2;
+    } else {
+        write_finish(WRITE_COMPLETE);
+    }
 }
 
+/* Timer update: only enabled from the half before the last one on (and for the post
+ * period).  The DMA counter tells how many items went in; the arithmetic in
+ * ufi_write_stream.c arms the two trailing updates after the last item. */
 void ufi_write_tim3_irq(void) {
-    if (TIM3->SR & TIM_SR_UIF) {
-        TIM3->SR = ~TIM_SR_UIF;
-        if (g_write.updates_left > 0 && --g_write.updates_left == 0) {
-            if (cfg_post_ticks && !g_write.apple && !post_pending) {
-                /* gw post_write: WGATE stays on for one more period without a pulse */
-                post_pending = true;
-                TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_FORCED_INACTIVE;
-                TIM3->ARR = cfg_post_ticks - 1u;    /* after the running (stale) period */
-                g_write.updates_left = 2;
-            } else {
-                write_finish(WRITE_COMPLETE);
-            }
+    if (!(TIM3->SR & TIM_SR_UIF)) {
+        return;
+    }
+    TIM3->SR = ~TIM_SR_UIF;
+    if (g_write.state != WRITE_ACTIVE) {
+        return;
+    }
+    if (post_pending) {
+        if (--g_write.updates_left == 0) {
+            write_finish(WRITE_COMPLETE);
         }
+        return;
+    }
+    if (!ws.armed && (TIM3->DIER & TIM_DIER_UDE)) {
+        /* this update's DMA transfer may still be in flight: wait for the counter */
+        uint32_t spins = 0;
+        while (DMA1_Stream1->NDTR == last_ndtr && ++spins < 4000u) {
+        }
+    }
+    const uint32_t ndtr = DMA1_Stream1->NDTR;
+    last_ndtr = ndtr;
+    switch (wstream_update(&ws, ndtr)) {
+        case WSTREAM_STOP_DMA:
+            TIM3->DIER &= ~TIM_DIER_UDE;    /* last item is in: no more transfers */
+            break;
+        case WSTREAM_FINISH:
+            end_of_data();
+            break;
+        default:
+            break;
     }
 }
 
+/* DMA half / transfer complete: refill the half just played; both flags pending or the
+ * next one pending after the copy means a half was missed (underrun -> error, WGATE off) */
 void ufi_write_dma_irq(void) {
-    /* direct register handling: TC = done, TE = error */
     const uint32_t isr = DMA1->LISR;
-    if (isr & DMA_LISR_TCIF1) {
-        DMA1->LIFCR = DMA_LIFCR_CTCIF1 | DMA_LIFCR_CHTIF1;
-        if (g_write.state == WRITE_ACTIVE) {
-            write_dma_done();
-        }
-    }
     if (isr & (DMA_LISR_TEIF1 | DMA_LISR_DMEIF1 | DMA_LISR_FEIF1)) {
-        DMA1->LIFCR = DMA_LIFCR_CTEIF1 | DMA_LIFCR_CDMEIF1 | DMA_LIFCR_CFEIF1;
-        write_finish(WRITE_ERROR);
+        write_finish(WRITE_ERROR);          /* dma_stop() clears the flags */
+        return;
     }
-    hdma_tim3_up.State = HAL_DMA_STATE_READY;
-    __HAL_UNLOCK(&hdma_tim3_up);
+    if (g_write.state != WRITE_ACTIVE) {
+        DMA1->LIFCR = DMA_LIFCR_CTCIF1 | DMA_LIFCR_CHTIF1;
+        return;
+    }
+    if ((isr & DMA_LISR_HTIF1) && (isr & DMA_LISR_TCIF1)) {
+        write_finish(WRITE_ERROR);          /* two halves pending: refill came too late */
+        return;
+    }
+    const bool tc = (isr & DMA_LISR_TCIF1) != 0;
+    DMA1->LIFCR = tc ? DMA_LIFCR_CTCIF1 : DMA_LIFCR_CHTIF1;
+    const wstream_fill_t f = wstream_event(&ws, tc);
+    if (ws.underrun) {
+        write_finish(WRITE_ERROR);
+        return;
+    }
+    ring_fill(&f);
+    if (DMA1->LISR & (tc ? DMA_LISR_HTIF1 : DMA_LISR_TCIF1)) {
+        write_finish(WRITE_ERROR);          /* the DMA ran into the half being filled */
+        return;
+    }
+    if (ws.tail && !(TIM3->DIER & TIM_DIER_UIE)) {
+        last_ndtr = DMA1_Stream1->NDTR;
+        TIM3->DIER |= TIM_DIER_UIE;         /* count the updates from here on */
+    }
 }
 
 /* Kept for the main loop: the timer does the work now */
@@ -594,15 +679,15 @@ uint32_t ufi_write_get_progress(void) {
         return (g_write.bytes_received * 100) / g_write.bytes_expected;
     }
     else if (g_write.state == WRITE_ACTIVE && g_write.flux_count > 2) {
-        const uint32_t left = __HAL_DMA_GET_COUNTER(&hdma_tim3_up);
-        return ((g_write.flux_count - 2 - left) * 100) / (g_write.flux_count - 2);
+        uint32_t done = wstream_done(&ws, DMA1_Stream1->NDTR);
+        if (done > g_write.flux_count - 2u) done = g_write.flux_count - 2u;
+        return (done * 100) / (g_write.flux_count - 2);
     }
     return 0;
 }
 
 void ufi_write_abort(void) {
     write_finish(WRITE_IDLE);
-    HAL_DMA_Abort(&hdma_tim3_up);
     g_write.flux_count = 0;
     g_write.bytes_received = 0;
 }

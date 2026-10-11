@@ -164,6 +164,15 @@ SECTIONS
         . = ALIGN(4);
     } >SRAM1
 
+    /* D2 SRAM2: write streaming ring (DMA1 reachable) */
+    .sram2 (NOLOAD) :
+    {
+        . = ALIGN(32);
+        *(.sram2)
+        *(.sram2*)
+        . = ALIGN(4);
+    } >SRAM2
+
     /* Backup SRAM */
     .backup (NOLOAD) :
     {

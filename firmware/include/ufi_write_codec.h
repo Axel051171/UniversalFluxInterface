@@ -48,7 +48,6 @@ bool compact_complete(const compact_dec_t* d);
 #define WRITE_PULSE_TICKS   ((WRITE_PULSE_NS * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)
 #define WRITE_MIN_DELTA     (4u * WRITE_PULSE_TICKS)    /* 440 ticks = 1.6 us */
 #define WRITE_MAX_DELTA     65536u                      /* 16-bit timer: 238 us */
-#define WRITE_DMA_ITEMS_MAX 0xFFFFu                     /* one DMA transfer (NDTR is 16 bit): intervals 2..n-1 */
 
 /* write precompensation per data rate (82077 defaults); 0 = off */
 #define PRECOMP_DD_HD_NS    125u
