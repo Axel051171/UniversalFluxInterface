@@ -9,6 +9,7 @@
 #define UFI_FIRMWARE_H
 
 #include "ufi_fixes.h"  /* MUSS zuerst! */
+#include "ufi_write_codec.h"
 #include "board.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -307,6 +308,9 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
                         uint8_t quarter);   // 1.14: Apple quarter track offset
 void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
 void ufi_write_set_scale(uint16_t per_mille);   // after ufi_write_prepare*(): time scale, 1000 = 1.0 (1.14)
+void ufi_write_set_clamp(bool allow);           // after ufi_write_prepare*(): clamp out-of-range periods (1.15)
+uint32_t ufi_write_clamped(void);               // periods clamped by the last write
+void ufi_write_receive_failed(void);            // v1 data path: abort + error event
 // track analysis (ufi_analyze.c, 1.14): ANALYZE 0x25, blocking capture of `revs` revolutions
 typedef struct {
     uint8_t revs;

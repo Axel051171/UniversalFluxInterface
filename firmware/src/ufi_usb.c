@@ -277,7 +277,9 @@ bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
     }
     // While a write is being prepared, every OUT packet is flux data
     if (ufi_write_get_state() == WRITE_RECEIVING && !ufi_v2_write_pending()) {
-        ufi_write_receive_chunk(buf, len);
+        if (ufi_write_receive_chunk(buf, len) != UFI_OK) {
+            ufi_write_receive_failed();         /* F01: abort + error event, no further data */
+        }
         return true;
     }
     if (len > 0 && len <= sizeof(cmd_buffer) && !cmd_ready) {

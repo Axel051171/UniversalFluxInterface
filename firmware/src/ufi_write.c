@@ -27,11 +27,7 @@ extern capture_context_t g_capture;
  * WRITE KONFIGURATION
  * ============================================================================ */
 
-/* precompensation: see precomp_for_data() */
-#define WRITE_PULSE_NS      400     // WDATA low pulse
-#define WRITE_PULSE_TICKS   ((WRITE_PULSE_NS * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)
-#define WRITE_MIN_DELTA     (4 * WRITE_PULSE_TICKS)
-#define WRITE_MAX_DELTA     65536U  // 16-bit timer: 238 us max interval
+/* pulse width, representable range, precompensation: ufi_write_codec.h */
 #define WRITE_INDEX_TIMEOUT_MS  1000u   // no index pulse within this time: give up
 
 typedef struct {
@@ -46,10 +42,9 @@ typedef struct {
     uint32_t precomp_ns;        // chosen per data rate when the track is packed
     volatile uint8_t updates_left;  // timer updates until the last pulse is out
     bool compact;               // WRITE_TRACK_C: OUT data in the READ_TRACK stream code
-    uint32_t decoded;           // compact: deltas decoded so far
-    uint8_t code[5];            // compact: multi-byte code being assembled
-    uint8_t code_len, code_need;
-    bool bad;                   // compact: reserved / index code seen
+    compact_dec_t dec;          // compact: stream decoder state (ufi_write_codec.c)
+    bool clamp;                 // out-of-range periods are clamped (counted) instead of refused
+    uint32_t clamped;           // periods moved into range by the last pack
     bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
     uint32_t wait_since;        // HAL tick when the wait for the index pulse began
     uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
@@ -155,64 +150,25 @@ void ufi_write_init(void) {
  * WRITE PRECOMPENSATION
  * ============================================================================ */
 
-static uint32_t apply_precomp(uint32_t timing, uint32_t prev_timing, uint32_t next_timing, uint8_t track) {
-    if (!g_write.use_precomp || g_write.apple || track < 40) {   /* Disk II: no precomp */
-        return timing;
-    }
-
-    uint32_t precomp_ns = (track > 60) ? g_write.precomp_ns : (g_write.precomp_ns / 2);
-    uint32_t precomp_ticks = (precomp_ns * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL;
-
-    if (prev_timing > timing * 2) {
-        return (timing > precomp_ticks) ? timing - precomp_ticks : timing;
-    }
-    if (next_timing > timing * 2) {
-        return timing + precomp_ticks;
-    }
-    return timing;
-}
-
-/* Pack u32 deltas into u16 ARR values in place (halfword i never overlaps a word >= i-1;
- * the previous delta is kept in a local) */
-/* Write precompensation per data rate (82077 FDC defaults): the shortest MFM interval is
- * 2 bit cells, so it identifies the rate: ~1 us = ED 1 Mbit/s -> 42 ns, else 125 ns */
-#define PRECOMP_DD_HD_NS    125
-#define PRECOMP_ED_NS       42
-#define ED_SHORTEST_TICKS   ((1500UL * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL)   /* 1.5 us */
-
-static uint32_t precomp_for_data(void) {
-    /* 10th-percentile-ish shortest interval over the first samples, robust to glitches */
-    uint32_t below = 0, n = (g_write.flux_count < 2000) ? g_write.flux_count : 2000;
-    for (uint32_t i = 0; i < n; i++) {
-        below += (write_buffer[i] < ED_SHORTEST_TICKS) ? 1u : 0u;
-    }
-    return (below * 10 > n) ? PRECOMP_ED_NS : PRECOMP_DD_HD_NS;
-}
-
-static void pack_deltas(void) {
+/* Pack the u32 deltas into u16 ARR values in place (ufi_write_codec.c: scale, write
+ * precompensation, range check).  Nothing is written to the disk when a period is not
+ * representable and clamping was not requested (UFI_ERR_RANGE, status 18). */
+static int pack_deltas(void) {
     const uint16_t pc = ufi_drive_get_timing().precomp_ns;    /* host override (B11) */
-    if (g_write.scale != 1000u) {       /* time scale (1.14): zoned Mac disks, 300 <-> 360 rpm */
-        uint32_t rem = 0;
-        for (uint32_t i = 0; i < g_write.flux_count; i++) {
-            const uint64_t s = (uint64_t)write_buffer[i] * g_write.scale + rem;
-            write_buffer[i] = (uint32_t)(s / 1000u);
-            rem = (uint32_t)(s % 1000u);    /* the remainder carries: no drift */
-        }
-    }
-    g_write.precomp_ns = (pc == PRECOMP_AUTO) ? precomp_for_data() : pc;
-    uint32_t prev = 0;
-    for (uint32_t i = 0; i < g_write.flux_count; i++) {
-        const uint32_t cur = write_buffer[i];
-        const uint32_t next = (i + 1 < g_write.flux_count) ? write_buffer[i + 1] : cur;
-        uint32_t d = (i > 0 && i + 1 < g_write.flux_count)
-                     ? apply_precomp(cur, prev, next, g_write.track) : cur;
-        if (d < WRITE_MIN_DELTA) d = WRITE_MIN_DELTA;
-        if (d > WRITE_MAX_DELTA) d = WRITE_MAX_DELTA;
-        prev = cur;
-        write_arr[i] = (uint16_t)(d - 1);
+    const pack_cfg_t cfg = {
+        .scale = g_write.scale,
+        .precomp_ns = (!g_write.use_precomp || g_write.apple) ? 0u
+                    : (pc == PRECOMP_AUTO) ? write_precomp_auto_ns(write_buffer, g_write.flux_count) : pc,
+        .track = g_write.track,
+        .clamp = g_write.clamp,
+    };
+    const int ret = write_pack(write_buffer, g_write.flux_count, &cfg, write_arr, &g_write.clamped);
+    if (ret != 0) {
+        return UFI_ERR_RANGE;
     }
     SCB_CleanDCache_by_Addr((uint32_t*)write_arr,
                             (int32_t)(((g_write.flux_count * 2u) + 31u) & ~31u));
+    return UFI_OK;
 }
 
 /* ============================================================================
@@ -224,7 +180,8 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
         g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
         return UFI_ERR_BUSY;
     }
-    if (flux_count < 3 || flux_count > write_buffer_words) {
+    if (flux_count < 3 || flux_count > write_buffer_words ||
+        flux_count - 2u > WRITE_DMA_ITEMS_MAX) {    /* F02: one DMA transfer only */
         return UFI_ERR_BUFFER_FULL;
     }
 
@@ -237,6 +194,8 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.compact = false;
     g_write.quarter = 0;
     g_write.scale = 1000;
+    g_write.clamp = false;
+    g_write.clamped = 0;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -248,6 +207,14 @@ void ufi_write_set_quarter(uint8_t quarter) {
 
 void ufi_write_set_scale(uint16_t per_mille) {
     g_write.scale = per_mille ? per_mille : 1000u;
+}
+
+void ufi_write_set_clamp(bool allow) {
+    g_write.clamp = allow;
+}
+
+uint32_t ufi_write_clamped(void) {
+    return g_write.clamped;
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
@@ -265,48 +232,8 @@ int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,
     g_write.compact = true;
     g_write.quarter = 0;
     g_write.bytes_expected = byte_count;
-    g_write.decoded = 0;
-    g_write.code_len = 0;
-    g_write.code_need = 0;
-    g_write.bad = false;
+    compact_init(&g_write.dec, write_buffer, flux_count);
     return UFI_OK;
-}
-
-static void put_decoded(uint32_t d) {
-    if (g_write.decoded < g_write.flux_count) {
-        write_buffer[g_write.decoded] = d;
-    }
-    g_write.decoded++;                      /* overcount = malformed data, caught later */
-}
-
-static void decode_compact(const uint8_t* p, uint32_t len) {
-    for (uint32_t i = 0; i < len; i++) {
-        const uint8_t b = p[i];
-        if (g_write.code_need == 0) {
-            if (b >= 0x01u && b <= 0xEFu) {
-                put_decoded(b);
-                continue;
-            }
-            g_write.code[0] = b;
-            g_write.code_len = 1;
-            g_write.code_need = (b >= 0xF0u && b <= 0xFCu) ? 2u : (b == 0xFEu) ? 5u : 0xFFu;
-            continue;
-        }
-        g_write.code[g_write.code_len++] = b;
-        if (g_write.code_len < g_write.code_need) {
-            continue;
-        }
-        const uint8_t* c = g_write.code;
-        if (g_write.code_need == 2u) {
-            put_decoded(240u + ((uint32_t)(c[0] - 0xF0u) << 8) + c[1]);
-        } else if (g_write.code_need == 5u) {
-            put_decoded((uint32_t)c[1] | ((uint32_t)c[2] << 8) | ((uint32_t)c[3] << 16) |
-                        ((uint32_t)c[4] << 24));
-        } else {
-            g_write.bad = true;             /* reserved / index code: reject the track */
-        }
-        g_write.code_need = 0;
-    }
 }
 
 int ufi_write_receive_chunk(uint8_t* data, uint32_t len) {
@@ -318,7 +245,10 @@ int ufi_write_receive_chunk(uint8_t* data, uint32_t len) {
     }
 
     if (g_write.compact) {
-        decode_compact(data, len);
+        if (compact_feed(&g_write.dec, data, len) != 0) {
+            g_write.state = WRITE_ERROR;        /* F01: stop at the first bad byte */
+            return UFI_ERR_BUFFER_FULL;
+        }
     } else {
         memcpy(((uint8_t*)write_buffer) + g_write.bytes_received, data, len);
     }
@@ -343,10 +273,17 @@ int ufi_write_start(void) {
     if (g_write.bytes_received < g_write.bytes_expected) {
         return UFI_ERR_BUFFER_FULL;
     }
-    if (g_write.compact && (g_write.bad || g_write.code_need != 0 ||
-                            g_write.decoded != g_write.flux_count)) {
+    if (g_write.compact && !compact_complete(&g_write.dec)) {
         g_write.state = WRITE_ERROR;
-        return UFI_ERR_BUFFER_FULL;         /* malformed compact data */
+        return UFI_ERR_BUFFER_FULL;         /* malformed / incomplete compact data */
+    }
+    g_write.apple = ufi_drive_is_apple();
+    {
+        const int pret = pack_deltas();     /* before seek and WGATE: refuse, write nothing */
+        if (pret != UFI_OK) {
+            g_write.state = WRITE_ERROR;
+            return pret;
+        }
     }
     if (ufi_board_write_locked()) {         /* WRITE LOCK jumper: WGATE is blocked anyway */
         g_write.state = WRITE_ERROR;
@@ -362,8 +299,6 @@ int ufi_write_start(void) {
         return sret == UFI_ERR_BAD_ARGS ? UFI_ERR_BAD_ARGS : UFI_ERR_SEEK_FAIL;
     }
     ufi_drive_select_side(g_write.side);
-    g_write.apple = ufi_drive_is_apple();
-    pack_deltas();
 
     /* Timer: first two intervals by hand (UG loads the shadow ARR), DMA feeds the rest */
     __HAL_TIM_DISABLE(&htim3);
@@ -609,6 +544,15 @@ void ufi_write_abort(void) {
 
 void ufi_write_set_precomp(bool enable) {
     g_write.use_precomp = enable;
+}
+
+static uint8_t write_event_cmd(void);
+
+/* v1 data path (ufi_usb.c): a bad compact byte ends the write with an error event */
+void ufi_write_receive_failed(void) {
+    const uint8_t cmd = write_event_cmd();
+    ufi_write_abort();
+    ufi_usb_send_event(cmd, UFI_ERR_BUFFER_FULL);
 }
 
 /* Completion events carry the command code the host used */
