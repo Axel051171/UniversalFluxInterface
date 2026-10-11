@@ -90,6 +90,7 @@ NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
 DUMP_START, DUMP_STATUS, DUMP_ABORT, COPY_START = 0x60, 0x61, 0x62, 0x63
+DUMP_FORMATS = {"scp": 0, "img": 1, "adf": 2}   # DUMP_START byte 5 (firmware 1.16)
 BAD_FRAME_CMD = 0xFF                    # response to a request with CRC/length error
 
 # status codes (3.3)
@@ -341,7 +342,7 @@ class WriteResult:
 @dataclass
 class DumpStatus:
     state: int                          # 6 = done, 7 = error
-    error: int                          # 1 storage, 2 drive, 3 full, 4 aborted
+    error: int                          # 1 storage, 2 drive, 3 full, 4 aborted, 5 format not recognised (img/adf)
     track: int
     side: int
     file_no: int
@@ -880,12 +881,14 @@ class Device2:
 
     # -- standalone ---------------------------------------------------------
     def dump_start(self, drive: str | int | None = None, tracks: int = 80, sides: int = 2,
-                   revs: int = 3) -> None:
-        if drive is None:
+                   revs: int = 3, fmt: str | None = None) -> None:
+        """fmt (firmware 1.16): 'scp' (flux), 'img' or 'adf' (decoded sectors); None = UFI.CFG."""
+        if drive is None and fmt is None:
             self.request(DUMP_START)
         else:
-            d = DRIVES[drive] if isinstance(drive, str) else drive
-            self.request(DUMP_START, bytes([d, tracks, sides, revs]))
+            d = DRIVES[drive or "a"] if isinstance(drive, str) or drive is None else drive
+            tail = b"" if fmt is None else bytes([DUMP_FORMATS[fmt]])
+            self.request(DUMP_START, bytes([d, tracks, sides, revs]) + tail)
 
     def dump_status(self) -> DumpStatus:
         return DumpStatus.unpack(self.request(DUMP_STATUS))

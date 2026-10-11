@@ -892,11 +892,11 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             break;
 
         /* ---- stand-alone ---- */
-        case V2_DUMP_START:
-            if (len == sizeof(dump_config_t)) {
+        case V2_DUMP_START:                 /* [drive, tracks, sides, revs [, format]] */
+            if (len == sizeof(dump_config_t) || len == sizeof(dump_config_t) + 1u) {
                 dump_config_t c;
                 memcpy(&c, p, sizeof(c));
-                ret = ufi_dump_start(&c);
+                ret = (len > sizeof(c)) ? ufi_dump_start_fmt(&c, p[sizeof(c)]) : ufi_dump_start(&c);
             } else {
                 ret = (len == 0) ? ufi_dump_start(NULL) : UFI_ERR_BAD_ARGS;
             }

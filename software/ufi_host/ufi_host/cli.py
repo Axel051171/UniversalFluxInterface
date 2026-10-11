@@ -12,7 +12,7 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
   ufi iec-reset | iec-send BYTE [--eoi] | iec-recv
   ufi files [PATH] | get NAME [-o out] | put LOCAL NAME | rm NAME       (v2, SD NAND)
   ufi cfg [KEY=VALUE ...]                             show / edit UFI.CFG (v2)
-  ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | copy
+  ufi dump [--drive a --tracks 80 --sides 2 -r 3 --format img] | dump-status | dump-abort | copy
   ufi power [MASK] | events | mode {flux,sd,floppy,gw}
   ufi reset | bootloader
 """
@@ -235,7 +235,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
         dev.usb_mode(a.mode)
         print(f"switching to {a.mode} - the device re-enumerates")
     elif a.cmd == "dump":
-        dev.dump_start(a.drive, a.tracks, a.sides, a.revs)
+        dev.dump_start(a.drive, a.tracks, a.sides, a.revs, a.format)
     elif a.cmd == "dump-status":
         print(dev.dump_status())
     elif a.cmd == "dump-abort":
@@ -367,6 +367,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--tracks", type=int, default=80)
     p.add_argument("--sides", type=int, default=2, choices=(1, 2))
     p.add_argument("-r", "--revs", type=int, default=3)
+    p.add_argument("--format", choices=list(P2.DUMP_FORMATS),
+                   help="scp = flux (default from UFI.CFG), img/adf = decoded sectors (firmware 1.16)")
     sub.add_parser("power", help="board status; MASK bit0 FDD_5V, bit1 FDD_12V").add_argument(
         "mask", nargs="?", type=lambda s: int(s, 0))
     a = ap.parse_args(argv)

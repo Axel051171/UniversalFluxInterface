@@ -602,3 +602,16 @@ def test_write_limits_and_preflight():
     dev.write_track(1, 0, [1000, 800, 1000], scale=0.5, clamp=True)
     assert len([q for q in fake.requests if q.cmd == P2.WRITE]) == n_before + 2
     assert P2.STATUS_TEXT[19].startswith("track longer")
+
+
+def test_dump_start_format():
+    fake = FakeV2()
+    dev = P2.Device2(fake, timeout=0.5)
+    dev.dump_start()
+    assert fake.requests[-1].payload == b""
+    dev.dump_start("a", 80, 2, 3)
+    assert fake.requests[-1].payload == bytes([1, 80, 2, 3])
+    dev.dump_start("b", 40, 1, 2, fmt="adf")
+    assert fake.requests[-1].payload == bytes([2, 40, 1, 2, 2])
+    dev.dump_start(fmt="img")
+    assert fake.requests[-1].payload == bytes([1, 80, 2, 3, 1])

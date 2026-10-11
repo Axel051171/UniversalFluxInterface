@@ -2,8 +2,9 @@
  * UFI Flux Engine - stand-alone disk dump to the SD NAND (board v0.6)
  *
  * Button A held >= 1 s (or DUMP_START from the host) reads the whole disk and writes
- * DUMPnnnn.SCP (first free number) to the FAT32 volume on the SD NAND.  Button B
- * aborts.  The file is byte-identical to `ufi read-disk` (software/ufi_host scp.py):
+ * DUMPnnnn.SCP (first free number) to the FAT32 volume on the SD NAND, or with UFI.CFG
+ * format=img|adf (1.16) the decoded sectors of the format found on track 0 as
+ * DUMPnnnn.IMG/.ADF (cylinder-major, missing sectors zero).  Button B aborts.  The file is byte-identical to `ufi read-disk` (software/ufi_host scp.py):
  * same SCP v2.2 layout, same 275 MHz -> 25 ns rounding on absolute times.
  *
  * Runs as a state machine from the main loop, one step per call; a track is captured
@@ -62,6 +63,9 @@ static uint16_t iec_bad;
 static char cur_ext[5] = ".SCP";
 static uint32_t rpm_sum, rpm_n;
 static void write_json(void);
+/* format=scp|img|adf (1.16): 0 flux (SCP), 1/2 decoded sectors; cfg value and the running one */
+static uint8_t dump_fmt_cfg, dump_fmt;
+static uint16_t q_size = 512;           /* sector size of the probed format */
 
 /* CPU-polled SD transfers: the staging buffer may live in DTCM (not zeroed at start) */
 __attribute__((section(".dtcm"), aligned(4))) static uint8_t stage[32 * 1024];
@@ -326,6 +330,7 @@ typedef struct {
     uint64_t good;
     uint8_t max_r;
     uint8_t cyl;
+    uint16_t size;              /* 128 << n of the first good sector */
 } qctx_t;
 
 static void q_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
@@ -334,6 +339,9 @@ static void q_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_
     qctx_t* q = p;
     if (crc_ok && id->r >= 1u && id->r <= 63u && id->c == q->cyl) {
         q->good |= 1ull << (id->r - 1u);
+        if (!q->size && id->n <= 3u) {
+            q->size = (uint16_t)(128u << id->n);
+        }
         if (id->r > q->max_r) {
             q->max_r = id->r;
         }
@@ -357,7 +365,7 @@ static void feed_capture(mfm_decoder_t* d)
 }
 
 /* good sectors of the captured track */
-static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
+static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r, uint16_t* size)
 {
     __attribute__((section(".dtcm"))) static mfm_decoder_t d;
     qctx_t q = {.cyl = cyl};
@@ -368,6 +376,9 @@ static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
     }
     feed_capture(&d);
     *max_r = q.max_r;
+    if (size) {
+        *size = q.size ? q.size : 512u;
+    }
     uint8_t n = 0;
     for (uint64_t g = q.good; g; g &= g - 1u) {
         n++;
@@ -380,21 +391,23 @@ static uint8_t track_quality(void)
 {
     static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u, 500000u};
     uint8_t max_r = 0;
+    uint16_t size = 512;
     if (cyl == 0 && head == 0 && tries == 0) {
         uint8_t best = 0;
         for (uint32_t i = 0; i < 6; i++) {
-            const uint8_t g = count_good(rates[i], i >= 4u, &max_r);
+            const uint8_t g = count_good(rates[i], i >= 4u, &max_r, &size);
             if (g > best) {
                 best = g;
                 q_rate = rates[i];
                 q_amiga = (i >= 4u);
                 q_spt = max_r;
+                q_size = size;
             }
         }
         q_known = best >= 4u;
         return best;
     }
-    return q_known ? count_good(q_rate, q_amiga, &max_r) : 0u;
+    return q_known ? count_good(q_rate, q_amiga, &max_r, NULL) : 0u;
 }
 
 static void ds_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
@@ -435,6 +448,52 @@ static bool probe_double_step(void)
     }
     g_capture.state = CAPTURE_IDLE;
     return n[0] >= 2u && n[0] > n[1];
+}
+
+/* ============================================================================
+ * format=img|adf (1.16): the decoded sectors of the probed format instead of flux
+ * ============================================================================ */
+
+typedef struct {
+    uint64_t got;
+    uint8_t cyl;
+} ictx_t;
+
+static void img_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
+{
+    ictx_t* c = p;
+    if (!crc_ok || id->c != c->cyl || id->r < 1u || id->r > q_spt || (128u << id->n) != q_size) {
+        return;
+    }
+    memcpy(&stage[(uint32_t)(id->r - 1u) * q_size], data, q_size);
+    c->got |= 1ull << (id->r - 1u);
+}
+
+/* decode the captured track into stage[] (missing sectors stay zero) and append it */
+static int write_image_track(void)
+{
+    __attribute__((section(".dtcm"))) static mfm_decoder_t d;
+    if (!q_known) {
+        return UFI_ERR_NOT_IMPL;                    /* no MFM/Amiga format on track 0 */
+    }
+    const uint32_t len = (uint32_t)q_spt * q_size;
+    if (len > sizeof(stage)) {
+        return UFI_ERR_NOT_IMPL;
+    }
+    memset(stage, 0, len);
+    ictx_t c = {.cyl = cyl};
+    if (q_amiga) {
+        mfm_dec_init_amiga(&d, q_rate, img_sector, &c);
+    } else {
+        mfm_dec_init(&d, q_rate, img_sector, &c);
+    }
+    feed_capture(&d);
+    for (uint32_t i = 0; i < len; i++) {
+        checksum += stage[i];
+    }
+    UINT bw = 0;
+    UFI_WATCHDOG_FEED();
+    return (f_write(&file, stage, len, &bw) == FR_OK && bw == len) ? UFI_OK : UFI_ERR_STORAGE;
 }
 
 static void log_puts(const char* s)
@@ -528,7 +587,7 @@ static int copy_track(void)
         return UFI_ERR_NO_INDEX;
     }
     uint8_t max_r = 0;
-    const uint8_t src_good = q_known ? count_good(q_rate, q_amiga, &max_r) : 0u;
+    const uint8_t src_good = q_known ? count_good(q_rate, q_amiga, &max_r, NULL) : 0u;
     uint32_t words = 0;
     uint32_t* store = ufi_flux_store(&words);
     uint32_t prev = 0;
@@ -557,7 +616,7 @@ static int copy_track(void)
     if (ret == UFI_OK) {
         const uint32_t m = ufi_flux_get_revolution(0)->count;
         const uint32_t diff = (m > n) ? m - n : n - m;
-        if (q_known ? count_good(q_rate, q_amiga, &max_r) < src_good : diff > n / 20u) {
+        if (q_known ? count_good(q_rate, q_amiga, &max_r, NULL) < src_good : diff > n / 20u) {
             ret = UFI_ERR_DMA;                         /* verify failed */
         }
     }
@@ -788,7 +847,10 @@ static const char cfg_default[] =
     "double_step=auto\r\n"
     "# auto_dump=1: start a dump by itself when a disk is inserted (PC/Amiga drive with\r\n"
     "# a disk-change line; waits for the disk to be taken out before the next one)\r\n"
-    "auto_dump=0\r\n";
+    "auto_dump=0\r\n"
+    "# format: scp (flux, everything), img or adf (decoded sectors of the MFM/Amiga format\r\n"
+    "# found on track 0, missing sectors zero; error 5 = no format recognised)\r\n"
+    "format=scp\r\n";
 
 static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"a", DRIVE_SHUGART_A}, {"b", DRIVE_SHUGART_B}, {"amiga", DRIVE_AMIGA}, {"iec", DRIVE_IEC},
@@ -889,6 +951,7 @@ static void write_json(void)
         p = js_str(p, &first, "encoding", q_known ? (q_amiga ? "amiga" : "mfm") : "unknown");
         p = js_num(p, &first, "rate_bps", q_known ? q_rate : 0u);
         p = js_num(p, &first, "spt", q_known ? q_spt : 0u);
+        p = js_num(p, &first, "sector_bytes", q_known ? q_size : 0u);
         p = js_num(p, &first, "bad_tracks", bad_tracks);
     }
     p = js_num(p, &first, "checksum", checksum);
@@ -970,6 +1033,8 @@ static void parse_line(const char* k, dump_config_t* c)
         dstep_cfg = word_is(v, "auto") ? 2u : (num == 1u) ? 1u : 0u;
     } else if (!strncmp(k, "auto_dump=", 10)) {
         auto_dump = (num == 1u);
+    } else if (!strncmp(k, "format=", 7)) {
+        dump_fmt_cfg = word_is(v, "img") ? 1u : word_is(v, "adf") ? 2u : 0u;
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -999,6 +1064,7 @@ void ufi_config_load(void)
         rpm_360_low = true;
         rpm_start = 0;
         cfg_tg43 = false;
+        dump_fmt_cfg = 0;
         for (char* p = (char*)stage; *p; ) {
             while (*p == ' ' || *p == '\t') {
                 p++;
@@ -1033,6 +1099,14 @@ void ufi_config_load(void)
 
 int ufi_dump_start(const dump_config_t* c)
 {
+    return ufi_dump_start_fmt(c, dump_fmt_cfg);
+}
+
+int ufi_dump_start_fmt(const dump_config_t* c, uint8_t fmt)
+{
+    if (fmt > 2u) {
+        return UFI_ERR_BAD_ARGS;
+    }
     if (state != D_IDLE && state != D_DONE && state != D_ERROR) {
         return UFI_ERR_BUSY;
     }
@@ -1047,6 +1121,7 @@ int ufi_dump_start(const dump_config_t* c)
         }
         cfg = *c;
     }
+    dump_fmt = fmt;
     err_code = 0;
     file_no = 0;
     led_set(&PIN_LED_ERR, false);
@@ -1123,7 +1198,14 @@ void ufi_dump_service(void)
                 break;
             } else {
                 if (mount() != UFI_OK) { fail(1); break; }
-                if (open_next_file() != UFI_OK || begin_file() != UFI_OK) { fail(1); break; }
+                file_ext = dump_fmt == 1u ? ".IMG" : dump_fmt == 2u ? ".ADF" : ".SCP";
+                const int fr = open_next_file();
+                file_ext = ".SCP";
+                if (fr != UFI_OK) { fail(1); break; }
+                if (dump_fmt) {
+                    checksum = 0;
+                    stage_len = 0;
+                } else if (begin_file() != UFI_OK) { fail(1); break; }
                 open_log();
                 log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
                 drive_timing_t dt = ufi_drive_get_timing();
@@ -1216,9 +1298,9 @@ void ufi_dump_service(void)
 
         case D_WRITE: {
             led_set(&PIN_LED_FDD, false);
-            const int ret = write_track((uint8_t)(cyl * 2u + head));
+            const int ret = dump_fmt ? write_image_track() : write_track((uint8_t)(cyl * 2u + head));
             g_capture.state = CAPTURE_IDLE;
-            if (ret != UFI_OK) { fail(ret == UFI_ERR_NO_INDEX ? 2 : 3); break; }
+            if (ret != UFI_OK) { fail(ret == UFI_ERR_NO_INDEX ? 2 : ret == UFI_ERR_NOT_IMPL ? 5 : 3); break; }
             HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
             if (dstep_pending && cyl == 0 && head == 0) {
                 dstep_pending = false;
@@ -1244,7 +1326,10 @@ void ufi_dump_service(void)
         case D_FINISH:
             ufi_drive_motor(false);
             close_log();
-            if (finish_file() != UFI_OK) { fail(3); break; }
+            if (dump_fmt) {
+                if (f_close(&file) != FR_OK) { fail(3); break; }
+                file_open = 0;
+            } else if (finish_file() != UFI_OK) { fail(3); break; }
             write_json();
             unmount();
             led_set(&PIN_LED_ACT, true);

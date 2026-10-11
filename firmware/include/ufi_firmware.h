@@ -237,7 +237,7 @@ typedef struct __packed {
 // DUMP_STATUS payload (8 bytes)
 typedef struct __packed {
     uint8_t state;              // 0 idle, 1-5 running, 6 done, 7 error
-    uint8_t error;              // 1 storage, 2 drive/read, 3 disk full/write, 4 aborted
+    uint8_t error;              // 1 storage, 2 drive/read, 3 disk full/write, 4 aborted, 5 format not recognised (img/adf)
     uint8_t track;              // cylinder / head in progress (or where it stopped)
     uint8_t side;
     uint16_t file_no;           // DUMPnnnn.SCP
@@ -376,6 +376,7 @@ int ufi_sd_write(const uint8_t* buf, uint32_t lba, uint32_t count);
 
 // Stand-alone dump to the SD NAND (ufi_dump.c) and USB mass storage mode (ufi_usb.c)
 int ufi_dump_start(const dump_config_t* cfg);   // NULL = last / default configuration
+int ufi_dump_start_fmt(const dump_config_t* cfg, uint8_t fmt);   // fmt 0 SCP, 1 IMG, 2 ADF (1.16)
 void ufi_dump_abort(void);
 bool ufi_dump_active(void);
 dump_status_t ufi_dump_status(void);
