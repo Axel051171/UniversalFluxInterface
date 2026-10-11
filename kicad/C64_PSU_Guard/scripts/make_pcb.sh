@@ -28,7 +28,7 @@ freeroute() {  # $1 = max passes
   "$PY" "$HERE/route.py" import "$(W "$B")" "$(W "$WORK/b.ses")" 2>&1 | { grep -vi swig || true; }
 }
 : >"$WORK/freerouting.log"
-freeroute 20
+freeroute 40
 for round in 1 2 3; do
   "$CLI" pcb drc --format json -o "$WORK/drc_v.json" "$B" >/dev/null 2>&1 || true
   out="$("$PY" "$HERE/drop_violations.py" "$(W "$B")" "$(W "$WORK/drc_v.json")" 2>&1 | grep -o 'removed [0-9]*' || true)"

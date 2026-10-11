@@ -40,10 +40,24 @@ Die Anlaufzeit hält den Einschaltstrom in die Elkos des Laufwerks unter der Beg
 |---|---|
 | J1 PSU IN (Stiftleiste 1×4, 2,54 mm) | 1 +5 V (rot), 2 und 3 GND (schwarz), 4 +12 V (gelb) = Belegung des kleinen Floppy-Stromsteckers (Berg) eines PC-Netzteils; ein Molex-auf-Berg-Adapter passt direkt. Pin 1 = eckiges Pad, oben |
 | J2 DRIVE (Schraubklemme 3-polig, 5 mm, Drahtöffnungen zur Platinenkante) | 1 +5 V → DIN Pin 1, 2 GND → DIN Pin 2, 3 +12 V → DIN Pin 4; DIN Pin 3 bleibt frei. Auf der Platine von oben nach unten 12 V, GND, 5 V, Beschriftung neben den Klemmen |
-| J3 UFI (Stiftleiste 1×4) | 1 GND, 2 OFF, 3 FLT5, 4 FLT12; unbeschaltet lassen = normaler Betrieb (100k Pull-down an OFF) |
+| J3 UFI (Stiftleiste 1×4) | 1 GND, 2 OFF (high = beide Kanäle aus, 100k Pull-down), 3 ERR5, 4 ERR12 (open drain über Q5/Q6: low = Kanal an, high = Kanal abgeschaltet oder Platine stromlos); unbeschaltet lassen = normaler Betrieb |
+| J4 EXT LED (Stiftleiste 2×5) | externe LEDs parallel zu den Platinen-LEDs, eigene Vorwiderstände R19–R23, ungerader Pin = Anode (+), gerader Pin = Kathode (−): 1/2 5V OK, 3/4 5V ERR, 5/6 12V OK, 7/8 12V ERR, 9/10 REV POL. Normale 2-mA-LEDs ohne weiteren Widerstand anschließen |
 | H1–H4 | M3, mit GND verbunden |
 
 DIN-Stecker am Laufwerkskabel (Blick auf die Stiftseite des Steckers, Nase unten, wie auf dem Netzteil-Label): oben links 3 (frei), oben rechts 2 GND, unten links 4 +12 V, unten rechts 1 +5 V. Vor dem ersten Einschalten mit dem Multimeter zwischen Schraubklemme und Steckerstiften durchklingeln.
+
+## Anschluss an das UFI-Board (später)
+
+J3 passt auf den Erweiterungsheader **J9** des UFI Headless, Firmware-Unterstützung gibt es noch nicht:
+
+| Guard J3 | UFI J9 | MCU | Anmerkung |
+|---|---|---|---|
+| 1 GND | 9 oder 10 GND | – | |
+| 2 OFF | 5 EXP_IO1 | PE0 | Ausgang 3,3 V, high = Laufwerk stromlos; belegt, wenn der Betriebsart-Schalter J13 genutzt wird (dann PE1 / Pin 6, sofern keine Indexsimulation) |
+| 3 ERR5 | 3 I2C_SCL | PB6 | Eingang, 2,2k Pull-up auf 3,3 V ist auf dem UFI-Board vorhanden; nur ohne OLED am I²C |
+| 4 ERR12 | 4 I2C_SDA | PB7 | wie ERR5 |
+
+Die FLT-Pins der eFuses liegen ohne Fehler auf Schienenspannung (bis 12 V über die rote LED-Kette), deshalb gehen sie nicht direkt auf J3, sondern über die Inverter Q5/Q6.
 
 ## Inbetriebnahme
 
@@ -54,7 +68,7 @@ DIN-Stecker am Laufwerkskabel (Blick auf die Stiftseite des Steckers, Nase unten
 
 ## Fertigung (JLCPCB)
 
-`fertigung/`: Gerber-ZIP, `C64_PSU_Guard-bom-jlc.csv`, `C64_PSU_Guard-cpl-jlc.csv`, `JLC_Rotation_Check.md` (Pin-1-Kontrolle im Bestückungsviewer). 2 Lagen, 1,6 mm, Leiterbahnen ≥ 0,25 mm, Versorgung 1,0 mm. Alle LCSC-Nummern stehen im Schaltplan (`LCSC`-Feld) und sind am 2026-10-11 auf Lager geprüft; Bauteile ≈ 3,10 USD je Platine bei 5 Stück, 12 Extended-Positionen (Einrichtgebühr), TPS25921ADR C189199 nur rund 1000 Stück am Lager.
+`fertigung/`: Gerber-ZIP, `C64_PSU_Guard-bom-jlc.csv`, `C64_PSU_Guard-cpl-jlc.csv`, `JLC_Rotation_Check.md` (Pin-1-Kontrolle im Bestückungsviewer). 2 Lagen, 1,6 mm, Leiterbahnen ≥ 0,25 mm, Versorgung 1,0 mm. Alle LCSC-Nummern stehen im Schaltplan (`LCSC`-Feld) und sind am 2026-10-11 auf Lager geprüft; Bauteile ≈ 3,40 USD je Platine bei 5 Stück, 13 Extended-Positionen (Einrichtgebühr), TPS25921ADR C189199 nur rund 1000 Stück am Lager.
 
 ## Werkzeugweg
 

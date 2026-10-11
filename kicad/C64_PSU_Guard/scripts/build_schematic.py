@@ -42,7 +42,7 @@ LCSC = {
     ("2.2k", R0603): "C4190",
     ("22nF", C0603): "C21122", ("100nF", C0603): "C14663", ("1uF", C0603): "C15849",
     ("10uF/35V", C1206): "C454102",
-    "PSU_IN": "C32713270", "UFI_LINK": "C32713270", "DRIVE": "C474882",
+    "PSU_IN": "C32713270", "UFI_LINK": "C32713270", "DRIVE": "C474882", "EXT_LED": "C2894971",
 }
 
 
@@ -148,10 +148,34 @@ def main():
     sh.part("Connector_Generic", "Conn_01x03", ref("J"), "DRIVE", 300, 120,
             {"1": "G:+5V_OUT", "2": "GND", "3": "G:+12V_OUT"}, TERM3,
             {"Note": "to the drive's DIN cable: DIN 1 = 5V, 2 = GND, 4 = 12V, 3 n.c."})
+    # The FLT nodes sit at the rail voltage (through the red LED chains) while no fault is
+    # present, so they must not reach a 3.3 V input directly: N-MOSFET inverters make
+    # ERR5/ERR12 open-drain outputs, high (pull-up on the UFI side) = fault or board unpowered.
+    sh.text("UFI link: OFF high = both channels off. ERR5/ERR12 = open drain, released (high) when the\n"
+            "channel reports a fault or the guard is unpowered, pulled low while the channel is on.\n"
+            "UFI Headless J9: ERR5 -> pin 3 (PB6), ERR12 -> pin 4 (PB7) (2.2k pull-ups there), OFF <- pin 5 (PE0), GND pin 9.",
+            230, 200, 1.27)
     sh.part("Connector_Generic", "Conn_01x04", ref("J"), "UFI_LINK", 300, 220,
-            {"1": "GND", "2": "G:OFF", "3": "G:FLT5", "4": "G:FLT12"}, HDR4,
-            {"Note": "reserve: OFF high = both channels off (100k pull-down), FLT open drain"})
+            {"1": "GND", "2": "G:OFF", "3": "ERR5", "4": "ERR12"}, HDR4,
+            {"Note": "1 GND, 2 OFF (high = both channels off, 100k pull-down), 3 ERR5, 4 ERR12 (open drain, high = fault)"})
     R(sh, "100k", 280, 240, "G:OFF", "GND")
+    sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 215, {"1": "G:FLT5", "2": "GND", "3": "ERR5"}, SOT23)
+    sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 235, {"1": "G:FLT12", "2": "GND", "3": "ERR12"}, SOT23)
+
+    # external LEDs (front panel): one pair per LED, own series resistor, parallel to the
+    # on-board LEDs.  Odd pin = anode side (+), even pin = cathode side (-).
+    sh.text("J4 external LEDs, + odd / - even: 1/2 5V OK, 3/4 5V ERR, 5/6 12V OK, 7/8 12V ERR, 9/10 REV POL.",
+            20, 285, 1.27)
+    R(sh, "1k", 40, 300, "G:+5V_OUT", "X5G")
+    R(sh, "1k", 55, 300, "V5_P", "X5R")
+    R(sh, "3.3k", 70, 300, "G:+12V_OUT", "X12G")
+    R(sh, "3.3k", 85, 300, "V12_P", "X12R")
+    R(sh, "2.2k", 100, 300, "GND", "XREV")
+    sh.part("Connector_Generic", "Conn_02x05_Odd_Even", ref("J"), "EXT_LED", 130, 300, {
+        "1": "X5G", "2": "GND", "3": "X5R", "4": "G:FLT5", "5": "X12G", "6": "GND",
+        "7": "X12R", "8": "G:FLT12", "9": "XREV", "10": "REV"},
+        "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
+        {"Note": "external LEDs, + odd / - even: 5V OK, 5V ERR, 12V OK, 12V ERR, REV POL"})
 
     (OUT / f"{PROJECT}.kicad_sch").write_text(sh.render(PROJECT, f"/{sh.uuid}", is_root=True), encoding="utf8")
     pro = OUT / f"{PROJECT}.kicad_pro"

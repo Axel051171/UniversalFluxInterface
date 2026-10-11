@@ -1,7 +1,8 @@
 (version 1)
 
-# THT GND pads (terminal block, headers, mounting holes) also reach the solid B.Cu GND pour,
+# Every GND pad reaches the solid B.Cu GND pour: THT pads directly, SMD pads through the via
+# stub finish_pcb.py adds next to each of them (terminal block, headers, mounting holes, 0603s),
 # so a single thermal spoke on the F.Cu pour is sufficient.
 (rule "tht_gnd_single_spoke"
-	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.NetName == 'GND'")
+	(condition "A.Type == 'Pad' && A.NetName == 'GND'")
 	(constraint min_resolved_spokes 1))

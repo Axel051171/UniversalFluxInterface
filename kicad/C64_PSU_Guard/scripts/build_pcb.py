@@ -136,6 +136,7 @@ def pad_pos(ref, num):
 # ---------------------------------------------------------------------------
 put_edge("J1", 0, "left", 21.0)          # PSU in, pin 1 (+5V) at the top
 put_edge("J3", 90, "bottom", 20.0)       # UFI link, pin 1 (GND) at the left
+fps["J3"].Move(pcbnew.VECTOR2I(0, MM(-1.0)))       # 1 mm off the edge: room for tracks and pour around the pads
 # terminal block on the right edge, wire entry outwards: rotation 90 (checked with the Phoenix
 # MKDS 3D model of the same footprint generator; 270 puts the openings towards the board centre).
 # Pin 1 (+5 V) is then the lowest terminal, the silkscreen labels follow the pads.
@@ -175,11 +176,18 @@ put("D9", 10.5, 21.0, 180)
 put("D10", 14.5, 19.0, 0)
 put("D11", 14.5, 23.0, 0)
 put("R18", 27.5, 41.5, 0)                              # OFF pull-down next to J3
+put("Q5", 31.0, 41.5, 0)                               # ERR5 / ERR12 open-drain inverters
+put("Q6", 35.5, 41.5, 0)
+# external LED header on the top edge with its five series resistors below it
+put_edge("J4", 90, "top", 17.0)
+fps["J4"].Move(pcbnew.VECTOR2I(0, MM(0.5)))         # 0.5 mm off the edge, resistor row fits below
+for i, r in enumerate(("R19", "R20", "R21", "R22", "R23")):
+    put(r, 11.0 + i * 3.1, 7.5, 0)
 
 # silkscreen references: only ICs, connectors and LEDs, placed clear of the pads
 for ref, fp in fps.items():
     kind = ref.rstrip("0123456789")
-    if kind in ("Q",) or (kind == "D" and comps[ref]["value"] not in ("green", "red")):
+    if kind in ("Q",) or ref == "J4" or (kind == "D" and comps[ref]["value"] not in ("green", "red")):
         fp.Reference().SetVisible(False)
         continue
     if not fp.Reference().IsVisible():
@@ -187,7 +195,7 @@ for ref, fp in fps.items():
     bb = courtyard(fp)
     cx, cy = pcbnew.ToMM(bb.GetCenter().x), pcbnew.ToMM(bb.GetCenter().y)
     half = pcbnew.ToMM(bb.GetHeight()) / 2
-    below = cy < H / 2 and kind != "J"
+    below = cy < 6.0 or (cy < H / 2 and kind != "J")     # top-edge connector: label inside the board
     fp.Reference().SetTextAngleDegrees(0)
     fp.Reference().SetPosition(pcbnew.VECTOR2I(MM(cx), MM(cy + (half + 0.7) * (1 if below else -1))))
 
@@ -241,7 +249,8 @@ text("C64 PSU Guard v0.1", W / 2, H / 2, 1.2, pcbnew.B_SilkS)
 text("PSU IN  1=5V  2,3=GND  4=12V", 17.5, 17.3, 0.8)
 for num, lbl in (("1", "5V"), ("2", "GND"), ("3", "GND"), ("4", "12V")):
     text(lbl, pad_pos("J1", num)[0] + 3.2, pad_pos("J1", num)[1], 0.8)
-text("UFI  1=GND  2=OFF  3=F5  4=F12", 20.0, 38.6, 0.8)
+text("UFI 1=GND 2=OFF 3=ERR5 4=ERR12", 17.0, 37.2, 0.8)
+text("EXT LED  +odd -even", 31.0, 3.0, 0.8)
 for num, lbl in (("1", "5V  DIN1"), ("2", "GND DIN2"), ("3", "12V DIN4")):
     text(lbl, pad_pos("J2", num)[0] - 9.5, pad_pos("J2", num)[1], 0.8)
 text("5V OK", 42.5, 6.6, 0.8)

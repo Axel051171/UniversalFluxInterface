@@ -18,10 +18,13 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | J1 | PSU_IN | PinHeader_1x04_P2.54mm_Vertical | 0 | +0 | 0 | oben |
 | J2 | DRIVE | TerminalBlock_MaiXu_MX126-5.0-03P_1x03_P5.00mm | 90 | +0 | 90 | unten |
 | J3 | UFI_LINK | PinHeader_1x04_P2.54mm_Vertical | 90 | +0 | 90 | links |
+| J4 | EXT_LED | PinHeader_2x05_P2.54mm_Vertical | 90 | +0 | 90 | unten links |
 | Q1 | AO3401A | SOT-23 | 180 | +180 | 0 | unten rechts |
 | Q2 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |
 | Q3 | AO3401A | SOT-23 | 180 | +180 | 0 | unten rechts |
 | Q4 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |
+| Q5 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |
+| Q6 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |
 | U1 | TPS25921ADR | SOIC-8_3.9x4.9mm_P1.27mm | 0 | +270 | 270 | oben links |
 | U2 | TPS25921ADR | SOIC-8_3.9x4.9mm_P1.27mm | 0 | +270 | 270 | oben links |
 

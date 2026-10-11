@@ -79,4 +79,55 @@ for fp in board.GetFootprints():
                 break
 print("gnd vias", added)
 pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+
+
+def island_vias():
+    """Give every outer GND pour fragment without a via / THT anchor its own via."""
+    anchors = [t.GetPosition() for t in board.GetTracks()
+               if t.GetClass() == "PCB_VIA" and t.GetNetname() == "GND"]
+    anchors += [p.GetPosition() for p in board.GetPads() if p.HasHole() and p.GetNetname() == "GND"]
+    others = [p for p in board.GetPads() if p.GetNetname() != "GND"]
+    own_pads = [p for p in board.GetPads() if p.GetNetname() == "GND"]
+    other_tracks = [t for t in board.GetTracks() if t.GetNetname() != "GND"]
+    clear = MM(VIA_D / 2 + 0.25)
+    ring = [(math.cos(a) * 0.45, math.sin(a) * 0.45) for a in [k * math.pi / 4 for k in range(8)]]
+    n = 0
+    for z in board.Zones():
+        if z.GetNetname() != "GND" or z.GetLayer() not in (pcbnew.F_Cu, pcbnew.B_Cu):
+            continue
+        polys = z.GetFilledPolysList(z.GetLayer())
+        for i in range(polys.OutlineCount()):
+            if any(polys.Contains(a, i) for a in anchors):
+                continue
+            bb = polys.Outline(i).BBox()
+            found, step, yy = None, MM(0.25), bb.GetTop()
+            while yy <= bb.GetBottom() and not found:
+                xx = bb.GetLeft()
+                while xx <= bb.GetRight():
+                    p = pcbnew.VECTOR2I(xx, yy)
+                    if (polys.Contains(p, i)
+                            and all(polys.Contains(pcbnew.VECTOR2I(xx + MM(dx), yy + MM(dy)), i) for dx, dy in ring)
+                            and not any(o.HitTest(p, clear) for o in others)
+                            and not any(o.HitTest(p, MM(VIA_D / 2 + 0.1)) for o in own_pads)
+                            and not any(t.HitTest(p, clear) for t in other_tracks)):
+                        found = p
+                        break
+                    xx += step
+                yy += step
+            if found:
+                v = pcbnew.PCB_VIA(board)
+                v.SetPosition(found)
+                v.SetWidth(MM(VIA_D))
+                v.SetDrill(MM(VIA_DRILL))
+                v.SetNet(gnd)
+                board.Add(v)
+                anchors.append(found)
+                n += 1
+    return n
+
+
+extra = island_vias()
+print("island vias", extra)
+if extra:
+    pcbnew.ZONE_FILLER(board).Fill(board.Zones())
 board.Save(sys.argv[1])
