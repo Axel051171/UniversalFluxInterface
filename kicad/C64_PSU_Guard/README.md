@@ -6,6 +6,8 @@ Eigenständige Platine, unabhängig vom UFI-Board. Sie sitzt zwischen dem intern
 
 ![Oberseite](docs/top.png)
 
+Klemme J2 mit Ersatzmodell (Phoenix MKDS, gleiche Bauform) zur Kontrolle der Drahtöffnungen: `docs/j2_terminal_standin.png` (`scripts/render_j2_standin.py`).
+
 ## Was die Platine erkennt und tut
 
 Zwei gleiche Kanäle (5 V und 12 V), je:
@@ -37,7 +39,7 @@ Die Anlaufzeit hält den Einschaltstrom in die Elkos des Laufwerks unter der Beg
 | Stecker | Belegung |
 |---|---|
 | J1 PSU IN (Stiftleiste 1×4, 2,54 mm) | 1 +5 V (rot), 2 und 3 GND (schwarz), 4 +12 V (gelb) = Belegung des kleinen Floppy-Stromsteckers (Berg) eines PC-Netzteils; ein Molex-auf-Berg-Adapter passt direkt. Pin 1 = eckiges Pad, oben |
-| J2 DRIVE (Schraubklemme 3-polig, 5 mm) | 1 +5 V → DIN Pin 1, 2 GND → DIN Pin 2, 3 +12 V → DIN Pin 4; DIN Pin 3 bleibt frei |
+| J2 DRIVE (Schraubklemme 3-polig, 5 mm, Drahtöffnungen zur Platinenkante) | 1 +5 V → DIN Pin 1, 2 GND → DIN Pin 2, 3 +12 V → DIN Pin 4; DIN Pin 3 bleibt frei. Auf der Platine von oben nach unten 12 V, GND, 5 V, Beschriftung neben den Klemmen |
 | J3 UFI (Stiftleiste 1×4) | 1 GND, 2 OFF, 3 FLT5, 4 FLT12; unbeschaltet lassen = normaler Betrieb (100k Pull-down an OFF) |
 | H1–H4 | M3, mit GND verbunden |
 
@@ -65,4 +67,4 @@ TOOLS=/pfad/zu/freerouting-2.4.1.jar+jdk-25-jre bash scripts/make_pcb.sh
 bash scripts/make_fab.sh
 ```
 
-`scripts/build_schematic.py` (Bauteile, Netze, LCSC), `scripts/build_pcb.py` (Platzierung, Umriss, Bestückungsdruck), `scripts/finish_pcb.py` (GND-Flächen beidseitig, Via neben jedem SMD-GND-Pad). Freerouting 2.4.1 braucht Java 25. Projektbibliothek `lib/C64_PSU_Guard.kicad_sym` enthält das TPS25921-Symbol.
+`scripts/build_schematic.py` (Bauteile, Netze, LCSC), `scripts/build_pcb.py` (Platzierung, Umriss, Bestückungsdruck), `scripts/finish_pcb.py` (GND-Flächen beidseitig, Via neben jedem SMD-GND-Pad). Freerouting 2.4.1 braucht Java 25. Projektbibliothek `lib/C64_PSU_Guard.kicad_sym` enthält das TPS25921-Symbol. Der MaiXu-Klemmen-Footprint hat in KiCad 10 kein 3D-Modell, J2 fehlt daher im Rendering; die Lage der Drahtöffnungen wurde mit dem Phoenix-MKDS-Modell desselben Footprint-Generators geprüft.

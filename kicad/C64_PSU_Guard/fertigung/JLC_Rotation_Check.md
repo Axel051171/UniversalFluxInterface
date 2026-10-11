@@ -6,17 +6,17 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 |---|---|---|---|---|---|---|
 | D1 | BZT52C10 | D_SOD-123 | 0 | +0 | 0 | links |
 | D2 | SMF5.0CA | D_SMF | 0 | +0 | 0 | links |
-| D3 | green | LED_0603_1608Metric | 0 | +0 | 0 | links |
-| D4 | red | LED_0603_1608Metric | 0 | +0 | 0 | links |
+| D3 | green | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
+| D4 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D5 | BZT52C10 | D_SOD-123 | 0 | +0 | 0 | links |
 | D6 | SMAJ15CA | D_SMA | 0 | +0 | 0 | links |
-| D7 | green | LED_0603_1608Metric | 0 | +0 | 0 | links |
-| D8 | red | LED_0603_1608Metric | 0 | +0 | 0 | links |
-| D9 | red | LED_0603_1608Metric | 0 | +0 | 0 | links |
+| D7 | green | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
+| D8 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
+| D9 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D10 | 1N4148W | D_SOD-123 | 0 | +0 | 0 | links |
 | D11 | 1N4148W | D_SOD-123 | 0 | +0 | 0 | links |
 | J1 | PSU_IN | PinHeader_1x04_P2.54mm_Vertical | 0 | +0 | 0 | oben |
-| J2 | DRIVE | TerminalBlock_MaiXu_MX126-5.0-03P_1x03_P5.00mm | -90 | +0 | 270 | oben |
+| J2 | DRIVE | TerminalBlock_MaiXu_MX126-5.0-03P_1x03_P5.00mm | 90 | +0 | 90 | unten |
 | J3 | UFI_LINK | PinHeader_1x04_P2.54mm_Vertical | 90 | +0 | 90 | links |
 | Q1 | AO3401A | SOT-23 | 180 | +180 | 0 | unten rechts |
 | Q2 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |

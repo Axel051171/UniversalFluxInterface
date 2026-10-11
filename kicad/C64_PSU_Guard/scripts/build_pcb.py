@@ -136,12 +136,11 @@ def pad_pos(ref, num):
 # ---------------------------------------------------------------------------
 put_edge("J1", 0, "left", 21.0)          # PSU in, pin 1 (+5V) at the top
 put_edge("J3", 90, "bottom", 20.0)       # UFI link, pin 1 (GND) at the left
-# terminal block: wire entry towards the right edge, whichever rotation does that
-for rot in (90, 270):
-    put_edge("J2", rot, "right", 22.0)
-    pads = [pcbnew.ToMM(p.GetPosition().x) for p in fps["J2"].Pads()]
-    if pcbnew.ToMM(courtyard(fps["J2"]).GetCenter().x) >= sum(pads) / len(pads):
-        break
+# terminal block on the right edge, wire entry outwards: rotation 90 (checked with the Phoenix
+# MKDS 3D model of the same footprint generator; 270 puts the openings towards the board centre).
+# Pin 1 (+5 V) is then the lowest terminal, the silkscreen labels follow the pads.
+put_edge("J2", 90, "right", 22.0)
+fps["J2"].Move(pcbnew.VECTOR2I(MM(-0.7), 0))        # pin-1 silk marker clear of the board edge
 
 CH = {"5": dict(y0=11.0, q="Q1", rg="R1", dz="D1", tvs="D2", cb="C1", cs="C2", u="U1", ren="R2", ren2="R3",
                 rov="R4", rov2="R5", css="C3", ril="R6", co="C4", rg_led="R7", dg="D3", rr_led="R8", dr="D4",
@@ -151,9 +150,9 @@ CH = {"5": dict(y0=11.0, q="Q1", rg="R1", dz="D1", tvs="D2", cb="C1", cs="C2", u
                  qoff="Q4", led_y=40.0)}
 for v, c in CH.items():
     y0, m = c["y0"], (-1 if v == "5" else 1)          # m: towards the outer (LED) edge
-    put(c["q"], 12.0, y0, 180)                         # SOT-23: drain (pad 3) towards J1
-    put(c["rg"], 10.0, y0 + m * 4.0, 0)
-    put(c["dz"], 15.0, y0 + m * 4.0, 0)
+    put(c["q"], 12.0, y0, 180)                         # SOT-23: drain (pad 3) towards J1, gate (pad 1) on the inner side
+    put(c["rg"], 10.0, y0 - m * 4.0, 0)                # gate parts on the gate side, clear of the wide source track
+    put(c["dz"], 15.0, y0 - m * 4.0, 0)
     put(c["tvs"], 18.0, y0, 0)
     put(c["cb"], 23.0, y0, 90)
     put(c["cs"], 25.5, y0, 90)
@@ -167,12 +166,12 @@ for v, c in CH.items():
     put(c["qoff"], 33.5, y0 + 4.5, 0)
     put(c["co"], 36.5, y0 + 2.0, 90)
     put(c["rg_led"], 39.5, c["led_y"], 0)
-    put(c["dg"], 42.5, c["led_y"], 0)
+    put(c["dg"], 42.5, c["led_y"], 180)                # LED anode (pad 2) next to the resistor
     put(c["rr_led"], 46.0, c["led_y"], 0)
-    put(c["dr"], 49.0, c["led_y"], 0)
+    put(c["dr"], 49.0, c["led_y"], 180)
 # reverse-polarity indicator between the two channels, next to J1
 put("R17", 7.5, 21.0, 0)
-put("D9", 10.5, 21.0, 0)
+put("D9", 10.5, 21.0, 180)
 put("D10", 14.5, 19.0, 0)
 put("D11", 14.5, 23.0, 0)
 put("R18", 27.5, 41.5, 0)                              # OFF pull-down next to J3
@@ -239,7 +238,7 @@ def text(s, x, y, size=0.8, layer=pcbnew.F_SilkS, rot=0):
 
 
 text("C64 PSU Guard v0.1", W / 2, H / 2, 1.2, pcbnew.B_SilkS)
-text("PSU IN  1=5V  2,3=GND  4=12V", 14.0, 15.3, 0.8)
+text("PSU IN  1=5V  2,3=GND  4=12V", 17.5, 17.3, 0.8)
 for num, lbl in (("1", "5V"), ("2", "GND"), ("3", "GND"), ("4", "12V")):
     text(lbl, pad_pos("J1", num)[0] + 3.2, pad_pos("J1", num)[1], 0.8)
 text("UFI  1=GND  2=OFF  3=F5  4=F12", 20.0, 38.6, 0.8)
