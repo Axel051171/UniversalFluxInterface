@@ -15,6 +15,7 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_verify.h"
 #include <string.h>
 
 /* ============================================================================
@@ -482,46 +483,68 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
  * VERIFY
  * ============================================================================ */
 
+/* Verify with evidence levels (ufi_verify.c, 1.15): the packed track is decoded into a
+ * sector reference (ids + data CRC-32) before the read-back reuses the flux store; two
+ * revolutions are read back and every reference sector must come back with the same
+ * data (level 3).  Tracks the decoder does not understand (GCR, protections) only get
+ * the transition-count check (level 2).  Anything else fails with UFI_ERR_DMA (6). */
+__attribute__((section(".dtcm"))) static verify_ref_t verify_ref;
+__attribute__((section(".dtcm"))) static mfm_decoder_t verify_dec;
+
 int ufi_write_verify(void) {
     if (g_write.state != WRITE_COMPLETE) {
         return UFI_ERR_BUSY;
     }
-
     g_write.state = WRITE_VERIFYING;
+    verify_ref_build(&verify_ref, &verify_dec, write_arr, g_write.flux_count);
 
-    int ret = ufi_capture_start_q(g_write.track, g_write.side, 1, 0, g_write.quarter);
+    int ret = ufi_capture_start_q(g_write.track, g_write.side, 2, 0, g_write.quarter);
     if (ret != 0) {
         g_write.state = WRITE_ERROR;
         return ret;
     }
-
     const uint32_t start = HAL_GetTick();
     while (ufi_capture_get_state() != CAPTURE_COMPLETE) {
-        if (HAL_GetTick() - start > 1000 || g_capture.state == CAPTURE_ERROR) {
+        if (HAL_GetTick() - start > 1500 || g_capture.state == CAPTURE_ERROR) {
             ufi_flux_capture_stop();
             g_write.state = WRITE_ERROR;
             return UFI_ERR_TIMEOUT;
         }
     }
-
-    flux_revolution_t* read_data = ufi_capture_get_data(0);
-    if (!read_data) {
+    const uint8_t revs = ufi_flux_get_revolution_count();
+    if (revs == 0) {
         g_write.state = WRITE_ERROR;
         return UFI_ERR_DMA;
     }
 
-    int32_t diff = (int32_t)read_data->count - (int32_t)g_write.flux_count;
+    /* plausibility: transition count of revolution 0 within 5 % (at least 100) */
+    const flux_revolution_t* r0 = ufi_flux_get_revolution(0);
+    int32_t diff = (int32_t)r0->count - (int32_t)g_write.flux_count;
     if (diff < 0) diff = -diff;
-
     uint32_t tolerance = g_write.flux_count / 20;
     if (tolerance < 100) tolerance = 100;
+    const bool count_ok = (uint32_t)diff <= tolerance;
 
-    if ((uint32_t)diff > tolerance) {
+    /* content: all revolutions as one stream through the decoder */
+    verify_match_t m;
+    verify_match_begin(&m, &verify_ref, &verify_dec);
+    uint32_t carry = 0;
+    for (uint8_t k = 0; k < revs; k++) {
+        const flux_revolution_t* r = ufi_flux_get_revolution(k);
+        uint32_t prev = 0;
+        for (uint32_t i = 0; i < r->count; i++) {
+            verify_match_interval(&m, r->samples[i].timestamp - prev + carry);
+            carry = 0;
+            prev = r->samples[i].timestamp;
+        }
+        carry = r->index_time - prev;
+    }
+    const uint8_t level = verify_match_result(&m, count_ok);
+    if (!level) {
         g_write.state = WRITE_ERROR;
         return UFI_ERR_DMA;
     }
-
-    g_write.verify_level = 2;               /* read back, transition count plausible */
+    g_write.verify_level = level;
     g_write.state = WRITE_IDLE;
     return UFI_OK;
 }

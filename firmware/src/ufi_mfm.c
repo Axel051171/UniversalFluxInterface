@@ -322,7 +322,9 @@ uint32_t mfm_encode_track(const mfm_track_fmt_t* f, uint8_t cyl, uint8_t head,
     if (gap3 == 0) {
         return 0;                       /* does not fit (e.g. Atari 11 sectors): read only */
     }
-    enc_t e = {.out = deltas, .max = max, .rate = f->rate_bps};
+    /* first transition two bit cells after the index: the first interval is never 0 (the
+     * write path refuses periods below 1.6 us) */
+    enc_t e = {.out = deltas, .max = max, .rate = f->rate_bps, .pos = 4};
 
     if (iam) {
         put_run(&e, 0x4E, 80);
@@ -399,7 +401,7 @@ uint32_t mfm_encode_amiga_track(uint32_t rate_bps, uint32_t track_cells, uint8_t
     if (track_cells < AMIGA_SECTORS * 1088u * 8u) {
         return 0;
     }
-    enc_t e = {.out = deltas, .max = max, .rate = rate_bps};
+    enc_t e = {.out = deltas, .max = max, .rate = rate_bps, .pos = 4};
     const uint8_t track = (uint8_t)(cyl * 2u + head);
     for (uint8_t s = 0; s < AMIGA_SECTORS; s++) {
         const uint8_t* d = sectors + (uint32_t)s * 512u;

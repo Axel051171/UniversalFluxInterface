@@ -21,6 +21,7 @@ BUILD = HERE / "build"
 # test program -> firmware sources it exercises
 TESTS = {
     "test_write_codec": ["src/ufi_write_codec.c"],
+    "test_write_verify": ["src/ufi_verify.c", "src/ufi_mfm.c", "src/ufi_write_codec.c"],
 }
 
 

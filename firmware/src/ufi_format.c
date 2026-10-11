@@ -25,16 +25,22 @@ static drive_type_t rev_drive;
 
 typedef struct {
     uint64_t good;
-    uint8_t cyl;
+    uint8_t cyl, fill;
 } vctx_t;
 
 static void v_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
 {
     (void)data;
     vctx_t* v = p;
-    if (crc_ok && id->c == v->cyl && id->r >= 1u && id->r <= 63u) {
-        v->good |= 1ull << (id->r - 1u);
+    if (!crc_ok || id->c != v->cyl || id->r < 1u || id->r > 63u) {
+        return;
     }
+    for (uint32_t i = 0; i < 512u; i++) {         /* the data must be the fill byte */
+        if (data[i] != v->fill) {
+            return;
+        }
+    }
+    v->good |= 1ull << (id->r - 1u);
 }
 
 /* nominal gap 3 of the common layouts (the encoder shortens it if the track is short) */
@@ -73,7 +79,7 @@ static int revolution(uint32_t* ticks)
 static int verify(const format_req_t* q, uint32_t rate, uint8_t* good)
 {
     __attribute__((section(".dtcm"))) static mfm_decoder_t d;
-    vctx_t v = {.cyl = q->track};
+    vctx_t v = {.cyl = q->track, .fill = q->fill};
     g_capture.state = CAPTURE_IDLE;
     int ret = ufi_capture_start(q->track, q->side, FORMAT_VERIFY_REVS, 0);
     if (ret != UFI_OK) {

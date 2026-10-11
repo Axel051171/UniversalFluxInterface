@@ -148,6 +148,7 @@ set(PROJECT_SOURCES
     src/ufi_crash.c
     src/ufi_write.c
     src/ufi_write_codec.c
+    src/ufi_verify.c
     src/ufi_debug.c
     src/ufi_diag.c
     src/ufi_clock.c
