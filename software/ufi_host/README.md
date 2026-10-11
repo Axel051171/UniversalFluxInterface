@@ -12,6 +12,7 @@ ufi read 0 0 -r 3                         # Zusammenfassung (Flux-Anzahl, RPM je
 ufi read-disk -o disk.scp --tracks 80 --sides 2 -r 3 --drive a
 ufi write-disk disk.scp --verify --drive amiga
 ufi iec-reset && ufi iec-send 0x28 && ufi iec-recv
+ufi iec-write game.d64 --verify            # Firmware ≥ 1.16: D64/D71/D81 über den Laufwerkscontroller (U2) auf eine formatierte Diskette; iec-read holt sie zurück, iec-status zeigt die DOS-Meldung
 ufi bootloader                            # danach: dfu-util -a 0 -s 0x08000000:leave -D ufi_firmware.bin
 ```
 

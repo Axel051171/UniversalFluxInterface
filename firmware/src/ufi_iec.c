@@ -358,6 +358,45 @@ int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
     return (*len == 256) ? UFI_OK : UFI_ERR_TIMEOUT;
 }
 
+// Block schreiben (1.16): "#" auf Kanal 2, B-P:2 0, 256 Bytes auf Kanal 2, U2 ins Laufwerk,
+// dann die DOS-Meldung (dos = zweistelliger Fehlercode, 0 = ok, 255 = keine Meldung).
+// UFI_OK heisst: der Bus hat mitgespielt; ob die Diskette den Block hat, sagt *dos.
+int ufi_iec_write_block(uint8_t device, uint8_t track, uint8_t sector,
+                        const uint8_t* data, uint8_t* dos) {
+    char cmd[20];
+    *dos = 255;
+
+    int ret = iec_open_file(device, 2, "#");
+    if (ret != UFI_OK) return ret;
+
+    ret = ufi_iec_command(device, "B-P:2 0", 7);
+    if (ret == UFI_OK) {
+        ret = ufi_iec_listen(device);
+        if (ret == UFI_OK) ret = ufi_iec_secondary(2);
+        if (ret == UFI_OK) {
+            ufi_iec_atn(false);
+            ret = iec_send_bytes(data, 256);
+        }
+        const int ret2 = ufi_iec_unlisten();
+        if (ret == UFI_OK) ret = ret2;
+    }
+    if (ret == UFI_OK) {
+        const int n = snprintf(cmd, sizeof(cmd), "U2:2 0 %u %u", track, sector);
+        ret = ufi_iec_command(device, cmd, (uint8_t)n);
+    }
+    if (ret == UFI_OK) {
+        char st[40];
+        if (ufi_iec_read_status(device, st, sizeof(st)) >= 2 &&
+            st[0] >= '0' && st[0] <= '9' && st[1] >= '0' && st[1] <= '9') {
+            *dos = (uint8_t)((st[0] - '0') * 10 + (st[1] - '0'));
+        }
+    }
+    const int ret2 = iec_close_file(device, 2);
+    if (ret != UFI_OK) return ret;
+    if (ret2 != UFI_OK) return ret2;
+    return (*dos == 255u) ? UFI_ERR_TIMEOUT : UFI_OK;
+}
+
 // Directory lesen: "$" auf Kanal 0 öffnen, bis EOI lesen, schließen
 int ufi_iec_read_directory(uint8_t device, uint8_t* buffer, uint16_t max_len,
                            uint16_t* len) {

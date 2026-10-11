@@ -46,6 +46,7 @@ class FakeV2:
         self.read_status = read_status
         self.data_chunk = data_chunk
         self.requests: list[P2.Frame] = []
+        self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
         self.write_code = bytearray()
         self.write_frames = 0
@@ -114,8 +115,18 @@ class FakeV2:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
         elif cmd == P2.TIMING_CMD:
             if a:
-                self.timing = a[:20]
+                self.timing = a[:P2.TIMING.size]
             r(0, self.timing)
+        elif cmd == P2.IEC_MEM and a[0] == 4:
+            r(0, b"00, OK,00,00\r")
+        elif cmd == P2.IEC_BLOCK:
+            if a[0] == 0:
+                r(0, self.blocks.get((a[1], a[2]), bytes([a[1], a[2]]) * 128))
+            elif a[1] == 36:                  # track 36: write protect
+                r(0, b"\x1a")
+            else:
+                self.blocks[(a[1], a[2])] = bytes(a[4:])
+                r(0, b"\x00")
         elif cmd == P2.CHECK_DISK:
             r(0, b"\x01\x01")
         elif cmd == P2.AMIGA_ID:
@@ -615,3 +626,29 @@ def test_dump_start_format():
     assert fake.requests[-1].payload == bytes([2, 40, 1, 2, 2])
     dev.dump_start(fmt="img")
     assert fake.requests[-1].payload == bytes([1, 80, 2, 3, 1])
+
+
+def test_iec_blocks():
+    from ufi_host import cbm
+    fake = FakeV2()
+    dev = P2.Device2(fake, timeout=0.5)
+    assert dev.iec_status() == "00, OK,00,00"
+    assert dev.iec_block_read(18, 1) == bytes([18, 1]) * 128
+    assert fake.requests[-1].payload == bytes([0, 18, 1, 0])
+    blk = bytes(range(256))
+    assert dev.iec_block_write(17, 3, blk, device=9) == 0
+    assert fake.requests[-1].payload == bytes([1, 17, 3, 9]) + blk
+    assert dev.iec_block_read(17, 3) == blk
+    assert dev.iec_block_write(36, 0, blk) == 26
+    with pytest.raises(ValueError):
+        dev.iec_block_write(1, 0, b"short")
+    # geometry
+    assert cbm.geometry(174848) == ("d64", 35) and cbm.geometry(196608) == ("d64", 40)
+    assert cbm.geometry(349696) == ("d71", 70) and cbm.geometry(819200) == ("d81", 80)
+    assert cbm.geometry(174848 + 683) == ("d64", 35)
+    assert cbm.image_size("d64", 35) == 174848 and cbm.image_size("d71", 70) == 349696
+    assert cbm.image_size("d81", 80) == 819200 and sum(1 for _ in cbm.blocks("d64", 40)) == 768
+    assert [cbm.sectors_per_track("d64", t) for t in (1, 17, 18, 24, 25, 30, 31, 35)] == [21, 21, 19, 19, 18, 18, 17, 17]
+    assert cbm.sectors_per_track("d71", 36) == 21 and cbm.kind_for("1571", 35) == ("d71", 35)
+    with pytest.raises(ValueError):
+        cbm.geometry(1000)

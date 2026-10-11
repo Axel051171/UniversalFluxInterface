@@ -86,6 +86,7 @@ ANALYZE_FMT = struct.Struct("<BBHH4HIIIBBIQ")
 ENCODINGS = {0: "unknown", 1: "FM", 2: "MFM", 3: "GCR"}
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
 IEC_MEM, IEC_NIB = 0x33, 0x34           # firmware 1.14: drive memory, 1541 raw GCR chunks
+IEC_BLOCK = 0x35                        # firmware 1.16: U1/U2 block read/write through the drive's DOS
 NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
@@ -647,6 +648,23 @@ class Device2:
         if isinstance(cmd, str):
             cmd = cmd.encode("ascii")
         self.request(IEC_MEM, bytes([3, 0, 0]) + cmd, timeout=5.0)
+
+    def iec_status(self) -> str:
+        """DOS status line of channel 15 (firmware 1.16), e.g. '00, OK,00,00'."""
+        return self.request(IEC_MEM, bytes([4, 0, 0]), timeout=5.0).decode("latin-1").rstrip("\r\n")
+
+    def iec_block_read(self, track: int, sector: int, device: int = 0) -> bytes:
+        """One 256-byte block via U1 (firmware 1.16); device 0 = UFI.CFG iec_device."""
+        return bytes(self.request(IEC_BLOCK, bytes([0, track, sector, device]), timeout=5.0)[:256])
+
+    def iec_block_write(self, track: int, sector: int, data: bytes, device: int = 0) -> int:
+        """Write one 256-byte block via B-P + U2 (firmware 1.16).  Returns the DOS error
+        code the drive reported afterwards (0 ok, 26 write protect on, 2x read/write errors);
+        a DeviceError means the bus transaction itself failed."""
+        if len(data) != 256:
+            raise ValueError("a Commodore block is 256 bytes")
+        p = self.request(IEC_BLOCK, bytes([1, track, sector, device]) + bytes(data), timeout=5.0)
+        return p[0] if p else 255
 
     def iec_nib(self, halftrack: int, sync: int = 0, mode: int = 0, flags: int = 0,
                 device: int = 0) -> NibChunk:

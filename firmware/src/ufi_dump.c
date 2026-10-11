@@ -288,7 +288,7 @@ static uint8_t iec_spt(uint8_t t)
     if (iec_kind == 81u) {
         return 40u;
     }
-    if (t > 35u) {
+    if (iec_kind == 71u && t > 35u) {       /* 1571 side 2 mirrors the zones; 1541 tracks 36-40: 17 */
         t = (uint8_t)(t - 35u);
     }
     return t <= 17u ? 21u : t <= 24u ? 19u : t <= 30u ? 18u : 17u;

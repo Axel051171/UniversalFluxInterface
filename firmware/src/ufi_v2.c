@@ -66,7 +66,7 @@ enum {
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25, V2_FORMAT = 0x26,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
-    V2_IEC_NIB = 0x34,
+    V2_IEC_NIB = 0x34, V2_IEC_BLOCK = 0x35,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
@@ -805,8 +805,28 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             } else if (p[0] == 3u) {        /* DOS command string on channel 15 (addr unused) */
                 ret = (len < 4u) ? UFI_ERR_BAD_ARGS
                                  : ufi_iec_command(dev, (const char*)&p[3], (uint8_t)(len - 3u));
+            } else if (p[0] == 4u) {        /* DOS status line from channel 15 (1.16) */
+                const int got = ufi_iec_read_status(dev, (char*)out, 64);
+                ret = (got < 0) ? got : UFI_OK;
+                n = (got > 0) ? (uint16_t)got : 0u;
             } else {
                 ret = UFI_ERR_BAD_ARGS;
+            }
+            break;
+        }
+        case V2_IEC_BLOCK: {                /* op u8 (0 U1 read, 1 U2 write), track, sector, device u8 (0 = iec_device) [, 256 data]; 1.16 */
+            if (len < 4u || p[0] > 1u || (p[0] == 1u && len != 4u + 256u)) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            const uint8_t dev = p[3] ? p[3] : ufi_config_iec_device();
+            if (p[0] == 0u) {
+                uint16_t got = 0;
+                ret = ufi_iec_read_block(dev, p[1], p[2], out, &got);
+                n = (ret == UFI_OK) ? got : 0u;
+            } else {
+                ret = ufi_iec_write_block(dev, p[1], p[2], &p[4], &out[0]);
+                n = (ret == UFI_OK) ? 1u : 0u;
             }
             break;
         }

@@ -516,6 +516,8 @@ void ufi_nib_invalidate(void);
 uint8_t ufi_config_iec_device(void);        // UFI.CFG iec_device (default 8)
 int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
                        uint8_t* buffer, uint16_t* len);              // "#" + U1, 256 bytes
+int ufi_iec_write_block(uint8_t device, uint8_t track, uint8_t sector,
+                        const uint8_t* data, uint8_t* dos);          // "#" + B-P + U2; dos = DOS error code (1.16)
 int ufi_iec_send_byte(uint8_t byte, bool eoi);
 int ufi_iec_receive_byte(uint8_t* byte, bool* eoi);
 int ufi_iec_atn(bool state);

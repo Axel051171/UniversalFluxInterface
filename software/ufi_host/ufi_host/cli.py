@@ -9,7 +9,8 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
   ufi write disk.scp TRACK SIDE [--verify]            rev 0 of that SCP track
   ufi write-disk disk.scp [--verify] [--drive a]
   ufi erase TRACK SIDE | abort
-  ufi iec-reset | iec-send BYTE [--eoi] | iec-recv
+  ufi iec-reset | iec-send BYTE [--eoi] | iec-recv | iec-status
+  ufi iec-read out.d64 [--type 1541 --tracks 35] | iec-write in.d64 [--verify] [--new NAME,ID]
   ufi files [PATH] | get NAME [-o out] | put LOCAL NAME | rm NAME       (v2, SD NAND)
   ufi cfg [KEY=VALUE ...]                             show / edit UFI.CFG (v2)
   ufi dump [--drive a --tracks 80 --sides 2 -r 3 --format img] | dump-status | dump-abort | copy
@@ -195,6 +196,66 @@ def _progress(total: int | None):
     return show
 
 
+def _iec_check(dev: P2.Device2, what: str) -> None:
+    st = dev.iec_status()
+    if not st.startswith(("00", "01", "73")):
+        raise SystemExit(f"{what}: drive says {st!r}")
+
+
+def cmd_iec_read(dev: P2.Device2, a) -> None:
+    from . import cbm
+    kind, tracks = cbm.kind_for(a.type, a.tracks)
+    dev.iec_command("I0")
+    if kind == "d71":
+        dev.iec_command("U0>M1")
+    bad = []
+    with open(a.output, "wb") as f:
+        for t, s in cbm.blocks(kind, tracks):
+            try:
+                blk = dev.iec_block_read(t, s, a.device)
+            except P2.DeviceError:
+                blk = b""
+            if len(blk) != cbm.BLOCK:
+                bad.append((t, s))
+                blk = bytes(cbm.BLOCK)
+            f.write(blk)
+            if s == 0:
+                print(f"track {t:2d}: {cbm.sectors_per_track(kind, t)} blocks", end="\r", flush=True)
+    print(f"wrote {a.output}: {kind.upper()} {tracks} tracks, {len(bad)} unreadable block(s)"
+          + (": " + ", ".join(f"{t}/{s}" for t, s in bad[:20]) if bad else ""))
+
+
+def cmd_iec_write(dev: P2.Device2, a) -> None:
+    from . import cbm
+    data = open(a.input, "rb").read()
+    kind, tracks = cbm.geometry(len(data))
+    if a.new:
+        print(f"formatting (N0:{a.new}) ...", flush=True)
+        dev.iec_command("N0:" + a.new)
+        _iec_check(dev, "format")
+    dev.iec_command("I0")
+    _iec_check(dev, "initialise")
+    if kind == "d71":
+        dev.iec_command("U0>M1")
+    errors = []
+    off = 0
+    for t, s in cbm.blocks(kind, tracks):
+        blk = data[off:off + cbm.BLOCK]
+        off += cbm.BLOCK
+        code = dev.iec_block_write(t, s, blk, a.device)
+        if code not in (0, 1):
+            errors.append((t, s, code))
+            if code == 26:
+                raise SystemExit(f"track {t} sector {s}: write protect on")
+        elif a.verify and dev.iec_block_read(t, s, a.device) != blk:
+            errors.append((t, s, -1))
+        if s == 0:
+            print(f"track {t:2d}: {cbm.sectors_per_track(kind, t)} blocks", end="\r", flush=True)
+    print(f"wrote {a.input} ({kind.upper()}, {tracks} tracks) with {len(errors)} error(s)")
+    for t, s, code in errors[:20]:
+        print(f"  track {t} sector {s}: " + ("verify mismatch" if code < 0 else f"DOS {code:02d} {cbm.DOS_ERRORS.get(code, '')}"))
+
+
 def run_v2(dev: P2.Device2, a) -> bool:
     """v2-only commands; returns False when a.cmd is not one of them."""
     if a.cmd == "caps":
@@ -250,7 +311,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -280,6 +341,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("-r", "--revs", type=int, default=3)
+    sub.add_parser("iec-status", help="DOS status line of the IEC drive (firmware 1.16)")
+    p = sub.add_parser("iec-read", help="D64/D71/D81 from a 1541/1571/1581 over IEC via U1 block reads (firmware 1.16)")
+    p.add_argument("output")
+    p.add_argument("--type", choices=("1541", "1571", "1581"), default="1541")
+    p.add_argument("--tracks", type=int, default=35, help="1541: 35 or 40; 1571: 35/40 = first side only")
+    p.add_argument("--device", type=int, default=0, help="IEC device number (default: UFI.CFG iec_device)")
+    p = sub.add_parser("iec-write", help="D64/D71/D81 onto a formatted disk in a 1541/1571/1581 via U2 block writes (firmware 1.16)")
+    p.add_argument("input")
+    p.add_argument("--device", type=int, default=0, help="IEC device number (default: UFI.CFG iec_device)")
+    p.add_argument("--verify", action="store_true", help="read every block back and compare")
+    p.add_argument("--new", metavar="NAME,ID", help="format the disk first (N0:NAME,ID; about a minute on a 1541)")
     p = sub.add_parser("iec-nib", help="1541 raw GCR tracks over IEC into a G64 (firmware 1.14, drive code upload)")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=35, choices=range(35, 43), metavar="35-42")
@@ -495,6 +567,12 @@ def main(argv: list[str] | None = None) -> int:
             dev.erase(a.track, a.side)
         elif a.cmd == "abort":
             dev.abort()
+        elif a.cmd == "iec-status":
+            print(dev.iec_status())
+        elif a.cmd == "iec-read":
+            cmd_iec_read(dev, a)
+        elif a.cmd == "iec-write":
+            cmd_iec_write(dev, a)
         elif a.cmd == "iec-reset":
             dev.iec_reset()
         elif a.cmd == "iec-send":
