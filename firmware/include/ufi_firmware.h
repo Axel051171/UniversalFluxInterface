@@ -643,6 +643,8 @@ void ufi_crash_fault(const uint32_t* frame, uint32_t kind);   // from the fault 
 void ufi_crash_boot(void);              // start-up: CRASH.LOG, reset cause text
 const char* ufi_crash_last(void);       // "reset: power-on" / "reset: HardFault pc=..."
 uint8_t ufi_crash_kind(void);           // 0 = no fault record at this start-up
+void ufi_stack_paint(void);             // first thing in ufi_init(): paint the free stack
+uint32_t ufi_stack_free(void);          // bytes of stack never used so far
 int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n);   // out: 4 x (type, flags)
 #define INDEX_SIM_PIN       0x01u   // pulses on J9 pin 6 (PE1, open drain)
 #define INDEX_SIM_INTERNAL  0x02u   // pulses replace the drive's INDEX line in capture/write

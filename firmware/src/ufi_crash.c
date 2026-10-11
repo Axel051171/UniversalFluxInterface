@@ -106,6 +106,33 @@ void ufi_crash_boot(void)
     rec.sum = 0;
 }
 
+/* Stack high-water mark: at start-up the free DTCM between the end of the .dtcm data
+ * and the current stack pointer is painted; whatever is still painted later was never
+ * used by the stack (SELFTEST item stack_free). */
+#define STACK_PAINT     0xDEADBEEFu
+extern uint32_t _edtcm;
+
+void ufi_stack_paint(void)
+{
+    uint32_t* p = &_edtcm;
+    uint32_t* top = (uint32_t*)(__get_MSP() - 256u);   /* leave this frame alone */
+    while (p < top) {
+        *p++ = STACK_PAINT;
+    }
+}
+
+uint32_t ufi_stack_free(void)
+{
+    const uint32_t* p = &_edtcm;
+    const uint32_t* top = (const uint32_t*)__get_MSP();
+    uint32_t n = 0;
+    while (p < top && *p == STACK_PAINT) {
+        p++;
+        n += 4u;
+    }
+    return n;
+}
+
 const char* ufi_crash_last(void)
 {
     return last_text;

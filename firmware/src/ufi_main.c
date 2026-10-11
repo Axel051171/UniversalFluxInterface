@@ -64,6 +64,7 @@ static void ufi_check_bootloader(void)
 
 void ufi_init(void)
 {
+    ufi_stack_paint();          /* stack high-water mark (SELFTEST stack_free, 1.15) */
     HAL_Init();
     SystemClock_Config();       /* 550 MHz */
     UFI_DWT_INIT();             /* cycle counter for us delays (Fix #6) */

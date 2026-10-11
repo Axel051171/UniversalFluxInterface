@@ -64,7 +64,8 @@ SELFTEST_ITEMS = {
     10: ("iec_loop", "IEC transceivers: bit0-3 ATN/CLK/DATA/SRQ not asserted, bit4-7 not released"),
     11: ("index_loop", "index simulation J9 pin 6 -> INDEX (skip = no wire)"),
     12: ("last_reset", "fault record at start-up (1 HardFault 2 MemManage 3 BusFault 4 UsageFault)"),
-    13: ("log", "SELFTEST.LOG written (bytes)"),
+    13: ("stack_free", "stack bytes never used since start-up (warn < 2 KB, fail < 512)"),
+    14: ("log", "SELFTEST.LOG written (bytes)"),
 }
 SELFTEST_STATUS = {0: "ok", 1: "FAIL", 2: "skip", 3: "warn"}
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16

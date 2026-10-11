@@ -27,7 +27,7 @@ typedef struct {
 
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
-    "fdd_lines", "iec_loop", "index_loop", "last_reset", "log",
+    "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -207,6 +207,13 @@ static void t_index_loop(st_item_t* it)
     it->status = seen ? ST_OK : ST_SKIP;    /* no wire: nothing to judge */
 }
 
+/* stack never used since start-up (painted DTCM below the stack pointer) */
+static void t_stack(st_item_t* it)
+{
+    it->value = ufi_stack_free();
+    it->status = it->value < 512u ? ST_FAIL : it->value < 2048u ? ST_WARN : ST_OK;
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -217,7 +224,7 @@ static void t_last_reset(st_item_t* it)
 
 uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
 {
-    st_item_t items[14];
+    st_item_t items[15];
     uint8_t n = 0;
     memset(items, 0, sizeof(items));
 #define ITEM(k, call) do { items[n].id = (k); call; n++; } while (0)
@@ -233,6 +240,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(10, t_iec_loop(&items[n]));
     ITEM(11, t_index_loop(&items[n]));
     ITEM(12, t_last_reset(&items[n]));
+    ITEM(13, t_stack(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */
@@ -248,7 +256,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     uint16_t written = 0;
     const int wr = (len > 0) ? ufi_file_write("SELFTEST.LOG", 0, true, (const uint8_t*)text,
                                                (uint16_t)len, &written) : UFI_ERR_STORAGE;
-    items[n].id = 13;
+    items[n].id = 14;
     items[n].status = (wr == UFI_OK) ? ST_OK : ST_FAIL;
     items[n].value = written;
     n++;

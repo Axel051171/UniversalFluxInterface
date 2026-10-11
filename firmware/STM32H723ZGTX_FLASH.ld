@@ -145,14 +145,14 @@ SECTIONS
         __bss_end__ = _ebss;
     } >AXI_SRAM
 
-    /* Heap */
+    /* Heap (AXI).  The stack lives at the end of DTCM (_estack), so its reserve is
+     * checked there (ASSERT below), not padded here. */
     ._user_heap_stack :
     {
         . = ALIGN(8);
         PROVIDE(end = .);
         PROVIDE(_end = .);
         . = . + _Min_Heap_Size;
-        . = . + _Min_Stack_Size;
         . = ALIGN(8);
     } >AXI_SRAM
 
@@ -174,6 +174,8 @@ SECTIONS
 
     /* Stack am Ende von DTCM (schneller Zugriff) */
     _estack = ORIGIN(DTCM) + LENGTH(DTCM);
+    /* the .dtcm data must leave the stack reserve free (audit F05) */
+    ASSERT(_edtcm + _Min_Stack_Size <= _estack, "DTCM: .dtcm data leaves less than _Min_Stack_Size for the stack")
 
     /* Discard */
     /DISCARD/ :

@@ -135,7 +135,7 @@ class FakeV2:
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
-              + struct.pack("<BBI", 13, 1, 0))
+              + struct.pack("<BBI", 14, 1, 0))
         elif cmd == P2.FORMAT:
             if len(a) != 8:
                 r(P2.BAD_ARGS)
@@ -561,7 +561,7 @@ def test_selftest_items():
     fake = FakeV2()
     dev = P2.Device2(fake)
     items = dev.selftest()
-    assert items == [(1, "timer", 0, 275000), (2, "usb_sof", 0, 0xFFFFFFF6), (13, "log", 1, 0)]
+    assert items == [(1, "timer", 0, 275000), (2, "usb_sof", 0, 0xFFFFFFF6), (14, "log", 1, 0)]
     assert fake.requests[-1].cmd == P2.SELFTEST and fake.requests[-1].payload == b""
 
 
