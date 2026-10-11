@@ -74,6 +74,10 @@ image_kind_t image_identify(const char* name, uint32_t size, image_geo_t* g)
         g->kind = IMG_SCP;
         return g->kind;
     }
+    if (ext_is(name, "HFE")) {
+        g->kind = IMG_HFE;              /* geometry from the HFE header */
+        return g->kind;
+    }
     if (ext_is(name, "ADF")) {
         if (size == 901120u) {
             g->cyls = 80; g->heads = 2; g->spt = 11; g->rate_bps = 250000u;
@@ -177,4 +181,159 @@ uint32_t scp_cells_to_deltas(const uint8_t* w, uint32_t n_words, uint32_t* out, 
         made++;
     }
     return made;
+}
+
+
+/* ============================================================================
+ * HFE (1.17)
+ * ============================================================================ */
+
+#define HFE_TICK_HZ     275000000u
+
+static uint16_t le16(const uint8_t* p)
+{
+    return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+bool hfe_parse_header(const uint8_t* hdr, hfe_header_t* h)
+{
+    memset(h, 0, sizeof(*h));
+    if (memcmp(hdr, "HXCPICFE", 8) != 0) {
+        return false;
+    }
+    h->tracks = hdr[9];
+    h->sides = hdr[10];
+    h->encoding = hdr[11];
+    h->rate_bps = (uint32_t)le16(&hdr[12]) * 1000u;
+    h->rpm = le16(&hdr[14]);
+    h->interface_mode = hdr[16];
+    h->lut_block = le16(&hdr[18]);
+    h->double_step = (hdr[21] == 0u);
+    return h->tracks >= 1u && h->tracks <= 128u && h->sides >= 1u && h->sides <= 2u &&
+           h->rate_bps >= 125000u && h->rate_bps <= 1000000u && h->lut_block >= 1u;
+}
+
+uint8_t hfe_interface_mode(uint32_t rate_bps, uint8_t encoding)
+{
+    if (encoding == HFE_ENC_AMIGA_MFM) {
+        return rate_bps >= 500000u ? HFE_IF_AMIGA_HD : HFE_IF_AMIGA_DD;
+    }
+    return rate_bps >= 1000000u ? HFE_IF_IBMPC_ED : rate_bps >= 500000u ? HFE_IF_IBMPC_HD : HFE_IF_IBMPC_DD;
+}
+
+void hfe_make_header(uint8_t* hdr, uint8_t tracks, uint8_t sides, uint8_t encoding, uint32_t rate_bps,
+                     uint16_t rpm, bool double_step)
+{
+    memset(hdr, 0xFF, HFE_BLOCK);
+    memcpy(hdr, "HXCPICFE", 8);
+    const uint16_t kbps = (uint16_t)((rate_bps + 500u) / 1000u);
+    hdr[8] = 0;                                 /* format revision */
+    hdr[9] = tracks;
+    hdr[10] = sides;
+    hdr[11] = encoding;
+    hdr[12] = (uint8_t)kbps;
+    hdr[13] = (uint8_t)(kbps >> 8);
+    hdr[14] = (uint8_t)rpm;
+    hdr[15] = (uint8_t)(rpm >> 8);
+    hdr[16] = hfe_interface_mode(rate_bps, encoding);
+    hdr[17] = 1;                                /* dnu */
+    hdr[18] = 1;                                /* track table in block 1 */
+    hdr[19] = 0;
+    hdr[20] = 0xFF;                             /* write allowed */
+    hdr[21] = double_step ? 0x00u : 0xFFu;      /* single step */
+    /* 22..25: track 0 alternate encoding off (0xFF) */
+}
+
+void hfe_lut_entry(const uint8_t* e, uint16_t* block, uint16_t* len)
+{
+    *block = le16(e);
+    *len = le16(e + 2);
+}
+
+void hfe_make_lut_entry(uint8_t* e, uint16_t block, uint16_t len)
+{
+    e[0] = (uint8_t)block;
+    e[1] = (uint8_t)(block >> 8);
+    e[2] = (uint8_t)len;
+    e[3] = (uint8_t)(len >> 8);
+}
+
+uint32_t hfe_fit_cell16(uint32_t rate_bps, uint32_t cells, uint32_t rev_ticks, uint32_t* permille)
+{
+    const uint64_t nominal16 = ((uint64_t)HFE_TICK_HZ << 16) / (2u * (uint64_t)rate_bps);
+    uint32_t pm = 1000;
+    if (rev_ticks && cells) {
+        const uint64_t track = (uint64_t)cells * HFE_TICK_HZ / (2u * (uint64_t)rate_bps);
+        pm = (uint32_t)(((uint64_t)rev_ticks * 985u + track / 2u) / track);
+        if (pm < 970u) pm = 970u;
+        if (pm > 1030u) pm = 1030u;
+    }
+    if (permille) {
+        *permille = pm;
+    }
+    return (uint32_t)((nominal16 * pm + 500u) / 1000u);
+}
+
+uint32_t hfe_bits_to_deltas(const uint8_t* bytes, uint32_t n_bytes, uint32_t cell16, uint32_t* out,
+                            uint32_t max, uint32_t* n_out, uint32_t* cells, uint32_t* prev_ticks)
+{
+    uint32_t made = 0;
+    for (uint32_t i = 0; i < n_bytes && *n_out < max; i++) {
+        const uint8_t b = bytes[i];
+        for (uint32_t k = 0; k < 8u && *n_out < max; k++) {
+            (*cells)++;
+            if (b & (1u << k)) {
+                const uint32_t now = (uint32_t)(((uint64_t)*cells * cell16 + 32768u) >> 16);
+                out[(*n_out)++] = now - *prev_ticks;
+                *prev_ticks = now;
+                made++;
+            }
+        }
+    }
+    return made;
+}
+
+void hfe_pll_init(hfe_pll_t* p, uint32_t rate_bps)
+{
+    p->nominal = (uint32_t)(((uint64_t)HFE_TICK_HZ * 256u) / (2u * (uint64_t)rate_bps));
+    p->period = p->nominal;
+    p->pmin = p->nominal - p->nominal / 8u;
+    p->pmax = p->nominal + p->nominal / 8u;
+    p->phase = 0;
+}
+
+uint32_t hfe_pll_cells(hfe_pll_t* p, uint32_t ticks)
+{
+    const int64_t t = (int64_t)ticks * 256 + p->phase;
+    int64_t n = (t + p->period / 2) / p->period;
+    if (n < 1) {
+        n = 1;
+    }
+    if (n > 8) {                            /* gap or damage: keep the cells, no adaptation */
+        p->phase = 0;
+        return (uint32_t)n;
+    }
+    const int64_t err = t - n * (int64_t)p->period;
+    int64_t per = (int64_t)p->period + err / (n * 16);
+    if (per < p->pmin) per = p->pmin;
+    if (per > p->pmax) per = p->pmax;
+    p->period = (uint32_t)per;
+    p->phase = (int32_t)(err / 2);
+    return (uint32_t)n;
+}
+
+uint32_t hfe_put_cells(uint8_t* buf, uint32_t cap_bits, uint32_t* nbits, uint32_t n, bool mark)
+{
+    uint32_t done = 0;
+    while (done < n && *nbits < cap_bits) {
+        if ((*nbits & 7u) == 0u) {
+            buf[*nbits >> 3] = 0;
+        }
+        done++;
+        if (done == n && mark) {
+            buf[*nbits >> 3] |= (uint8_t)(1u << (*nbits & 7u));
+        }
+        (*nbits)++;
+    }
+    return done;
 }

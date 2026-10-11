@@ -3,7 +3,7 @@
  *
  * Button A held >= 1 s (or DUMP_START from the host) reads the whole disk and writes
  * DUMPnnnn.SCP (first free number) to the FAT32 volume on the SD NAND, or with UFI.CFG
- * format=img|adf (1.16) the decoded sectors of the format found on track 0 as
+ * format=hfe (1.17) HxC bit cells, format=img|adf (1.16) the decoded sectors of the format found on track 0 as
  * DUMPnnnn.IMG/.ADF (cylinder-major, missing sectors zero).  Button B aborts.  The file is byte-identical to `ufi read-disk` (software/ufi_host scp.py):
  * same SCP v2.2 layout, same 275 MHz -> 25 ns rounding on absolute times.
  *
@@ -64,7 +64,7 @@ static uint16_t iec_bad;
 static char cur_ext[5] = ".SCP";
 static uint32_t rpm_sum, rpm_n;
 static void write_json(void);
-/* format=scp|img|adf (1.16): 0 flux (SCP), 1/2 decoded sectors; cfg value and the running one */
+/* format=scp|img|adf|hfe: 0 flux (SCP), 1/2 decoded sectors (1.16), 3 HFE bit cells (1.17) */
 static uint8_t dump_fmt_cfg, dump_fmt;
 static uint16_t q_size = 512;           /* sector size of the probed format */
 
@@ -495,6 +495,138 @@ static int write_image_track(void)
     UINT bw = 0;
     UFI_WATCHDOG_FEED();
     return (f_write(&file, stage, len, &bw) == FR_OK && bw == len) ? UFI_OK : UFI_ERR_STORAGE;
+}
+
+/* ============================================================================
+ * format=hfe (1.17): HxC HFE v1 - revolution 0 of every track as MFM bit cells.
+ * Side 0 of a cylinder fixes the side length and writes whole 512-byte blocks (second
+ * half zero); side 1 fills the second halves.  Header and track table in blocks 0/1
+ * are written in D_FINISH.  table[cyl] = block << 16 | length (both sides).
+ * ============================================================================ */
+
+static void log_puts(const char* s);
+static uint16_t hfe_next_block;         /* next free 512-byte block */
+static uint32_t hfe_side_bytes;         /* bytes per side of the current cylinder */
+static uint32_t hfe_rate;               /* bit rate written into the header */
+static uint8_t hfe_enc;
+static uint32_t hfe_nbits;              /* bits in the current 256-byte half block */
+static uint16_t hfe_blk;                /* half blocks flushed for this side */
+
+static int hfe_flush_half(void)
+{
+    const uint32_t base = ((uint32_t)(table[cyl] >> 16) + hfe_blk) * HFE_BLOCK + (head ? 256u : 0u);
+    UINT bw = 0;
+    memset(&stage[(hfe_nbits + 7u) / 8u], 0, 256u - (hfe_nbits + 7u) / 8u);   /* no stale bytes */
+    for (uint32_t i = 0; i < 256u; i++) {
+        checksum += stage[i];
+    }
+    if (head == 0) {
+        memset(&stage[256], 0, 256);                    /* side 1 half: filled later or stays empty */
+    }
+    if (f_lseek(&file, base) != FR_OK ||
+        f_write(&file, stage, head ? 256u : 512u, &bw) != FR_OK || bw != (head ? 256u : 512u)) {
+        return UFI_ERR_STORAGE;
+    }
+    hfe_blk++;
+    hfe_nbits = 0;
+    return UFI_OK;
+}
+
+/* n cells into the half block buffer, flushing as it fills; limit = bits per side */
+static int hfe_emit(uint32_t n, bool mark, uint32_t limit)
+{
+    while (n) {
+        const uint32_t have = (uint32_t)hfe_blk * 2048u + hfe_nbits;
+        if (have >= limit) {
+            return UFI_OK;                              /* side 1 longer than side 0: cut */
+        }
+        uint32_t cap = 2048u;
+        if (limit - have < 2048u - hfe_nbits) {
+            cap = hfe_nbits + (limit - have);
+        }
+        const uint32_t w = hfe_put_cells(stage, cap, &hfe_nbits, n, mark);
+        n -= w;
+        if (hfe_nbits >= 2048u || (n && w == 0u)) {
+            const int ret = hfe_flush_half();
+            if (ret != UFI_OK) {
+                return ret;
+            }
+        }
+    }
+    return UFI_OK;
+}
+
+static int write_hfe_track(void)
+{
+    if (ufi_flux_get_revolution_count() < 1u) {
+        return UFI_ERR_NO_INDEX;
+    }
+    const flux_revolution_t* r = ufi_flux_get_revolution(0);
+    if (cyl == 0 && head == 0) {
+        /* bit rate from the track-0 probe; without a format: by the transition count */
+        hfe_rate = q_known ? q_rate : (r->count > 55000u ? 500000u : 250000u);
+        hfe_enc = q_known ? (q_amiga ? HFE_ENC_AMIGA_MFM : HFE_ENC_ISOIBM_MFM) : HFE_ENC_UNKNOWN;
+        if (!q_known) {
+            log_puts(hfe_rate == 500000u ? "hfe: no MFM format on track 0, 500 kbit/s by flux density\r\n"
+                                         : "hfe: no MFM format on track 0, 250 kbit/s by flux density\r\n");
+        }
+        hfe_next_block = 2;
+    }
+    hfe_pll_t pll;
+    hfe_pll_init(&pll, hfe_rate);
+    uint32_t limit;
+    if (head == 0) {
+        /* side length: cells in one revolution at the nominal rate, rounded up to bytes */
+        const uint32_t cells = (uint32_t)(((uint64_t)r->index_time * 2u * hfe_rate + FLUX_TIMER_FREQ / 2u) / FLUX_TIMER_FREQ);
+        hfe_side_bytes = (cells + 7u) / 8u;
+        if (hfe_side_bytes * 2u > 65535u || hfe_next_block + (hfe_side_bytes + 255u) / 256u > 65535u) {
+            return UFI_ERR_NOT_IMPL;                    /* ED / file too large for HFE v1 */
+        }
+        table[cyl] = ((uint32_t)hfe_next_block << 16) | (hfe_side_bytes * 2u);
+        hfe_next_block = (uint16_t)(hfe_next_block + (hfe_side_bytes + 255u) / 256u);
+    }
+    limit = hfe_side_bytes * 8u;
+    hfe_nbits = 0;
+    hfe_blk = 0;
+    uint32_t prev = 0;
+    int ret = UFI_OK;
+    for (uint32_t i = 0; i < r->count && ret == UFI_OK; i++) {
+        if ((i & 1023u) == 0u) {
+            UFI_WATCHDOG_FEED();
+        }
+        ret = hfe_emit(hfe_pll_cells(&pll, r->samples[i].timestamp - prev), true, limit);
+        prev = r->samples[i].timestamp;
+    }
+    if (ret == UFI_OK) {
+        /* the gap before the index and any shortfall: zero cells up to the side length */
+        const uint32_t have = (uint32_t)hfe_blk * 2048u + hfe_nbits;
+        if (have < limit) {
+            ret = hfe_emit(limit - have, false, limit);
+        }
+    }
+    if (ret == UFI_OK && hfe_nbits) {
+        ret = hfe_flush_half();
+    }
+    return ret;
+}
+
+/* header + track table into blocks 0 and 1 */
+static int finish_hfe(void)
+{
+    const uint32_t rpm10 = rpm_n ? (rpm_sum + rpm_n / 2u) / rpm_n : 0u;
+    hfe_make_header(stage, cfg.tracks, cfg.sides, hfe_enc, hfe_rate, (uint16_t)(rpm10 / 10u),
+                    ufi_drive_get_timing().double_step != 0u);
+    memset(&stage[HFE_BLOCK], 0xFF, HFE_BLOCK);
+    for (uint32_t t = 0; t < cfg.tracks && t < HFE_BLOCK / 4u; t++) {
+        hfe_make_lut_entry(&stage[HFE_BLOCK + 4u * t], (uint16_t)(table[t] >> 16), (uint16_t)table[t]);
+    }
+    UINT bw = 0;
+    if (f_lseek(&file, 0) != FR_OK || f_write(&file, stage, 2u * HFE_BLOCK, &bw) != FR_OK ||
+        bw != 2u * HFE_BLOCK || f_close(&file) != FR_OK) {
+        return UFI_ERR_STORAGE;
+    }
+    file_open = 0;
+    return UFI_OK;
 }
 
 static void log_puts(const char* s)
@@ -952,7 +1084,7 @@ static void write_json(void)
         *p++ = '.';
         p = put_num(p, rpm10 % 10u, 1);
         p = js_str(p, &first, "encoding", q_known ? (q_amiga ? "amiga" : "mfm") : "unknown");
-        p = js_num(p, &first, "rate_bps", q_known ? q_rate : 0u);
+        p = js_num(p, &first, "rate_bps", dump_fmt == 3u ? hfe_rate : q_known ? q_rate : 0u);
         p = js_num(p, &first, "spt", q_known ? q_spt : 0u);
         p = js_num(p, &first, "sector_bytes", q_known ? q_size : 0u);
         p = js_num(p, &first, "bad_tracks", bad_tracks);
@@ -970,7 +1102,8 @@ static void write_json(void)
 /* ============================================================================
  * write an image from the SD NAND onto the disk (1.16): UFI.CFG button_a=write +
  * write_file=NAME, or WRITE_START from the host.  SCP: revolution 0 of every track as
- * flux (odd periods clamped); IMG/ADF/D81: sectors encoded like FORMAT; D64/D71/D81 with
+ * flux (odd periods clamped); HFE (1.17): bit cells at the header rate, scaled to the
+ * measured revolution (98.5 %, +-3 %); IMG/ADF/D81: sectors encoded like FORMAT; D64/D71/D81 with
  * drive=iec: U2 block writes.  Each track is read back (sector count / flux count).
  * Report in WRITE.LOG.  Errors: 1 storage, 2 drive, 3 write, 4 aborted, 5 image not
  * usable, 6 write-protected, 7 file not found.
@@ -982,6 +1115,9 @@ static image_geo_t geo;
 static scp_header_t scph;
 static uint32_t job_cells, job_written, job_bad;
 static uint8_t job_h0, job_h1;          /* heads to write: [h0, h1) */
+static uint32_t job_rev;                /* measured revolution (ticks) for the HFE fit */
+static uint32_t job_permille = 1000;    /* HFE: cell scale applied to the current track */
+static hfe_header_t hfeh;
 
 /* blocking capture of the current track for the read-back check */
 static bool capture_blocking(uint8_t revs)
@@ -1054,6 +1190,27 @@ static bool job_load_track(uint32_t* n, int* err)
         }
         return *n >= 3u;
     }
+    if (geo.kind == IMG_HFE) {
+        if (cyl >= hfeh.tracks || (table[cyl] & 0xFFFFu) < 2u) {
+            return false;
+        }
+        const uint32_t side_bytes = (table[cyl] & 0xFFFFu) / 2u;
+        const uint32_t cell16 = hfe_fit_cell16(geo.rate_bps, side_bytes * 8u, job_rev, &job_permille);
+        uint32_t left = side_bytes, blk = 0, cells = 0, prev = 0;
+        while (left > 0 && *n < max) {
+            const uint32_t chunk = left > 256u ? 256u : left;
+            UFI_WATCHDOG_FEED();
+            if (f_lseek(&file, ((table[cyl] >> 16) + blk) * HFE_BLOCK + (head ? 256u : 0u)) != FR_OK ||
+                f_read(&file, stage, chunk, &got) != FR_OK || got != chunk) {
+                *err = UFI_ERR_STORAGE;
+                return false;
+            }
+            hfe_bits_to_deltas(stage, chunk, cell16, store, max, n, &cells, &prev);
+            left -= chunk;
+            blk++;
+        }
+        return *n >= 3u;
+    }
     const uint32_t len = (uint32_t)geo.spt * 512u;
     if (f_lseek(&file, image_track_offset(&geo, cyl, head)) != FR_OK ||
         f_read(&file, stage, len, &got) != FR_OK || got != len) {
@@ -1081,7 +1238,7 @@ static bool job_verify(uint32_t n)
         return false;
     }
     bool ok;
-    if (geo.kind == IMG_SCP) {
+    if (geo.kind == IMG_SCP || geo.kind == IMG_HFE) {
         const uint32_t m = ufi_flux_get_revolution(0)->count;
         const uint32_t diff = (m > n) ? m - n : n - m;
         ok = diff <= n / 20u;
@@ -1198,6 +1355,27 @@ static void sdwrite_service(void)
                 job_h0 = (scph.heads == 2u) ? 1u : 0u;
                 job_h1 = (scph.heads == 1u) ? 1u : 2u;
             }
+            if (geo.kind == IMG_HFE) {
+                UINT got = 0;
+                if (f_read(&file, stage, HFE_BLOCK, &got) != FR_OK || got != HFE_BLOCK ||
+                    !hfe_parse_header(stage, &hfeh) ||
+                    f_lseek(&file, (uint32_t)hfeh.lut_block * HFE_BLOCK) != FR_OK ||
+                    f_read(&file, stage, 4u * hfeh.tracks, &got) != FR_OK || got != 4u * hfeh.tracks) {
+                    fail(5);
+                    break;
+                }
+                memset(table, 0, sizeof(table));
+                for (uint32_t t = 0; t < hfeh.tracks; t++) {
+                    uint16_t blk = 0, len = 0;
+                    hfe_lut_entry(&stage[4u * t], &blk, &len);
+                    table[t] = ((uint32_t)blk << 16) | len;
+                }
+                geo.cyls = hfeh.tracks;
+                geo.heads = hfeh.sides;
+                geo.rate_bps = hfeh.rate_bps;
+                geo.double_step = hfeh.double_step;
+                job_h1 = hfeh.sides;
+            }
             drive_timing_t dt = ufi_drive_get_timing();
             dt.double_step = (dstep_cfg == 1u || (dstep_cfg == 2u && geo.double_step)) ? 1u : 0u;
             ufi_drive_set_timing(&dt);
@@ -1206,6 +1384,7 @@ static void sdwrite_service(void)
             if (geo.kind != IMG_SCP) {
                 uint32_t rev = 0;
                 if (ufi_format_revolution(&rev) != UFI_OK) { fail(2); break; }
+                job_rev = rev;
                 if (geo.rate_by_rpm) {          /* 360K: 300 kbit/s in a 360 rpm drive */
                     geo.rate_bps = (rev < FLUX_TIMER_FREQ / 1000u * 180u) ? 300000u : 250000u;
                 }
@@ -1224,7 +1403,8 @@ static void sdwrite_service(void)
             int err = UFI_OK;
             if (job_load_track(&n, &err)) {
                 led_set(&PIN_LED_FDD, true);
-                const int ret = ufi_write_local(cyl, head, n, geo.kind == IMG_SCP);
+                job_permille = (geo.kind == IMG_HFE) ? job_permille : 1000u;
+                const int ret = ufi_write_local(cyl, head, n, geo.kind == IMG_SCP || geo.kind == IMG_HFE);
                 led_set(&PIN_LED_FDD, false);
                 if (ret == UFI_ERR_WRITE_PROT) { fail(6); break; }
                 if (ret != UFI_OK) {
@@ -1234,7 +1414,19 @@ static void sdwrite_service(void)
                           : ret == UFI_ERR_NO_INDEX ? "write error (no index)" : "write error");
                 } else if (job_verify(n)) {
                     job_written++;
-                    job_log("ok");
+                    if (job_permille != 1000u) {        /* HFE cell scale: "ok (scale 0.985)" */
+                        char tag[24];
+                        memcpy(tag, "ok (scale ", 10);
+                        tag[10] = (char)('0' + job_permille / 1000u);
+                        tag[11] = '.';
+                        tag[12] = (char)('0' + job_permille / 100u % 10u);
+                        tag[13] = (char)('0' + job_permille / 10u % 10u);
+                        tag[14] = (char)('0' + job_permille % 10u);
+                        memcpy(&tag[15], ")", 2);
+                        job_log(tag);
+                    } else {
+                        job_log("ok");
+                    }
                 } else {
                     job_written++;
                     job_bad++;
@@ -1375,7 +1567,7 @@ static void parse_line(const char* k, dump_config_t* c)
     } else if (!strncmp(k, "auto_dump=", 10)) {
         auto_dump = (num == 1u);
     } else if (!strncmp(k, "format=", 7)) {
-        dump_fmt_cfg = word_is(v, "img") ? 1u : word_is(v, "adf") ? 2u : 0u;
+        dump_fmt_cfg = word_is(v, "img") ? 1u : word_is(v, "adf") ? 2u : word_is(v, "hfe") ? 3u : 0u;
     } else if (!strncmp(k, "copy_from=", 10) || !strncmp(k, "copy_to=", 8)) {
         for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
             if (word_is(v, drive_names[i].name)) {
@@ -1447,7 +1639,7 @@ int ufi_dump_start(const dump_config_t* c)
 
 int ufi_dump_start_fmt(const dump_config_t* c, uint8_t fmt)
 {
-    if (fmt > 2u) {
+    if (fmt > 3u) {
         return UFI_ERR_BAD_ARGS;
     }
     if (state != D_IDLE && state != D_DONE && state != D_ERROR) {
@@ -1541,13 +1733,19 @@ void ufi_dump_service(void)
                 break;
             } else {
                 if (mount() != UFI_OK) { fail(1); break; }
-                file_ext = dump_fmt == 1u ? ".IMG" : dump_fmt == 2u ? ".ADF" : ".SCP";
+                file_ext = dump_fmt == 1u ? ".IMG" : dump_fmt == 2u ? ".ADF" : dump_fmt == 3u ? ".HFE" : ".SCP";
                 const int fr = open_next_file();
                 file_ext = ".SCP";
                 if (fr != UFI_OK) { fail(1); break; }
                 if (dump_fmt) {
                     checksum = 0;
                     stage_len = 0;
+                    if (dump_fmt == 3u) {           /* blocks 0/1: header + table, filled at the end */
+                        UINT bw = 0;
+                        memset(stage, 0xFF, 2u * HFE_BLOCK);
+                        if (f_write(&file, stage, 2u * HFE_BLOCK, &bw) != FR_OK || bw != 2u * HFE_BLOCK) { fail(1); break; }
+                        memset(table, 0, sizeof(table));
+                    }
                 } else if (begin_file() != UFI_OK) { fail(1); break; }
                 open_log();
                 log_puts("UFI dump quality report\r\ntrack  good/expected  rpm  reads\r\n");
@@ -1641,7 +1839,8 @@ void ufi_dump_service(void)
 
         case D_WRITE: {
             led_set(&PIN_LED_FDD, false);
-            const int ret = dump_fmt ? write_image_track() : write_track((uint8_t)(cyl * 2u + head));
+            const int ret = dump_fmt == 3u ? write_hfe_track()
+                          : dump_fmt ? write_image_track() : write_track((uint8_t)(cyl * 2u + head));
             g_capture.state = CAPTURE_IDLE;
             if (ret != UFI_OK) { fail(ret == UFI_ERR_NO_INDEX ? 2 : ret == UFI_ERR_NOT_IMPL ? 5 : 3); break; }
             HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
@@ -1669,7 +1868,9 @@ void ufi_dump_service(void)
         case D_FINISH:
             ufi_drive_motor(false);
             close_log();
-            if (dump_fmt) {
+            if (dump_fmt == 3u) {
+                if (finish_hfe() != UFI_OK) { fail(3); break; }
+            } else if (dump_fmt) {
                 if (f_close(&file) != FR_OK) { fail(3); break; }
                 file_open = 0;
             } else if (finish_file() != UFI_OK) { fail(3); break; }
