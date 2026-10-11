@@ -154,7 +154,7 @@ static void send(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
     ufi_usb_tx_blocking(tx, ufi_v2_frame(tx, type, cmd, seq, status, len));
 }
 
-static uint8_t board_rev(void)
+uint8_t ufi_board_rev(void)
 {
     const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
     return (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? 5u
@@ -497,7 +497,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = len;
             break;
         case V2_INFO: {
-            const uint8_t rev = board_rev();
+            const uint8_t rev = ufi_board_rev();
             out[0] = 2;                     /* protocol version */
             fw_version(&out[1]);
             out[3] = rev;

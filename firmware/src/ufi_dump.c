@@ -19,6 +19,13 @@
 #include "ufi_mfm.h"
 #include <string.h>
 
+#ifndef UFI_FW_VERSION
+#define UFI_FW_VERSION "0.0"
+#endif
+#ifndef UFI_GIT_REV
+#define UFI_GIT_REV "dev"
+#endif
+
 #define SCP_TRACKS          168u
 #define SCP_HDR_LEN         0x10u
 #define SCP_TABLE_LEN       (4u * SCP_TRACKS)
@@ -51,6 +58,10 @@ static uint8_t dstep_cfg;
 static bool dstep_pending, tracks_auto;
 static char iec_msg[40];                /* DOS power-up message for the log */
 static uint16_t iec_bad;
+/* DUMPnnnn.JSN (1.16): extension of the image written, rpm sum over the logged tracks */
+static char cur_ext[5] = ".SCP";
+static uint32_t rpm_sum, rpm_n;
+static void write_json(void);
 
 /* CPU-polled SD transfers: the staging buffer may live in DTCM (not zeroed at start) */
 __attribute__((section(".dtcm"), aligned(4))) static uint8_t stage[32 * 1024];
@@ -205,6 +216,7 @@ static int open_next_file(void)
             }
             file_open = 1;
             file_no = n;
+            memcpy(cur_ext, file_ext, 5);
             return UFI_OK;
         }
     }
@@ -469,6 +481,8 @@ static void log_track(uint8_t good)
     char line[64], *p = line;
     const flux_revolution_t* r = ufi_flux_get_revolution(0);
     const uint32_t rpm10 = r->index_time ? (uint32_t)(600ull * FLUX_TIMER_FREQ / r->index_time) : 0u;
+    rpm_sum += rpm10;
+    rpm_n++;
     p = put_num(p, cyl, 2);
     *p++ = '.';
     p = put_num(p, head, 1);
@@ -783,6 +797,110 @@ static const struct { const char* name; uint8_t type; } drive_names[] = {
     {"apple", DRIVE_APPLE_II}, {"apple2", DRIVE_APPLE2},
 };
 
+/* ============================================================================
+ * DUMPnnnn.JSN (1.16): machine-readable metadata next to the image (8.3 names, so .JSN)
+ * ============================================================================ */
+
+static char* js_text(char* p, const char* s)
+{
+    while (*s) {
+        if (*s == '"' || *s == '\\') {
+            *p++ = '\\';
+        }
+        *p++ = *s++;
+    }
+    return p;
+}
+
+static char* js_key(char* p, bool* first, const char* k)
+{
+    if (!*first) {
+        *p++ = ',';
+    }
+    *first = false;
+    memcpy(p, "\n  \"", 4);
+    p = js_text(p + 4, k);
+    memcpy(p, "\": ", 3);
+    return p + 3;
+}
+
+static char* js_str(char* p, bool* first, const char* k, const char* v)
+{
+    p = js_key(p, first, k);
+    *p++ = '"';
+    p = js_text(p, v);
+    *p++ = '"';
+    return p;
+}
+
+static char* js_num(char* p, bool* first, const char* k, uint32_t v)
+{
+    return put_num(js_key(p, first, k), v, 1);
+}
+
+static const char* drive_name(uint8_t d)
+{
+    for (uint32_t i = 0; i < sizeof(drive_names) / sizeof(drive_names[0]); i++) {
+        if (drive_names[i].type == d) {
+            return drive_names[i].name;
+        }
+    }
+    return "?";
+}
+
+/* after the image is closed: firmware, board, drive, geometry, format, rpm, errors, checksum */
+static void write_json(void)
+{
+    char name[13], fmt[5], buf[768], *p = buf;
+    memcpy(name, "DUMP0000.JSN", 13);
+    name[4] = (char)('0' + file_no / 1000u);
+    name[5] = (char)('0' + file_no / 100u % 10u);
+    name[6] = (char)('0' + file_no / 10u % 10u);
+    name[7] = (char)('0' + file_no % 10u);
+    for (int i = 0; i < 4; i++) {                        /* ".SCP" -> "scp" */
+        const char c = cur_ext[i + 1];
+        fmt[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    fmt[4] = 0;
+    bool first = true;
+    *p++ = '{';
+    memcpy(&name[8], cur_ext, 5);
+    p = js_str(p, &first, "file", name);
+    memcpy(&name[8], ".JSN", 5);
+    p = js_str(p, &first, "format", fmt);
+    p = js_str(p, &first, "firmware", UFI_FW_VERSION);
+    p = js_str(p, &first, "git", UFI_GIT_REV);
+    p = js_num(p, &first, "board", ufi_board_rev());
+    p = js_str(p, &first, "drive", drive_name(cfg.drive));
+    p = js_num(p, &first, "sample_hz", FLUX_TIMER_FREQ);
+    if (cfg.drive == DRIVE_IEC) {
+        p = js_str(p, &first, "dos", iec_msg);
+        p = js_num(p, &first, "tracks", iec_tracks);
+        p = js_num(p, &first, "bad_blocks", iec_bad);
+    } else {
+        p = js_num(p, &first, "tracks", cfg.tracks);
+        p = js_num(p, &first, "sides", cfg.sides);
+        p = js_num(p, &first, "revs", cfg.revs);
+        p = js_num(p, &first, "double_step", ufi_drive_get_timing().double_step ? 1u : 0u);
+        const uint32_t rpm10 = rpm_n ? (rpm_sum + rpm_n / 2u) / rpm_n : 0u;
+        p = put_num(js_key(p, &first, "rpm"), rpm10 / 10u, 1);
+        *p++ = '.';
+        p = put_num(p, rpm10 % 10u, 1);
+        p = js_str(p, &first, "encoding", q_known ? (q_amiga ? "amiga" : "mfm") : "unknown");
+        p = js_num(p, &first, "rate_bps", q_known ? q_rate : 0u);
+        p = js_num(p, &first, "spt", q_known ? q_spt : 0u);
+        p = js_num(p, &first, "bad_tracks", bad_tracks);
+    }
+    p = js_num(p, &first, "checksum", checksum);
+    memcpy(p, "\n}\n", 3);
+    p += 3;
+    UINT bw = 0;
+    if (f_open(&logfile, name, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK) {   /* the log is closed by now */
+        f_write(&logfile, buf, (UINT)(p - buf), &bw);
+        f_close(&logfile);
+    }
+}
+
 static bool word_is(const char* p, const char* w)
 {
     while (*w) {
@@ -1030,6 +1148,8 @@ void ufi_dump_service(void)
             tries = 0;
             q_known = false;
             bad_tracks = 0;
+            rpm_sum = 0;
+            rpm_n = 0;
             state = D_CAPTURE;
             break;
 
@@ -1125,6 +1245,7 @@ void ufi_dump_service(void)
             ufi_drive_motor(false);
             close_log();
             if (finish_file() != UFI_OK) { fail(3); break; }
+            write_json();
             unmount();
             led_set(&PIN_LED_ACT, true);
             state = D_DONE;
@@ -1161,6 +1282,7 @@ void ufi_dump_service(void)
                 if (log_open) { f_close(&logfile); log_open = false; }
                 if (flush_stage() != UFI_OK || f_close(&file) != FR_OK) { fail(3); break; }
                 file_open = 0;
+                write_json();
                 unmount();
                 led_set(&PIN_LED_FDD, false);
                 led_set(&PIN_LED_ACT, true);

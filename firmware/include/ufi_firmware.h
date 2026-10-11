@@ -645,6 +645,7 @@ uint8_t ufi_iec_loopback(void);         // ufi_iec.c: bit0-3 ATN/CLK/DATA/SRQ no
 void ufi_crash_fault(const uint32_t* frame, uint32_t kind);   // from the fault handlers
 void ufi_crash_boot(void);              // start-up: CRASH.LOG, reset cause text
 const char* ufi_crash_last(void);       // "reset: power-on" / "reset: HardFault pc=..."
+uint8_t ufi_board_rev(void);            // 5/6/7 from the BOARD_ID divider, 0 = unknown (ufi_v2.c)
 uint8_t ufi_crash_kind(void);           // 0 = no fault record at this start-up
 void ufi_stack_paint(void);             // first thing in ufi_init(): paint the free stack
 uint32_t ufi_stack_free(void);          // bytes of stack never used so far
