@@ -293,7 +293,7 @@ static void put_crc_field(enc_t* e, uint8_t mark, const uint8_t* p, uint32_t n)
     put_byte(e, (uint8_t)crc);
 }
 
-#define IBM_SECTOR_BYTES    (22u + 22u + 530u)  /* ID part, gap 2, data part (no gap 3) */
+#define IBM_SECTOR_BYTES(sz) (22u + 22u + (sz) + 18u)  /* ID part, gap 2, data part (no gap 3) */
 #define IBM_HEAD_IAM        (80u + 12u + 4u + 50u)
 #define IBM_HEAD_NO_IAM     16u
 
@@ -302,6 +302,8 @@ uint32_t mfm_encode_track(const mfm_track_fmt_t* f, uint8_t cyl, uint8_t head,
 {
     /* layout: standard (IAM, nominal gap 3) if it fits, else shorter gap 3, else no IAM */
     const uint32_t avail = f->track_cells / 16u;
+    const uint8_t ncode = f->size_code ? f->size_code : 2u;
+    const uint32_t sbytes = 128u << ncode;
     uint32_t gap3 = 0;
     bool iam = false;
     for (int with_iam = 1; with_iam >= 0; with_iam--) {
@@ -310,8 +312,8 @@ uint32_t mfm_encode_track(const mfm_track_fmt_t* f, uint8_t cyl, uint8_t head,
             continue;
         }
         const uint32_t per = (avail - hdr) / f->spt;
-        if (per >= IBM_SECTOR_BYTES + 8u) {
-            gap3 = per - IBM_SECTOR_BYTES;
+        if (per >= IBM_SECTOR_BYTES(sbytes) + 8u) {
+            gap3 = per - IBM_SECTOR_BYTES(sbytes);
             if (gap3 > f->gap3) {
                 gap3 = f->gap3;
             }
@@ -339,10 +341,10 @@ uint32_t mfm_encode_track(const mfm_track_fmt_t* f, uint8_t cyl, uint8_t head,
     }
     const uint8_t id_head = f->head_id_swap ? (uint8_t)(head ^ 1u) : head;
     for (uint8_t s = 0; s < f->spt; s++) {
-        const uint8_t id[4] = {cyl, id_head, (uint8_t)(s + 1u), 2u};
+        const uint8_t id[4] = {cyl, id_head, (uint8_t)(s + 1u), ncode};
         put_crc_field(&e, 0xFE, id, 4);
         put_run(&e, 0x4E, 22);
-        put_crc_field(&e, 0xFB, sectors + (uint32_t)s * 512u, 512);
+        put_crc_field(&e, 0xFB, sectors + (uint32_t)s * sbytes, sbytes);
         put_run(&e, 0x4E, gap3);
     }
     while (e.pos + 16u <= f->track_cells) {     /* gap 4b up to the track length */

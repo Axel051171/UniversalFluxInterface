@@ -27,8 +27,8 @@ enum {
 };
 
 typedef struct {
-    uint8_t c, h, r;
-    uint32_t crc;               /* CRC-32 of the 512 data bytes */
+    uint8_t c, h, r, n;         /* ID field; n = size code (128 << n data bytes) */
+    uint32_t crc;               /* CRC-32 of the 128 << n data bytes (1.17: was always 512) */
 } verify_sector_t;
 
 typedef struct {

@@ -23,7 +23,7 @@ project(ufi_firmware C ASM)
 # revision comes only from a git work tree whose top level is this project's root (the
 # parent of firmware/), never from an enclosing foreign repository (audit F07).  A work
 # tree with uncommitted changes gets a "+" suffix.
-set(UFI_FW_VERSION "1.16")
+set(UFI_FW_VERSION "1.17")
 set(UFI_GIT_REV "" CACHE STRING "git revision to embed in the firmware (empty = detect)")
 if(NOT UFI_GIT_REV)
     execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" rev-parse --show-toplevel

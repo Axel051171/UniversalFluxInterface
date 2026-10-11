@@ -12,6 +12,8 @@ static uint16_t arr[MAXN], arr2[MAXN];
 static uint8_t sectors[22 * 512], sectors2[22 * 512];
 static mfm_decoder_t dec;
 
+static uint8_t size_code;       /* IBM sector size for make_track(), 0 = 512 */
+
 static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head, const uint8_t* data,
                            uint32_t* out, uint16_t* packed, bool amiga)
 {
@@ -20,7 +22,8 @@ static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head
     if (amiga) {
         n = mfm_encode_amiga_track(rate, cells, cyl, head, spt, data, out, MAXN);
     } else {
-        const mfm_track_fmt_t f = {.rate_bps = rate, .track_cells = cells, .spt = spt, .gap3 = 0x6C};
+        const mfm_track_fmt_t f = {.rate_bps = rate, .track_cells = cells, .spt = spt, .gap3 = 0x6C,
+                                   .size_code = size_code};
         n = mfm_encode_track(&f, cyl, head, data, out, MAXN);
     }
     const pack_cfg_t cfg = {.scale = 1000, .precomp_ns = 0, .track = 0, .clamp = false};
@@ -109,5 +112,26 @@ int main(void)
 
     /* CRC-32 reference value */
     CHECK(ufi_crc32(0, (const uint8_t*)"123456789", 9) == 0xCBF43926u, "crc32 check value");
+
+    /* 1024-byte sectors (N = 3): the whole sector is compared, not the first 512 bytes */
+    size_code = 3;
+    n = make_track(500000u, 8, 3, 0, sectors, deltas, arr, false);
+    verify_ref_build(&ref, &dec, arr, n);
+    CHECK(ref.n == 8 && ref.s[0].n == 3, "reference 8 x 1024: sectors %u n %u", ref.n, ref.s[0].n);
+    CHECK(level_for(&ref, arr, n, 2, 3, true) == VERIFY_CONTENT, "1024-byte sectors verified");
+    memcpy(sectors2, sectors, sizeof(sectors2));
+    sectors2[900] ^= 0x01u;                                 /* byte 900 of sector 1 */
+    n2 = make_track(500000u, 8, 3, 0, sectors2, deltas2, arr2, false);
+    CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "1024-byte sector changed at byte 900 -> fails");
+    /* 256-byte sectors (N = 1): no stale bytes beyond the sector in the checksum */
+    size_code = 1;
+    n = make_track(250000u, 16, 2, 1, sectors, deltas, arr, false);
+    verify_ref_build(&ref, &dec, arr, n);
+    CHECK(ref.n == 16 && ref.s[0].n == 1, "reference 16 x 256: sectors %u", ref.n);
+    CHECK(level_for(&ref, arr, n, 2, 5, true) == VERIFY_CONTENT, "256-byte sectors verified");
+    sectors2[300] ^= 0x80u;                                 /* byte 44 of sector 2 */
+    n2 = make_track(250000u, 16, 2, 1, sectors2, deltas2, arr2, false);
+    CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "256-byte sector changed -> fails");
+    size_code = 0;
     CHECK_SUMMARY("test_write_verify");
 }

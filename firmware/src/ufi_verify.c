@@ -81,7 +81,8 @@ static void ref_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool cr
     ref->s[ref->n].c = id->c;
     ref->s[ref->n].h = id->h;
     ref->s[ref->n].r = id->r;
-    ref->s[ref->n].crc = ufi_crc32(0, data, 512);
+    ref->s[ref->n].n = id->n;
+    ref->s[ref->n].crc = ufi_crc32(0, data, 128u << (id->n & 3u));
     ref->n++;
 }
 
@@ -122,7 +123,7 @@ static void match_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool 
         }
         if (!crc_ok) {
             if (m->bad_crc < 255u) m->bad_crc++;
-        } else if (ufi_crc32(0, data, 512) == s->crc) {
+        } else if (s->n == id->n && ufi_crc32(0, data, 128u << (id->n & 3u)) == s->crc) {
             m->found |= 1ull << i;
         }
         return;

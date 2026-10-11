@@ -59,9 +59,10 @@ void mfm_dec_interval(mfm_decoder_t* d, uint32_t ticks);
 typedef struct {
     uint32_t rate_bps;
     uint32_t track_cells;       /* cells to fill (the last gap pads up to here) */
-    uint8_t spt;                /* 512-byte sectors, numbered 1..spt */
+    uint8_t spt;                /* sectors numbered 1..spt (512 bytes unless size_code) */
     uint8_t gap3;               /* nominal; reduced (and the IAM dropped) if it does not fit */
     bool head_id_swap;          /* Commodore 1581: ID side field = 1 - physical head */
+    uint8_t size_code;          /* sector size 128 << code; 0 = 512 bytes (1.17) */
 } mfm_track_fmt_t;
 
 /* Encode one IBM track starting at the index: deltas[] = flux intervals in ticks.
