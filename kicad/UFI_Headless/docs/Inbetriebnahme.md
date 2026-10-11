@@ -127,3 +127,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 - DRATE-Polarität (7.1) → Doku `SET_LINES`
 - USB-Durchsatz (5.7) → entscheidet, ob USB High Speed (v0.7) nötig ist
 - Strommessung: Offset/Steigung (4.2/4.6) → ggf. Kalibrierung in `ufi_board.c`
+
+## Schreibpfad
+
+Die Abnahme des Schreibpfads (Loopback-Messungen, Streaming, Verify-Stufen, Fehlerfaelle, Medien) steht in `docs/Abnahme_Schreibpfad.md` im Repo-Wurzelverzeichnis.
