@@ -1,6 +1,6 @@
 # USB-Protokoll der UFI Flux Engine (UFI Headless)
 
-Stand: Firmware 1.14, Board v0.7. Alle Mehrbyte-Werte **little endian**.
+Stand: Firmware 1.15, Board v0.7. Alle Mehrbyte-Werte **little endian**.
 
 ## 1 USB-Personalitäten
 

@@ -108,7 +108,7 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 14, 7, 0x3FFF, 275_000_000, 8 << 20, 4096)
+            r(0, P2.INFO_HDR.pack(2, 1, 15, 7, 0x3FFF, 275_000_000, 8 << 20, 4096)
               + b"UFI Flux Engine 1.14 (abc1234, 2026-10-09)\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
@@ -288,7 +288,7 @@ def test_bad_request_frame_gets_frame_error():
 def test_info_caps_status():
     dev = P2.Device2(FakeV2())
     lines = dev.info()
-    assert lines[0] == "UFI v2 protocol, firmware 1.14, board v0.7"
+    assert lines[0] == "UFI v2 protocol, firmware 1.15, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
     assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x3FFF
