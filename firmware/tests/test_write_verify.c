@@ -9,7 +9,7 @@
 #define MAXN 80000u
 static uint32_t deltas[MAXN], deltas2[MAXN];
 static uint16_t arr[MAXN], arr2[MAXN];
-static uint8_t sectors[18 * 512], sectors2[18 * 512];
+static uint8_t sectors[22 * 512], sectors2[22 * 512];
 static mfm_decoder_t dec;
 
 static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head, const uint8_t* data,
@@ -18,7 +18,7 @@ static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head
     const uint32_t cells = (uint32_t)(((uint64_t)55000000u * 2u * rate / FLUX_TIMER_FREQ) * 98u / 100u);
     uint32_t n;
     if (amiga) {
-        n = mfm_encode_amiga_track(rate, cells, cyl, head, data, out, MAXN);
+        n = mfm_encode_amiga_track(rate, cells, cyl, head, spt, data, out, MAXN);
     } else {
         const mfm_track_fmt_t f = {.rate_bps = rate, .track_cells = cells, .spt = spt, .gap3 = 0x6C};
         n = mfm_encode_track(&f, cyl, head, data, out, MAXN);
@@ -87,6 +87,14 @@ int main(void)
     CHECK(level_for(&ref, arr, n, 2, 5, true) == VERIFY_CONTENT, "Amiga verified with jitter");
     n2 = make_track(250000u, 11, 10, 1, sectors2, deltas2, arr2, true);
     CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "Amiga other data -> fails");
+    /* Amiga HD (1.16): 22 sectors at 500 kbit/s decode and verify like DD */
+    n = make_track(500000u, 22, 40, 1, sectors, deltas, arr, true);
+    verify_ref_build(&ref, &dec, arr, n);
+    CHECK(ref.rate_bps == 500000u && ref.n == 22 && ref.amiga, "reference Amiga HD: rate %u sectors %u", ref.rate_bps, ref.n);
+    CHECK(level_for(&ref, arr, n, 2, 9, true) == VERIFY_CONTENT, "Amiga HD verified with jitter");
+    n2 = make_track(500000u, 22, 40, 1, sectors2, deltas2, arr2, true);
+    CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "Amiga HD other data -> fails");
+    CHECK(mfm_encode_amiga_track(500000u, 200000u, 0, 0, 12, sectors, deltas, MAXN) == 0, "Amiga spt 12 refused");
 
     /* undecodable track (random intervals): no reference, count decides, never 'verified' */
     uint32_t rng = 99;

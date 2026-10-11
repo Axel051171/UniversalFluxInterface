@@ -118,7 +118,7 @@ static void amiga_sector(mfm_decoder_t* d)
     const uint32_t* r = d->raw;
     const uint32_t info = odd_even(r[0], r[1]);
     const uint8_t track = (uint8_t)(info >> 16), sector = (uint8_t)(info >> 8);
-    if ((info >> 24) != 0xFFu || sector >= AMIGA_SECTORS) {
+    if ((info >> 24) != 0xFFu || sector >= AMIGA_SECTORS_HD) {   /* DD 11 or HD 22 */
         return;
     }
     uint32_t hsum = 0, dsum = 0;
@@ -395,22 +395,22 @@ static void put_long_odd_even(enc_t* e, uint32_t v, uint32_t* sum)
 }
 
 uint32_t mfm_encode_amiga_track(uint32_t rate_bps, uint32_t track_cells, uint8_t cyl,
-                                uint8_t head, const uint8_t* sectors, uint32_t* deltas,
-                                uint32_t max)
+                                uint8_t head, uint8_t spt, const uint8_t* sectors,
+                                uint32_t* deltas, uint32_t max)
 {
-    if (track_cells < AMIGA_SECTORS * 1088u * 8u) {
+    if ((spt != AMIGA_SECTORS && spt != AMIGA_SECTORS_HD) || track_cells < spt * 1088u * 8u) {
         return 0;
     }
     enc_t e = {.out = deltas, .max = max, .rate = rate_bps, .pos = 4};
     const uint8_t track = (uint8_t)(cyl * 2u + head);
-    for (uint8_t s = 0; s < AMIGA_SECTORS; s++) {
+    for (uint8_t s = 0; s < spt; s++) {
         const uint8_t* d = sectors + (uint32_t)s * 512u;
         put_run(&e, 0x00, 2);
         put_raw(&e, SYNC_A1);
         put_raw(&e, SYNC_A1);
         uint32_t hsum = 0, dsum = 0;
         const uint32_t info = 0xFF000000u | ((uint32_t)track << 16) | ((uint32_t)s << 8) |
-                              (AMIGA_SECTORS - s);
+                              (uint32_t)(spt - s);
         put_long_odd_even(&e, info, &hsum);
         for (int i = 0; i < 4; i++) {
             put_word(&e, 0, &hsum);                   /* label odd halves */

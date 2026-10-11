@@ -124,6 +124,7 @@ def cmd_write_disk(dev, a) -> None:
 FORMATS = {
     "1440": (500, 18, 80, 2, ""), "720": (250, 9, 80, 2, ""), "1200": (500, 15, 80, 2, ""),
     "360": (300, 9, 40, 2, ""), "dmf": (500, 21, 80, 2, ""), "amiga": (250, 11, 80, 2, "amiga"),
+    "amigahd": (500, 22, 80, 2, "amiga"),
     "1581": (250, 10, 80, 2, "swap"), "st720": (250, 9, 80, 2, ""), "st800": (250, 10, 80, 2, ""),
 }
 
@@ -264,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("write-limits", help="what the write backend accepts (firmware 1.15): clock, max intervals, min/max interval")
     p = sub.add_parser("format", help="format a disk or one track in the firmware (MFM/Amiga, firmware 1.14): "
                        "ufi format 1440 [--verify]; one track: --track T --side S")
-    p.add_argument("layout", choices=list(FORMATS), help="1440 720 1200 360 dmf amiga 1581 st720 st800")
+    p.add_argument("layout", choices=list(FORMATS), help="1440 720 1200 360 dmf amiga amigahd 1581 st720 st800")
     p.add_argument("--track", type=int)
     p.add_argument("--side", type=int, default=0, choices=(0, 1))
     p.add_argument("--tracks", type=int, help="cylinders (default from the layout)")

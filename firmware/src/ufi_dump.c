@@ -362,19 +362,19 @@ static uint8_t count_good(uint32_t rate, bool amiga, uint8_t* max_r)
     return n;
 }
 
-/* on track 0.0 probe IBM 500k/250k/300k/1M and Amiga; afterwards decode that format */
+/* on track 0.0 probe IBM 500k/250k/300k/1M and Amiga DD/HD; afterwards decode that format */
 static uint8_t track_quality(void)
 {
-    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u};
+    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u, 500000u};
     uint8_t max_r = 0;
     if (cyl == 0 && head == 0 && tries == 0) {
         uint8_t best = 0;
-        for (uint32_t i = 0; i < 5; i++) {
-            const uint8_t g = count_good(rates[i], i == 4u, &max_r);
+        for (uint32_t i = 0; i < 6; i++) {
+            const uint8_t g = count_good(rates[i], i >= 4u, &max_r);
             if (g > best) {
                 best = g;
                 q_rate = rates[i];
-                q_amiga = (i == 4u);
+                q_amiga = (i >= 4u);
                 q_spt = max_r;
             }
         }

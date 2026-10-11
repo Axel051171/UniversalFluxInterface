@@ -3,11 +3,11 @@
  *
  * The stand-alone drive (UFI.CFG drive=, default A) is read and written track by track:
  *  - format detection on track 0 side 0: IBM decode at 500k / 250k / 300k / 1M and Amiga
- *    decode at 250k, most good headers wins; sectors per track from the IDs, then the boot
+ *    decode at 250k / 500k, most good headers wins; sectors per track from the IDs, then the boot
  *    sector BPB (PC, Atari ST) for heads and cylinders.  PC 360K / 720K / 1.2M / 1.44M,
  *    DMF 1.68M, ED 2.88M (read only: the write pulse is too long for 1 Mbit), Atari ST
  *    9 / 10 sectors (up to 83 cylinders) and 11 sectors (read only), Commodore 1581 800K
- *    (ID side field swapped), Amiga 880K (block device in ADF order)
+ *    (ID side field swapped), Amiga 880K and HD 1.76M (block device in ADF order)
  *  - two cached tracks (one cylinder); a missing track is read with 2 revolutions,
  *    up to 3 captures until every sector has a good CRC
  *  - writes go to the cache; a dirty track is written back as a whole new IBM track
@@ -220,7 +220,8 @@ static int write_track(slot_t* s)
         uint32_t words = 0;
         uint32_t* store = ufi_flux_store(&words);
         const uint32_t n = fmt.amiga
-            ? mfm_encode_amiga_track(fmt.rate, f.track_cells, (uint8_t)s->cyl, s->head, s->data, store, words)
+            ? mfm_encode_amiga_track(fmt.rate, f.track_cells, (uint8_t)s->cyl, s->head, fmt.spt, s->data,
+                                     store, words)
             : mfm_encode_track(&f, (uint8_t)s->cyl, s->head, s->data, store, words);
         if (n == 0) {
             return UFI_ERR_BUFFER_FULL;
@@ -258,8 +259,8 @@ static uint16_t le16(const uint8_t* p)
 
 static int detect(void)
 {
-    /* IBM at every rate (ED 1 Mbit too), Amiga at DD; most good headers wins */
-    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u};
+    /* IBM at every rate (ED 1 Mbit too), Amiga at DD and HD; most good headers wins */
+    static const uint32_t rates[] = {500000u, 250000u, 300000u, 1000000u, 250000u, 500000u};
     set_double_step(false);
     motor_ready();
     ufi_drive_recalibrate();
@@ -268,8 +269,8 @@ static int detect(void)
         return ret;
     }
     uint32_t best = 0, best_i = 0;
-    for (uint32_t i = 0; i < 5; i++) {
-        dec_ctx_t c = {.cyl = 0, .spt = MAX_SPT, .amiga = (i == 4u)};
+    for (uint32_t i = 0; i < 6; i++) {
+        dec_ctx_t c = {.cyl = 0, .spt = MAX_SPT, .amiga = (i >= 4u)};
         const uint32_t ids = decode_capture(rates[i], &c);
         if (ids > best) {
             best = ids;
@@ -283,14 +284,14 @@ static int detect(void)
     /* sectors per track from the IDs, sector data into cache slot 0 */
     slot_t* s = &slots[0];
     memset(s, 0, sizeof(*s) - sizeof(s->data));
-    dec_ctx_t c = {.slot = s, .cyl = 0, .head = 0, .spt = MAX_SPT, .amiga = (best_i == 4u)};
+    dec_ctx_t c = {.slot = s, .cyl = 0, .head = 0, .spt = MAX_SPT, .amiga = (best_i >= 4u)};
     decode_capture(rates[best_i], &c);
     fmt.rev_ticks = ufi_flux_get_revolution(0)->index_time;
     g_capture.state = CAPTURE_IDLE;
     led_set(&PIN_LED_FDD, false);
 
     fmt.rate = rates[best_i];
-    fmt.amiga = (best_i == 4u);
+    fmt.amiga = (best_i >= 4u);
     fmt.spt = c.max_r;
     fmt.heads = 2;
     fmt.cyls = 80;
@@ -298,8 +299,9 @@ static int detect(void)
     /* physical head 0 carries ID side 1 only: Commodore 1581 */
     fmt.head_id_swap = !fmt.amiga && c.head_ids == 0x02u;
     if (fmt.amiga) {
-        if (fmt.spt != AMIGA_SECTORS) {
-            return UFI_ERR_NOT_IMPL;                   /* Amiga 880K (HD 1.76M not yet) */
+        /* 880K: 11 sectors at 250 kbit/s; HD 1.76M: 22 at 500 kbit/s (1.16) */
+        if (fmt.spt != (fmt.rate == 500000u ? AMIGA_SECTORS_HD : AMIGA_SECTORS)) {
+            return UFI_ERR_NOT_IMPL;
         }
     } else if (fmt.rate == 1000000u && fmt.spt == 36u) {
         fmt.gap3 = 0x53;  fmt.writable = false;        /* ED 2.88M: write pulse too long */

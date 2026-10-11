@@ -667,7 +667,7 @@ class Device2:
     def format_track(self, track: int, side: int, rate_kbps: int, spt: int, gap3: int = 0,
                      fill: int = 0xF6, verify: bool = False, amiga: bool = False,
                      head_id_swap: bool = False) -> tuple[int, int | None]:
-        """Firmware 1.14: lay out and write one IBM MFM (or Amiga, spt 11) track with
+        """Firmware 1.14: lay out and write one IBM MFM (or Amiga, spt 11; HD 22 from 1.16) track with
         512-byte sectors 1..spt filled with `fill`.  Returns (flux transitions written,
         sectors read back with good CRCs or None without verify)."""
         flags = (FORMAT_VERIFY if verify else 0) | (FORMAT_AMIGA if amiga else 0) | \

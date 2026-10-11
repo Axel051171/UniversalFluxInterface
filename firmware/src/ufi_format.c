@@ -135,7 +135,8 @@ int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good)
     const bool amiga = (q->flags & FORMAT_AMIGA) != 0;
     if (ufi_drive_is_apple() || q->track > 83u || q->side > 1u ||
         (rate != 250000u && rate != 300000u && rate != 500000u && rate != 1000000u) ||
-        (amiga ? q->spt != AMIGA_SECTORS : (q->spt < 1u || q->spt > 36u))) {
+        (amiga ? (q->spt != AMIGA_SECTORS && q->spt != AMIGA_SECTORS_HD)
+               : (q->spt < 1u || q->spt > 36u))) {
         return UFI_ERR_BAD_ARGS;
     }
     if (ufi_board_write_locked() || ufi_drive_write_protected()) {
@@ -166,7 +167,7 @@ int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good)
 
     uint32_t n;
     if (amiga) {
-        n = mfm_encode_amiga_track(rate, cells, q->track, q->side, data, store, max);
+        n = mfm_encode_amiga_track(rate, cells, q->track, q->side, q->spt, data, store, max);
     } else {
         const mfm_track_fmt_t f = {
             .rate_bps = rate, .track_cells = cells, .spt = q->spt,

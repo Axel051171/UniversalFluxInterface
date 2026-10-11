@@ -630,7 +630,7 @@ typedef struct __packed {
     uint8_t track, side;
     uint8_t flags;              // FORMAT_*
     uint16_t rate_kbps;         // 250, 300, 500, 1000
-    uint8_t spt;                // 512-byte sectors per track (Amiga: 11)
+    uint8_t spt;                // 512-byte sectors per track (Amiga: 11, HD 22)
     uint8_t gap3;               // 0 = by layout
     uint8_t fill;               // data byte
 } format_req_t;

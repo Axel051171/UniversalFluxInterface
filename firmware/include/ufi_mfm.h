@@ -3,8 +3,8 @@
  *
  *  - IBM System/34 MFM (PC 360K-2.88M, DMF, Atari ST, Commodore 1581): sectors with ID
  *    field (C H R N) and data field, A1 sync, CRC-16/CCITT
- *  - Amiga trackdisk (880K): 11 sectors per track, 0x4489 0x4489 sync, odd/even split
- *    longwords, XOR checksums
+ *  - Amiga trackdisk: 11 sectors per track (880K, 250 kbit/s) or 22 (HD 1.76M,
+ *    500 kbit/s), 0x4489 0x4489 sync, odd/even split longwords, XOR checksums
  * Pure C, no HAL: flux intervals in TIM2 ticks (275 MHz) in, sectors out, and whole tracks
  * from sector data to flux intervals for the write path.
  */
@@ -16,7 +16,8 @@
 
 #define MFM_TICK_HZ         275000000u
 #define MFM_MAX_SECTOR      1024u
-#define AMIGA_SECTORS       11u
+#define AMIGA_SECTORS       11u     /* DD 880K */
+#define AMIGA_SECTORS_HD    22u     /* HD 1.76M (1.16) */
 #define AMIGA_RAW_LONGS     270u    /* info 2 + label 8 + 2 checksums x2 + data 256 */
 
 typedef struct {
@@ -68,9 +69,9 @@ typedef struct {
 uint32_t mfm_encode_track(const mfm_track_fmt_t* f, uint8_t cyl, uint8_t head,
                           const uint8_t* sectors, uint32_t* deltas, uint32_t max);
 
-/* Encode one Amiga track (11 x 512 bytes), track number = cyl * 2 + head */
+/* Encode one Amiga track (spt = 11 or 22 x 512 bytes), track number = cyl * 2 + head */
 uint32_t mfm_encode_amiga_track(uint32_t rate_bps, uint32_t track_cells, uint8_t cyl,
-                                uint8_t head, const uint8_t* sectors, uint32_t* deltas,
-                                uint32_t max);
+                                uint8_t head, uint8_t spt, const uint8_t* sectors,
+                                uint32_t* deltas, uint32_t max);
 
 #endif /* UFI_MFM_H */
