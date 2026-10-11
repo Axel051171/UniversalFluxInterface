@@ -172,7 +172,7 @@ int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good)
     if (n == 0) {
         return UFI_ERR_BUFFER_FULL;                 /* the sectors do not fit the revolution */
     }
-    ret = ufi_write_local(q->track, q->side, n);
+    ret = ufi_write_local(q->track, q->side, n, false);
     if (ret != UFI_OK) {
         return ret;
     }

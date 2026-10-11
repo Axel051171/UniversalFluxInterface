@@ -149,7 +149,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000) (1.14) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000) (1.14) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15) |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -200,6 +200,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 15 | unbekannter Befehl |
 | 16 | ungültige Argumente |
 | 17 | Datei nicht gefunden |
+| 18 | Flussabstand nicht darstellbar (1,6–238 µs; WRITE ohne Bit4), nichts geschrieben (1.15) |
 
 ### 3.4 Flusscode (READ-Daten, WRITE-Daten), 275 MHz
 Gleich dem v1-Stream (`ufi_stream.c`): Zeit 0 = erster Indeximpuls (bzw. Start ohne Index).
@@ -233,6 +234,8 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 - **INFO:** `store_bytes` = Größe des Flussspeichers (8 MB PSRAM, sonst interner Ersatzpuffer), nicht der SD-NAND (dafür SD_INFO). Der Text danach ist ASCII, Zeilen durch `\n` getrennt, ohne abschließendes Nullbyte: Name/Version, Git-Stand, Build-Datum, PSRAM-Ergebnis, ab 1.14 die Reset-Ursache (`reset: …`).
 - **board_status (8 Byte):** `power` u8 (Bit0 FDD_5V an, Bit1 FDD_12V an), `flags` u8 (Bit0 WRITE-LOCK gesteckt, Bit1/2 Überstrom 5 V/12 V ausgelöst, Bit3 SD-NAND bereit, Bit4/5 Taster A/B gedrückt, Bit6 Sicherheitsmodus), `i5_ma` u16, `i12_ma` u16, `board_id_mv` u16.
 - **READ:** `revs` 1…200. Der Ende-Rahmen ist maßgeblich: Nur so viele Umdrehungen gelten, wie er meldet (bei Überlauf können `FD`-Marken fehlen oder überzählig sein). Ende-Status 4 = kein Index **oder** per ABORT abgebrochen; 10 = Überlauf (Host las zu langsam).
+- **WRITE Bereichsprüfung (1.15):** Nach Zeitskala und Präkompensation muss jede Periode 440…65 536 Takte (1,6…238 µs) betragen. Liegt eine außerhalb, wird der Auftrag **vor** Kopfbewegung und Schreibtor mit Ende-Status 18 abgewiesen; nichts auf der Diskette ändert sich. Mit `flags` Bit4 werden solche Perioden stattdessen auf die Grenze gesetzt, und der Ende-Rahmen meldet ihre Zahl in `clamped`. Firmware ≤ 1.14 kappte still. Der Greaseweazle-Modus kappt weiterhin (er hat keinen Rückkanal für eine Abweisung).
+- **WRITE Ende-Nutzdaten (1.15):** `verify_level` u8: 0 keine Aussage, 1 Schreiben abgeschlossen (Timer/DMA ohne Fehler), 2 Rücklesen plausibel (nur Zahl der Flusswechsel ±5 %), 3 Inhalt geprüft (Sektoren wiedergefunden, CRC und Daten gleich), 4 nicht prüfbar; `clamped` u32. Der Ende-Rahmen trägt die Nutzdaten auch bei Fehlerstatus; Firmware ≤ 1.14 sendet keine.
 - **WRITE Zeitskala (Bit3, 1.14):** Die Firmware multipliziert jeden Flussabstand mit `scale`/1000 (Rest wird mitgeführt, kein Drift), bevor Präkompensation und Grenzen greifen. Damit lassen sich Abbilder mit anderer Drehzahl auf einem Laufwerk mit fester Drehzahl schreiben (Faktor = Drehzahl der Quelle / Drehzahl des Ziels, z. B. 360-U/min-Abbild auf 300-U/min-Laufwerk: 1,2) und die Zonen von Macintosh-400K/800K-Disketten (variable Drehzahl) auf einem PC-Laufwerk nachbilden (Faktor je Spurzone). Außerhalb 0,5…2,0 Status 16.
 - **WRITE-Daten (1.15):** Zulässig sind nur die Codes `01…EF`, `F0…FC b` und `FE u32` (u32 ≠ 0); `00`, `FD` (Indexmarke) und `FF` sowie mehr Übergänge als `flux_count` beenden den Auftrag **sofort** mit Ende-Status 10, weitere Daten-Rahmen dieser seq werden verworfen (Firmware ≤ 1.14 sammelte danach weiter und konnte dabei Speicher überschreiben). `flux_count` ist auf 65 537 begrenzt (ein DMA-Transfer von 65 535 Perioden plus die zwei vorgeladenen); größere Werte erhalten in der Annahme-Antwort Status 10.
 - **WRITE:** Der Host wartet die Annahme-Antwort ab und sendet erst dann die Daten-Rahmen (je ≤ 4096 Byte Nutzdaten, beliebig aufgeteilt, zusammen genau `byte_count`). Ende-Status: 0 OK, 12 schreibgeschützt, 4 kein Index (Laufwerk mit Index), 6 Prüflesen fehlgeschlagen (`flags` Bit0), 10 Daten fehlerhaft/zu viele Wechsel.

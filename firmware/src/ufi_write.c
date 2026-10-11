@@ -45,6 +45,7 @@ typedef struct {
     compact_dec_t dec;          // compact: stream decoder state (ufi_write_codec.c)
     bool clamp;                 // out-of-range periods are clamped (counted) instead of refused
     uint32_t clamped;           // periods moved into range by the last pack
+    uint8_t verify_level;       // END payload: 0 none, 1 completed, 2 plausible, 3 content, 4 unverifiable
     bool apple;                 // Apple Disk II: WRDATA toggles on TIM3_CH2, /WRREQ, no index
     uint32_t wait_since;        // HAL tick when the wait for the index pulse began
     uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
@@ -196,6 +197,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.scale = 1000;
     g_write.clamp = false;
     g_write.clamped = 0;
+    g_write.verify_level = 0;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -215,6 +217,13 @@ void ufi_write_set_clamp(bool allow) {
 
 uint32_t ufi_write_clamped(void) {
     return g_write.clamped;
+}
+
+/* END payload of a WRITE (1.15): verify level u8 (0 none, 1 write completed, 2 read-back
+ * plausible, 3 content verified, 4 unverifiable), clamped periods u32 */
+void ufi_write_result_payload(uint8_t out[5]) {
+    out[0] = g_write.verify_level;
+    memcpy(&out[1], &g_write.clamped, 4);
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
@@ -512,6 +521,7 @@ int ufi_write_verify(void) {
         return UFI_ERR_DMA;
     }
 
+    g_write.verify_level = 2;               /* read back, transition count plausible */
     g_write.state = WRITE_IDLE;
     return UFI_OK;
 }
@@ -584,6 +594,7 @@ void ufi_write_service(void) {
         const uint8_t cmd = write_event_cmd();
         int ret = UFI_ERR_DMA;
         if (g_write.state == WRITE_COMPLETE) {
+            g_write.verify_level = 1;           /* timer and DMA finished */
             ret = g_write.verify_after ? ufi_write_verify() : UFI_OK;
         }
         g_capture.state = CAPTURE_IDLE;     /* verify capture is internal, not sent */
@@ -595,11 +606,12 @@ void ufi_write_service(void) {
 /* Firmware-generated track (USB floppy mode, ufi_floppy.c): the caller has put
  * flux_count u32 deltas into the flux store (ufi_flux_store).  Blocking until the track
  * is written (index wait + one revolution); no USB events, the caller verifies. */
-int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count) {
+int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count, bool clamp) {
     int ret = ufi_write_prepare(track, side, flux_count, false);
     if (ret != UFI_OK) {
         return ret;
     }
+    g_write.clamp = clamp;
     g_write.bytes_received = g_write.bytes_expected;    /* data is already in place */
     ret = ufi_write_start();
     if (ret == UFI_OK) {

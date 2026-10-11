@@ -98,7 +98,7 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
-                self._frame(P2.T_END, P2.WRITE, f.seq)
+                self._frame(P2.T_END, P2.WRITE, f.seq, 0, struct.pack("<BI", 2 if self.write_req[3] & 1 else 1, 3 if self.write_req[3] & P2.WRITE_CLAMP else 0))
                 self.write_req = None
             return
         assert f.type == P2.T_REQUEST and f.status == 0
@@ -563,3 +563,16 @@ def test_selftest_items():
     items = dev.selftest()
     assert items == [(1, "timer", 0, 275000), (2, "usb_sof", 0, 0xFFFFFFF6), (13, "log", 1, 0)]
     assert fake.requests[-1].cmd == P2.SELFTEST and fake.requests[-1].payload == b""
+
+
+def test_write_track_result_and_clamp_flag():
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    r = dev.write_track(4, 0, [1000, 1000, 1000])
+    assert (r.verify_level, r.clamped, r.verify_text) == (1, 0, "write completed")
+    r = dev.write_track(4, 0, [1000, 1000, 1000], verify=True, clamp=True)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[2] & P2.WRITE_CLAMP and r.verify_level == 2 and r.clamped == 3
+    assert "count only" in r.verify_text
+    assert P2.WriteResult.unpack(b"") == P2.WriteResult(0, 0)
+    assert "18" not in P2.STATUS_TEXT or "not representable" in P2.STATUS_TEXT[18]

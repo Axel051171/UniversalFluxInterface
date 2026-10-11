@@ -524,7 +524,7 @@ static int copy_track(void)
     }
     g_capture.state = CAPTURE_IDLE;
     ufi_drive_select((drive_type_t)copy_dst);
-    int ret = ufi_write_local(cyl, head, n);
+    int ret = ufi_write_local(cyl, head, n, false);     /* a copy must be exact */
     if (ret == UFI_OK) {
         ret = ufi_capture_start(cyl, head, 2, 0);
         const uint32_t t0 = HAL_GetTick();

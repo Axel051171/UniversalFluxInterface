@@ -96,14 +96,26 @@ def cmd_read_disk(dev, a) -> None:
     print(f"wrote {a.output}: {len(tracks)} tracks x {revs} revolutions")
 
 
+def _write_text(r, verify: bool) -> str:
+    """One line for a WRITE result: never 'verified' for a count-only read-back."""
+    if r is None:                                   # v1 device
+        return "written" + (" + verified" if verify else "")
+    text = "written"
+    if verify or r.verify_level >= 2:
+        text += ", verify: " + r.verify_text
+    if r.clamped:
+        text += f", {r.clamped} intervals clamped into 1.6-238 us"
+    return text
+
+
 def cmd_write_disk(dev, a) -> None:
     _, tracks = read_scp(a.image)
     _prepare(dev, a.drive)
     try:
         for n in sorted(tracks):
-            dev.write_track(n // 2, n % 2, scp_to_ticks(tracks[n][0].cells), a.verify,
-                            hard_sectors=a.hard_sectors, scale=a.scale)
-            print(f"track {n // 2:2d}.{n % 2}: written" + (" + verified" if a.verify else ""), flush=True)
+            r = dev.write_track(n // 2, n % 2, scp_to_ticks(tracks[n][0].cells), a.verify,
+                                hard_sectors=a.hard_sectors, scale=a.scale, clamp=a.clamp)
+            print(f"track {n // 2:2d}.{n % 2}: " + _write_text(r, a.verify), flush=True)
     finally:
         dev.motor(False)
 
@@ -301,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     st_help = "head steps during the operation (firmware >= 1.14): MS:TRACK[.Q],... e.g. 50:17.1,100:17.2"
+    cl_help = ("force intervals outside 1.6-238 us into range (firmware >= 1.15 refuses them otherwise); "
+               "the count of changed intervals is reported")
     sc_help = ("multiply every flux interval by FACTOR (0.5-2.0, firmware >= 1.14): rpm_source/rpm_target "
                "for a 360 rpm image on a 300 rpm drive (1.2), or the Mac zone factor")
     p.add_argument("--steps", metavar="SPEC", help=st_help)
@@ -320,10 +334,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     p.add_argument("--steps", metavar="SPEC", help=st_help)
     p.add_argument("--scale", type=float, default=1.0, metavar="FACTOR", help=sc_help)
+    p.add_argument("--clamp", action="store_true", help=cl_help)
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--scale", type=float, default=1.0, metavar="FACTOR", help=sc_help)
+    p.add_argument("--clamp", action="store_true", help=cl_help)
     p.add_argument("--verify", action="store_true")
     p.add_argument("--drive", default="a", choices=list(P.DRIVES))
     p = sub.add_parser("erase")
@@ -457,9 +473,10 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))
-            dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
-                            hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale)
-            print("written" + (" + verified" if a.verify else ""))
+            r = dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
+                                hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
+                                clamp=a.clamp)
+            print(_write_text(r, a.verify))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
         elif a.cmd == "erase":

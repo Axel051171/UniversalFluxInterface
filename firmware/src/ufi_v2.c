@@ -461,6 +461,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     if (ret == UFI_OK) {
         ufi_write_set_quarter(quarter);
         ufi_write_set_scale(scale);
+        ufi_write_set_clamp((p[2] & 0x10u) != 0);   /* bit4: clamp instead of status 18 (1.15) */
         op_write = true;
         write_seq = seq;
     }

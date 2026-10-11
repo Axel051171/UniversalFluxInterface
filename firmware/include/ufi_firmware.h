@@ -559,7 +559,8 @@ void ufi_write_abort(void);
 void ufi_write_set_precomp(bool enable);
 void ufi_write_service(void);
 int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms);
-int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count);  // deltas in the flux store
+int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count, bool clamp);  // deltas in the flux store; clamp = tolerate out-of-range periods
+void ufi_write_result_payload(uint8_t out[5]);  // WRITE END payload: verify level u8, clamped u32 (1.15)
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
 

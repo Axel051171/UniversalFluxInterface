@@ -225,7 +225,7 @@ static int write_track(slot_t* s)
         if (n == 0) {
             return UFI_ERR_BUFFER_FULL;
         }
-        ret = ufi_write_local((uint8_t)s->cyl, s->head, n);
+        ret = ufi_write_local((uint8_t)s->cyl, s->head, n, false);
         if (ret != UFI_OK) {
             continue;
         }

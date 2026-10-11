@@ -330,7 +330,9 @@ int ufi_usb_send_read_done(int result, uint8_t revolutions) {
 
 /* Unsolicited completion notice (write finished; a v2 WRITE ends with an END frame) */
 int ufi_usb_send_event(uint8_t command, int result) {
-    if (ufi_v2_end(UFI_V2_WRITE, result, NULL, 0)) {
+    uint8_t res[5];
+    ufi_write_result_payload(res);             /* verify level, clamped periods (1.15) */
+    if (ufi_v2_end(UFI_V2_WRITE, result, res, sizeof(res))) {
         return UFI_OK;
     }
     return reply(command, st(result), NULL, 0);

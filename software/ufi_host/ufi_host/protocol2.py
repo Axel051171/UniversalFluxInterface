@@ -99,6 +99,7 @@ STATUS_TEXT = {
     10: "buffer full / overflow", 11: "not supported (on this board)", 12: "write protected",
     13: "storage (SD NAND / file system) error", 14: "frame error (CRC/length)",
     15: "unknown command", 16: "invalid arguments", 17: "file not found",
+    18: "flux interval not representable (1.6-238 us); write with clamp=True to force",
 }
 
 # INFO caps bits
@@ -121,6 +122,9 @@ READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
+WRITE_CLAMP = 0x10                      # WRITE flag: clamp out-of-range periods instead of status 18 (1.15)
+VERIFY_LEVELS = {0: "none", 1: "write completed", 2: "read-back plausible (count only)",
+                 3: "content verified", 4: "unverifiable"}
 FILE_CREATE = 0x01
 ATTR_DIR = 0x10
 MAX_READ_REVS = 200                     # firmware ring buffer (v1 READ_TRACK)
@@ -294,6 +298,23 @@ class DeviceInfo:
 
     def caps_list(self) -> list[tuple[str, bool]]:
         return [(name, bool(self.caps & (1 << i))) for i, name in enumerate(CAPS)]
+
+
+@dataclass
+class WriteResult:
+    """END frame of a WRITE (firmware 1.15; older firmware: level 0, clamped 0)."""
+    verify_level: int = 0
+    clamped: int = 0
+
+    @property
+    def verify_text(self) -> str:
+        return VERIFY_LEVELS.get(self.verify_level, str(self.verify_level))
+
+    @classmethod
+    def unpack(cls, b: bytes) -> "WriteResult":
+        if len(b) < 5:
+            return cls()
+        return cls(b[0], struct.unpack_from("<I", b, 1)[0])
 
 
 @dataclass
@@ -682,10 +703,13 @@ class Device2:
             return Capture(revs, f.status)
 
     def write_track(self, track: int, side: int, deltas: list[int], verify: bool = False,
-                    hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0) -> None:
+                    hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0,
+                    clamp: bool = False) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
         scale: the firmware multiplies every interval (0.5..2.0; firmware 1.14), e.g.
-        rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive."""
+        rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
+        clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
+        status 18 otherwise); the result counts the clamped ones."""
         code = encode_flux(deltas)
         seq = self._next_seq()
         flags = (WRITE_VERIFY if verify else 0) | (HARD_SECTORS if hard_sectors else 0)
@@ -699,6 +723,8 @@ class Device2:
                 raise ValueError("scale must be between 0.5 and 2.0")
             flags |= TIME_SCALE
             extra += struct.pack("<H", per_mille)
+        if clamp:
+            flags |= WRITE_CLAMP
         self.send(T_REQUEST, WRITE, seq, WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra)
         f = self._wait(WRITE, seq, (T_RESPONSE,), 5.0)
         if f.status:
@@ -708,6 +734,7 @@ class Device2:
         f = self._wait(WRITE, seq, (T_END,), 10.0)
         if f.status:
             raise DeviceError(WRITE, f.status)
+        return WriteResult.unpack(f.payload)
 
     def erase(self, track: int, side: int) -> None:
         self.request(ERASE, bytes([track, side]), timeout=3.0)

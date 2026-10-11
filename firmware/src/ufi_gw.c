@@ -700,7 +700,8 @@ static void write_finish(void)
         ret = UFI_ERR_DMA;
     } else {
         ufi_write_set_precomp(false);   /* gw precompensates on the host */
-        ret = ufi_write_local((uint8_t)cyl[unit], head, w_count);
+        /* gw has no channel for a refusal: long/short periods are clamped as before */
+        ret = ufi_write_local((uint8_t)cyl[unit], head, w_count, true);
         ufi_write_set_precomp(true);
     }
     flux_status = w_overflow ? ACK_OUT_OF_SRAM :
