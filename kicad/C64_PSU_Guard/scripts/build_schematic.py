@@ -42,7 +42,7 @@ LCSC = {
     ("2.2k", R0603): "C4190",
     ("22nF", C0603): "C21122", ("100nF", C0603): "C14663", ("1uF", C0603): "C15849",
     ("10uF/35V", C1206): "C454102",
-    "PSU_IN": "C32713270", "UFI_LINK": "C32713270", "DRIVE": "C474882", "EXT_LED": "C2894971",
+    "PSU_IN": "C32713270", "UFI_LINK": "C32713270", "DRIVE": "C474882", "EXT_ERR": "C54620389",
 }
 
 
@@ -162,20 +162,17 @@ def main():
     sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 215, {"1": "G:FLT5", "2": "GND", "3": "ERR5"}, SOT23)
     sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 235, {"1": "G:FLT12", "2": "GND", "3": "ERR12"}, SOT23)
 
-    # external LEDs (front panel): one pair per LED, own series resistor, parallel to the
-    # on-board LEDs.  Odd pin = anode side (+), even pin = cathode side (-).
-    sh.text("J4 external LEDs, + odd / - even: 1/2 5V OK, 3/4 5V ERR, 5/6 12V OK, 7/8 12V ERR, 9/10 REV POL.",
+    # one external fault LED (front panel): fed from the protected 5 V input, cathode through a
+    # diode OR into both FLT open drains -> lights while either channel is switched off.
+    # (A reversed input is shown by the on-board REV POL LED only: the eFuses are unpowered then.)
+    sh.text("J4 external fault LED: 1 = anode (+), 2 = cathode (-); on while the 5 V or the 12 V channel is off.",
             20, 285, 1.27)
-    R(sh, "1k", 40, 300, "G:+5V_OUT", "X5G")
-    R(sh, "1k", 55, 300, "V5_P", "X5R")
-    R(sh, "3.3k", 70, 300, "G:+12V_OUT", "X12G")
-    R(sh, "3.3k", 85, 300, "V12_P", "X12R")
-    R(sh, "2.2k", 100, 300, "GND", "XREV")
-    sh.part("Connector_Generic", "Conn_02x05_Odd_Even", ref("J"), "EXT_LED", 130, 300, {
-        "1": "X5G", "2": "GND", "3": "X5R", "4": "G:FLT5", "5": "X12G", "6": "GND",
-        "7": "X12R", "8": "G:FLT12", "9": "XREV", "10": "REV"},
-        "Connector_PinHeader_2.54mm:PinHeader_2x05_P2.54mm_Vertical",
-        {"Note": "external LEDs, + odd / - even: 5V OK, 5V ERR, 12V OK, 12V ERR, REV POL"})
+    R(sh, "1k", 40, 300, "V5_P", "XA")
+    sh.part("Connector_Generic", "Conn_01x02", ref("J"), "EXT_ERR", 60, 300, {"1": "XA", "2": "XK"},
+            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+            {"Note": "external fault LED, 1 = + (anode), 2 = - (cathode), ~2.5 mA"})
+    sh.part("Device", "D_Small", ref("D"), "1N4148W", 80, 295, {"2": "XK", "1": "G:FLT5"}, SOD123)
+    sh.part("Device", "D_Small", ref("D"), "1N4148W", 80, 305, {"2": "XK", "1": "G:FLT12"}, SOD123)
 
     (OUT / f"{PROJECT}.kicad_sch").write_text(sh.render(PROJECT, f"/{sh.uuid}", is_root=True), encoding="utf8")
     pro = OUT / f"{PROJECT}.kicad_pro"
