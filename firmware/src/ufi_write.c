@@ -53,6 +53,11 @@ typedef struct {
     uint16_t scale;             // time scale of the deltas in 1/1000 (1000 = as sent), 1.14
 } write_context_t;
 
+/* Greaseweazle pre_write / post_write (ufi_gw.c SET_PARAMS), ticks; 0 = off.  Configuration,
+ * not per write: the native paths leave it at 0. */
+static uint32_t cfg_pre_ticks, cfg_post_ticks;
+static bool post_pending;           /* the silent post_write period is running */
+
 static write_context_t g_write;
 
 /* Write data lives in the shared flux store (ufi_flux.c); capture and write never
@@ -212,6 +217,13 @@ void ufi_write_set_scale(uint16_t per_mille) {
     g_write.scale = per_mille ? per_mille : 1000u;
 }
 
+void ufi_write_set_pre_post(uint16_t pre_us, uint16_t post_us) {
+    uint32_t pre = (uint32_t)pre_us * (FLUX_TIMER_FREQ / 1000000UL);
+    uint32_t post = (uint32_t)post_us * (FLUX_TIMER_FREQ / 1000000UL);
+    cfg_pre_ticks = pre > WRITE_MAX_DELTA ? WRITE_MAX_DELTA : pre;
+    cfg_post_ticks = post > WRITE_MAX_DELTA ? WRITE_MAX_DELTA : post;
+}
+
 void ufi_write_set_clamp(bool allow) {
     g_write.clamp = allow;
 }
@@ -313,6 +325,12 @@ int ufi_write_start(void) {
     /* Timer: first two intervals by hand (UG loads the shadow ARR), DMA feeds the rest */
     __HAL_TIM_DISABLE(&htim3);
     TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
+    if (cfg_pre_ticks && !g_write.apple) {
+        /* gw pre_write: WGATE goes on at the index, the first flux comes that much later */
+        const uint32_t a = (uint32_t)write_arr[0] + 1u + cfg_pre_ticks;
+        write_arr[0] = (uint16_t)((a > WRITE_MAX_DELTA ? WRITE_MAX_DELTA : a) - 1u);
+    }
+    post_pending = false;
     TIM3->ARR = write_arr[0];
     TIM3->EGR = TIM_EGR_UG;                 // shadow ARR = interval 0, CNT = ARR (down)
     TIM3->SR = 0;
@@ -403,7 +421,15 @@ void ufi_write_tim3_irq(void) {
     if (TIM3->SR & TIM_SR_UIF) {
         TIM3->SR = ~TIM_SR_UIF;
         if (g_write.updates_left > 0 && --g_write.updates_left == 0) {
-            write_finish(WRITE_COMPLETE);
+            if (cfg_post_ticks && !g_write.apple && !post_pending) {
+                /* gw post_write: WGATE stays on for one more period without a pulse */
+                post_pending = true;
+                TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_FORCED_INACTIVE;
+                TIM3->ARR = cfg_post_ticks - 1u;    /* after the running (stale) period */
+                g_write.updates_left = 2;
+            } else {
+                write_finish(WRITE_COMPLETE);
+            }
         }
     }
 }
@@ -434,6 +460,12 @@ void ufi_write_process(void) {
  * ============================================================================ */
 
 int ufi_erase_track(uint8_t track, uint8_t side) {
+    return ufi_erase_track_ms(track, side, 220u);   /* one revolution and a bit */
+}
+
+int ufi_erase_track_ms(uint8_t track, uint8_t side, uint32_t ms) {
+    if (ms < 1u) ms = 1u;
+    if (ms > 5000u) ms = 5000u;
     if (ufi_board_write_locked() || ufi_drive_write_protected()) {
         return UFI_ERR_WRITE_PROT;
     }
@@ -447,7 +479,7 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
 
     if (ufi_drive_is_apple()) {             /* Disk II: /WRREQ without level changes */
         HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
-        HAL_Delay(220);
+        HAL_Delay(ms);
         HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
         led_set(&PIN_LED_FDD, false);
         return UFI_OK;
@@ -471,7 +503,7 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
     }
 
     bus_out(&PIN_FDD_WGATE, true);          // gate on, no WDATA pulses = DC erase
-    HAL_Delay(220);
+    HAL_Delay(ms);
     bus_out(&PIN_FDD_WGATE, false);
 
     led_set(&PIN_LED_FDD, false);

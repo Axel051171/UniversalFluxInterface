@@ -552,6 +552,8 @@ int ufi_write_start(void);
 void ufi_write_index_handler(uint32_t index_time);
 void ufi_write_process(void);
 int ufi_erase_track(uint8_t track, uint8_t side);
+int ufi_erase_track_ms(uint8_t track, uint8_t side, uint32_t ms);   // gate on for ms (1..5000), 1.15
+void ufi_write_set_pre_post(uint16_t pre_us, uint16_t post_us);     // gw pre/post_write, 0 = off (1.15)
 int ufi_write_verify(void);
 write_state_t ufi_write_get_state(void);
 uint32_t ufi_write_get_progress(void);

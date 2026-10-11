@@ -19,13 +19,40 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 project(ufi_firmware C ASM)
 
-# Firmware version + git revision for GET_INFO (revision is taken at configure time)
+# Firmware version + git revision for GET_INFO.  -DUFI_GIT_REV=... overrides; otherwise the
+# revision comes only from a git work tree whose top level is this project's root (the
+# parent of firmware/), never from an enclosing foreign repository (audit F07).  A work
+# tree with uncommitted changes gets a "+" suffix.
 set(UFI_FW_VERSION "1.14")
-execute_process(COMMAND git rev-parse --short HEAD WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                OUTPUT_VARIABLE UFI_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+set(UFI_GIT_REV "" CACHE STRING "git revision to embed in the firmware (empty = detect)")
+if(NOT UFI_GIT_REV)
+    execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" rev-parse --show-toplevel
+                    OUTPUT_VARIABLE _ufi_top OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _ufi_rc ERROR_QUIET)
+    get_filename_component(_ufi_root "${CMAKE_SOURCE_DIR}" DIRECTORY)
+    file(TO_CMAKE_PATH "${_ufi_top}" _ufi_top)
+    file(TO_CMAKE_PATH "${_ufi_root}" _ufi_root)
+    string(TOLOWER "${_ufi_top}" _ufi_top_l)
+    string(TOLOWER "${_ufi_root}" _ufi_root_l)
+    if(_ufi_rc EQUAL 0 AND _ufi_top_l STREQUAL _ufi_root_l)
+        execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" rev-parse --short HEAD
+                        OUTPUT_VARIABLE _ufi_rev OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" status --porcelain --untracked-files=no
+                        OUTPUT_VARIABLE _ufi_dirty ERROR_QUIET)
+        if(_ufi_rev)
+            set(UFI_GIT_REV "${_ufi_rev}")
+            if(_ufi_dirty)
+                string(APPEND UFI_GIT_REV "+")
+            endif()
+        endif()
+    else()
+        message(STATUS "UFI_GIT_REV: no git work tree rooted at ${_ufi_root} (top level: '${_ufi_top}'), using 'dev'")
+    endif()
+endif()
 if(NOT UFI_GIT_REV)
     set(UFI_GIT_REV "dev")
 endif()
+message(STATUS "UFI firmware ${UFI_FW_VERSION} rev ${UFI_GIT_REV}")
 add_compile_definitions(UFI_FW_VERSION="${UFI_FW_VERSION}" UFI_GIT_REV="${UFI_GIT_REV}")
 
 # ============================================================================

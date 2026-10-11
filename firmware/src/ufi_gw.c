@@ -14,6 +14,9 @@
  * - Not supported (ACK_BAD_COMMAND): firmware update / mode switch, test mode,
  *   hard-sectored writes.  SOURCE/SINK_BYTES (gw bandwidth, with the host's byte
  *   generator) and NOCLICK_STEP (one outward step at cylinder 0, flippy drives) work.
+ * - Parameters: pre_write delays the first flux after WGATE, post_write keeps WGATE on
+ *   after the last one (both <= 238 us), ERASE_FLUX honours its tick count; index_mask
+ *   is stored only (index debouncing lives in ufi_flux.c).
  * - Writes always start at the index pulse and end at the next one (cue_at_index and
  *   terminate_at_index as gw sends them by default); the firmware's own write
  *   precompensation is off, gw applies its own.
@@ -535,7 +538,8 @@ static void do_erase(void)
         return;
     }
     reply(CMD_ERASE_FLUX, ACK_OKAY, NULL, 0);
-    flux_status = ack_of(ufi_erase_track((uint8_t)cyl[unit], head));   /* one revolution */
+    const uint32_t ms = get32(&cbuf[2]) / (GW_SAMPLE_FREQ / 1000u);  /* ticks -> ms, 1..5000 */
+    flux_status = ack_of(ufi_erase_track_ms((uint8_t)cyl[unit], head, ms ? ms : 1u));
     send_byte(flux_status);
 }
 
@@ -701,7 +705,9 @@ static void write_finish(void)
     } else {
         ufi_write_set_precomp(false);   /* gw precompensates on the host */
         /* gw has no channel for a refusal: long/short periods are clamped as before */
+        ufi_write_set_pre_post(delays.pre_write, delays.post_write);
         ret = ufi_write_local((uint8_t)cyl[unit], head, w_count, true);
+        ufi_write_set_pre_post(0, 0);
         ufi_write_set_precomp(true);
     }
     flux_status = w_overflow ? ACK_OUT_OF_SRAM :
@@ -786,6 +792,7 @@ void ufi_gw_begin(void)
 
 void ufi_gw_end(void)
 {
+    ufi_write_set_pre_post(0, 0);
     if (state == ST_READ) {
         ufi_capture_abort();
     }

@@ -60,7 +60,7 @@ Unabhängige Umsetzung des Greaseweazle-Protokolls (Keir Fraser, `cdc_acm_protoc
 | 14 | SET_BUS_TYPE | 0 keiner, 1 IBM-PC, 2 Shugart | – |
 | 15 | SET_PIN | `pin` u8 (nur 2 = DENSITY), `level` u8 | – |
 | 16 | RESET | – | – (Einschaltzustand) |
-| 17 | ERASE_FLUX | `ticks` u32 | nach dem Löschen: 1 Statusbyte |
+| 17 | ERASE_FLUX | `ticks` u32 (Löschdauer, ab 1.15 ausgewertet: 1…5000 ms) | nach dem Löschen: 1 Statusbyte |
 | 18 | SOURCE_BYTES (1.14) | `len` u32, `seed` u32 | `len` Bytes aus dem Generator von `gw bandwidth` (`r&255`, dann `r = r>>1 ^ 0x80000062` bei gesetztem Bit 0, sonst `r>>1`) |
 | 19 | SINK_BYTES (1.14) | `len` u32, `seed` u32, danach `len` Datenbytes | nach den Daten 1 Statusbyte: 0 = alle Bytes passten zum Generator, 1 = verfälscht |
 | 20 | GET_PIN | `pin` u8 (8 INDEX, 26 TRK0, 28 WRPROT, 34 DSKCHG/READY) | `level` u8 (0 = low = aktiv) |
@@ -72,7 +72,7 @@ Nicht unterstützt (ack 1): 1 UPDATE, 11 SWITCH_FW_MODE, 21 TEST_MODE.
 
 **Bus/Einheiten:** IBM-PC: 0 = Laufwerk A, 1 = B (Kabel mit Twist). Shugart: 0–3 = DS0–DS3 (gerades Kabel, DS3 nur mit JP1). Amiga-Port, IEC und Apple-Port sind im Greaseweazle-Modus nicht erreichbar.
 
-**Parameter (idx 0, je u16):** select_delay µs, step_delay µs, seek_settle ms, motor_delay ms, watchdog ms (Standard 10000: ohne Befehl Motoren aus, abwählen), pre_write µs, post_write µs, index_mask µs (die letzten drei werden gespeichert, nicht ausgewertet).
+**Parameter (idx 0, je u16):** select_delay µs, step_delay µs, seek_settle ms, motor_delay ms, watchdog ms (Standard 10000: ohne Befehl Motoren aus, abwählen), pre_write µs (ab 1.15: erster Flusswechsel so viel später als das Schreibtor am Index, höchstens 238 µs), post_write µs (ab 1.15: Schreibtor bleibt nach dem letzten Flusswechsel eine impulsfreie Periode dieser Länge an, höchstens 238 µs, ± eine Intervalllänge), index_mask µs (gespeichert, nicht ausgewertet: die Indexentprellung sitzt im Erfassungspfad).
 
 ### 2.3 Flusscode (Abtastrate 68,75 MHz = 275 MHz / 4)
 | Bytes | Bedeutung |
