@@ -236,7 +236,7 @@ typedef struct __packed {
 
 // DUMP_STATUS payload (8 bytes)
 typedef struct __packed {
-    uint8_t state;              // 0 idle, 1-5 running, 6 done, 7 error
+    uint8_t state;              // 0 idle, 1-5 running, 6 done, 7 error, 8 copy, 9 IEC dump, 10-12 write from SD (1.16)
     uint8_t error;              // 1 storage, 2 drive/read, 3 disk full/write, 4 aborted, 5 format not recognised (img/adf)
     uint8_t track;              // cylinder / head in progress (or where it stopped)
     uint8_t side;
@@ -377,6 +377,7 @@ int ufi_sd_write(const uint8_t* buf, uint32_t lba, uint32_t count);
 // Stand-alone dump to the SD NAND (ufi_dump.c) and USB mass storage mode (ufi_usb.c)
 int ufi_dump_start(const dump_config_t* cfg);   // NULL = last / default configuration
 int ufi_dump_start_fmt(const dump_config_t* cfg, uint8_t fmt);   // fmt 0 SCP, 1 IMG, 2 ADF (1.16)
+int ufi_sdwrite_start(const char* name);        // image from the SD NAND onto the disk; NULL = UFI.CFG write_file (1.16)
 void ufi_dump_abort(void);
 bool ufi_dump_active(void);
 dump_status_t ufi_dump_status(void);
@@ -639,6 +640,7 @@ typedef struct __packed {
     uint8_t fill;               // data byte
 } format_req_t;
 int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good);  // good 0xFF = not verified
+int ufi_format_revolution(uint32_t* ticks);     // measured revolution of the selected drive (cached 60 s)
 
 // SELFTEST (1.14, ufi_selftest.c): items of (id u8, status u8, value u32), also SELFTEST.LOG
 uint8_t ufi_selftest(uint8_t* out, uint8_t max_items);

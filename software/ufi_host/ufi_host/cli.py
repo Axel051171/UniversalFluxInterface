@@ -13,7 +13,7 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
   ufi iec-read out.d64 [--type 1541 --tracks 35] | iec-write in.d64 [--verify] [--new NAME,ID]
   ufi files [PATH] | get NAME [-o out] | put LOCAL NAME | rm NAME       (v2, SD NAND)
   ufi cfg [KEY=VALUE ...]                             show / edit UFI.CFG (v2)
-  ufi dump [--drive a --tracks 80 --sides 2 -r 3 --format img] | dump-status | dump-abort | copy
+  ufi dump [--drive a --tracks 80 --sides 2 -r 3 --format img] | dump-status | dump-abort | copy | sd-write NAME
   ufi power [MASK] | events | mode {flux,sd,floppy,gw}
   ufi reset | bootloader
 """
@@ -303,6 +303,9 @@ def run_v2(dev: P2.Device2, a) -> bool:
         dev.dump_abort()
     elif a.cmd == "copy":
         dev.copy_start()
+    elif a.cmd == "sd-write":
+        dev.sd_write_start(a.name)
+        print(f"writing {a.name.upper() or 'UFI.CFG write_file'} from the SD NAND; follow with ufi dump-status")
     elif a.cmd == "power":
         print(dev.power(a.mask))
     else:
@@ -311,7 +314,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -441,6 +444,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("--format", choices=list(P2.DUMP_FORMATS),
                    help="scp = flux (default from UFI.CFG), img/adf = decoded sectors (firmware 1.16)")
+    sub.add_parser("sd-write", help="write an image on the SD NAND onto the disk (firmware 1.16): SCP flux, "
+                               "IMG/ADF/D81 sectors, D64/D71 via the IEC drive; report in WRITE.LOG").add_argument(
+        "name", nargs="?", default="", help="8.3 file name; omit for UFI.CFG write_file")
     sub.add_parser("power", help="board status; MASK bit0 FDD_5V, bit1 FDD_12V").add_argument(
         "mask", nargs="?", type=lambda s: int(s, 0))
     a = ap.parse_args(argv)

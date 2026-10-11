@@ -18,6 +18,7 @@
 #include "ufi_firmware.h"
 #include "ff.h"
 #include "ufi_mfm.h"
+#include "ufi_image.h"
 #include <string.h>
 
 #ifndef UFI_FW_VERSION
@@ -40,7 +41,7 @@
 extern capture_context_t g_capture;
 
 typedef enum { D_IDLE, D_START, D_CAPTURE, D_WAIT, D_WRITE, D_FINISH, D_DONE, D_ERROR, D_COPY,
-               D_IEC } dump_state_t;
+               D_IEC, D_WSTART, D_WTRACK, D_WIEC } dump_state_t;   /* D_W*: write from SD (1.16) */
 
 /* drive=iec (1.14): D64/D71/D81 dump through the drive's own controller, one block per
  * service call.  iec_type: 0 = auto (DOS message after a bus reset), 41, 71, 81 */
@@ -273,7 +274,7 @@ static int finish_file(void)
  * ============================================================================ */
 
 static FIL logfile;
-static bool log_open, copying, button_copy, protocol_gw, apple_sync;
+static bool log_open, copying, button_copy, button_write, protocol_gw, apple_sync;
 static uint16_t index_sim;              /* UFI.CFG index_sim=300|360 (J9 pin 6), 0 = off */
 static uint8_t index_sim_mode;          /* UFI.CFG index_sim_mode=pin|internal|both */
 static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (3-mode drives) */
@@ -809,8 +810,10 @@ static const char cfg_default[] =
     "tracks=80\r\n"
     "sides=2\r\n"
     "revs=3\r\n"
-    "# button A: dump (disk -> DUMPnnnn.SCP + .LOG) or copy (copy_from -> copy_to)\r\n"
+    "# button A: dump (disk -> DUMPnnnn.SCP + .LOG), copy (copy_from -> copy_to) or write\r\n"
+    "# (write_file from the SD NAND onto the disk: SCP flux, IMG/ADF/D81 sectors, D64 via iec)\r\n"
     "button_a=dump\r\n"
+    "write_file=\r\n"
     "copy_from=a\r\n"
     "copy_to=b\r\n"
     "# flux protocol with the mode switch in the middle: ufi (ufi host tool) or gw\r\n"
@@ -964,6 +967,337 @@ static void write_json(void)
     }
 }
 
+/* ============================================================================
+ * write an image from the SD NAND onto the disk (1.16): UFI.CFG button_a=write +
+ * write_file=NAME, or WRITE_START from the host.  SCP: revolution 0 of every track as
+ * flux (odd periods clamped); IMG/ADF/D81: sectors encoded like FORMAT; D64/D71/D81 with
+ * drive=iec: U2 block writes.  Each track is read back (sector count / flux count).
+ * Report in WRITE.LOG.  Errors: 1 storage, 2 drive, 3 write, 4 aborted, 5 image not
+ * usable, 6 write-protected, 7 file not found.
+ * ============================================================================ */
+
+static char write_file[64];             /* UFI.CFG write_file= */
+static char job_name[64];
+static image_geo_t geo;
+static scp_header_t scph;
+static uint32_t job_cells, job_written, job_bad;
+static uint8_t job_h0, job_h1;          /* heads to write: [h0, h1) */
+
+/* blocking capture of the current track for the read-back check */
+static bool capture_blocking(uint8_t revs)
+{
+    g_capture.state = CAPTURE_IDLE;
+    if (ufi_capture_start(cyl, head, revs, 0) != UFI_OK) {
+        return false;
+    }
+    const uint32_t t0 = HAL_GetTick();
+    capture_state_t cs;
+    while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
+        UFI_WATCHDOG_FEED();
+        if (HAL_GetTick() - t0 > 3000u) {
+            ufi_capture_abort();
+            g_capture.state = CAPTURE_IDLE;
+            return false;
+        }
+    }
+    return cs == CAPTURE_COMPLETE;
+}
+
+static void job_log(const char* tag)
+{
+    char line[48], *p = line;
+    p = put_num(p, cyl, 2);
+    *p++ = '.';
+    p = put_num(p, head, 1);
+    *p++ = ' ';
+    *p++ = ' ';
+    memcpy(p, tag, strlen(tag));
+    p += strlen(tag);
+    *p++ = '\r';
+    *p++ = '\n';
+    *p = 0;
+    log_puts(line);
+}
+
+/* the current track from the file into the flux store; *n = deltas, false = not in the file */
+static bool job_load_track(uint32_t* n, int* err)
+{
+    uint32_t words = 0;
+    uint32_t* store = ufi_flux_store(&words);
+    const uint32_t max = words - 16u;
+    UINT got = 0;
+    *n = 0;
+    *err = UFI_OK;
+    if (geo.kind == IMG_SCP) {
+        const uint8_t t = (uint8_t)(cyl * 2u + head);
+        if (t < scph.start || t > scph.end || table[t] == 0u) {
+            return false;
+        }
+        uint8_t trk[16];
+        uint32_t idx_cells, nw, off;
+        if (f_lseek(&file, table[t]) != FR_OK || f_read(&file, trk, 16, &got) != FR_OK || got != 16u ||
+            !scp_parse_track(trk, scph.revs, 0, t, &idx_cells, &nw, &off) ||
+            f_lseek(&file, table[t] + off) != FR_OK) {
+            *err = UFI_ERR_NOT_IMPL;
+            return false;
+        }
+        uint32_t acc = 0, prev = 0, pend = 0;
+        while (nw > 0 && *n < max) {
+            const uint32_t chunk = (nw * 2u > sizeof(stage)) ? sizeof(stage) / 2u : nw;
+            UFI_WATCHDOG_FEED();
+            if (f_read(&file, stage, chunk * 2u, &got) != FR_OK || got != chunk * 2u) {
+                *err = UFI_ERR_STORAGE;
+                return false;
+            }
+            scp_cells_to_deltas(stage, chunk, store, max, n, &acc, &prev, &pend);
+            nw -= chunk;
+        }
+        return *n >= 3u;
+    }
+    const uint32_t len = (uint32_t)geo.spt * 512u;
+    if (f_lseek(&file, image_track_offset(&geo, cyl, head)) != FR_OK ||
+        f_read(&file, stage, len, &got) != FR_OK || got != len) {
+        *err = UFI_ERR_STORAGE;
+        return false;
+    }
+    if (geo.kind == IMG_AMIGA) {
+        *n = mfm_encode_amiga_track(geo.rate_bps, job_cells, cyl, head, geo.spt, stage, store, max);
+    } else {
+        const mfm_track_fmt_t f = {.rate_bps = geo.rate_bps, .track_cells = job_cells, .spt = geo.spt,
+                                   .gap3 = geo.gap3, .head_id_swap = geo.head_id_swap};
+        *n = mfm_encode_track(&f, cyl, head, stage, store, max);
+    }
+    if (*n == 0u) {
+        *err = UFI_ERR_BUFFER_FULL;             /* the sectors do not fit the revolution */
+        return false;
+    }
+    return true;
+}
+
+/* read back: sector images need every sector, flux the transition count within 5 % */
+static bool job_verify(uint32_t n)
+{
+    if (!capture_blocking(2)) {
+        return false;
+    }
+    bool ok;
+    if (geo.kind == IMG_SCP) {
+        const uint32_t m = ufi_flux_get_revolution(0)->count;
+        const uint32_t diff = (m > n) ? m - n : n - m;
+        ok = diff <= n / 20u;
+    } else {
+        uint8_t max_r = 0;
+        q_known = true;                         /* count_good() decodes the job's format */
+        q_rate = geo.rate_bps;
+        q_amiga = (geo.kind == IMG_AMIGA);
+        q_spt = geo.spt;
+        ok = count_good(q_rate, q_amiga, &max_r, NULL) >= geo.spt;
+    }
+    g_capture.state = CAPTURE_IDLE;
+    return ok;
+}
+
+static void job_finish(void)
+{
+    ufi_drive_motor(false);
+    char line[48], *p = line;
+    memcpy(p, "written ", 8);
+    p = put_num(p + 8, job_written, 1);
+    memcpy(p, " tracks, bad ", 13);
+    p = put_num(p + 13, job_bad, 1);
+    *p++ = '\r'; *p++ = '\n'; *p = 0;
+    log_puts(line);
+    if (log_open) {
+        f_close(&logfile);
+        log_open = false;
+    }
+    if (file_open) {
+        f_close(&file);
+        file_open = 0;
+    }
+    unmount();
+    led_set(&PIN_LED_FDD, false);
+    led_set(&PIN_LED_ACT, true);
+    state = D_DONE;
+}
+
+int ufi_sdwrite_start(const char* name)
+{
+    if (state != D_IDLE && state != D_DONE && state != D_ERROR) {
+        return UFI_ERR_BUSY;
+    }
+    if (ufi_usb_msc_active() || ufi_stream_active() ||
+        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+        return UFI_ERR_BUSY;
+    }
+    if (!name || !*name) {
+        name = write_file;
+    }
+    if (!*name) {
+        return UFI_ERR_NOT_FOUND;               /* no write_file= configured */
+    }
+    strncpy(job_name, name, sizeof(job_name) - 1u);
+    job_name[sizeof(job_name) - 1u] = 0;
+    ufi_flux_hard_sectors(0);
+    copying = false;
+    err_code = 0;
+    file_no = 0;
+    led_set(&PIN_LED_ERR, false);
+    led_set(&PIN_LED_ACT, false);
+    state = D_WSTART;
+    return UFI_OK;
+}
+
+static void sdwrite_service(void)
+{
+    switch (state) {
+        case D_WSTART: {
+            if (mount() != UFI_OK) { fail(1); break; }
+            FILINFO fi;
+            if (f_stat(job_name, &fi) != FR_OK || f_open(&file, job_name, FA_READ) != FR_OK) { fail(7); break; }
+            file_open = 1;
+            if (image_identify(job_name, (uint32_t)fi.fsize, &geo) == IMG_UNKNOWN) { fail(5); break; }
+            log_open = (f_open(&logfile, "WRITE.LOG", FA_WRITE | FA_CREATE_ALWAYS) == FR_OK);
+            log_puts("UFI write from SD: ");
+            log_puts(job_name);
+            log_puts("\r\n");
+            job_written = 0;
+            job_bad = 0;
+            cyl = 0;
+            head = 0;
+            if (geo.kind == IMG_CBM && cfg.drive == DRIVE_IEC) {
+                ufi_drive_select(DRIVE_IEC);
+                if (ufi_iec_command(iec_device, "I0", 2) != UFI_OK) { fail(2); break; }
+                if (geo.cbm_kind == 71u && geo.cbm_tracks == 70u &&
+                    ufi_iec_command(iec_device, "U0>M1", 5) != UFI_OK) { fail(2); break; }
+                log_puts("rejected blocks (track sector dos):\r\n");
+                cyl = 1;
+                iec_sec = 0;
+                state = D_WIEC;
+                break;
+            }
+            if (cfg.drive == DRIVE_IEC || (geo.kind == IMG_CBM && geo.cbm_kind != 81u)) {
+                fail(5);                        /* D64/D71 need the IEC drive, flux files a floppy */
+                break;
+            }
+            if (geo.kind == IMG_CBM) {
+                geo.kind = IMG_SECTORS;         /* D81 on a PC drive: 1581 MFM layout */
+            }
+            job_h0 = 0;
+            job_h1 = geo.heads;
+            if (geo.kind == IMG_SCP) {
+                uint8_t hdr[SCP_HDR_LEN];
+                UINT got = 0;
+                if (f_read(&file, hdr, sizeof(hdr), &got) != FR_OK || got != sizeof(hdr) ||
+                    !scp_parse_header(hdr, &scph) ||
+                    f_read(&file, table, sizeof(table), &got) != FR_OK || got != sizeof(table)) {
+                    fail(5);
+                    break;
+                }
+                geo.cyls = (uint8_t)(scph.end / 2u + 1u);
+                job_h0 = (scph.heads == 2u) ? 1u : 0u;
+                job_h1 = (scph.heads == 1u) ? 1u : 2u;
+            }
+            drive_timing_t dt = ufi_drive_get_timing();
+            dt.double_step = (dstep_cfg == 1u || (dstep_cfg == 2u && geo.double_step)) ? 1u : 0u;
+            ufi_drive_set_timing(&dt);
+            if (prepare_drive(cfg.drive) != UFI_OK) { fail(2); break; }
+            if (ufi_board_write_locked() || ufi_drive_write_protected()) { fail(6); break; }
+            if (geo.kind != IMG_SCP) {
+                uint32_t rev = 0;
+                if (ufi_format_revolution(&rev) != UFI_OK) { fail(2); break; }
+                if (geo.rate_by_rpm) {          /* 360K: 300 kbit/s in a 360 rpm drive */
+                    geo.rate_bps = (rev < FLUX_TIMER_FREQ / 1000u * 180u) ? 300000u : 250000u;
+                }
+                if (geo.rate_bps == 1000000u) { fail(5); break; }   /* ED: write pulse too long */
+                job_cells = (uint32_t)(((uint64_t)rev * 2u * geo.rate_bps / FLUX_TIMER_FREQ) * 98u / 100u);
+            }
+            head = job_h0;
+            log_puts("track  result\r\n");
+            state = D_WTRACK;
+            break;
+        }
+
+        case D_WTRACK: {
+            ufi_board_activity();
+            uint32_t n = 0;
+            int err = UFI_OK;
+            if (job_load_track(&n, &err)) {
+                led_set(&PIN_LED_FDD, true);
+                const int ret = ufi_write_local(cyl, head, n, geo.kind == IMG_SCP);
+                led_set(&PIN_LED_FDD, false);
+                if (ret == UFI_ERR_WRITE_PROT) { fail(6); break; }
+                if (ret != UFI_OK) {
+                    job_bad++;
+                    job_log(ret == UFI_ERR_RANGE ? "write error (period out of range)"
+                          : ret == UFI_ERR_TRACK_LONG ? "write error (track longer than a revolution)"
+                          : ret == UFI_ERR_NO_INDEX ? "write error (no index)" : "write error");
+                } else if (job_verify(n)) {
+                    job_written++;
+                    job_log("ok");
+                } else {
+                    job_written++;
+                    job_bad++;
+                    job_log("read-back BAD");
+                }
+            } else if (err == UFI_ERR_STORAGE) {
+                fail(1);
+                break;
+            } else if (err != UFI_OK) {
+                job_bad++;
+                job_log(err == UFI_ERR_BUFFER_FULL ? "sectors do not fit the revolution" : "track header unreadable");
+            } else {
+                job_log("not in the file");
+            }
+            g_capture.state = CAPTURE_IDLE;
+            HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
+            if (++head >= job_h1) {
+                head = job_h0;
+                cyl++;
+            }
+            if (cyl >= geo.cyls) {
+                job_finish();
+            }
+            break;
+        }
+
+        case D_WIEC: {                          /* one block per call */
+            ufi_board_activity();
+            led_set(&PIN_LED_FDD, true);
+            uint8_t block[256], dos = 255;
+            UINT got = 0;
+            if (f_read(&file, block, sizeof(block), &got) != FR_OK || got != sizeof(block)) { fail(5); break; }
+            const int ret = ufi_iec_write_block(iec_device, cyl, iec_sec, block, &dos);
+            if (ret == UFI_OK && dos == 26u) { fail(6); break; }
+            if (ret != UFI_OK || (dos != 0u && dos != 1u)) {
+                job_bad++;
+                char line[20], *p = line;
+                p = put_num(p, cyl, 2);
+                *p++ = ' ';
+                p = put_num(p, iec_sec, 2);
+                *p++ = ' ';
+                p = put_num(p, (ret == UFI_OK) ? dos : 99u, 2);
+                *p++ = '\r'; *p++ = '\n'; *p = 0;
+                log_puts(line);
+            }
+            if (++iec_sec >= image_cbm_spt(geo.cbm_kind, cyl)) {
+                iec_sec = 0;
+                cyl++;
+                job_written++;
+                led_set(&PIN_LED_FDD, false);
+                HAL_GPIO_TogglePin(PIN_LED_ACT.port, PIN_LED_ACT.pin);
+            }
+            if (cyl > geo.cbm_tracks) {
+                job_finish();
+            }
+            break;
+        }
+
+        default:
+            break;
+    }
+}
+
 static bool word_is(const char* p, const char* w)
 {
     while (*w) {
@@ -1006,6 +1340,13 @@ static void parse_line(const char* k, dump_config_t* c)
         c->revs = (uint8_t)num;
     } else if (!strncmp(k, "button_a=", 9)) {
         button_copy = word_is(v, "copy");
+        button_write = word_is(v, "write");
+    } else if (!strncmp(k, "write_file=", 11)) {
+        uint32_t i = 0;
+        for (; i < sizeof(write_file) - 1u && v[i] > ' ' && v[i] != '#'; i++) {
+            write_file[i] = (v[i] >= 'a' && v[i] <= 'z') ? (char)(v[i] - 'a' + 'A') : v[i];
+        }
+        write_file[i] = 0;
     } else if (!strncmp(k, "protocol=", 9)) {
         protocol_gw = word_is(v, "gw");
     } else if (!strncmp(k, "apple_sync=", 11)) {
@@ -1065,6 +1406,8 @@ void ufi_config_load(void)
         rpm_start = 0;
         cfg_tg43 = false;
         dump_fmt_cfg = 0;
+        button_write = false;
+        write_file[0] = 0;
         for (char* p = (char*)stage; *p; ) {
             while (*p == ' ' || *p == '\t') {
                 p++;
@@ -1376,6 +1719,12 @@ void ufi_dump_service(void)
             break;
         }
 
+        case D_WSTART:
+        case D_WTRACK:
+        case D_WIEC:
+            sdwrite_service();
+            break;
+
         default:                                    /* idle, done, error */
             auto_dump_service();
             break;
@@ -1426,7 +1775,9 @@ void ufi_buttons_service(void)
         a_used = true;
         const uint8_t ev[2] = {0, 1};
         ufi_v2_event(UFI_V2_EVT_BUTTON, ev, 2);
-        if (button_copy) {                             /* UFI.CFG button_a=copy */
+        if (button_write) {                            /* UFI.CFG button_a=write */
+            ufi_sdwrite_start(NULL);
+        } else if (button_copy) {                      /* UFI.CFG button_a=copy */
             ufi_copy_start();
         } else {
             ufi_dump_start(NULL);                      /* busy / mass storage mode: ignored */

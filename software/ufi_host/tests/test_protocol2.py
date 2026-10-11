@@ -226,7 +226,8 @@ class FakeV2:
         elif cmd == P2.DUMP_STATUS:
             r(0, P2.DUMP.pack(3, 0, 12, 1, 7, 0, 1))
         elif cmd in (P2.SELECT, P2.MOTOR, P2.SEEK, P2.RECAL, P2.SIDE, P2.ABORT, P2.IEC_RESET,
-                     P2.IEC_SEND, P2.USB_MODE, P2.DUMP_START, P2.DUMP_ABORT, P2.COPY_START):
+                     P2.IEC_SEND, P2.USB_MODE, P2.DUMP_START, P2.DUMP_ABORT, P2.COPY_START,
+                     P2.WRITE_START):
             r()
         else:
             r(P2.UNKNOWN_COMMAND)
@@ -652,3 +653,12 @@ def test_iec_blocks():
     assert cbm.sectors_per_track("d71", 36) == 21 and cbm.kind_for("1571", 35) == ("d71", 35)
     with pytest.raises(ValueError):
         cbm.geometry(1000)
+
+
+def test_sd_write_start():
+    fake = FakeV2()
+    dev = P2.Device2(fake, timeout=0.5)
+    dev.sd_write_start("game.adf")
+    assert fake.requests[-1].cmd == P2.WRITE_START and fake.requests[-1].payload == b"GAME.ADF"
+    dev.sd_write_start()
+    assert fake.requests[-1].payload == b""

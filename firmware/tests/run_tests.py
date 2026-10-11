@@ -23,6 +23,7 @@ TESTS = {
     "test_write_codec": ["src/ufi_write_codec.c"],
     "test_write_verify": ["src/ufi_verify.c", "src/ufi_mfm.c", "src/ufi_write_codec.c"],
     "test_write_stream": ["src/ufi_write_stream.c"],
+    "test_image": ["src/ufi_image.c"],
 }
 
 

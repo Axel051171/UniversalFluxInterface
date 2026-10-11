@@ -55,7 +55,7 @@ static uint8_t default_gap3(uint32_t rate, uint8_t spt, bool swap)
     return 0x50;                                        /* 9 sectors: 360K / 720K / ST */
 }
 
-static int revolution(uint32_t* ticks)
+int ufi_format_revolution(uint32_t* ticks)
 {
     const drive_type_t d = ufi_drive_get_current();
     if (rev_ticks && rev_drive == d && HAL_GetTick() - rev_at < FORMAT_REV_CACHE_MS &&
@@ -148,7 +148,7 @@ int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good)
     }
 
     uint32_t rev;
-    int ret = revolution(&rev);
+    int ret = ufi_format_revolution(&rev);
     if (ret != UFI_OK) {
         return ret;
     }

@@ -71,6 +71,7 @@ enum {
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
+    V2_WRITE_START = 0x64,
     V2_FRAME_ERROR = 0xFF,
 };
 
@@ -387,7 +388,7 @@ static bool uses_drive(uint8_t cmd)
     return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
            cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN || cmd == V2_ANALYZE ||
            cmd == V2_FORMAT || cmd == V2_SELFTEST ||
-           cmd == V2_DUMP_START || cmd == V2_COPY_START;
+           cmd == V2_DUMP_START || cmd == V2_COPY_START || cmd == V2_WRITE_START;
 }
 
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
@@ -933,6 +934,17 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         case V2_COPY_START:
             ret = ufi_copy_start();
             break;
+        case V2_WRITE_START: {              /* file name (ASCII, <= 63; empty = UFI.CFG write_file); 1.16 */
+            char name[64];
+            if (len >= sizeof(name)) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            memcpy(name, p, len);
+            name[len] = 0;
+            ret = ufi_sdwrite_start(name);
+            break;
+        }
 
         default:
             ret = UFI_ERR_UNKNOWN_CMD;

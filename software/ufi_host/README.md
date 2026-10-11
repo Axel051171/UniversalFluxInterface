@@ -49,6 +49,7 @@ ufi format 1440 --verify                  # Firmware ≥ 1.14: Diskette in der F
 ufi analyze 0 0 -r 5                      # Firmware ≥ 1.14: Drehzahl, Abstands-Spitzen, Kodierung/Bitzelle, Spurlänge, schwache Bits, Index→erster Sektor
 ufi dump --tracks 0                       # Firmware ≥ 1.14: Spurzahl automatisch (höchste erreichbare Spur); UFI.CFG track_search=1 für 40-Spur-Disketten
 ufi rpm-select 360                        # Firmware ≥ 1.14: 3-Mode-Laufwerk 300/360 U/min (UFI.CFG rpm_line, rpm_360); Kontrolle: ufi rpm
+ufi sd-write GAME.ADF                     # Firmware ≥ 1.16: Abbild vom SD-NAND auf die Diskette (SCP/IMG/ADF/D81, D64 über IEC); ohne PC: UFI.CFG button_a=write, write_file=GAME.ADF; Bericht WRITE.LOG
 ufi dump --format img                     # Firmware ≥ 1.16: dekodierte Sektoren statt Flux nach DUMPnnnn.IMG (adf: .ADF); UFI.CFG format=img|adf für Taster A
 ufi dump --drive iec --tracks 35          # Firmware ≥ 1.14: 1541 an J8 über den Laufwerkscontroller nach DUMPnnnn.D64 (+ .LOG mit Fehlerblöcken)
 ufi iec-nib -o disk.g64 [--halftracks] [--tracks 41]   # Firmware ≥ 1.14: Rohspuren (GCR) per Laufwerkscode in eine G64, Kopierschutz/Halbspuren

@@ -91,6 +91,7 @@ NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
 DUMP_START, DUMP_STATUS, DUMP_ABORT, COPY_START = 0x60, 0x61, 0x62, 0x63
+WRITE_START = 0x64                      # firmware 1.16: write an image from the SD NAND onto the disk
 DUMP_FORMATS = {"scp": 0, "img": 1, "adf": 2}   # DUMP_START byte 5 (firmware 1.16)
 BAD_FRAME_CMD = 0xFF                    # response to a request with CRC/length error
 
@@ -342,8 +343,8 @@ class WriteResult:
 
 @dataclass
 class DumpStatus:
-    state: int                          # 6 = done, 7 = error
-    error: int                          # 1 storage, 2 drive, 3 full, 4 aborted, 5 format not recognised (img/adf)
+    state: int                          # 6 = done, 7 = error, 8 copy, 9 IEC dump, 10-12 write from SD
+    error: int                          # 1 storage, 2 drive, 3 full/write, 4 aborted, 5 format/image not recognised, 6 write-protected, 7 file not found
     track: int
     side: int
     file_no: int
@@ -916,6 +917,11 @@ class Device2:
 
     def copy_start(self) -> None:
         self.request(COPY_START)
+
+    def sd_write_start(self, name: str = "") -> None:
+        """Firmware 1.16: write NAME (8.3, on the SD NAND; SCP/IMG/ADF/D81, D64/D71 via iec)
+        onto the stand-alone drive; '' = UFI.CFG write_file.  Progress via dump_status()."""
+        self.request(WRITE_START, name.upper().encode("ascii"))
 
 
 # -- connection ----------------------------------------------------------------
