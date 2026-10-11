@@ -198,8 +198,8 @@ typedef struct __packed {
     uint16_t length;        // Länge der Daten
 } ufi_response_header_t;
 
-// Drive timing / options (wire format = in-memory: 10 x u16 little endian).  A shorter
-// DRIVE_TIMING payload (e.g. the original 7 fields) only overwrites the leading fields.
+// Drive timing / options (wire format = in-memory: 11 x u16 little endian).  A shorter
+// DRIVE_TIMING payload (e.g. the original 7 or 10 fields) only overwrites the leading fields.
 typedef struct __packed {
     uint16_t step_pulse_us;
     uint16_t step_rate_us;
@@ -211,6 +211,7 @@ typedef struct __packed {
     uint16_t motor_off_s;       // motor off after this idle time, 0 = never
     uint16_t double_step;       // 1 = two steps per track (40-track disk in an 80-track drive)
     uint16_t precomp_ns;        // write precompensation: 0xFFFF = by data rate, 0 = off
+    uint16_t tg43;              // 1 = assert DENSITY (pin 2 = TG43 on 8" drives) from track 43 (1.16)
 } drive_timing_t;
 #define PRECOMP_AUTO    0xFFFFu
 

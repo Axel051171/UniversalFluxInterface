@@ -30,6 +30,7 @@ from .protocol import (
     DRIVES,
     TIMING,
     TIMING_FIELDS,
+    _timing_unpack,
     Capture,
     DriveStatus,
     Stream,
@@ -578,14 +579,14 @@ class Device2:
 
     def timing(self, **changes: int) -> dict[str, int]:
         """Read drive timings; keyword arguments (TIMING_FIELDS) change them."""
-        cur = dict(zip(TIMING_FIELDS, TIMING.unpack(self.request(TIMING_CMD)[:TIMING.size])))
+        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.request(TIMING_CMD))))
         if changes:
             unknown = set(changes) - set(TIMING_FIELDS)
             if unknown:
                 raise ValueError(f"unknown timing field(s): {', '.join(sorted(unknown))}")
             cur.update(changes)
             new = self.request(TIMING_CMD, TIMING.pack(*(cur[f] for f in TIMING_FIELDS)))
-            cur = dict(zip(TIMING_FIELDS, TIMING.unpack(new[:TIMING.size])))
+            cur = dict(zip(TIMING_FIELDS, _timing_unpack(new)))
         return cur
 
     def lines(self, density: int, drate: int) -> None:

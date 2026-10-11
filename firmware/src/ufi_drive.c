@@ -24,8 +24,9 @@ static drive_status_t g_drive_status[DRIVE_TYPE_COUNT];
 static drive_timing_t g_timing = {
     .step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
     .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000,
-    .motor_off_s = 30, .double_step = 0, .precomp_ns = PRECOMP_AUTO,
+    .motor_off_s = 30, .double_step = 0, .precomp_ns = PRECOMP_AUTO, .tg43 = 0,
 };
+static void tg43_apply(uint32_t phys);
 #define STEP_PULSE_US       (g_timing.step_pulse_us)
 #define STEP_RATE_US        (g_timing.step_rate_us)
 #define SETTLE_TIME_US      (g_timing.settle_us)
@@ -415,6 +416,7 @@ int ufi_drive_seek(uint8_t track)
         }
     }
     status->track0 = ufi_drive_at_track0();
+    tg43_apply(status->current_track);
 
     delay_us(SETTLE_TIME_US);
     return UFI_OK;
@@ -454,6 +456,7 @@ int ufi_drive_recalibrate(void)
     }
     status->current_track = 0;
     status->track0 = true;
+    tg43_apply(0);
     delay_us(SETTLE_TIME_US);
     return UFI_OK;
 }
@@ -523,6 +526,17 @@ int ufi_drive_density_line(bool assert)
 {
     bus_out(&PIN_FDD_DENSITY, assert);
     return UFI_OK;
+}
+
+/* TG43 (1.16): 8" drives reduce the write current on the inner tracks; pin 2 of the
+ * Shugart bus is TG43 there ("track greater than 43", active low).  With timing.tg43 the
+ * DENSITY output follows the physical head position after every seek / recalibrate,
+ * unless the line is in use as the 3-mode speed select. */
+static void tg43_apply(uint32_t phys)
+{
+    if (g_timing.tg43 && rpm_line != 1u && !is_apple(g_current_drive)) {
+        bus_out(&PIN_FDD_DENSITY, phys >= 43u);
+    }
 }
 
 /* ============================================================================

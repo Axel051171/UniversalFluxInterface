@@ -24,8 +24,14 @@ SELECT_DRIVE, MOTOR_ON, MOTOR_OFF, SEEK, RECALIBRATE, SELECT_SIDE = 0x10, 0x11, 
 CHECK_DISK, DRIVE_TIMING, AMIGA_ID, USB_POWER = 0x16, 0x17, 0x18, 0x19
 TIMING_FIELDS = ("step_pulse_us", "step_rate_us", "settle_us", "dir_change_us",
                  "side_settle_us", "spinup_ms", "select_settle_us",
-                 "motor_off_s", "double_step", "precomp_ns")   # precomp 0xFFFF = by data rate
-TIMING = struct.Struct("<10H")
+                 "motor_off_s", "double_step", "precomp_ns", "tg43")   # precomp 0xFFFF = by data rate
+TIMING = struct.Struct("<11H")           # firmware 1.16: + tg43
+
+
+def _timing_unpack(b: bytes) -> tuple[int, ...]:
+    """TIMING reply -> 11 fields; firmware < 1.16 sends 10 (tg43 = 0)."""
+    b = bytes(b[:TIMING.size]).ljust(TIMING.size, b"\0")
+    return TIMING.unpack(b)
 AMIGA_IDS = {0xFFFFFFFF: '3.5" DD', 0xAAAAAAAA: '3.5" HD (HD media)',
              0x55555555: '5.25" 40 track', 0x00000000: "no drive"}
 READ_TRACK, READ_TRACK_RAW, EVT_READ_DONE, EVT_FLUX, ABORT_READ = 0x20, 0x21, 0x2D, 0x2E, 0x2F
@@ -205,13 +211,13 @@ class Device:
 
     def timing(self, **changes: int) -> dict[str, int]:
         """Read drive timings; keyword arguments (TIMING_FIELDS) change them."""
-        cur = dict(zip(TIMING_FIELDS, TIMING.unpack(self.command(DRIVE_TIMING))))
+        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.command(DRIVE_TIMING))))
         if changes:
             unknown = set(changes) - set(TIMING_FIELDS)
             if unknown:
                 raise ValueError(f"unknown timing field(s): {', '.join(sorted(unknown))}")
             cur.update(changes)
-            cur = dict(zip(TIMING_FIELDS, TIMING.unpack(
+            cur = dict(zip(TIMING_FIELDS, _timing_unpack(
                 self.command(DRIVE_TIMING, *TIMING.pack(*(cur[f] for f in TIMING_FIELDS))))))
         return cur
 

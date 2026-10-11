@@ -264,6 +264,7 @@ static uint8_t rpm_line;                /* UFI.CFG rpm_line=none|density|drate (
 static bool rpm_360_low = true;         /* UFI.CFG rpm_360=low|high */
 static uint16_t rpm_start;              /* UFI.CFG rpm=300|360 applied at start, 0 = untouched */
 static uint8_t iec_device = 8;          /* UFI.CFG iec_device=8..30: 1541 for drive=iec dumps */
+static bool cfg_tg43;                   /* UFI.CFG tg43=1 (8" drives): DENSITY = TG43 from track 43 */
 
 /* sectors on a 1541/1571 track (1-based; 1571 side 2 = 36-70) or a 1581 track */
 static uint8_t iec_spt(uint8_t t)
@@ -755,6 +756,9 @@ static const char cfg_default[] =
     "rpm_line=none\r\n"
     "rpm_360=low\r\n"
     "rpm=0\r\n"
+    "# tg43=1: 8-inch drives, pin 2 carries TG43 (reduced write current from track 43);\r\n"
+    "# not together with rpm_line=density\r\n"
+    "tg43=0\r\n"
     "# drive=iec: 1541/1571/1581 on J8, dump via the drive's own controller to\r\n"
     "# DUMPnnnn.D64/.D71/.D81 (tracks=0: whole disk; 1541: 35 or 40; 1571: 35 = one side);\r\n"
     "# device number on the bus; iec_type=auto (DOS message after a bus reset), 1541, 1571, 1581\r\n"
@@ -836,6 +840,8 @@ static void parse_line(const char* k, dump_config_t* c)
         rpm_360_low = !word_is(v, "high");
     } else if (!strncmp(k, "rpm=", 4)) {
         rpm_start = (num == 300u || num == 360u) ? (uint16_t)num : 0u;
+    } else if (!strncmp(k, "tg43=", 5)) {
+        cfg_tg43 = (num == 1u);
     } else if (!strncmp(k, "iec_device=", 11)) {
         iec_device = (num >= 4u && num <= 30u) ? (uint8_t)num : 8u;
     } else if (!strncmp(k, "iec_type=", 9)) {
@@ -874,6 +880,7 @@ void ufi_config_load(void)
         rpm_line = 0;
         rpm_360_low = true;
         rpm_start = 0;
+        cfg_tg43 = false;
         for (char* p = (char*)stage; *p; ) {
             while (*p == ' ' || *p == '\t') {
                 p++;
@@ -901,6 +908,9 @@ void ufi_config_load(void)
     if (rpm_start) {
         ufi_drive_set_rpm(rpm_start);
     }
+    drive_timing_t dt = ufi_drive_get_timing();
+    dt.tg43 = cfg_tg43 ? 1u : 0u;
+    ufi_drive_set_timing(&dt);
 }
 
 int ufi_dump_start(const dump_config_t* c)

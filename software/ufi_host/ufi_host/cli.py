@@ -297,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
                  "reset", "bootloader", "check-disk", "amiga-id", "usb-power", "caps", "events",
                  "dump-status", "dump-abort", "copy"):
         sub.add_parser(name)
-    sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000").add_argument(
+    sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000; tg43=1 for 8-inch drives (firmware 1.16)").add_argument(
         "set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))

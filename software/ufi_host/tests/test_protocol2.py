@@ -50,7 +50,7 @@ class FakeV2:
         self.write_code = bytearray()
         self.write_frames = 0
         self.events_mask = 0
-        self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF)
+        self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF, 0)
         self.index_sim = 0
         self.index_sim_mode = 0
         self.rpm_set = 0
