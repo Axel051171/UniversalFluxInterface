@@ -92,7 +92,7 @@ POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
 DUMP_START, DUMP_STATUS, DUMP_ABORT, COPY_START = 0x60, 0x61, 0x62, 0x63
 WRITE_START = 0x64                      # firmware 1.16: write an image from the SD NAND onto the disk
-DUMP_FORMATS = {"scp": 0, "img": 1, "adf": 2}   # DUMP_START byte 5 (firmware 1.16)
+DUMP_FORMATS = {"scp": 0, "img": 1, "adf": 2, "hfe": 3}   # DUMP_START byte 5 (firmware 1.16; hfe 1.17)
 BAD_FRAME_CMD = 0xFF                    # response to a request with CRC/length error
 
 # status codes (3.3)

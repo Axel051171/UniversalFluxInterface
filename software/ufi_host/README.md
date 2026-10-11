@@ -10,6 +10,7 @@ ufi info
 ufi select a && ufi motor on && ufi recal
 ufi read 0 0 -r 3                         # Zusammenfassung (Flux-Anzahl, RPM je Umdrehung)
 ufi read-disk -o disk.scp --tracks 80 --sides 2 -r 3 --drive a
+ufi read-disk -o disk.hfe --bitrate 250        # HxC HFE v1 (Umdrehung 0 als MFM-Bitzellen, Bitrate sonst aus den kürzesten Flussabständen); auch bei read -o; write/write-disk nehmen .hfe (eine Umdrehung wird vorab gemessen, Zellen auf 98,5 % skaliert, ±3 %)
 ufi write-disk disk.scp --verify --drive amiga
 ufi iec-reset && ufi iec-send 0x28 && ufi iec-recv
 ufi iec-write game.d64 --verify            # Firmware ≥ 1.16: D64/D71/D81 über den Laufwerkscontroller (U2) auf eine formatierte Diskette; iec-read holt sie zurück, iec-status zeigt die DOS-Meldung
@@ -52,6 +53,7 @@ ufi dump --tracks 0                       # Firmware ≥ 1.14: Spurzahl automati
 ufi rpm-select 360                        # Firmware ≥ 1.14: 3-Mode-Laufwerk 300/360 U/min (UFI.CFG rpm_line, rpm_360); Kontrolle: ufi rpm
 ufi sd-write GAME.ADF                     # Firmware ≥ 1.16: Abbild vom SD-NAND auf die Diskette (SCP/IMG/ADF/D81, D64 über IEC); ohne PC: UFI.CFG button_a=write, write_file=GAME.ADF; Bericht WRITE.LOG
 ufi dump --format img                     # Firmware ≥ 1.16: dekodierte Sektoren statt Flux nach DUMPnnnn.IMG (adf: .ADF); UFI.CFG format=img|adf für Taster A
+ufi dump --format hfe                     # Firmware ≥ 1.17: HxC HFE v1 nach DUMPnnnn.HFE (Bitrate aus der Spur-0-Probe); sd-write NAME.HFE schreibt HFE zurück
 ufi dump --drive iec --tracks 35          # Firmware ≥ 1.14: 1541 an J8 über den Laufwerkscontroller nach DUMPnnnn.D64 (+ .LOG mit Fehlerblöcken)
 ufi iec-nib -o disk.g64 [--halftracks] [--tracks 41]   # Firmware ≥ 1.14: Rohspuren (GCR) per Laufwerkscode in eine G64, Kopierschutz/Halbspuren
 ```

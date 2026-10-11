@@ -627,6 +627,8 @@ def test_dump_start_format():
     assert fake.requests[-1].payload == bytes([2, 40, 1, 2, 2])
     dev.dump_start(fmt="img")
     assert fake.requests[-1].payload == bytes([1, 80, 2, 3, 1])
+    dev.dump_start(fmt="hfe")
+    assert fake.requests[-1].payload == bytes([1, 80, 2, 3, 3])
 
 
 def test_iec_blocks():

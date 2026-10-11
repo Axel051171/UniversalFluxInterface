@@ -57,6 +57,9 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | Abbild von SD (1.16) | `ufi put GAME.ADF` → `ufi sd-write GAME.ADF`; dann `DUMP0001.SCP` zurückschreiben | `WRITE.LOG` ohne `BAD`; ADF am Amiga bootfähig; SCP-Rückschreiben: Rücklesen dekodiert gleich (Verify Stufe 3 per `ufi write --verify` als Gegenprobe) |
 | IEC schreiben (1.16) | `ufi iec-write test.d64 --verify` auf eine frisch formatierte Diskette, dann `ufi iec-read` | Rücklesen byteidentisch, `iec-status` `00, OK`; mit Schreibschutz: Abbruch mit DOS 26 |
 | Amiga HD (1.16) | `ufi format amigahd --verify` auf einer HD-Diskette im PC-HD-Laufwerk | 22/22 Sektoren je Spur; USB-Floppy-Modus zeigt 1,76 MB |
+| HFE-Dump (1.17) | `ufi dump --format hfe` von einer 720K-Diskette, Datei per `ufi get`, dann `ufi read-disk -o x.hfe` derselben Diskette | `DUMPnnnn.HFE` startet in einem HxC-/Gotek-Emulator (FlashFloppy) und wird vom PC gelesen; `.JSN` nennt `rate_bps` 250000; `hxcfe`/HxC-Software zeigt 9 Sektoren je Spur ohne Fehler |
+| HFE schreiben (1.17) | `ufi put x.hfe` → `ufi sd-write X.HFE` und `ufi write-disk x.hfe --verify` auf eine zweite Diskette | `WRITE.LOG` je Spur `ok (scale …)` zwischen 0,970 und 1,030 ohne `BAD`; Diskette im PC lesbar; Verify Stufe 3 bei `write-disk --verify` |
+| Verify 1024-Byte-Sektoren (1.17) | 8 × 1024-Byte-Spur per `ufi write --verify`, danach dieselbe Spur mit einem geänderten Byte > 512 | zweiter Durchlauf endet mit Status 6, nicht mit Stufe 3 |
 
 ## 4 Offene Punkte aus der Recherche (Backlog, keine Zusage)
 

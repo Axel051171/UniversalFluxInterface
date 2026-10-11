@@ -4,10 +4,10 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
 
   ufi info | status | caps | selftest | rpm
   ufi select {a,b,amiga,iec,none,...} | motor {on,off} | seek N | recal | side {0,1}
-  ufi read TRACK SIDE [-r REVS] [-o out.scp]          one track, summary or SCP
-  ufi read-disk -o disk.scp [--tracks 80] [--sides 2] [-r 3] [--drive a]
-  ufi write disk.scp TRACK SIDE [--verify]            rev 0 of that SCP track
-  ufi write-disk disk.scp [--verify] [--drive a]
+  ufi read TRACK SIDE [-r REVS] [-o out.scp|out.hfe]  one track, summary, SCP or HFE
+  ufi read-disk -o disk.scp|disk.hfe [--tracks 80] [--sides 2] [-r 3] [--drive a]
+  ufi write disk.scp|disk.hfe TRACK SIDE [--verify]   rev 0 of that track
+  ufi write-disk disk.scp|disk.hfe [--verify] [--drive a]
   ufi erase TRACK SIDE | abort
   ufi iec-reset | iec-send BYTE [--eoi] | iec-recv | iec-status
   ufi iec-read out.d64 [--type 1541 --tracks 35] | iec-write in.d64 [--verify] [--new NAME,ID]
@@ -27,6 +27,8 @@ from pathlib import PurePosixPath
 
 from . import protocol as P
 from . import protocol2 as P2
+from .hfe import (ENCODINGS, HfeImage, bits_to_deltas, fit_cell16, flux_to_cells, guess_rate, read_hfe,
+                  side_bytes, write_hfe)
 from .scp import ScpRevolution, read_scp, scp_to_ticks, ticks_to_scp, write_scp
 
 CFG_NAME = "UFI.CFG"
@@ -34,6 +36,47 @@ CFG_NAME = "UFI.CFG"
 
 def _to_scp(rev: P.Revolution) -> ScpRevolution:
     return ScpRevolution((rev.index_ticks * 40 + 137) // 275, ticks_to_scp(rev.samples))
+
+
+def _kbps(v: str) -> int:
+    return int(v) * 1000
+
+
+def _hfe_image(revs: dict[tuple[int, int], list], rate: int | None, encoding: str) -> HfeImage:
+    """Revolution 0 of every captured track as HFE cells (firmware 1.17 format=hfe does the
+    same): bit rate from the first track unless given, side 1 cut or padded to side 0."""
+    first = next((rl[0] for _, rl in sorted(revs.items()) if rl), None)
+    if first is None:
+        raise SystemExit("no revolutions captured")
+    rate = rate or guess_rate(first.samples)
+    img = HfeImage(rate, ENCODINGS[encoding])
+    rpms = []
+    for (c, s), rl in sorted(revs.items()):
+        if not rl:
+            continue
+        ref = revs.get((c, 0)) or rl
+        img.tracks[(c, s)] = flux_to_cells(rl[0].samples, rate, side_bytes(ref[0].index_ticks, rate))
+        rpms.append(60.0 * P.FLUX_CLOCK_HZ / rl[0].index_ticks)
+    img.rpm = int(round(sum(rpms) / len(rpms)))
+    return img
+
+
+def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None) -> None:
+    """HFE tracks hold one nominal revolution: without --scale one revolution is measured
+    first and every track's cells are scaled into 98.5 % of it (+-3 %, as the firmware's
+    sd-write does); with --scale the cells stay nominal and the firmware scales."""
+    rev = 0
+    if a.scale == 1.0:
+        cap = dev.read_track(0, 0, 1)
+        rev = cap.revolutions[0].index_ticks if cap.revolutions else 0
+    for (c, s), cells in sorted(img.tracks.items()):
+        if only and (c, s) != only:
+            continue
+        cell16, pm = fit_cell16(img.rate_bps, len(cells) * 8, rev)
+        r = dev.write_track(c, s, bits_to_deltas(cells, cell16), a.verify, hard_sectors=a.hard_sectors,
+                            quarter=getattr(a, "quarter", 0), scale=a.scale, clamp=a.clamp)
+        print(f"track {c:2d}.{s}: " + _write_text(r, a.verify)
+              + (f", cells scaled {pm / 1000:.3f}" if pm != 1000 else ""), flush=True)
 
 
 def _summary(cap: P.Capture) -> str:
@@ -83,19 +126,25 @@ def _parse_steps(spec: str) -> tuple[list[tuple[int, int]], bool]:
 
 def cmd_read_disk(dev, a) -> None:
     _prepare(dev, a.drive)
-    tracks = {}
+    tracks, revs = {}, {}
     try:
         for cyl in range(a.tracks):
             for head in range(a.sides):
                 cap = dev.read_track(cyl, head, a.revs, hard_sectors=a.hard_sectors)
+                revs[(cyl, head)] = cap.revolutions
                 tracks[cyl * 2 + head] = [_to_scp(r) for r in cap.revolutions]
                 print(f"track {cyl:2d}.{head}: {len(cap.revolutions)} revs, "
                       f"{cap.revolutions[0].rpm if cap.revolutions else 0:5.1f} rpm", flush=True)
     finally:
         dev.motor(False)
-    revs = min(len(v) for v in tracks.values())
-    write_scp(a.output, tracks, revs, heads=0 if a.sides == 2 else 1)
-    print(f"wrote {a.output}: {len(tracks)} tracks x {revs} revolutions")
+    if a.output.lower().endswith(".hfe"):
+        img = _hfe_image(revs, a.bitrate, a.encoding)
+        write_hfe(a.output, img)
+        print(f"wrote {a.output}: {len(img.tracks)} tracks, {img.rate_bps // 1000} kbit/s, {img.rpm} rpm")
+        return
+    nrev = min(len(v) for v in tracks.values())
+    write_scp(a.output, tracks, nrev, heads=0 if a.sides == 2 else 1)
+    print(f"wrote {a.output}: {len(tracks)} tracks x {nrev} revolutions")
 
 
 def _write_text(r, verify: bool) -> str:
@@ -111,6 +160,14 @@ def _write_text(r, verify: bool) -> str:
 
 
 def cmd_write_disk(dev, a) -> None:
+    if a.image.lower().endswith(".hfe"):
+        img = read_hfe(a.image)
+        _prepare(dev, a.drive)
+        try:
+            _hfe_write_tracks(dev, a, img)
+        finally:
+            dev.motor(False)
+        return
     _, tracks = read_scp(a.image)
     _prepare(dev, a.drive)
     try:
@@ -445,13 +502,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     st_help = "head steps during the operation (firmware >= 1.14): MS:TRACK[.Q],... e.g. 50:17.1,100:17.2"
+    br_help = ".hfe output: bit rate in kbit/s (250/300/500/1000); default: from the shortest flux intervals"
+    en_help = ".hfe output: encoding field of the header (default mfm)"
     cl_help = ("force intervals outside 1.6-238 us into range (firmware >= 1.15 refuses them otherwise); "
                "the count of changed intervals is reported")
     sc_help = ("multiply every flux interval by FACTOR (0.5-2.0, firmware >= 1.14): rpm_source/rpm_target "
                "for a 360 rpm image on a 300 rpm drive (1.2), or the Mac zone factor")
     p.add_argument("--steps", metavar="SPEC", help=st_help)
+    p.add_argument("--bitrate", type=_kbps, metavar="KBPS", help=br_help)
+    p.add_argument("--encoding", choices=list(ENCODINGS), default="mfm", help=en_help)
     p = sub.add_parser("read-disk")
-    p.add_argument("-o", "--output", required=True)
+    p.add_argument("-o", "--output", required=True, help="disk.scp (flux, all revolutions) or disk.hfe (HxC bit cells, one revolution)")
+    p.add_argument("--bitrate", type=_kbps, metavar="KBPS", help=br_help)
+    p.add_argument("--encoding", choices=list(ENCODINGS), default="mfm", help=en_help)
     p.add_argument("--tracks", type=int, default=80)
     p.add_argument("--sides", type=int, default=2, choices=(1, 2))
     p.add_argument("-r", "--revs", type=int, default=3)
@@ -498,8 +561,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sides", type=int, default=2, choices=(1, 2))
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("--format", choices=list(P2.DUMP_FORMATS),
-                   help="scp = flux (default from UFI.CFG), img/adf = decoded sectors (firmware 1.16)")
-    sub.add_parser("sd-write", help="write an image on the SD NAND onto the disk (firmware 1.16): SCP flux, "
+                   help="scp = flux (default from UFI.CFG), img/adf = decoded sectors (firmware 1.16), hfe = HxC bit cells (1.17)")
+    sub.add_parser("sd-write", help="write an image on the SD NAND onto the disk (firmware 1.16): SCP flux, HFE cells (1.17), "
                                "IMG/ADF/D81 sectors, D64/D71 via the IEC drive; report in WRITE.LOG").add_argument(
         "name", nargs="?", default="", help="8.3 file name; omit for UFI.CFG write_file")
     sub.add_parser("power", help="board status; MASK bit0 FDD_5V, bit1 FDD_12V").add_argument(
@@ -605,12 +668,22 @@ def main(argv: list[str] | None = None) -> int:
                 dev.step_schedule(*_parse_steps(a.steps))
             cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter)
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
-            if a.output:
+            if a.output and a.output.lower().endswith(".hfe"):
+                write_hfe(a.output, _hfe_image({(a.track, a.side): cap.revolutions}, a.bitrate, a.encoding))
+                print(f"wrote {a.output}")
+            elif a.output:
                 write_scp(a.output, {a.track * 2 + a.side: [_to_scp(r) for r in cap.revolutions]},
                           len(cap.revolutions))
                 print(f"wrote {a.output}")
         elif a.cmd == "read-disk":
             cmd_read_disk(dev, a)
+        elif a.cmd == "write" and a.image.lower().endswith(".hfe"):
+            img = read_hfe(a.image)
+            if (a.track, a.side) not in img.tracks:
+                raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
+            if a.steps:
+                dev.step_schedule(*_parse_steps(a.steps))
+            _hfe_write_tracks(dev, a, img, only=(a.track, a.side))
         elif a.cmd == "write":
             _, tracks = read_scp(a.image)
             n = a.track * 2 + a.side
