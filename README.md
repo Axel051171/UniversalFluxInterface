@@ -22,6 +22,7 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | Ordner | Inhalt |
 |---|---|
 | [`kicad/UFI_Headless/`](kicad/UFI_Headless/README.md) | Schaltplan, Layout, Fertigungsdaten (`fertigung/`), Build- und ECO-Skripte |
+| [`kicad/C64_PSU_Guard/`](kicad/C64_PSU_Guard/README.md) | Eigenständige Schutzplatine: 5 V / 12 V aus einem PC-Netzteil für ein 1541-II / 1581 (eFuse, Verpolschutz, Fehler-LEDs), JLC-Fertigungsdaten |
 | [`firmware/`](firmware/) | STM32H723-Firmware (CMake, STM32Cube HAL) |
 | [`software/ufi_host/`](software/ufi_host/README.md) | Python-Host (`ufi`): Lesen/Schreiben, SCP-Export, Protokollbeschreibung |
 | [`docs/`](docs/) | Amiga-DB23-Adapterkabel |
