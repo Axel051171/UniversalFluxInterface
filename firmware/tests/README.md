@@ -16,4 +16,5 @@ Benötigt clang oder gcc im PATH. Ausgaben liegen in `firmware/tests/build/` (ig
 |---|---|---|
 | `test_write_verify.c` | `ufi_verify.c`, `ufi_mfm.c` | Verify-Stufen: gleiche Spur → Inhalt geprüft, gleiche Übergangszahl mit anderen Daten → Fehler, 3 % Jitter → geprüft, nicht dekodierbare Spur → nur plausibel; 1.44M, 720K, Amiga |
 | `test_write_stream.c` | `ufi_write_stream.c` | DMA-Streaming: Ring aus zwei Hälften, Nachladen bei HT/TC, exakter Stopp nach dem letzten Intervall für Längen 1…200 000 auch mit späten Interrupts, Unterlauf-Erkennung |
+| `test_image.c` | `ufi_image.c` | Abbilddateien für das Schreiben von SD (1.16): Art und Geometrie aus Name und Größe, 1541/1571/1581-Zonen, SCP-Kopf und Spurkopf, Zellen → Takte mit der Rundung des Hosts |
 | `test_write_codec.c` | `ufi_write_codec.c` | Kompaktparser (alle Startbytes, jede Aufteilung, reservierte Codes, Null-Intervall, Überzahl), Packen (Bereich 1,6–238 µs, Kappen nur per Flag, Zeitskala mit Restmitführung, Präkompensation gegen Referenz, in-place) |

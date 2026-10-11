@@ -1,6 +1,6 @@
 # Abnahme des Schreibpfads auf der UFI Headless v0.7
 
-Stand: Firmware 1.15 (Audit F01–F07 behoben, DMA-Streaming, Verify-Stufen). Noch **nicht ausgeführt** –
+Stand: Firmware 1.16 (Audit F01–F07 behoben, DMA-Streaming, Verify-Stufen; 1.16: TG43, Dump dekodiert, Abbild von SD, IEC-Schreiben, Amiga HD). Noch **nicht ausgeführt** –
 alles unten ist am Gerät zu messen, bevor Schreibfunktionen als verlässlich gelten. Grundlage:
 `Erkenntnisse/UFI_Firmware_2026-10-11` (Audit) und `Erkenntnisse/UFI_Weiterentwicklung_2026-10-11`
 (Kandidat, Hardware-Testplan) im UnifiedFloppyTool-Repo, ergänzt um die Punkte der 1.15-Umsetzung.
@@ -29,6 +29,7 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | pre/post_write (GW-Modus) | `gw write` mit `--pre-write 200 --post-write 500` | erster Impuls 200 µs nach WGATE, WGATE 500 µs (± eine Periode) nach dem letzten Impuls aus |
 | ERASE_FLUX | `gw erase --ticks …` | WGATE-Dauer = angeforderte Zeit (1…5000 ms) |
 | Apple-Pfad | WRDATA (J14) im Toggle-Modus | Flankenabstände = Soll, /WRREQ nur während des Schreibens |
+| TG43 (1.16) | `ufi timing tg43=1`, Seeks 42 → 43 → 42 | DENSITY (J6 Pin 2) fällt bei Spur ≥ 43 auf Low und geht darunter wieder hoch; mit `rpm_line=density` bleibt die Drehzahlwahl unberührt |
 
 ## 2 Fehlerfälle und Schutz
 
@@ -52,6 +53,10 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | Zeitskala | 360-U/min-Abbild mit `--scale 1.2` auf 300-U/min-Laufwerk; Rücklesen dekodierbar |
 | Hartsektoriert, Apple-Viertelspuren, 3-Mode | jeweils mit Referenzmedium; Zähler, Phasen, Drehzahl (`ufi rpm`) gegen Soll |
 | Dump/Kopie | SCP-Dump und `copy` A→B, Rücklesen beider Seiten identisch dekodierbar |
+| Dump dekodiert (1.16) | `ufi dump --format img` von einer 1.44M-Diskette | `DUMPnnnn.IMG` = 1 474 560 Byte, identisch mit `ufi read-disk` + Host-Dekodierung; `.JSN` nennt Format, Drehzahl, `bad_tracks` 0 |
+| Abbild von SD (1.16) | `ufi put GAME.ADF` → `ufi sd-write GAME.ADF`; dann `DUMP0001.SCP` zurückschreiben | `WRITE.LOG` ohne `BAD`; ADF am Amiga bootfähig; SCP-Rückschreiben: Rücklesen dekodiert gleich (Verify Stufe 3 per `ufi write --verify` als Gegenprobe) |
+| IEC schreiben (1.16) | `ufi iec-write test.d64 --verify` auf eine frisch formatierte Diskette, dann `ufi iec-read` | Rücklesen byteidentisch, `iec-status` `00, OK`; mit Schreibschutz: Abbruch mit DOS 26 |
+| Amiga HD (1.16) | `ufi format amigahd --verify` auf einer HD-Diskette im PC-HD-Laufwerk | 22/22 Sektoren je Spur; USB-Floppy-Modus zeigt 1,76 MB |
 
 ## 4 Offene Punkte aus der Recherche (Backlog, keine Zusage)
 

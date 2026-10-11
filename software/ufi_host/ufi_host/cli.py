@@ -14,6 +14,7 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
   ufi files [PATH] | get NAME [-o out] | put LOCAL NAME | rm NAME       (v2, SD NAND)
   ufi cfg [KEY=VALUE ...]                             show / edit UFI.CFG (v2)
   ufi dump [--drive a --tracks 80 --sides 2 -r 3 --format img] | dump-status | dump-abort | copy | sd-write NAME
+  ufi monitor [--drive a --track 0 --seconds 60]   # Drehzahl live, eine Zeile je Umdrehung
   ufi power [MASK] | events | mode {flux,sd,floppy,gw}
   ufi reset | bootloader
 """
@@ -256,6 +257,51 @@ def cmd_iec_write(dev: P2.Device2, a) -> None:
         print(f"  track {t} sector {s}: " + ("verify mismatch" if code < 0 else f"DOS {code:02d} {cbm.DOS_ERRORS.get(code, '')}"))
 
 
+def cmd_monitor(dev: P2.Device2, a) -> None:
+    """Drive speed over time: READs of up to 50 revolutions back to back (one revolution is
+    lost between two reads), one line per revolution with the deviation from the first ten.
+    Ctrl-C stops; the motor is switched off afterwards."""
+    import time
+    _prepare(dev, a.drive)
+    dev.seek(a.track)
+    t0 = time.monotonic()
+    n, base, lo, hi, total = 0, [], None, None, 0.0
+    status = 0
+    try:
+        while a.seconds <= 0 or time.monotonic() - t0 < a.seconds:
+            cap = dev.read_track(a.track, a.side, revolutions=a.revs)
+            if not cap.revolutions and not cap.status:
+                print("no revolutions in the read (no index pulse?)")
+                break
+            for rev in cap.revolutions:
+                if rev.index_ticks <= 0:
+                    continue
+                rpm = 60.0 * P.FLUX_CLOCK_HZ / rev.index_ticks
+                n += 1
+                total += rpm
+                lo = rpm if lo is None else min(lo, rpm)
+                hi = rpm if hi is None else max(hi, rpm)
+                if len(base) < 10:
+                    base.append(rpm)
+                ref = sum(base) / len(base)
+                dev_pct = (rpm - ref) / ref * 100.0
+                pos = max(0, min(40, int(round(20 + dev_pct / a.scale * 20))))
+                bar = "".join("|" if i == 20 else ("*" if i == pos else "-") for i in range(41))
+                print(f"{n:5d} {time.monotonic() - t0:7.1f}s {rpm:8.3f} rpm {dev_pct:+6.3f} % "
+                      f"{len(rev.samples):7d} flux {bar}", flush=True)
+            if cap.status:
+                status = cap.status
+                print(f"read ended with status {cap.status} ({P2.STATUS_TEXT.get(cap.status, '?')})")
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        dev.motor(False)
+    if n:
+        print(f"{n} revolutions: min {lo:.3f}, avg {total / n:.3f}, max {hi:.3f} rpm, "
+              f"spread {(hi - lo) / (total / n) * 100:.3f} %" + ("" if not status else f", status {status}"))
+
+
 def run_v2(dev: P2.Device2, a) -> bool:
     """v2-only commands; returns False when a.cmd is not one of them."""
     if a.cmd == "caps":
@@ -303,6 +349,8 @@ def run_v2(dev: P2.Device2, a) -> bool:
         dev.dump_abort()
     elif a.cmd == "copy":
         dev.copy_start()
+    elif a.cmd == "monitor":
+        cmd_monitor(dev, a)
     elif a.cmd == "sd-write":
         dev.sd_write_start(a.name)
         print(f"writing {a.name.upper() or 'UFI.CFG write_file'} from the SD NAND; follow with ufi dump-status")
@@ -314,7 +362,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -382,6 +430,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)
     sub.add_parser("side").add_argument("side", type=int, choices=(0, 1))
     hs_help = "hard-sectored disk: number of sector holes (10/16/32), firmware >= 1.14"
+    p = sub.add_parser("monitor", help="drive speed over time (one line per revolution) for adjusting a drive; Ctrl-C stops")
+    p.add_argument("--drive", default="a", choices=list(P.DRIVES))
+    p.add_argument("--track", type=int, default=0)
+    p.add_argument("--side", type=int, default=0, choices=(0, 1))
+    p.add_argument("--seconds", type=float, default=0, help="stop after this time (default: until Ctrl-C)")
+    p.add_argument("--revs", type=int, default=50, help="revolutions per READ (default 50, max 200)")
+    p.add_argument("--scale", type=float, default=1.0, help="full bar deflection in percent (default 1)")
     p = sub.add_parser("read")
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
