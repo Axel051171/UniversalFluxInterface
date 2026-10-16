@@ -22,11 +22,24 @@ umgesetzten Anregungen.
   REA kennt Rohabbilder nur über `decompile --target-format raw-binary --architecture arm
   --entry-point …`, also nur mit Engine.
 
-Nachrüstung für die Dekompilierung (Entscheidung des Nutzers, nicht ausgeführt):
-JDK 21 und ein entpacktes Ghidra-12.1.x-Release, `GHIDRA_INSTALL_DIR` darauf setzen,
-Claude Code neu starten, dann `rea decompile <bin> --target-format raw-binary
---architecture arm --entry-point 0x200000`. Unter WSL zusätzlich `apt install binwalk`
-für `inspect-firmware-regions`.
+Nachgerüstet auf Wunsch des Nutzers in WSL Ubuntu (als `root`, ohne Passwort):
+OpenJDK 21.0.12, Node 22, npm 9.2, Binwalk 2.4.3 per `apt`, Ghidra 12.1 PUBLIC
+(Build 20260513, 568 MB) nach `/opt/ghidra_12.1_PUBLIC`. Aufruf aus Windows:
+
+```bash
+wsl -u root -e bash -lc 'export GHIDRA_INSTALL_DIR=/opt/ghidra_12.1_PUBLIC REA_BINWALK_COMMAND=/usr/bin/binwalk; cd /root; \
+  npx -y rea-agents@6.5.0 decompile /mnt/c/<pfad>.bin --procedure FUN_00200140 \
+  --target-format raw-binary --architecture arm --entry-point 0x200000 --provider ghidra --format json'
+```
+
+Damit lief Ghidra über REA auf dem KryoFlux-Abbild: Evidence
+`ev_a2c2b8cb…08a2` (analyze: ein Segment `ram` 0x200000–0x2062c8, 123 Prozeduren,
+34 Strings), `ev_cd24ac6c…7810` (Lade-Mapping verifiziert, Sprache ARM:LE:32:v7).
+`entry` dekompiliert zur Kopierschleife `DAT_002062bc…DAT_002062c4 → DAT_002062c0`,
+also genau der unten beschriebenen Selbstverschiebung. Adressen wie `0x200088` sind
+keine Ghidra-Prozeduren, weil sie erst nach der Verschiebung angesprungen werden;
+die REA-Werkzeuge `search`, `trace`, `xrefs` und `search-bytes` funktionieren. Die
+Windows-MCP-Registrierung blieb unverändert.
 
 ## HxC-Gotek-Archiv: Firmware ist verschlüsselt
 
@@ -72,12 +85,17 @@ Atmel-SAM-BA-Kennung `03EB:6124` behält.
 `max_track` und die vierzehn `t_*`-Zeitparameter, direkt gefolgt von den Werten
 `0x0C 0x0D 0x0E`; die Namen stehen ab `0x205dc8` wortausgerichtet hintereinander. Das
 ist die Schlüsselliste des `name=value`-Protokolls des Hosts, kein Sprungziel.
-Die Zeiger auf die Tabelle selbst erscheinen nicht als Literal im Abbild, der Zugriff
-läuft also über berechnete Adressen; welche Funktion sie auswertet, ist ohne
-Dekompiler nicht bestimmt. Eine zweite Tabelle bei `0x206158` (22 Zeiger) verweist in
-die `sck=…`/`ick=…`-Strings und bildet die Ausgabe des `info`-Berichts.
-192 Funktionsrückkehrstellen; die Hauptschleife, der USB-Handler und die
-Flusserfassung am Timer/Counter sind damit lokalisierbar, aber nicht rekonstruiert.
+Ghidra bestätigt (`trace min_track`, `xrefs 0x205f54`, `xrefs 0x206158`): kein Code
+referenziert die Tabellen direkt, der Zugriff läuft über berechnete Adressen oder
+Strukturzeiger, die erst nach der Verschiebung gültig sind. Eine zweite Tabelle bei
+`0x206158` (22 Zeiger) verweist in die `sck=…`/`ick=…`-Strings und bildet die Ausgabe
+des `info`-Berichts; sie zeigt bei `0x206188` auf einen Peripherie-Beschreibungsblock
+ab `0x205fd0` (PIOA `0xFFFFF400` mit Pinmasken `0x00C00302`, `0x00400302`), und die
+Timer/Counter-Basis `0xFFFA0000` steht als einziges Vorkommen bei `0x20607c` in
+demselben Block (`search-bytes`). Die Erfassung konfiguriert ihre Peripherie also aus
+einer Datentabelle, nicht aus Literalen im Code. 192 Funktionsrückkehrstellen; die
+Hauptschleife, der USB-Handler und die Flusserfassung sind lokalisierbar, aber in
+dieser Sitzung nicht weiter rekonstruiert (Zeitbudget).
 
 **Takte:** `sck=24027428.57` ist MCK/2 bei MCK = 18,432 MHz × 73/28 = 48,0549 MHz, der
 üblichen SAM7-PLL; `ick=3003428.57` = sck/8. Beides deckt sich mit der öffentlichen
@@ -89,8 +107,11 @@ Stream-Dokumentation und ist damit keine neue Information für UFI.
 - Von KryoFlux sind Zeitparameter-Namen und Protokollschlüssel bekannt; Defaults,
   Hard-Sector-Erkennung und PLL stehen erst mit Dekompiler zur Prüfung. UFI hat die vier
   Anregungen aus der ersten Untersuchung bereits umgesetzt (INFO Bit25).
-- Offen und nur mit Engine lösbar: der `name=value`-Parser, die Index-/Sektorloch-
-  Klassifikation und die Timer-Konfiguration der Erfassung.
+- Offen, jetzt mit der WSL-Ghidra-Strecke machbar: der `name=value`-Parser, die
+  Index-/Sektorloch-Klassifikation und die Timer-Konfiguration der Erfassung. Dafür
+  die Analyse mit Einstieg nach der Verschiebung aufsetzen (Datei ab Offset 0,
+  `--entry-point 0x200088` oder das Abbild vorher auf `0x200000` normalisieren) und
+  die Prozeduren über `search … --kind procedures` wählen.
 
 Ablage der Zwischenergebnisse (nicht versioniert): Scratchpad `rea/` mit
 `kf_arm.dis`, `kf_strings.txt`, `hxc_rea_artifact.json`.
