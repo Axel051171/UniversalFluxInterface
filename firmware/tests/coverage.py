@@ -36,7 +36,7 @@ def main(argv):
     scripts += [[s, *corpus] for s in ('test_flux_corpus.py', 'test_gcr_corpus.py', 'test_mac_corpus.py',
                                         'test_hfe_corpus.py', 'test_hfe_v3_reference.py')]
     if '--no-fuzz' not in argv:
-        scripts.append(['run_fuzz.py', '--target', 'v2', '--replay'])
+        scripts += [['run_fuzz.py', '--target', t, '--replay'] for t in ('v2', 'gw')]
     for script in scripts:
         subprocess.run([sys.executable, str(FW / 'tests' / script[0]), *script[1:]],
                        cwd=ROOT, env=env, check=True, timeout=900)

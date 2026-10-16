@@ -680,3 +680,13 @@ function-extraction regressions or need hardware; llvm-cov ignores `#line`, so t
 programs cannot be attributed to the source files. Coverage states which lines ran,
 not that their results were checked; the generated stubs do not model driver timing
 or state. Output: `firmware/tests/build/coverage.txt`, `coverage.json`, `cov/html/`.
+
+Second step the same day: `run_fuzz.py --target gw` fuzzes the whole Greaseweazle
+protocol module (`ufi_gw.c`, 33 generated stubs, real resource and cancel modules)
+with the raw CDC byte stream, oracle-chosen chunking, read completions, comms clears
+and a byte budget that bounds SOURCE_BYTES; 2.2 M executions in 46 s without a
+finding. Coverage with both fuzzers: 96.4 % lines / 84.3 % branches over 19 modules,
+`ufi_gw.c` 97.4 % / 92.1 %. `firmware/tools/check_static.py` now analyses 33 modules
+instead of 12: the 21 additional HAL-bound modules compile against `tests/hal_stub/`
+(DWT, TIM, SCB, USB CDC declarations only); 16 modules that need the real HAL, USB
+library or FatFs headers remain outside (`NEEDS_REAL_HAL`). No findings.

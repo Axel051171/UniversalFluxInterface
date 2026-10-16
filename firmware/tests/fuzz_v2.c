@@ -70,6 +70,12 @@ dump_status_t ufi_dump_status(void)
 }
 void HAL_Delay(uint32_t ms) { ticks += ms; }
 uint64_t ufi_flux_now64(void) { return flux_now += 1u << 20; }
+static uint32_t flux_words[2048];
+uint32_t* ufi_flux_store(uint32_t* words)   /* bounded store instead of an unset size */
+{
+    *words = (uint32_t)(fuzz_u16() % 2049u);
+    return flux_words;
+}
 bool ufi_native_tx_room(void) { return true; }
 bool ufi_native_tx_idle(void) { return true; }
 

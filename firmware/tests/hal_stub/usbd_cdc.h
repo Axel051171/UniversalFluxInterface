@@ -5,4 +5,6 @@
 
 typedef struct { int unused; } USBD_CDC_ItfTypeDef;
 
+uint8_t USBD_CDC_ReceivePacket(USBD_HandleTypeDef* pdev);
+
 #endif

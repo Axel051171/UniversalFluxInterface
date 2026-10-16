@@ -73,6 +73,21 @@ extern GPIO_TypeDef stub_gpio[11];
 #define ADC_CHANNEL_18 18u
 #define ADC_CHANNEL_19 19u
 
+typedef struct { volatile uint32_t CTRL, CYCCNT; } DWT_Type;
+extern DWT_Type stub_dwt;
+#define DWT (&stub_dwt)
+extern uint32_t SystemCoreClock;
+
+typedef struct {
+    volatile uint32_t CR1, CR2, SMCR, DIER, SR, EGR, CCMR1, CCMR2, CCER, CNT, PSC, ARR, RCR,
+                      CCR1, CCR2, CCR3, CCR4, BDTR, DCR, DMAR;
+} TIM_TypeDef;
+extern TIM_TypeDef stub_tim[8];
+#define TIM2 (&stub_tim[2])
+#define TIM3 (&stub_tim[3])
+
+void SCB_InvalidateDCache_by_Addr(void* addr, int32_t dsize);
+void SCB_CleanDCache_by_Addr(void* addr, int32_t dsize);
 void NVIC_SystemReset(void);
 uint32_t HAL_GetTick(void);
 void HAL_Delay(uint32_t ms);
