@@ -34,6 +34,7 @@ Geprüft wurde jeweils ein fester Commit beziehungsweise eine Datei mit Hash; es
 | [HP9895_Review.md](HP9895_Review.md) | HP 9895 Firmware (hp9895fw) |
 | [HxC_Gotek_Review.md](HxC_Gotek_Review.md) | HxC-Firmwarearchiv für Gotek |
 | [KryoFlux_Binary_Review.md](KryoFlux_Binary_Review.md) | KryoFlux-Binärdatei, statische Untersuchung |
+| [REA_Firmware_Analyse_2026-10-17.md](REA_Firmware_Analyse_2026-10-17.md) | REA-Lauf über HxC-Archiv (UPD verschlüsselt) und KryoFlux-Abbild (Lade-/Startmechanik, Parametertabelle); Werkzeuggrenzen |
 | [Sergev_Floppy_BIOS_Review.md](Sergev_Floppy_BIOS_Review.md) | sergev/floppy-bios |
 
 ## Hardware
