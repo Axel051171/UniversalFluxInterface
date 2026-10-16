@@ -690,3 +690,22 @@ finding. Coverage with both fuzzers: 96.4 % lines / 84.3 % branches over 19 modu
 instead of 12: the 21 additional HAL-bound modules compile against `tests/hal_stub/`
 (DWT, TIM, SCB, USB CDC declarations only); 16 modules that need the real HAL, USB
 library or FatFs headers remain outside (`NEEDS_REAL_HAL`). No findings.
+
+Third step: `run_fuzz.py --target sd` fuzzes the stand-alone SD module (`ufi_dump.c`,
+2200 lines, 43 generated stubs, real image/MFM/HFE/verify/quality modules) through an
+in-memory FatFs (`tests/hal_stub/ff.h`, implemented in `fuzz_sd.c`): read files return
+the fuzz input zero padded to the size the image kind needs, write files are bounded
+sinks, rare FatFs errors (open, read, short read, write, disk full, seek, mount) come
+from the oracle, `f_mkfs` asserts. Captures are synthesised from the input, half of
+them as valid IBM-MFM tracks encoded by the firmware's own encoder so the quality
+decoders, image writers and double-step logic see real sectors. One input runs one SD
+write (SCP, HFE v1/v3, ADF, IMG, D64, D81), the UFI.CFG parser plus the host file API,
+or a dump/copy to SD in a fuzzed format, each after a UFI.CFG preset so the module's
+static configuration is known. 13 k executions in 121 s without a finding;
+`ufi_dump.c` 87.9 % lines / 75.2 % branches, all native builds 93.9 % / 82.4 %. Four
+harness mistakes surfaced along the way (file model stricter than FatFs: a failed
+`f_open` left the handle open, a failed `f_close` closed it, re-opening a handle was
+refused; a sector buffer too small for size code 3) and were corrected in the harness;
+the firmware is unchanged. `check_static.py` now covers `ufi_dump.c` as well (34
+modules). Not reached yet: the double-step probe and track search (need a recognised
+format on track 0 plus a weak later track).

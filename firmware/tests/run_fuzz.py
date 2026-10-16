@@ -6,9 +6,11 @@ Targets:
            job and resource transitions (fuzz_parsers.c)
   v2       the whole UFI v2 dispatcher behind generated driver stubs (fuzz_v2.c)
   gw       the whole Greaseweazle-compatible protocol behind generated stubs (fuzz_gw.c)
-Stubs: fuzz_stubs.py from the header prototypes, HAL declarations from hal_stub/.
+  sd       the stand-alone SD module: image loaders, dump writers, UFI.CFG and the file
+           API over an in-memory FatFs fed by the input (fuzz_sd.c)
+Stubs: fuzz_stubs.py from the header prototypes, HAL/FatFs declarations from hal_stub/.
 
-usage: python run_fuzz.py [--target parsers|v2|gw|all] [--seconds N] [--replay]
+usage: python run_fuzz.py [--target parsers|v2|gw|sd|all] [--seconds N] [--replay]
 --replay only executes the stored corpus once (used by coverage.py).
 """
 import argparse
@@ -29,8 +31,10 @@ LINKER_SYMBOLS = {s: (None, f'uint32_t {s};') for s in ('_estack', '_edtcm', '__
 LIBC = {'memcpy', 'memmove', 'memset', 'memcmp', 'strlen', 'strncpy', 'strcmp', 'strncmp', 'snprintf',
         'strchr', 'strrchr', 'strstr', 'strcpy', 'strcat', 'strncat', 'abs', 'rand', 'malloc', 'free',
         '__chkstk', '__stack_chk_fail', '__stack_chk_guard', 'assert', '_assert', '__assert_fail',
-        '_wassert', 'abort', 'puts', 'printf', 'fprintf', 'vsnprintf', '__security_cookie',
-        '__security_check_cookie', '__GSHandlerCheck', '__C_specific_handler'}
+        '_wassert', 'abort', 'puts', 'printf', 'fprintf', 'vsnprintf', 'getenv', 'exit', 'fputs', 'fwrite',
+        'fputc', 'stderr', '__security_cookie', '__security_check_cookie', '__GSHandlerCheck',
+        '__C_specific_handler'}
+LIBC_PREFIXES = ('___', '__acrt', '__stdio', '__local_stdio', '_errno')
 
 
 def bits(values):
@@ -93,7 +97,41 @@ STUBBED = {
     'gw': dict(harness='fuzz_gw.c', units=('ufi_gw',), real=('ufi_resources', 'ufi_cancel'),
                extra={'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'),
                       'hUsbDevice': ('usbd_def.h', 'USBD_HandleTypeDef hUsbDevice;'), **LINKER_SYMBOLS}),
+    'sd': dict(harness='fuzz_sd.c', units=('ufi_dump',),
+               real=('ufi_image', 'ufi_hfe_v3', 'ufi_mfm', 'ufi_verify', 'ufi_quality', 'ufi_compare',
+                     'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
+               extra=dict(LINKER_SYMBOLS)),
 }
+
+
+def scp_seed():
+    """SCP with one track of eight 2 us cells; flags bit 4 = mutable image without checksum."""
+    hdr = b'SCP' + bytes([0x19, 0x80, 1, 0, 1, 0x10, 0, 0, 0]) + bytes(4)
+    table = (688).to_bytes(4, 'little') + bytes(4 * 167)
+    trk = b'TRK' + bytes([0]) + (8000000).to_bytes(4, 'little') + (8).to_bytes(4, 'little') + (16).to_bytes(4, 'little')
+    return b'\x00' + hdr + table + trk + bytes([0, 80]) * 8
+
+
+def hfe_seed():
+    """HFE v1, one track, one side, 250 kbit/s, LUT in block 1, data in block 2."""
+    hdr = b'HXCPICFE' + bytes([0, 1, 1, 0]) + (250).to_bytes(2, 'little') + (300).to_bytes(2, 'little') \
+        + bytes([7, 1]) + (1).to_bytes(2, 'little') + bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+    lut = (2).to_bytes(2, 'little') + (512).to_bytes(2, 'little')
+    return b'\x01' + hdr.ljust(512, b'\xff') + lut.ljust(512, b'\xff') + bytes([0x49, 0x24, 0x92] * 170 + [0x49, 0x24])
+
+
+def hfe_v3_seed():
+    """HFE v3 signature, one track; the stream starts with SETBITRATE then data bytes."""
+    s = hfe_seed()
+    return s[:1] + b'HXCHFEV3' + s[9:1025] + bytes([0xF2, 0x36]) + s[1027:]
+
+
+SD_SEEDS = (scp_seed(), hfe_seed(), hfe_v3_seed(), b'\x02' + bytes(1024), b'\x03' + bytes(512), b'\x04' + bytes(256),
+            b'\x05' + bytes(256),
+            b'\x06drive=a\ntracks=80\nsides=2\nrevs=3\nformat=hfe\nbutton_a=write\nwrite_file=GAME.ADF\n# x\nrpm_line=density\n',
+            b'\x06drive=b\ntracks=0\ntrack_search=1\ndouble_step=2\nauto_dump=1\ncopy_from=a\ncopy_to=b\nformat=img\n'
+            b'index_sim=300\nprotocol=gw\ntg43=1\niec_device=9\n',
+            b'\x07' + bytes(range(256)) * 4)
 
 
 def fuzzer_env():
@@ -133,7 +171,7 @@ def build_stubbed(name):
                     '-o', str(harness)], check=True)
     stubs = objdir / 'stubs.c'
     stubbed, skipped = fuzz_stubs.generate(objects, stubs, harness_objects=[harness], extra=spec['extra'])
-    unknown = [s for s in skipped if s not in LIBC and not s.startswith('___')]
+    unknown = [s for s in skipped if s not in LIBC and not s.startswith(LIBC_PREFIXES)]
     if unknown:
         raise SystemExit(f'fuzz_{name}: no prototype found for ' + ', '.join(unknown))
     print(f'fuzz_{name}: {len(stubbed)} generated stubs, {len(spec["real"])} real modules behind '
@@ -146,7 +184,8 @@ def build_stubbed(name):
 
 TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
            'v2': (lambda: build_stubbed('v2'), V2_SEEDS, 'fuzz_v2_corpus', 8192),
-           'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096)}
+           'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
+           'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192)}
 
 
 def run_target(name, seconds, replay):
@@ -168,7 +207,7 @@ def run_target(name, seconds, replay):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=('parsers', 'v2', 'gw', 'all'), default='all')
+    parser.add_argument('--target', choices=('parsers', 'v2', 'gw', 'sd', 'all'), default='all')
     parser.add_argument('--seconds', type=int, default=30)
     parser.add_argument('--replay', action='store_true', help='execute the stored corpus once, no mutation')
     args = parser.parse_args()

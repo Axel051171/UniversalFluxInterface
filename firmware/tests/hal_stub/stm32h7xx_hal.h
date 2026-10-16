@@ -93,6 +93,7 @@ uint32_t HAL_GetTick(void);
 void HAL_Delay(uint32_t ms);
 void HAL_GPIO_WritePin(GPIO_TypeDef* port, uint16_t pin, GPIO_PinState state);
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* port, uint16_t pin);
+void HAL_GPIO_TogglePin(GPIO_TypeDef* port, uint16_t pin);
 
 static inline void __disable_irq(void) {}
 static inline void __enable_irq(void) {}
