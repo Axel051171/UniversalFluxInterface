@@ -65,6 +65,25 @@ def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None
     """HFE tracks hold one nominal revolution: without --scale one revolution is measured
     first and every track's cells are scaled into 98.5 % of it (+-3 %, as the firmware's
     sd-write does); with --scale the cells stay nominal and the firmware scales."""
+    if img.v3_tracks:
+        if not isinstance(dev, P2.Device2):
+            raise ValueError("HFEv3 writing requires the native UFI protocol")
+        if a.scale != 1.0 or a.clamp or a.hard_sectors or getattr(a, 'quarter', 0):
+            raise ValueError("HFEv3 requires original timing without scale, clamp or implicit hard-sector mapping")
+        # Validate every selected track before the first drive operation.
+        plans = {key: track.flux() for key, track in sorted(img.v3_tracks.items())
+                 if only is None or key == only}
+        limits = dev.describe()
+        if not limits.flags & 2:
+            raise ValueError("firmware does not advertise the extended write backend")
+        for deltas, duration in plans.values():
+            if not 3 <= len(deltas) <= limits.store_words or any(d < 220 or d > 0xffffffff for d in deltas):
+                raise ValueError("HFEv3 flux exceeds firmware interval or buffer limits")
+        for (c, s), (deltas, duration) in plans.items():
+            r = dev.write_track(c, s, deltas, False, quarter=getattr(a, "quarter", 0),
+                                index_ticks=duration, extended=True, firmware_verify=a.verify)
+            print(f"track {c:2d}.{s}: " + _write_text(r, a.verify), flush=True)
+        return
     rev = 0
     if a.scale == 1.0:
         cap = dev.read_track(0, 0, 1)
@@ -74,7 +93,8 @@ def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None
             continue
         cell16, pm = fit_cell16(img.rate_bps, len(cells) * 8, rev)
         r = dev.write_track(c, s, bits_to_deltas(cells, cell16), a.verify, hard_sectors=a.hard_sectors,
-                            quarter=getattr(a, "quarter", 0), scale=a.scale, clamp=a.clamp)
+                            quarter=getattr(a, "quarter", 0), scale=a.scale, clamp=a.clamp,
+                            **({'index_ticks': (len(cells)*8*cell16+32768)>>16} if isinstance(dev,P2.Device2) else {}))
         print(f"track {c:2d}.{s}: " + _write_text(r, a.verify)
               + (f", cells scaled {pm / 1000:.3f}" if pm != 1000 else ""), flush=True)
 
@@ -125,6 +145,8 @@ def _parse_steps(spec: str) -> tuple[list[tuple[int, int]], bool]:
 
 
 def cmd_read_disk(dev, a) -> None:
+    if a.output.lower().endswith(".ufi"):
+        return cmd_read_native(dev, a)
     _prepare(dev, a.drive)
     tracks, revs = {}, {}
     try:
@@ -145,6 +167,35 @@ def cmd_read_disk(dev, a) -> None:
     nrev = min(len(v) for v in tracks.values())
     write_scp(a.output, tracks, nrev, heads=0 if a.sides == 2 else 1)
     print(f"wrote {a.output}: {len(tracks)} tracks x {nrev} revolutions")
+
+
+def cmd_read_native(dev, a) -> None:
+    from dataclasses import asdict
+    from .archive import NativeArchive
+    if not isinstance(dev, P2.Device2):
+        raise ValueError("native frame archives require protocol v2")
+    if not 1 <= a.tracks <= 84 or a.sides not in (1, 2):
+        raise ValueError("invalid disk geometry")
+    info = dev.device_info()
+    archive = NativeArchive(a.output, dict(schema=1, device=asdict(info), drive=a.drive,
+                                           hard_sectors=a.hard_sectors, sample_hz=info.sample_hz))
+    try:
+        _prepare(dev, a.drive)
+        for cyl in range(a.tracks):
+            for head in range(a.sides):
+                attempt = archive.begin(cyl, head, a.revs)
+                try:
+                    cap = dev.read_track(cyl, head, a.revs, hard_sectors=a.hard_sectors,
+                                         frame_sink=lambda b: archive.frame(attempt, b))
+                    archive.finish(attempt, cap)
+                except BaseException as exc:
+                    archive.fail(attempt, str(exc) or type(exc).__name__)
+                    raise
+                print(f"track {cyl}.{head}: {len(cap.revolutions)} revolutions; status {cap.status}", flush=True)
+    finally:
+        archive.close()
+        dev.motor(False)
+    print(f"saved native ticks and validated frames to {a.output}")
 
 
 def _write_text(r, verify: bool) -> str:
@@ -173,7 +224,9 @@ def cmd_write_disk(dev, a) -> None:
     try:
         for n in sorted(tracks):
             r = dev.write_track(n // 2, n % 2, scp_to_ticks(tracks[n][0].cells), a.verify,
-                                hard_sectors=a.hard_sectors, scale=a.scale, clamp=a.clamp)
+                                hard_sectors=a.hard_sectors, scale=a.scale, clamp=a.clamp,
+                                **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000}
+                                   if isinstance(dev,P2.Device2) else {}))
             print(f"track {n // 2:2d}.{n % 2}: " + _write_text(r, a.verify), flush=True)
     finally:
         dev.motor(False)
@@ -254,47 +307,57 @@ def _progress(total: int | None):
     return show
 
 
-def _iec_check(dev: P2.Device2, what: str) -> None:
-    st = dev.iec_status()
+def _iec_check(dev: P2.Device2, what: str, device: int = 0) -> None:
+    st = dev.iec_status(device)
     if not st.startswith(("00", "01", "73")):
         raise SystemExit(f"{what}: drive says {st!r}")
 
 
 def cmd_iec_read(dev: P2.Device2, a) -> None:
     from . import cbm
-    kind, tracks = cbm.kind_for(a.type, a.tracks)
-    dev.iec_command("I0")
+    from .iec_job import read_image
+    model = a.type
+    if model == "auto":
+        from .iec_identity import identify
+        model = identify(dev, a.device)["model"]
+        if model is None:
+            raise ValueError("unknown drive ROM; select --type explicitly")
+    kind, tracks = cbm.kind_for(model, a.tracks)
+    dev.iec_command("I0", a.device)
+    _iec_check(dev, "initialise", a.device)
     if kind == "d71":
-        dev.iec_command("U0>M1")
-    bad = []
-    with open(a.output, "wb") as f:
-        for t, s in cbm.blocks(kind, tracks):
-            try:
-                blk = dev.iec_block_read(t, s, a.device)
-            except P2.DeviceError:
-                blk = b""
-            if len(blk) != cbm.BLOCK:
-                bad.append((t, s))
-                blk = bytes(cbm.BLOCK)
-            f.write(blk)
-            if s == 0:
-                print(f"track {t:2d}: {cbm.sectors_per_track(kind, t)} blocks", end="\r", flush=True)
-    print(f"wrote {a.output}: {kind.upper()} {tracks} tracks, {len(bad)} unreadable block(s)"
-          + (": " + ", ".join(f"{t}/{s}" for t, s in bad[:20]) if bad else ""))
+        dev.iec_command("U0>M1", a.device)
+        _iec_check(dev, "1571 mode", a.device)
+    state = read_image(dev, a.output, kind, tracks, a.device, a.retries, a.resume)
+    bad = [key for key, entry in state["sectors"].items() if entry["dos"] != 0]
+    if bad:
+        raise SystemExit(f"{len(bad)} unreadable blocks; preserved {a.output}.partial and .ufi-job.json; use --resume")
+    print(f"wrote {a.output}: {kind.upper()} {tracks} tracks, all blocks read successfully")
 
 
 def cmd_iec_write(dev: P2.Device2, a) -> None:
     from . import cbm
+    if a.new and getattr(a, "resume", False):
+        raise ValueError("--new cannot be combined with --resume")
     data = open(a.input, "rb").read()
     kind, tracks = cbm.geometry(len(data))
+    image_bytes = cbm.image_size(kind, tracks)
+    if any(code != 1 for code in data[image_bytes:]):
+        raise ValueError("image error map contains unreadable sectors; refusing to write placeholder data")
     if a.new:
         print(f"formatting (N0:{a.new}) ...", flush=True)
-        dev.iec_command("N0:" + a.new)
-        _iec_check(dev, "format")
-    dev.iec_command("I0")
-    _iec_check(dev, "initialise")
+        dev.iec_command("N0:" + a.new, a.device)
+        _iec_check(dev, "format", a.device)
+    dev.iec_command("I0", a.device)
+    _iec_check(dev, "initialise", a.device)
     if kind == "d71":
-        dev.iec_command("U0>M1")
+        dev.iec_command("U0>M1", a.device)
+    if getattr(a, "checkpoint", None) or getattr(a, "resume", False):
+        from .iec_job import write_image
+        result = write_image(dev, a.input, a.checkpoint or a.input + ".write-job.json",
+                             a.device, a.retries, a.resume)
+        print(f"verified IEC write complete: {result['complete']}")
+        return
     errors = []
     off = 0
     for t, s in cbm.blocks(kind, tracks):
@@ -312,6 +375,8 @@ def cmd_iec_write(dev: P2.Device2, a) -> None:
     print(f"wrote {a.input} ({kind.upper()}, {tracks} tracks) with {len(errors)} error(s)")
     for t, s, code in errors[:20]:
         print(f"  track {t} sector {s}: " + ("verify mismatch" if code < 0 else f"DOS {code:02d} {cbm.DOS_ERRORS.get(code, '')}"))
+    if errors:
+        raise SystemExit(1)
 
 
 def cmd_monitor(dev: P2.Device2, a) -> None:
@@ -418,7 +483,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"caps", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
+V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor"}
 
 
@@ -426,12 +491,27 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ufi", description="UFI Flux Engine host tool",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
+    ap.add_argument("--integrity", action="store_true", help="use job IDs, chunk offsets and checked write commit")
+    ap.add_argument("--extended", action="store_true", help="use host-timed extended flux write intervals")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("archive-check", help="verify native archive hashes offline; report incomplete captures").add_argument("image")
+    p = sub.add_parser("amiga-quality", help="offline Amiga sector/label and weak-track analysis of SCP flux")
+    p.add_argument("image")
+    p.add_argument("--track", type=int, default=0)
+    p.add_argument("--side", type=int, choices=(0, 1), default=0)
+    p.add_argument("--spt", type=int, choices=(11, 22), default=11)
+    p.add_argument("--bitrate", type=_kbps, default=250000)
+    p.add_argument("-o", "--output", help="JSON report (otherwise stdout)")
     sub.add_parser("rpm", help="spindle speed from the index pulses").add_argument(
         "revs", type=int, nargs="?", default=5, help="revolutions to average (default 5)")
     sub.add_parser("scan", help="which drives answer (moves the heads)").add_argument(
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
     sub.add_parser("write-limits", help="what the write backend accepts (firmware 1.15): clock, max intervals, min/max interval")
+    sub.add_parser("diagnostics", help="buffer occupancy, DMA/USB errors and memory reserves")
+    sub.add_parser("features", help="supported/configured/available features")
+    sub.add_parser("job-status", help="last extended job state and integrity totals")
+    sub.add_parser("release", help="release native ownership while idle")
+    sub.add_parser("describe", help="protocol clocks, transport availability and limits (firmware 1.18)")
     p = sub.add_parser("format", help="format a disk or one track in the firmware (MFM/Amiga, firmware 1.14): "
                        "ufi format 1440 [--verify]; one track: --track T --side S")
     p.add_argument("layout", choices=list(FORMATS), help="1440 720 1200 360 dmf amiga amigahd 1581 st720 st800")
@@ -452,14 +532,22 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("iec-status", help="DOS status line of the IEC drive (firmware 1.16)")
     p = sub.add_parser("iec-read", help="D64/D71/D81 from a 1541/1571/1581 over IEC via U1 block reads (firmware 1.16)")
     p.add_argument("output")
-    p.add_argument("--type", choices=("1541", "1571", "1581"), default="1541")
-    p.add_argument("--tracks", type=int, default=35, help="1541: 35 or 40; 1571: 35/40 = first side only")
+    p.add_argument("--type", choices=("auto", "1541", "1541-II", "1541C", "1571", "1581"), default="1541")
+    p.add_argument("--tracks", type=int, default=0, help="default: full disk; 1541: 35/40; 1571: 70 or 35/40 first side; 1581: 80")
+    p.add_argument("--retries", type=int, default=2, help="additional attempts per unreadable sector (0..20)")
+    p.add_argument("--resume", action="store_true", help="resume checkpoint; keep the same physical disk inserted")
     p.add_argument("--device", type=int, default=0, help="IEC device number (default: UFI.CFG iec_device)")
     p = sub.add_parser("iec-write", help="D64/D71/D81 onto a formatted disk in a 1541/1571/1581 via U2 block writes (firmware 1.16)")
     p.add_argument("input")
     p.add_argument("--device", type=int, default=0, help="IEC device number (default: UFI.CFG iec_device)")
     p.add_argument("--verify", action="store_true", help="read every block back and compare")
     p.add_argument("--new", metavar="NAME,ID", help="format the disk first (N0:NAME,ID; about a minute on a 1541)")
+    p.add_argument("--checkpoint", help="write journal path; enables mandatory readback verification")
+    p.add_argument("--resume", action="store_true", help="resume verified IEC write journal on the same disk")
+    p.add_argument("--retries", type=int, default=2)
+    p = sub.add_parser("iec-identify", help="read ROM signatures; report unknown ROMs explicitly")
+    p.add_argument("--device", type=int, default=0)
+    p.add_argument("--fingerprint", action="store_true", help="also hash the full mapped ROM")
     p = sub.add_parser("iec-nib", help="1541 raw GCR tracks over IEC into a G64 (firmware 1.14, drive code upload)")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--tracks", type=int, default=35, choices=range(35, 43), metavar="35-42")
@@ -495,6 +583,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--revs", type=int, default=50, help="revolutions per READ (default 50, max 200)")
     p.add_argument("--scale", type=float, default=1.0, help="full bar deflection in percent (default 1)")
     p = sub.add_parser("read")
+    p.add_argument("--amiga-quality", metavar="JSON", help="save adaptive Amiga quality report; keep raw flux with -o capture.scp")
+    p.add_argument("--amiga-spt", type=int, choices=(11, 22), default=11)
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("-r", "--revs", type=int, default=3)
@@ -569,8 +659,49 @@ def main(argv: list[str] | None = None) -> int:
         "mask", nargs="?", type=lambda s: int(s, 0))
     a = ap.parse_args(argv)
 
+    if a.cmd == "amiga-quality":
+        import json
+        from .amiga import analyze_capture
+        try:
+            _, tracks = read_scp(a.image)
+            number = a.track * 2 + a.side
+            if number not in tracks:
+                raise ValueError('requested track is absent from SCP image')
+            revs = []
+            for seq, rev in enumerate(tracks[number]):
+                samples, total = [], 0
+                for delta in scp_to_ticks(rev.cells):
+                    total += delta
+                    samples.append(total)
+                duration = (rev.index_time * P.FLUX_CLOCK_HZ + 20_000_000) // 40_000_000
+                revs.append(P.Revolution(a.track, a.side, seq, 1, duration, samples))
+            report, _ = analyze_capture(P.Capture(revs), a.bitrate, number, a.spt)
+            text = json.dumps(report, indent=2) + '\n'
+            if a.output:
+                with open(a.output, 'x', encoding='utf-8') as output:
+                    output.write(text)
+            else:
+                print(text, end='')
+            return 0 if report['complete'] else 1
+        except (ValueError, OSError) as exc:
+            print(f'error: {exc}', file=sys.stderr)
+            return 1
+
+    if a.cmd == "archive-check":
+        import json
+        from .archive import verify_archive
+        report = verify_archive(a.image)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 1 if report["unfinished"] or report["failed"] else 0
+
     dev = P2.connect(a.port)
+    if isinstance(dev, P2.Device2):
+        dev.integrity = a.integrity
+        dev.extended = a.extended
     try:
+        if not isinstance(dev, P2.Device2) and (a.integrity or a.extended):
+            print("error: --integrity and --extended require UFI v2 firmware", file=sys.stderr)
+            return 1
         if isinstance(dev, P2.Device2):
             if run_v2(dev, a):
                 return 0
@@ -599,6 +730,17 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "diagnostics":
+            import json
+            print(json.dumps(dev.diagnostics(), indent=2))
+        elif a.cmd == "features":
+            print(dev.features())
+        elif a.cmd == "job-status":
+            print(dev.job_status())
+        elif a.cmd == "release":
+            print(dev.resource(False))
+        elif a.cmd == "describe":
+            print(dev.describe())
         elif a.cmd == "write-limits":
             lim = dev.write_limits()
             print(f"schema {lim.schema}, flags 0x{lim.flags:02X}"
@@ -621,9 +763,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  weak-bit windows: {w}/64" + (f"  (mask 0x{r['weak_mask']:016x})" if w else ""))
         elif a.cmd == "iec-nib":
             from .nib import NibReader, write_g64
-            rd = NibReader(dev, a.device)
-            rd.calibrate()
-            res = rd.read_disk(a.tracks, a.halftracks)
+            import json
+            import hashlib
+            from dataclasses import asdict
+            # Preserve evidence before stitching, including unsuccessful/raw fragments.
+            with open(a.output + ".fragments.jsonl", "x", encoding="utf-8") as fragments:
+                def save_chunk(args, chunk):
+                    record = asdict(chunk)
+                    record["data"] = chunk.data.hex()
+                    record["sha256"] = hashlib.sha256(chunk.data).hexdigest()
+                    record["request"] = args
+                    record["schema"] = 1
+                    fragments.write(json.dumps(record) + "\n")
+                    fragments.flush()
+                rd = NibReader(dev, a.device, chunk_sink=save_chunk)
+                try:
+                    rd.calibrate()
+                except BaseException:
+                    dev.iec_command(b"I0", a.device)
+                    raise
+                res = rd.read_disk(a.tracks, a.halftracks)
             write_g64(a.output, res)
             good = sum(1 for r in res if r.data)
             print(f"wrote {a.output}: {good}/{len(res)} tracks stitched, "
@@ -675,6 +834,16 @@ def main(argv: list[str] | None = None) -> int:
                 write_scp(a.output, {a.track * 2 + a.side: [_to_scp(r) for r in cap.revolutions]},
                           len(cap.revolutions))
                 print(f"wrote {a.output}")
+            if a.amiga_quality:
+                import json
+                from .amiga import analyze_capture
+                report, _ = analyze_capture(cap, a.bitrate or (500000 if a.amiga_spt == 22 else 250000),
+                                            a.track * 2 + a.side, a.amiga_spt)
+                with open(a.amiga_quality, 'x', encoding='utf-8') as output:
+                    json.dump(report, output, indent=2)
+                print(f"Amiga quality: {'complete' if report['complete'] else 'incomplete/conflicting'}; {a.amiga_quality}")
+                if not report['complete']:
+                    return 1
         elif a.cmd == "read-disk":
             cmd_read_disk(dev, a)
         elif a.cmd == "write" and a.image.lower().endswith(".hfe"):
@@ -693,7 +862,9 @@ def main(argv: list[str] | None = None) -> int:
                 dev.step_schedule(*_parse_steps(a.steps))
             r = dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
                                 hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
-                                clamp=a.clamp)
+                                clamp=a.clamp,
+                                **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000}
+                                   if isinstance(dev,P2.Device2) else {}))
             print(_write_text(r, a.verify))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
@@ -703,6 +874,10 @@ def main(argv: list[str] | None = None) -> int:
             dev.abort()
         elif a.cmd == "iec-status":
             print(dev.iec_status())
+        elif a.cmd == "iec-identify":
+            import json
+            from .iec_identity import identify
+            print(json.dumps(identify(dev, a.device, a.fingerprint), indent=2))
         elif a.cmd == "iec-read":
             cmd_iec_read(dev, a)
         elif a.cmd == "iec-write":
@@ -719,7 +894,13 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "bootloader":
             dev.bootloader()
             print("device restarts into the USB-DFU bootloader (dfu-util -a 0 ...)")
-    except P.DeviceError as e:
+    except (P.DeviceError, ValueError, TimeoutError, OSError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    finally:
+        if isinstance(dev, P2.Device2) and hasattr(dev.s, "cancel"):
+            try:
+                dev.close()
+            except (P.DeviceError, TimeoutError, OSError):
+                pass  # original operation result takes precedence during disconnect
     return 0

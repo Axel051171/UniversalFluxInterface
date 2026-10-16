@@ -423,6 +423,10 @@ int ufi_floppy_end(void)
         return UFI_OK;
     }
     const int ret = flush_all();
+    if (ret != UFI_OK) {
+        led_set(&PIN_LED_ERR, true);
+        return ret;                        /* keep the only copy of unwritten data */
+    }
     active = false;
     fmt_ok = false;
     drop_cache();

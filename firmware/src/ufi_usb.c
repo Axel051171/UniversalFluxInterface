@@ -6,10 +6,13 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_composite.h"
+#include "ufi_resources.h"
 #include "usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_cdc_if.h"
 #include "usbd_msc.h"
+#include "ufi_text.h"
 #include <string.h>
 
 extern USBD_StorageTypeDef ufi_msc_fops;    /* ufi_msc.c: SD NAND */
@@ -81,12 +84,14 @@ static uint32_t cdc_tx_busy(void) {
 }
 
 static bool cdc_wait_idle(void) {
-    if (msc_mode) {
+    if (msc_mode || __get_IPSR() != 0u || !hUsbDevice.pClassData ||
+        hUsbDevice.dev_state != USBD_STATE_CONFIGURED) {
         return false;                       /* no CDC interface: nothing can be sent */
     }
     const uint32_t start = HAL_GetTick();
     while (cdc_tx_busy() != 0) {
-        if (HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
+        if (!hUsbDevice.pClassData || hUsbDevice.dev_state != USBD_STATE_CONFIGURED ||
+            HAL_GetTick() - start > USB_TX_TIMEOUT_MS) {
             return false;
         }
     }
@@ -123,7 +128,7 @@ int ufi_usb_tx_start(const uint8_t* p, uint32_t len) {
     if (len == 0 || len > USB_TX_CHUNK) {
         return UFI_ERR_USB;
     }
-    if (msc_mode) {
+    if (msc_mode || !hUsbDevice.pClassData || hUsbDevice.dev_state != USBD_STATE_CONFIGURED) {
         return UFI_ERR_USB;
     }
     if (cdc_tx_busy() != 0) {
@@ -150,11 +155,7 @@ static int reply(uint8_t cmd, uint8_t status, const void* payload, uint16_t len)
 
 /* Append s plus its NUL to a reply text of max REPLY_MAX_PAYLOAD bytes (cut if too long) */
 static uint16_t str_add(char* buf, uint16_t n, const char* s) {
-    while (*s && n < REPLY_MAX_PAYLOAD - 1u) {
-        buf[n++] = *s++;
-    }
-    buf[n++] = '\0';
-    return n;
+    return (uint16_t)ufi_text_append(buf, REPLY_MAX_PAYLOAD, n, s);
 }
 
 #ifndef UFI_FW_VERSION
@@ -176,7 +177,7 @@ static uint8_t st(int ret) {
 void ufi_usb_init(void) {
     /* PA11/PA12 AF10, OTG_HS clock and NVIC: HAL_PCD_MspInit() in usbd_conf.c */
     USBD_Init(&hUsbDevice, &HS_Desc, 0);
-    USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
+    USBD_RegisterClass(&hUsbDevice, usb_mode == UFI_USB_COMPOSITE ? &UFI_Composite : &USBD_CDC);
     USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
     USBD_Start(&hUsbDevice);
 }
@@ -195,22 +196,24 @@ int ufi_usb_set_msc(bool on) {
 
 /* Flux personality for the switch in the middle: UFI protocol or Greaseweazle (UFI.CFG) */
 uint8_t ufi_usb_flux_mode(void) {
-    return ufi_config_protocol_gw() ? UFI_USB_GW : UFI_USB_FLUX;
+    return ufi_config_protocol_composite() ? UFI_USB_COMPOSITE :
+           ufi_config_protocol_gw() ? UFI_USB_GW : UFI_USB_FLUX;
 }
 
 /* Re-enumerate as flux device (CDC), SD drive or USB floppy (both USB mass storage).
  * The soft disconnect is held 200 ms so the host sees the device go away and reads the
- * new descriptors.  USB floppy: the USB interrupt stays off and ufi_usb_poll() runs the
+ * new descriptors.  Both MSC modes: the USB interrupt stays off and ufi_usb_poll() runs the
  * stack from the main loop, so the blocking disk accesses in the storage callbacks
  * delay no interrupt. */
 int ufi_usb_set_mode(uint8_t mode) {
     if (mode == usb_mode) {
         return UFI_OK;
     }
-    if (mode > UFI_USB_GW) {
+    if (mode > UFI_USB_COMPOSITE) {
         return UFI_ERR_NOT_IMPL;
     }
-    const bool cdc = (mode == UFI_USB_FLUX || mode == UFI_USB_GW);
+    if (ufi_operation_busy()) return UFI_ERR_BUSY;
+    const bool cdc = (mode == UFI_USB_FLUX || mode == UFI_USB_GW || mode == UFI_USB_COMPOSITE);
     if (!cdc && ufi_dump_active()) {
         return UFI_ERR_BUSY;
     }
@@ -218,25 +221,28 @@ int ufi_usb_set_mode(uint8_t mode) {
         return UFI_ERR_STORAGE;
     }
     if (usb_mode == UFI_USB_FLOPPY) {
-        ufi_floppy_end();                   /* write back cached tracks first */
+        const int ret = ufi_floppy_end();   /* retain dirty data if writeback fails */
+        if (ret != UFI_OK) return ret;
     }
-    if (usb_mode == UFI_USB_GW) {
+    if ((usb_mode == UFI_USB_GW || usb_mode == UFI_USB_COMPOSITE)) {
         ufi_gw_end();                       /* abort a read, motors off */
     }
+    ufi_v2_event_now(UFI_V2_EVT_MODE, &mode, 1); /* preconditions succeeded */
     ufi_v2_reset();                         /* a new enumeration starts in v1 */
     USBD_Stop(&hUsbDevice);
     USBD_DeInit(&hUsbDevice);
     HAL_Delay(200);
+    ufi_resources_reset();
     usb_mode = mode;
     msc_mode = !cdc;
     cmd_ready = 0;
-    if (mode == UFI_USB_GW) {
+    if ((mode == UFI_USB_GW || mode == UFI_USB_COMPOSITE)) {
         ufi_gw_begin();
     }
     usbd_desc_set_mode(mode);
     USBD_Init(&hUsbDevice, &HS_Desc, 0);
     if (cdc) {
-        USBD_RegisterClass(&hUsbDevice, &USBD_CDC);
+        USBD_RegisterClass(&hUsbDevice, usb_mode == UFI_USB_COMPOSITE ? &UFI_Composite : &USBD_CDC);
         USBD_CDC_RegisterInterface(&hUsbDevice, &USBD_Interface_fops_HS);
     } else {
         USBD_RegisterClass(&hUsbDevice, &USBD_MSC);
@@ -244,6 +250,8 @@ int ufi_usb_set_mode(uint8_t mode) {
     }
     if (mode == UFI_USB_FLOPPY) {
         ufi_floppy_begin();
+    }
+    if (!cdc) {
         HAL_NVIC_DisableIRQ(OTG_HS_IRQn);   /* polled: ufi_usb_poll() */
     }
     USBD_Start(&hUsbDevice);
@@ -251,9 +259,9 @@ int ufi_usb_set_mode(uint8_t mode) {
     return UFI_OK;
 }
 
-/* Main loop: in USB floppy mode the USB stack runs here instead of the interrupt */
+/* Both MSC backends use tick-based waits: SysTick must be able to run. */
 void ufi_usb_poll(void) {
-    if (usb_mode == UFI_USB_FLOPPY) {
+    if (msc_mode) {
         HAL_PCD_IRQHandler(&hpcd_USB_OTG_HS);
         NVIC_ClearPendingIRQ(OTG_HS_IRQn);
     }
@@ -265,7 +273,7 @@ void ufi_usb_poll(void) {
 
 /* Returns false if the OUT endpoint must stay paused (Greaseweazle flow control) */
 bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
-    if (usb_mode == UFI_USB_GW) {
+    if ((usb_mode == UFI_USB_GW || usb_mode == UFI_USB_COMPOSITE)) {
         return ufi_gw_rx(buf, len);
     }
     // UFI v2: latched by a packet starting with 55 AA (not inside v1 write data)
@@ -293,7 +301,7 @@ bool ufi_usb_receive_callback(uint8_t* buf, uint32_t len) {
 /* CDC SET_LINE_CODING (interrupt context): the Greaseweazle tools clear the channel by
  * setting 10000 baud; in the UFI personality this ends a v2 session (back to v1) */
 void ufi_usb_line_coding(uint32_t baud) {
-    if (usb_mode == UFI_USB_GW && baud == 10000u) {
+    if ((usb_mode == UFI_USB_GW || usb_mode == UFI_USB_COMPOSITE) && baud == 10000u) {
         ufi_gw_clear_comms();
     } else if (usb_mode == UFI_USB_FLUX && baud == 10000u) {
         ufi_v2_clear_comms();
@@ -395,8 +403,39 @@ static void cmd_debug_timer(uint8_t cmd) {
     }
 }
 
+/* Minimum packet sizes: never reuse bytes left by an earlier, longer command. */
+static uint32_t command_min_len(uint8_t cmd) {
+    switch (cmd) {
+        case UFI_CMD_SELECT_DRIVE: case UFI_CMD_SEEK: case UFI_CMD_SELECT_SIDE:
+        case UFI_CMD_DEBUG_TIMER: return 2;
+        case UFI_CMD_SET_LINES: case UFI_CMD_IEC_SEND: case UFI_CMD_ERASE_TRACK: return 3;
+        case UFI_CMD_READ_TRACK: case UFI_CMD_READ_TRACK_RAW: case UFI_CMD_SEEK_TEST: return 4;
+        case UFI_CMD_WRITE_TRACK: case UFI_CMD_WRITE_TRACK_VERIFY:
+        case UFI_CMD_WRITE_PATTERN: return 7;
+        case UFI_CMD_WRITE_TRACK_C: return 11;
+        case UFI_CMD_DEBUG_GPIO: return (cmd_len >= 2 && cmd_buffer[1] == 1) ? 4 : 2;
+        default: return 1;
+    }
+}
+
+static bool allowed_while_busy(uint8_t cmd) {
+    switch (cmd) {
+        case UFI_CMD_NOP: case UFI_CMD_GET_INFO: case UFI_CMD_GET_STATUS:
+        case UFI_CMD_ABORT_READ: case UFI_CMD_DUMP_STATUS: case UFI_CMD_DUMP_ABORT:
+            return true;
+        case UFI_CMD_BOARD_STATUS: return cmd_len == 1;
+        default: return false;
+    }
+}
+
 int ufi_usb_process_command(void) {
-    if (usb_mode == UFI_USB_GW) {
+    ufi_composite_service();
+    if (usb_mode == UFI_USB_COMPOSITE) {
+        ufi_v2_service();
+        ufi_gw_service();
+        return 0;
+    }
+    if ((usb_mode == UFI_USB_GW || usb_mode == UFI_USB_COMPOSITE)) {
         ufi_gw_service();                   /* Greaseweazle protocol (ufi_gw.c) */
         return 0;
     }
@@ -408,6 +447,16 @@ int ufi_usb_process_command(void) {
     }
 
     const uint8_t cmd = cmd_buffer[0];
+    if (cmd_len < command_min_len(cmd)) {
+        reply(cmd, st(UFI_ERR_BAD_ARGS), NULL, 0);
+        cmd_ready = 0;
+        return 1;
+    }
+    if (ufi_operation_busy() && !allowed_while_busy(cmd)) {
+        reply(cmd, st(UFI_ERR_BUSY), NULL, 0);
+        cmd_ready = 0;
+        return 1;
+    }
     ufi_board_activity();                   /* motor idle timer */
 
     /* a stand-alone dump owns the drive: only status queries and abort meanwhile */
@@ -454,7 +503,7 @@ int ufi_usb_process_command(void) {
         }
 
         case UFI_CMD_SELECT_DRIVE:
-            reply(cmd, st(ufi_drive_select((drive_type_t)cmd_buffer[1])), NULL, 0);
+            reply(cmd, st(ufi_drive_select_native((drive_type_t)cmd_buffer[1])), NULL, 0);
             break;
         case UFI_CMD_MOTOR_ON:
             reply(cmd, st(ufi_drive_motor(true)), NULL, 0);
@@ -484,16 +533,15 @@ int ufi_usb_process_command(void) {
                 drive_timing_t t = ufi_drive_get_timing();
                 const uint32_t n = (cmd_len - 1 < sizeof(t)) ? (cmd_len - 1) & ~1u : sizeof(t);
                 memcpy(&t, &cmd_buffer[1], n);
-                ufi_drive_set_timing(&t);
+                int ret=ufi_drive_timing_checked(&t);
+                if(ret){reply(cmd,st(ret),NULL,0);break;}
             }
             const drive_timing_t cur = ufi_drive_get_timing();
             reply(cmd, 0, &cur, sizeof(cur));
             break;
         }
         case UFI_CMD_SET_LINES:             // [density, drate]; meaning is drive dependent
-            ufi_drive_density_line(cmd_buffer[1] != 0);
-            bus_out(&PIN_FDD_DRATE, cmd_buffer[2] != 0);
-            reply(cmd, 0, NULL, 0);
+            reply(cmd, st(ufi_drive_lines_set(cmd_buffer[1]!=0,cmd_buffer[2]!=0)), NULL, 0);
             break;
         case UFI_CMD_BOARD_STATUS: {        // [mask] optional: bit0 FDD_5V, bit1 FDD_12V
             if (cmd_len >= 2) {

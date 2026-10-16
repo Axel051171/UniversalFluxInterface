@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/dbalsom/fluxfox",
+  "commit": "1d72ff1b329cc072cec00fe42ae51bededf5374f",
+  "path": "tests/images/transylvania/Transylvania.hfe",
+  "sha256": "e4d39194a67991127457a23114cec3330d92e362feafc483646e70e504ddef02",
+  "scope": "84 HFEv1 track sides, 8661040 cells. Production firmware HFEv3 encoding/decoding preserves every cell transition at the explicitly quantized nominal rate. Not a physical recording qualification or a weak-bit/copy-protection verdict.",
+  "license": "Upstream LICENSE.txt: copyright 1982-1986 Polarware/Penguin Software, donated to the public by Mark Pelczarski; copying allowed without charging and with notice retained. Original file and notice downloaded only to ignored test build storage."
+}

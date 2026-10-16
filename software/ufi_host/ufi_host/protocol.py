@@ -109,14 +109,22 @@ def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01)
             flux.append(t)
             i += 1
         elif 0xF0 <= b <= 0xFC:
+            if i + 2 > n:
+                raise ValueError("truncated two-byte flux interval")
             t += 240 + ((b - 0xF0) << 8) + data[i + 1]
             flux.append(t)
             i += 2
         elif b in (0xFD, 0xFE):
+            if i + 5 > n:
+                raise ValueError("truncated flux timestamp")
             v = int.from_bytes(data[i + 1:i + 5], "little")
             if b == 0xFD:
+                if t + v <= index[-1]:
+                    raise ValueError("non-increasing index timestamp")
                 index.append(t + v)
             else:
+                if v == 0:
+                    raise ValueError("zero flux interval")
                 t += v
                 flux.append(t)
             i += 5

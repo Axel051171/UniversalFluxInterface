@@ -222,6 +222,26 @@ static void t_last_reset(st_item_t* it)
 
 /* ---- the run ---------------------------------------------------------- */
 
+uint8_t ufi_selftest_selected(uint8_t* out,uint8_t max_items,uint16_t mask) {
+    uint8_t n=0;
+    for(uint8_t id=1;id<=13 && n<max_items;id++) {
+        if(!(mask&(1u<<(id-1))))continue;
+        st_item_t item={0};item.id=id;
+        switch(id) {
+        case 1:t_timer(&item);break;case 2:t_usb_sof(&item);break;
+        case 3:t_psram(&item);break;case 4:t_sd(&item);break;
+        case 5:t_rail(&item,0);break;case 6:t_rail(&item,1);break;
+        case 7:t_board_id(&item);break;case 8:t_usbc(&item);break;
+        case 9:t_fdd_lines(&item);break;case 10:t_iec_loop(&item);break;
+        case 11:t_index_loop(&item);break;case 12:t_last_reset(&item);break;
+        case 13:t_stack(&item);break;
+        }
+        out[n*6]=id;out[n*6+1]=item.status;memcpy(out+n*6+2,&item.value,4);n++;
+        UFI_WATCHDOG_FEED();
+    }
+    return n;
+}
+
 uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
 {
     st_item_t items[15];

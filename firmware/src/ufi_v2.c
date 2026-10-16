@@ -19,6 +19,17 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_composite.h"
+#include "ufi_resources.h"
+#include "ufi_write_wave.h"
+#include "ufi_job.h"
+#include "ufi_cancel.h"
+#include "ufi_quality.h"
+#include "ufi_analysis_job.h"
+#include "ufi_media.h"
+#include "ufi_capabilities.h"
+_Static_assert(QUALITY_MAX_WIRE+40u<=UFI_V2_MAX_PAYLOAD,"analysis report exceeds native packet");
+#include "ufi_metrics.h"
 #include "usbd_cdc_if.h"
 #include <string.h>
 
@@ -56,17 +67,26 @@ extern capture_context_t g_capture;
 #define CAP_FORMAT      (1u << 12)   /* 1.14: FORMAT */
 #define CAP_SELFTEST    (1u << 13)   /* 1.14: SELFTEST */
 #define CAP_WRITE_LIMITS (1u << 14)  /* 1.15: WRITE_LIMITS */
+#define CAP_IEC_ADDRESSED (1u << 15) /* 1.18: addressed MEM + structured block reads */
+#define CAP_DESCRIBE     (1u << 16) /* 1.18: versioned transport and clock limits */
+#define CAP_JOBS         (1u << 17)
+#define CAP_RESOURCES    (1u << 18)
+#define CAP_FEATURES     (1u << 19)
 
 enum {
     V2_PING = 0x00, V2_INFO = 0x01, V2_STATUS = 0x02, V2_RESET = 0x03, V2_BOOTLOADER = 0x04,
     V2_USB_MODE = 0x05, V2_EVENTS = 0x06, V2_SELFTEST = 0x07, V2_WRITE_LIMITS = 0x08,
+    V2_DESCRIBE = 0x09, V2_RESOURCE = 0x0A, V2_JOB = 0x0B, V2_FEATURES = 0x0C, V2_DIAGNOSTICS = 0x0D,
+    V2_QUALITY = 0x0E, V2_ANALYSIS_JOB = 0x0F,
     V2_SELECT = 0x10, V2_MOTOR = 0x11, V2_SEEK = 0x12, V2_RECAL = 0x13, V2_SIDE = 0x14,
     V2_TIMING = 0x15, V2_LINES = 0x16, V2_CHECK_DISK = 0x17, V2_PROBE_TRACKS = 0x18,
     V2_SEEK_TEST = 0x19, V2_AMIGA_ID = 0x1A, V2_DIAG_RPM = 0x1B, V2_DRIVE_SCAN = 0x1C,
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25, V2_FORMAT = 0x26,
+    V2_GUARDED_WRITE = 0x27,
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34, V2_IEC_BLOCK = 0x35,
+    V2_IEC_TARGET = 0x36, V2_IEC_READ_STATUS = 0x37,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
@@ -79,7 +99,9 @@ enum {
  * STATE
  * ============================================================================ */
 
-static uint8_t rx[RX_SIZE];
+/* CPU-only ring: USB IRQ copies bytes here, no DMA accesses it. NOLOAD is safe:
+ * BSS head/tail reset to zero and consumers only read published bytes. */
+__attribute__((section(".dtcm.usb_rx"), aligned(32))) static uint8_t rx[RX_SIZE];
 static volatile uint32_t rx_head;       /* written by the USB IRQ */
 static uint32_t rx_tail;                /* main loop */
 static volatile uint32_t rx_discard;    /* clear comms: bytes before this index are dropped */
@@ -92,6 +114,9 @@ static char name_buf[NAME_MAX + 1u];
 
 static bool op_read, op_write;          /* END frame still owed */
 static uint8_t read_seq, write_seq;
+static bool iec_reset_pending;
+static uint8_t iec_reset_seq;
+static uint32_t native_activity;
 
 typedef struct {
     uint8_t code, len;
@@ -145,14 +170,16 @@ uint32_t ufi_v2_frame(uint8_t* f, uint8_t type, uint8_t cmd, uint8_t seq, uint8_
     return UFI_V2_HDR + len + 2u;
 }
 
-/* Blocking send from tx; payload may already sit at tx + UFI_V2_HDR */
+/* Composite copies the reply into its queue; standalone CDC sends synchronously.
+ * Payload may already sit at tx + UFI_V2_HDR. */
 static void send(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
                  const uint8_t* payload, uint16_t len)
 {
     if (len && payload != &tx[UFI_V2_HDR]) {
         memmove(&tx[UFI_V2_HDR], payload, len);
     }
-    ufi_usb_tx_blocking(tx, ufi_v2_frame(tx, type, cmd, seq, status, len));
+    if(ufi_native_tx_blocking(tx, ufi_v2_frame(tx, type, cmd, seq, status, len))!=UFI_OK &&
+       ufi_resources_owner()!=UFI_OWNER_GW) ufi_cancel_request();
 }
 
 uint8_t ufi_board_rev(void)
@@ -166,7 +193,7 @@ uint8_t ufi_board_rev(void)
 static uint32_t caps(uint8_t rev)
 {
     uint32_t c = CAP_IEC | CAP_AMIGA | CAP_SHUGART | CAP_GW | CAP_FILES | CAP_EVENTS | CAP_DIAG |
-                 CAP_FORMAT | CAP_SELFTEST | CAP_WRITE_LIMITS;
+                 CAP_FORMAT | CAP_SELFTEST | CAP_WRITE_LIMITS | CAP_IEC_ADDRESSED | CAP_DESCRIBE | CAP_JOBS | CAP_RESOURCES | CAP_FEATURES | (1u<<20) | (1u<<21) | (1u<<22) | (1u<<23) | (1u<<24) | (1u<<25) | (1u<<26) | (1u<<27) | (1u<<28) | (1u<<29) | (1u<<30) | (1u<<31);
     c |= ufi_flux_store_is_psram() ? CAP_PSRAM : 0u;
     c |= ufi_sd_present() ? CAP_SD : 0u;
     c |= (rev >= 7u) ? CAP_AMIGA2 : 0u;
@@ -214,6 +241,10 @@ static const char* name_of(const uint8_t* p, uint32_t n)
 
 static void abort_ops(void)
 {
+    ufi_drive_position_invalidate();
+    ufi_analysis_job_abort();
+    if(iec_reset_pending) {iec_reset_pending=false;ufi_iec_init();}
+    if (ufi_job_live()) ufi_job_finish(4);
     if (op_read) {
         ufi_capture_abort();
         g_capture.state = CAPTURE_IDLE;
@@ -244,6 +275,7 @@ bool ufi_v2_rx(const uint8_t* buf, uint32_t len)
         rx_head = h;
     }
     if (rx_free() < RX_PAUSE_FREE) {
+        if(!rx_paused)ufi_metrics.native_rx_pauses++;
         rx_paused = true;               /* main loop re-arms the endpoint */
         return false;
     }
@@ -253,6 +285,7 @@ bool ufi_v2_rx(const uint8_t* buf, uint32_t len)
 /* Back to v1; the main loop drops what arrived so far and aborts a read / write */
 void ufi_v2_clear_comms(void)
 {
+    if (ufi_resources_owner()!=UFI_OWNER_GW) ufi_cancel_request();
     rx_discard = rx_head;
     on = false;
     clear_req = true;
@@ -274,7 +307,7 @@ static void rx_resume_if_room(void)
 {
     if (rx_paused && rx_free() >= RX_RESUME_FREE) {
         rx_paused = false;
-        USBD_CDC_ReceivePacket(&hUsbDevice);
+        ufi_native_rx_resume();
     }
 }
 
@@ -292,7 +325,15 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
     if (cmd == UFI_V2_WRITE && result == UFI_ERR_TIMEOUT) {
         result = UFI_ERR_DMA;           /* verify capture timed out: verify failed (6) */
     }
-    send(UFI_V2_END, cmd, (cmd == UFI_V2_READ) ? read_seq : write_seq, st(result), payload, len);
+    if (ufi_job_live()) {
+        uint8_t end[32];
+        put32(end,(uint32_t)ufi_job.id); put32(end+4,(uint32_t)(ufi_job.id>>32));
+        put32(end+8,ufi_job.packets); put32(end+12,ufi_job.bytes); put32(end+16,ufi_job.crc);
+        if (len>sizeof(end)-20u) len=sizeof(end)-20u;
+        if (len) memcpy(end+20,payload,len);
+        ufi_job_finish(st(result));
+        send(UFI_V2_END,cmd,cmd==UFI_V2_READ?read_seq:write_seq,st(result),end,len+20u);
+    } else send(UFI_V2_END, cmd, (cmd == UFI_V2_READ) ? read_seq : write_seq, st(result), payload, len);
     return true;
 }
 
@@ -315,13 +356,13 @@ void ufi_v2_event(uint8_t code, const void* payload, uint16_t len)
 /* One queued event while USB is idle (between frames) */
 static void flush_event(void)
 {
-    if (ev_tail == ev_head || !ufi_usb_tx_idle()) {
+    if (ev_tail == ev_head || !ufi_native_tx_idle()) {
         return;
     }
     const v2_event_t* e = &evq[ev_tail];
     memcpy(&ev_buf[UFI_V2_HDR], e->data, e->len);
     const uint32_t n = ufi_v2_frame(ev_buf, UFI_V2_EVENT, e->code, ev_seq, 0, e->len);
-    if (ufi_usb_tx_start(ev_buf, n) != UFI_ERR_BUSY) {
+    if (ufi_native_tx_start(ev_buf, n) != UFI_ERR_BUSY) {
         ev_seq++;
         ev_tail = (uint8_t)((ev_tail + 1u) % EVQ_SIZE);
     }
@@ -333,9 +374,11 @@ void ufi_v2_event_now(uint8_t code, const void* payload, uint16_t len)
     ufi_v2_event(code, payload, len);
     const uint32_t t0 = HAL_GetTick();
     while (ev_tail != ev_head && HAL_GetTick() - t0 < 100u) {
+        ufi_native_tx_service();
         flush_event();
     }
-    while (!ufi_usb_tx_idle() && HAL_GetTick() - t0 < 100u) {
+    while (!ufi_native_tx_idle() && HAL_GetTick() - t0 < 100u) {
+        ufi_native_tx_service();
     }
 }
 
@@ -375,7 +418,7 @@ static bool allowed_during_dump(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
         case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT:
-        case V2_INDEX_SIM: case V2_WRITE_LIMITS:
+        case V2_INDEX_SIM: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
             return true;
         default:
             return false;
@@ -385,24 +428,30 @@ static bool allowed_during_dump(uint8_t cmd)
 /* Commands that move or use the drive: refused while a READ / WRITE runs */
 static bool uses_drive(uint8_t cmd)
 {
-    return (cmd >= V2_SELECT && cmd <= V2_DRIVE_SCAN) || cmd == V2_SET_RPM || cmd == UFI_V2_READ ||
-           cmd == UFI_V2_WRITE || cmd == V2_ERASE || cmd == V2_PATTERN || cmd == V2_ANALYZE ||
-           cmd == V2_FORMAT || cmd == V2_SELFTEST ||
-           cmd == V2_DUMP_START || cmd == V2_COPY_START || cmd == V2_WRITE_START;
+    switch (cmd) {
+        case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
+        case V2_ABORT: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_QUALITY: case V2_ANALYSIS_JOB:
+            return false;
+        default: return true; /* includes IEC, file I/O and mode/power changes */
+    }
 }
 
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
-    if (len < 3u) {
+    if (ufi_job_live() && (ufi_job.kind!=1 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
+    if (len != 3u && len != 4u && len != 6u && len != 7u) {
         return UFI_ERR_BAD_ARGS;
     }
+    const uint8_t flags=len>=4u?p[3]:0;
+    if((flags&~7u) || (len==7u && !(flags&2u)))return UFI_ERR_BAD_ARGS;
     uint8_t revs = p[2];
     if (revs == 0) revs = 1;
     if (revs > REVOLUTIONS_STREAM) revs = REVOLUTIONS_STREAM;
     uint32_t period_ticks = 0;
     if (len >= 4u && (p[3] & 0x01u)) {     /* no index: slices of period_ms (0 = 200) */
         uint32_t ms = (len >= 6u) ? get16(&p[4]) : 0u;
-        if (ms == 0 || ms > 2000u) ms = 200u;
+        if (ms > 2000u) return UFI_ERR_BAD_ARGS;
+        if (ms == 0) ms = 200u;
         period_ticks = ms * (FLUX_TIMER_FREQ / 1000u);
     }
     uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes in p[6] */
@@ -412,21 +461,25 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         }
         sectors = p[6];
     }
-    ufi_flux_hard_sectors(sectors);
     /* bit2: track field in quarter tracks (Apple), 1.14 */
     const uint8_t track = (len >= 4u && (p[3] & 0x04u)) ? p[0] >> 2 : p[0];
     const uint8_t quarter = (len >= 4u && (p[3] & 0x04u)) ? p[0] & 3u : 0u;
+    if(quarter && !ufi_drive_is_apple())return UFI_ERR_BAD_ARGS;
+    uint8_t previous[6];ufi_flux_evidence_context(previous);
+    ufi_flux_hard_sectors(sectors);
     const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
     if (ret == UFI_OK) {
         op_read = true;
         read_seq = seq;
         ufi_stream_begin_v2(seq);           /* DATA frames follow the reply */
-    }
+    } else ufi_flux_hard_sectors(previous[4]);
     return ret;
 }
 
 static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
 {
+    native_activity=HAL_GetTick();
+    if (ufi_job_live() && (ufi_job.kind!=2 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
     if (len < 11u) {
         return UFI_ERR_BAD_ARGS;
     }
@@ -452,17 +505,39 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
             return UFI_ERR_BAD_ARGS;
         }
     }
-    ufi_flux_hard_sectors(sectors);
     const uint8_t track = (p[2] & 0x04u) ? p[0] >> 2 : p[0];    /* bit2: quarter tracks (1.14) */
     const uint8_t quarter = (p[2] & 0x04u) ? p[0] & 3u : 0u;
     if (quarter && !ufi_drive_is_apple()) {
         return UFI_ERR_BAD_ARGS;
     }
+    uint32_t source_index=0;
+    if (p[2]&0x40u) {
+        if ((p[2]&0x21u)!=0x21u || len<at+4u) return UFI_ERR_BAD_ARGS;
+        source_index=get32(p+at);at+=4u;
+        if (!source_index) return UFI_ERR_BAD_ARGS;
+    }
+    uint64_t expected=0;uint8_t c=0,h=0,n=0;
+    if(p[2]&0x80u) {
+        if((p[2]&0x21u)!=0x21u || len<at+12u)return UFI_ERR_BAD_ARGS;
+        expected=get32(p+at)|(uint64_t)get32(p+at+4)<<32;
+        c=p[at+8];h=p[at+9];n=p[at+10];
+        if(!expected || n>3 || p[at+11])return UFI_ERR_BAD_ARGS;
+        at+=12u;
+    }
+    if (len!=at) return UFI_ERR_BAD_ARGS;
+    /* Extended data is already timed by the sender. Firmware verification is
+     * supported; Apple/precomp/scaling still use the original backend. */
+    if ((p[2]&0x20u) && ((p[2]&0x1cu) || scale!=1000 || ufi_drive_is_apple()))
+        return UFI_ERR_NOT_IMPL;
     const int ret = ufi_write_prepare_compact(track, p[1], get32(&p[3]), get32(&p[7]),
                                               (p[2] & 0x01u) != 0);
     if (ret == UFI_OK) {
+        ufi_flux_hard_sectors(sectors);
         ufi_write_set_quarter(quarter);
         ufi_write_set_scale(scale);
+        ufi_write_set_extended((p[2]&0x20u)!=0);
+        ufi_write_set_source_index(source_index);
+        ufi_write_set_expected(expected,c,h,n);
         ufi_write_set_clamp((p[2] & 0x10u) != 0);   /* bit4: clamp instead of status 18 (1.15) */
         op_write = true;
         write_seq = seq;
@@ -470,9 +545,32 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     return ret;
 }
 
+static int cmd_guarded_write(uint8_t seq,const uint8_t* p,uint16_t len)
+{
+    if(len<19 || !get32(p) || get32(p)!=ufi_config_generation())return UFI_ERR_BAD_ARGS;
+    if(!ufi_drive_media_matches(get32(p+4)))return UFI_ERR_MEDIA_CHANGED;
+    /* Main-loop dispatch does not yield between comparison and preparation. */
+    int ret=cmd_write(seq,p+8,(uint16_t)(len-8));
+    /* Preparation samples the media too: do not adopt a newer medium if its
+     * change line became asserted between the first check and preparation. */
+    if(!ret && !ufi_drive_media_matches(get32(p+4))){
+        ufi_write_abort();op_write=false;return UFI_ERR_MEDIA_CHANGED;
+    }
+    return ret;
+}
+
 /* DATA frame of a WRITE: compact stream code for ufi_write.c */
 static void write_data(uint8_t* p, uint16_t len)
 {
+    native_activity=HAL_GetTick();ufi_resources_touch(native_activity);
+    if (ufi_job_live()) {
+        if (len <= UFI_JOB_HEADER || !ufi_job_accept(p,p+UFI_JOB_HEADER,len-UFI_JOB_HEADER,HAL_GetTick())) {
+            ufi_write_abort();
+            ufi_v2_end(UFI_V2_WRITE,UFI_ERR_BAD_ARGS,NULL,0);
+            return;
+        }
+        p+=UFI_JOB_HEADER; len-=UFI_JOB_HEADER;
+    }
     if (ufi_write_receive_chunk(p, len) != UFI_OK) {
         ufi_write_abort();
         ufi_v2_end(UFI_V2_WRITE, UFI_ERR_BUFFER_FULL, NULL, 0);    /* more than byte_count */
@@ -481,18 +579,79 @@ static void write_data(uint8_t* p, uint16_t len)
 
 static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
 {
+    ufi_resources_touch(HAL_GetTick());
     uint8_t* out = &tx[UFI_V2_HDR];
     uint16_t n = 0;
     int ret = UFI_OK;
 
+    const bool readonly = cmd == V2_PING || cmd == V2_INFO || cmd == V2_STATUS ||
+        cmd == V2_DESCRIBE || cmd == V2_FEATURES || cmd == V2_DIAGNOSTICS || cmd == V2_WRITE_LIMITS || cmd == V2_EVENTS ||
+        cmd == V2_DUMP_STATUS || cmd == V2_RESOURCE || cmd == V2_QUALITY || (cmd == V2_JOB && !len) ||
+        (cmd == V2_ANALYSIS_JOB && len && p[0]!=1 && p[0]!=24 && p[0]!=26 && p[0]!=27 && p[0]!=29 && !((p[0]==30 || p[0]==31) && len>1) && p[0]!=4 && p[0]!=5 && p[0]!=16 && !((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18) && len>1));
+    if (ufi_usb_get_mode() == UFI_USB_COMPOSITE && !readonly &&
+        !ufi_resources_acquire(UFI_OWNER_NATIVE)) {
+        send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_BUSY), NULL, 0);
+        return;
+    }
     if ((ufi_dump_active() && !allowed_during_dump(cmd)) ||
-        ((op_read || op_write) && uses_drive(cmd))) {
+        ((op_read || op_write || ufi_operation_busy()) && uses_drive(cmd))) {
         send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_BUSY), NULL, 0);
         return;
     }
 
     switch (cmd) {
         /* ---- system ---- */
+        case V2_ANALYSIS_JOB:
+            ret=ufi_analysis_command(p,len,out,&n);break;
+        case V2_QUALITY:
+            if (len) {ret=UFI_ERR_BAD_ARGS;break;}
+            if (ufi_analysis_job_active()) {ret=UFI_ERR_BUSY;break;}
+            n=ufi_quality_report(out,UFI_V2_MAX_PAYLOAD);
+            if (!n) ret=UFI_ERR_BUSY;
+            break;
+        case V2_DIAGNOSTICS: {
+            if(len) {ret=UFI_ERR_BAD_ARGS;break;}
+            extern char __heap_start[],__heap_end[],_edtcm[],_estack[];
+            uint32_t words;ufi_flux_store(&words);(void)ufi_flux_written();
+            out[0]=1;out[1]=ufi_flux_store_is_psram()?1u:0u;
+            out[2]=ufi_resources_owner();out[3]=0;
+            const uint32_t values[]={FLUX_TIMER_FREQ,words,
+                ufi_metrics.capture_pending_words,ufi_metrics.capture_peak_words,
+                ufi_metrics.capture_overruns,ufi_metrics.capture_dma_errors,
+                ufi_metrics.write_dma_errors,ufi_metrics.write_underruns,
+                ufi_metrics.native_rx_pauses,ufi_native_tx_timeouts(),ufi_metrics.lease_releases,
+                (uintptr_t)__heap_end-(uintptr_t)__heap_start,
+                0x24050000u-(uintptr_t)__heap_end,(uintptr_t)_estack-(uintptr_t)_edtcm,30000u};
+            for(unsigned i=0;i<15;i++)put32(out+4+4*i,values[i]);
+            n=64;break;
+        }
+        case V2_FEATURES: {
+            if(len) {ret=UFI_ERR_BAD_ARGS;break;}
+            uint32_t words;ufi_flux_store(&words);
+            const bool idle=!ufi_operation_busy() && !ufi_dump_active() && ufi_resources_owner()!=UFI_OWNER_GW;
+            const bool enabled[10]={true,true,true,ufi_board_has_apple(),true,
+                ufi_sd_present(),ufi_flux_store_is_psram(),ufi_usb_get_mode()==UFI_USB_COMPOSITE,true,true};
+            const uint32_t limits[10]={REVOLUTIONS_STREAM,WAVE_MIN_TICKS,30,0,0,0,words,64,UFI_V2_MAX_PAYLOAD-UFI_JOB_HEADER,FLUX_TIMER_FREQ};
+            out[0]=1;out[1]=10;
+            for(unsigned i=0;i<10;i++) {
+                uint8_t *f=out+2+i*8;
+                put16(f,i+1);f[2]=1u|(enabled[i]?2u:0u)|(enabled[i]&&idle?4u:0u);
+                f[3]=ufi_resources_owner();put32(f+4,limits[i]);
+            }
+            n=82;break;
+        }
+        case V2_JOB:
+            if (len==10 && p[0]==1 && !ufi_operation_busy() && !ufi_dump_active()) {
+                if (!ufi_job_open(get32(p+2)|(uint64_t)get32(p+6)<<32,p[1],HAL_GetTick())) ret=UFI_ERR_BUSY;
+            } else if (len==5 && p[0]==2) {
+                if (!op_write || !ufi_job_live() || ufi_job.kind!=2 ||
+                    !ufi_write_data_complete() || get32(p+1)!=ufi_job.crc) ret=UFI_ERR_BAD_ARGS;
+                else {ufi_job.state=JOB_READY;ufi_job.last_ms=HAL_GetTick();}
+            } else if (len) ret=UFI_ERR_BAD_ARGS;
+            out[0]=1;out[1]=ufi_job.kind;out[2]=ufi_job.state;out[3]=ufi_job.status;
+            put32(out+4,(uint32_t)ufi_job.id);put32(out+8,(uint32_t)(ufi_job.id>>32));
+            put32(out+12,ufi_job.packets);put32(out+16,ufi_job.bytes);put32(out+20,ufi_job.crc);
+            n=24; break;
         case V2_PING:
             memmove(out, p, len);
             n = len;
@@ -513,6 +672,36 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = text_add(out, n, __DATE__, false);
             n = text_add(out, n, ufi_psram_result(), false);
             n = text_add(out, n, ufi_crash_last(), false);      /* 1.14: reset cause */
+            break;
+        }
+        case V2_RESOURCE:
+            if (len > 1 || (len && p[0] > 1)) { ret = UFI_ERR_BAD_ARGS; break; }
+            if (len && p[0] == 1) {
+                if (!ufi_resources_acquire(UFI_OWNER_NATIVE)) ret = UFI_ERR_BUSY;
+            } else if (len) {
+                if (ufi_operation_busy() || ufi_dump_active()) ret = UFI_ERR_BUSY;
+                else if (ufi_resources_owner() == UFI_OWNER_NATIVE) {
+                    ufi_drive_safe_state(); ufi_resources_release(UFI_OWNER_NATIVE);
+                }
+            }
+            out[0] = ufi_resources_owner(); n = 1; break;
+        case V2_DESCRIBE: {
+            if (len != 0) { ret = UFI_ERR_BAD_ARGS; break; }
+            uint32_t words;
+            ufi_flux_store(&words);
+            out[0] = 1;                    /* schema */
+            out[1] = 7;                    /* UFI CDC + GW CDC personalities available */
+            put16(&out[2], 14u | (ufi_usb_get_mode() == UFI_USB_COMPOSITE ? 1u : 0u)); /* runtime + software features */
+            put32(&out[4], caps(ufi_board_rev()));
+            put32(&out[8], FLUX_TIMER_FREQ);
+            put32(&out[12], GW_SAMPLE_FREQ);
+            put32(&out[16], words);
+            put16(&out[20], UFI_V2_MAX_PAYLOAD);
+            put16(&out[22], REVOLUTIONS_STREAM);
+            put32(&out[24], UINT32_MAX);
+            put32(&out[28], (WAVE_MIN_TICKS + (1u << GW_TICK_SHIFT) - 1u) >> GW_TICK_SHIFT);
+            put32(&out[32], UINT32_MAX >> GW_TICK_SHIFT);
+            n = 36;
             break;
         }
         case V2_WRITE_LIMITS: {             /* 1.15: effective limits of the write backend */
@@ -552,16 +741,18 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         }
         case V2_RESET:
             send(UFI_V2_REPLY, cmd, seq, 0, NULL, 0);
+            (void)ufi_native_tx_flush(100);
             NVIC_SystemReset();
             return;
         case V2_BOOTLOADER:
             send(UFI_V2_REPLY, cmd, seq, 0, NULL, 0);
+            (void)ufi_native_tx_flush(100);
             HAL_Delay(20);                  /* let the host read the reply */
             ufi_request_bootloader();
             return;
         case V2_USB_MODE: {
             const uint8_t mode = (len >= 1u) ? p[0] : 0xFFu;
-            if (mode > UFI_USB_GW) {
+            if (mode > UFI_USB_COMPOSITE) {
                 ret = UFI_ERR_BAD_ARGS;
             } else if ((mode == UFI_USB_SD || mode == UFI_USB_FLOPPY) && ufi_dump_active()) {
                 ret = UFI_ERR_BUSY;
@@ -569,7 +760,8 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 ret = UFI_ERR_STORAGE;
             }
             send(UFI_V2_REPLY, cmd, seq, st(ret), NULL, 0);    /* reply first: USB goes away */
-            if (ret == UFI_OK && mode != UFI_USB_FLUX) {
+            if (ret == UFI_OK && mode != ufi_usb_get_mode()) {
+                (void)ufi_native_tx_flush(100);
                 HAL_Delay(20);
                 ufi_usb_set_mode(mode);
             }
@@ -588,7 +780,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         /* ---- drive ---- */
         case V2_SELECT:
             ret = (len < 1u || p[0] >= DRIVE_TYPE_COUNT) ? UFI_ERR_BAD_ARGS
-                                                       : ufi_drive_select((drive_type_t)p[0]);
+                                                       : ufi_drive_select_native((drive_type_t)p[0]);
             break;
         case V2_MOTOR:
             ret = (len < 1u) ? UFI_ERR_BAD_ARGS : ufi_drive_motor(p[0] != 0);
@@ -610,7 +802,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             }
             if (len) {
                 memcpy(&t, p, len);
-                ufi_drive_set_timing(&t);
+                ret=ufi_drive_timing_checked(&t);
             }
             t = ufi_drive_get_timing();
             memcpy(out, &t, sizeof(t));
@@ -622,8 +814,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 ret = UFI_ERR_BAD_ARGS;
                 break;
             }
-            ufi_drive_density_line(p[0] != 0);
-            bus_out(&PIN_FDD_DRATE, p[1] != 0);
+            ret=ufi_drive_lines_set(p[0]!=0,p[1]!=0);
             break;
         case V2_CHECK_DISK: {
             bool changed = false, present = false;
@@ -697,6 +888,10 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = cmd_read(seq, p, len);
             break;
         case V2_ABORT: {                    /* the running operation ends with status 4 */
+            if(iec_reset_pending) {
+                iec_reset_pending=false;ufi_iec_init();
+                send(UFI_V2_REPLY,V2_IEC_RESET,iec_reset_seq,st(UFI_ERR_CANCELLED),NULL,0);
+            }
             const bool r = op_read, w = op_write;
             if (r) {
                 ufi_capture_abort();
@@ -713,10 +908,14 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             if (w) {
                 ufi_v2_end(UFI_V2_WRITE, UFI_ERR_NO_INDEX, NULL, 0);
             }
+            if(ufi_job_live()) ufi_job_finish(20);
             return;
         }
         case UFI_V2_WRITE:
             ret = cmd_write(seq, p, len);
+            break;
+        case V2_GUARDED_WRITE:
+            ret = cmd_guarded_write(seq,p,len);
             break;
         case V2_ERASE:
             ret = (len < 2u) ? UFI_ERR_BAD_ARGS : ufi_erase_track(p[0], p[1]);
@@ -740,10 +939,11 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         }
         case V2_ANALYZE: {                  /* track, side u8, revs u8 (0 = 3, max 8) -> 40 bytes */
             static analyze_result_t a;
-            if (len < 2u) {
-                ret = UFI_ERR_BAD_ARGS;
-                break;
+            quality_options_t options;
+            if (!quality_options(p,len,&options)) {
+                ret=UFI_ERR_BAD_ARGS;break;
             }
+            if (options.flags) ufi_quality_clear();
             ret = ufi_analyze_track(p[0], p[1], len >= 3u ? p[2] : 0u, &a);
             if (ret == UFI_OK) {
                 out[0] = a.revs;
@@ -760,6 +960,10 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 put32(&out[32], (uint32_t)a.weak_mask);
                 put32(&out[36], (uint32_t)(a.weak_mask >> 32));
                 n = 40u;
+                if (options.flags) {
+                    ret=ufi_quality_analyze_options(&options);
+                    n+=(uint16_t)ufi_quality_report(out+40,UFI_V2_MAX_PAYLOAD-40u);
+                }
             }
             break;
         }
@@ -771,7 +975,8 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
 
         /* ---- Commodore IEC ---- */
         case V2_IEC_RESET:
-            ret = ufi_iec_reset();
+            ret = len?UFI_ERR_BAD_ARGS:ufi_iec_reset_begin();
+            if(ret==UFI_OK) {iec_reset_pending=true;iec_reset_seq=seq;return;}
             break;
         case V2_IEC_SEND:
             ret = (len < 2u) ? UFI_ERR_BAD_ARGS : ufi_iec_send_byte(p[0], p[1] != 0);
@@ -783,13 +988,23 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             n = (ret == UFI_OK) ? 2u : 0u;
             break;
         }
-        case V2_IEC_MEM: {                  /* op u8 (0 M-W, 1 M-R, 2 M-E), addr u16, n u8 | data; 1.14 */
+        case V2_IEC_TARGET:
+        case V2_IEC_MEM: {                  /* TARGET: schema=1, device, then legacy MEM payload */
+            uint8_t dev = ufi_config_iec_device();
+            if (cmd == V2_IEC_TARGET) {
+                if (len < 5u || p[0] != 1u || (p[1] && (p[1] < 8u || p[1] > 30u))) {
+                    ret = UFI_ERR_BAD_ARGS;
+                    break;
+                }
+                if (p[1]) dev = p[1];
+                p += 2;
+                len -= 2;
+            }
             if (len < 3u) {
                 ret = UFI_ERR_BAD_ARGS;
                 break;
             }
             const uint16_t addr = get16(&p[1]);
-            const uint8_t dev = ufi_config_iec_device();
             if (p[0] == 0u) {
                 ret = (len < 4u || len - 3u > 32u) ? UFI_ERR_BAD_ARGS
                                                    : ufi_iec_mem_write(dev, addr, &p[3], (uint8_t)(len - 3u));
@@ -804,7 +1019,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             } else if (p[0] == 2u) {
                 ret = ufi_iec_mem_exec(dev, addr);
             } else if (p[0] == 3u) {        /* DOS command string on channel 15 (addr unused) */
-                ret = (len < 4u) ? UFI_ERR_BAD_ARGS
+                ret = (len < 4u || len > 43u) ? UFI_ERR_BAD_ARGS
                                  : ufi_iec_command(dev, (const char*)&p[3], (uint8_t)(len - 3u));
             } else if (p[0] == 4u) {        /* DOS status line from channel 15 (1.16) */
                 const int got = ufi_iec_read_status(dev, (char*)out, 64);
@@ -815,8 +1030,22 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             }
             break;
         }
+        case V2_IEC_READ_STATUS: {          /* [schema=1, device, track, sector] */
+            if (len != 4u || p[0] != 1u || (p[1] && (p[1] < 8u || p[1] > 30u))) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            uint16_t got = 0;
+            const uint8_t dev = p[1] ? p[1] : ufi_config_iec_device();
+            out[0] = 1;
+            out[2] = p[2]; out[3] = p[3];
+            ret = ufi_iec_read_block_status(dev, p[2], p[3], out + 4, &got, out + 1);
+            n = (ret == UFI_OK) ? 4u + got : 0u;
+            break;
+        }
         case V2_IEC_BLOCK: {                /* op u8 (0 U1 read, 1 U2 write), track, sector, device u8 (0 = iec_device) [, 256 data]; 1.16 */
-            if (len < 4u || p[0] > 1u || (p[0] == 1u && len != 4u + 256u)) {
+            if (len < 4u || p[0] > 1u || (p[0] == 1u && len != 4u + 256u) ||
+                (p[0] == 0u && len != 4u) || (p[3] && (p[3] < 8u || p[3] > 30u))) {
                 ret = UFI_ERR_BAD_ARGS;
                 break;
             }
@@ -950,6 +1179,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = UFI_ERR_UNKNOWN_CMD;
             break;
     }
+    if (ufi_cancel_requested() && ufi_resources_owner()!=UFI_OWNER_GW) ret=UFI_ERR_CANCELLED;
     send(UFI_V2_REPLY, cmd, seq, st(ret), out, n);
 }
 
@@ -1042,6 +1272,36 @@ void ufi_v2_reset(void)
 
 void ufi_v2_service(void)
 {
+    if(iec_reset_pending && ufi_native_tx_room()) {
+        int ret=ufi_iec_reset_step();
+        if(ret!=UFI_ERR_BUSY) {
+            iec_reset_pending=false;
+            send(UFI_V2_REPLY,V2_IEC_RESET,iec_reset_seq,st(ret),NULL,0);
+        }
+    }
+    const write_state_t writing=ufi_write_get_state();
+    if(op_write && writing==WRITE_RECEIVING && HAL_GetTick()-native_activity>=10000u) {
+        ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_TIMEOUT,NULL,0);
+    }
+    if (ufi_job_live() && ((op_read && ufi_stream_active()) ||
+        (op_write && (writing==WRITE_ACTIVE || writing==WRITE_WAITING_INDEX || writing==WRITE_VERIFYING))))
+        ufi_job.last_ms=HAL_GetTick(); /* a running operation is not an idle upload */
+    if (ufi_cancel_requested() && ufi_resources_owner()!=UFI_OWNER_GW) {
+        ufi_analysis_job_abort();
+        if(iec_reset_pending) {
+            iec_reset_pending=false;
+            send(UFI_V2_REPLY,V2_IEC_RESET,iec_reset_seq,st(UFI_ERR_CANCELLED),NULL,0);
+        }
+        if(op_read) {ufi_capture_abort();ufi_v2_end(UFI_V2_READ,UFI_ERR_CANCELLED,NULL,0);}
+        if(op_write) {ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_CANCELLED,NULL,0);}
+        if(ufi_job_live()) ufi_job_finish(20);
+        ufi_iec_init();ufi_drive_safe_state();ufi_cancel_clear();
+    }
+    if (ufi_job_live() && HAL_GetTick()-ufi_job.last_ms>10000u) {
+        if(op_write) {ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_TIMEOUT,NULL,0);}
+        else if(op_read) {ufi_capture_abort();ufi_v2_end(UFI_V2_READ,UFI_ERR_TIMEOUT,NULL,0);}
+        else ufi_job_finish(5);
+    }
     if (clear_req) {                    /* host: SET_LINE_CODING 10000 baud */
         clear_req = false;
         abort_ops();
@@ -1051,13 +1311,19 @@ void ufi_v2_service(void)
         rx_tail = rx_discard;           /* a new session may already follow */
         if (rx_paused) {
             rx_paused = false;
-            USBD_CDC_ReceivePacket(&hUsbDevice);
+            ufi_native_rx_resume();
         }
+    }
+    if(ufi_usb_get_mode()==UFI_USB_COMPOSITE &&
+       ufi_resources_idle_expired(HAL_GetTick(),ufi_operation_busy() || ufi_job_live() ||
+                                  !ufi_native_tx_idle() || rx_tail!=rx_head)) {
+        ufi_drive_safe_state();ufi_iec_init();ufi_v2_reset();
+        ufi_resources_release(UFI_OWNER_NATIVE);ufi_metrics.lease_releases++;
     }
     if (!on) {
         return;
     }
-    while (rx_tail != rx_head && !clear_req) {
+    while (rx_tail != rx_head && !clear_req && ufi_native_tx_room()) {
         const uint8_t b = rx[rx_tail];
         rx_tail = (rx_tail + 1u) & (RX_SIZE - 1u);
         parse_byte(b);

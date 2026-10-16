@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/TrantorHF/cc1541",
+  "commit": "dec8ab8a17565675dc26a7851d11c2611dec6e9c",
+  "source": "cc1541.c",
+  "sha256": "72c0baa4be49bb13793fe1aec0e8f2563009c3a2b467c3dcd10d862816ef1f03",
+  "license": "MIT; copyright and license are embedded in the fetched source, retained in ignored build storage.",
+  "scope": "Externally encoded synthetic G64/D64 pair: 35 tracks, all four zones, 683 sectors. Not real-media flux; no weak-bit or protection coverage claimed. Firmware decoder and reference/readback matcher are compared with all D64 bytes and disk ID."
+}

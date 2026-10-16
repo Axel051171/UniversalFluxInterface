@@ -7,8 +7,11 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_cancel.h"
 #include <stdio.h>
 #include <string.h>
+static uint8_t reset_phase;
+static uint32_t reset_since;
 
 /* Board: each IEC line has a driver output (PD0-4 -> SN74LS07 open collector) and a
  * receiver input (PF4-8 <- 74LVC14A).  "pull" asserts the line via bus_out(), reads
@@ -50,9 +53,11 @@ static inline bool iec_read_data(void)    { return bus_in(&PIN_IEC_DATA_IN); }
 
 /* Wait until a line reaches the given state; false on timeout */
 static bool iec_wait(bool (*read)(void), bool asserted, uint32_t timeout_us) {
+    if (ufi_cancel_requested()) return false;
     const uint32_t start = DWT->CYCCNT;
     const uint32_t limit = timeout_us * (SystemCoreClock / 1000000);
     while (read() != asserted) {
+        if (ufi_cancel_requested()) return false;
         if ((DWT->CYCCNT - start) > limit) {
             return false;
         }
@@ -65,6 +70,7 @@ static bool iec_wait(bool (*read)(void), bool asserted, uint32_t timeout_us) {
  * ============================================================================ */
 
 void ufi_iec_init(void) {
+    reset_phase=0;
     /* GPIO modes are set by board_gpio_init(); release every line */
     bus_out(&PIN_IEC_ATN_OUT, false);
     bus_out(&PIN_IEC_CLK_OUT, false);
@@ -78,17 +84,28 @@ void ufi_iec_init(void) {
  * ============================================================================ */
 
 int ufi_iec_reset(void) {
-    bus_out(&PIN_IEC_RESET_OUT, true);      // RESET low for 20 ms
-    HAL_Delay(20);
-    bus_out(&PIN_IEC_RESET_OUT, false);
+    int ret=ufi_iec_reset_begin();
+    if(ret!=UFI_OK)return ret;
+    do {UFI_WATCHDOG_FEED();ret=ufi_iec_reset_step();} while(ret==UFI_ERR_BUSY);
+    return ret;
+}
 
-    HAL_Delay(500);                         // 1541 boot time
-    ufi_nib_invalidate();                   // drive RAM is gone
-
-    iec_release_clk();
-    iec_release_data();
-    iec_release_atn();
+bool ufi_iec_reset_active(void) {return reset_phase!=0;}
+int ufi_iec_reset_begin(void) {
+    if(reset_phase)return UFI_ERR_BUSY;
+    ufi_iec_init();ufi_nib_invalidate();
+    bus_out(&PIN_IEC_RESET_OUT,true);
+    reset_since=HAL_GetTick();reset_phase=1;
     return UFI_OK;
+}
+int ufi_iec_reset_step(void) {
+    if(ufi_cancel_requested()) {ufi_iec_init();return UFI_ERR_CANCELLED;}
+    if(reset_phase==1 && HAL_GetTick()-reset_since>=20u) {
+        bus_out(&PIN_IEC_RESET_OUT,false);
+        reset_phase=2;reset_since=HAL_GetTick();
+    }
+    if(reset_phase==2 && HAL_GetTick()-reset_since>=500u)reset_phase=0;
+    return reset_phase?UFI_ERR_BUSY:UFI_OK;
 }
 
 /* ============================================================================
@@ -336,8 +353,17 @@ int ufi_iec_read_status(uint8_t device, char* buffer, uint8_t max_len) {
 // Block lesen: Puffer-Kanal 2 per "#" öffnen, U1 lesen lassen, 256 Bytes holen
 int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
                        uint8_t* buffer, uint16_t* len) {
+    uint8_t dos;
+    const int ret = ufi_iec_read_block_status(device, track, sector, buffer, len, &dos);
+    return ret != UFI_OK ? ret : dos == 0u ? UFI_OK : UFI_ERR_STORAGE;
+}
+
+/* A transferred DOS command is not evidence that the drive read the sector. */
+int ufi_iec_read_block_status(uint8_t device, uint8_t track, uint8_t sector,
+                              uint8_t* buffer, uint16_t* len, uint8_t* dos) {
     char cmd[20];
     *len = 0;
+    *dos = 255;
 
     int ret = iec_open_file(device, 2, "#");
     if (ret != UFI_OK) return ret;
@@ -345,6 +371,14 @@ int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
     int n = snprintf(cmd, sizeof(cmd), "U1:2 0 %u %u", track, sector);
     ret = ufi_iec_command(device, cmd, (uint8_t)n);
     if (ret == UFI_OK) {
+        char status[48];
+        const int got = ufi_iec_read_status(device, status, sizeof(status));
+        if (got < 0) ret = got;
+        else if (got < 3 || status[0] < '0' || status[0] > '9' ||
+                 status[1] < '0' || status[1] > '9' || status[2] != ',') ret = UFI_ERR_FRAME;
+        else *dos = (uint8_t)((status[0] - '0') * 10 + status[1] - '0');
+    }
+    if (ret == UFI_OK && *dos == 0u) {
         int got = iec_read_channel(device, 2, buffer, 256);
         if (got < 0) {
             ret = got;
@@ -355,6 +389,7 @@ int ufi_iec_read_block(uint8_t device, uint8_t track, uint8_t sector,
     int ret2 = iec_close_file(device, 2);
     if (ret != UFI_OK) return ret;
     if (ret2 != UFI_OK) return ret2;
+    if (*dos != 0u) return UFI_OK; /* structured caller preserves the DOS error */
     return (*len == 256) ? UFI_OK : UFI_ERR_TIMEOUT;
 }
 
@@ -469,7 +504,7 @@ uint8_t ufi_iec_loopback(void) {
 
 int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms) {
     const uint32_t t0 = HAL_GetTick();
-    HAL_Delay(200);
+    if(!ufi_delay_ms(200))return UFI_ERR_CANCELLED;
     for (;;) {
         const int ret = ufi_iec_listen(device);
         const int ret2 = ufi_iec_unlisten();
@@ -479,6 +514,6 @@ int ufi_iec_wait_ready(uint8_t device, uint32_t timeout_ms) {
         if (HAL_GetTick() - t0 > timeout_ms) {
             return UFI_ERR_TIMEOUT;
         }
-        HAL_Delay(50);
+        if(!ufi_delay_ms(50))return UFI_ERR_CANCELLED;
     }
 }

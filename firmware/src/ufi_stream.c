@@ -29,6 +29,9 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_evidence.h"
+#include "ufi_composite.h"
+#include "ufi_job.h"
 #include <string.h>
 
 extern capture_context_t g_capture;
@@ -80,10 +83,16 @@ static void put_n28(uint8_t* o, uint32_t n)
 
 static void put_delta_gw(uint32_t d)
 {
-    const uint32_t acc = d + gw_rem;    /* 275 MHz -> 68.75 MHz without drift */
-    const uint32_t v = acc >> GW_TICK_SHIFT;
+    const uint64_t acc = (uint64_t)d + gw_rem; /* include carry at timer wrap */
+    uint32_t v = (uint32_t)(acc >> GW_TICK_SHIFT);
     gw_rem = acc & ((1u << GW_TICK_SHIFT) - 1u);
     uint8_t* o = &buf[cur][HDR + fill];
+    while (v > 0x0FFFFFFFu) {
+        o[0] = 0xFF; o[1] = 2;
+        put_n28(&o[2], 0x0FFFFFFFu);
+        fill += 6; o += 6;
+        v -= 0x0FFFFFFFu;
+    }
     if (v == 0u) {
         gw_rem = acc;                   /* < 1 GW tick: merge into the next transition */
     } else if (v < 250u) {
@@ -128,9 +137,18 @@ static void put_index(uint32_t offset)
 {
     uint8_t* o = &buf[cur][HDR + fill];
     if (gw) {
+        /* SPACE advances the code cursor without inventing a flux transition. */
+        uint64_t ticks = (uint64_t)offset + gw_rem;
+        while ((ticks >> GW_TICK_SHIFT) > 0x0FFFFFFFu) {
+            o[0] = 0xFF; o[1] = 2;
+            put_n28(&o[2], 0x0FFFFFFFu);
+            fill += 6; o += 6;
+            ticks -= (uint64_t)0x0FFFFFFFu << GW_TICK_SHIFT;
+            t_last += 0x0FFFFFFFu << GW_TICK_SHIFT;
+        }
         o[0] = 0xFF;
         o[1] = 1;                       /* FLUXOP_INDEX, cursor unchanged */
-        put_n28(&o[2], (offset + gw_rem) >> GW_TICK_SHIFT);
+        put_n28(&o[2], (uint32_t)(ticks >> GW_TICK_SHIFT));
         fill += 6;
         return;
     }
@@ -143,10 +161,11 @@ static void put_index(uint32_t offset)
 static void put_indexes_before(uint32_t ts, bool all)
 {
     const uint8_t known = ufi_flux_index_count();
-    while (!done && next_idx < known && (all || (int32_t)(ts - ufi_flux_index_time(next_idx)) >= 0)) {
+    while (!done && fill <= cap - ROOM && next_idx < known &&
+           (all || (int32_t)(ts - ufi_flux_index_time(next_idx)) >= 0)) {
         put_index(ufi_flux_index_time(next_idx) - t_last);
         next_idx++;
-        if (n_final && next_idx > n_final) {
+        if (!gw && n_final && next_idx > n_final) {
             done = true;                    /* stream ends right after index n */
         }
     }
@@ -177,15 +196,19 @@ static void encode(bool halted)
 
     while (!done && rd < wr && fill <= cap - ROOM) {
         const uint32_t ts = s[phys];
+        if (gw && ufi_flux_gw_past_end(ts)) {
+            if (halted) rd = wr;             /* discard DMA samples after the deadline */
+            break;
+        }
         const uint32_t d = ts - t_last;
-        if (!halted && ((int32_t)(now - ts) < TS_MARGIN || d >= DELTA_MAX)) {
+        if (!halted && ((int32_t)(now - ts) < TS_MARGIN || (!gw && d >= DELTA_MAX))) {
             break;                          /* too fresh, or stale data: retry next call */
         }
         put_indexes_before(ts, false);
-        if (done) {
+        if (done || fill > cap - ROOM) {
             break;
         }
-        put_delta(d);
+        put_delta(ts - t_last);             /* an index SPACE may advance the cursor */
         t_last = ts;
         rd++;
         if (++phys == words) {
@@ -193,9 +216,25 @@ static void encode(bool halted)
         }
     }
     ufi_flux_stream_consumed(rd);           /* frees ring chunks for the DMA */
+    /* Advance a silent GW cursor regularly so even a gap spanning timer wraps is
+     * represented by SPACE records. Leave a margin for in-flight input DMA. */
+    if (gw && !halted && rd>=ufi_flux_written() && fill<=cap-ROOM) {
+        const uint32_t safe=ufi_flux_gw_cursor()-TS_MARGIN;
+        if ((uint32_t)(safe-t_last)>FLUX_TIMER_FREQ && (int32_t)(safe-t_last)>0) {
+            put_indexes_before(safe,false);
+            if(fill<=cap-ROOM) {
+                uint32_t ticks=(safe-t_last)>>GW_TICK_SHIFT;
+                if(ticks>0x0fffffffu)ticks=0x0fffffffu;
+                uint8_t *out=buf[cur]+HDR+fill;
+                out[0]=0xff;out[1]=2;put_n28(out+2,ticks);fill+=6;
+                t_last+=ticks<<GW_TICK_SHIFT;
+            }
+        }
+    }
     /* Capture over and every stored sample used: the last index pulses follow no flux */
     if (halted && !done && rd >= wr && fill <= cap - ROOM) {
         put_indexes_before(0, true);
+        if (gw && next_idx >= ufi_flux_index_count()) done = true;
     }
 }
 
@@ -205,6 +244,7 @@ static void encode(bool halted)
 
 static void stop(void)
 {
+    ufi_evidence_finish();
     active = false;
     ufi_flux_set_streaming(false);
     g_capture.state = CAPTURE_IDLE;
@@ -213,7 +253,7 @@ static void stop(void)
 
 static void finish(int result)
 {
-    if (!ufi_usb_tx_idle()) {
+    if (!(v2 ? ufi_native_tx_idle() : ufi_usb_tx_idle())) {
         return;                             /* last data message still on its way */
     }
     if (gw) {
@@ -235,7 +275,7 @@ static bool pump(void)
     if (fill == 0 || (fill < send_at && !done)) {
         return true;
     }
-    if (!ufi_usb_tx_idle()) {
+    if (!(v2 ? ufi_native_tx_idle() : ufi_usb_tx_idle())) {
         if (HAL_GetTick() - tx_start_ms > STALL_MS) {
             ufi_flux_capture_stop();
             stop();
@@ -244,11 +284,19 @@ static bool pump(void)
             }
             return false;
         }
+        if(v2)ufi_evidence_usb(0,true);
         return true;
     }
     const uint8_t* p;
     uint32_t n;
     if (v2) {                               /* DATA frame: header + payload + CRC */
+        if (ufi_job_live()) {
+            memmove(buf[cur]+HDR+UFI_JOB_HEADER,buf[cur]+HDR,fill);
+            if(!ufi_job_emit(buf[cur]+HDR,buf[cur]+HDR+UFI_JOB_HEADER,fill,HAL_GetTick())) {
+                ufi_capture_abort();stop();return false;
+            }
+            fill+=UFI_JOB_HEADER;
+        }
         n = ufi_v2_frame(buf[cur], UFI_V2_DATA, UFI_V2_READ, v2_seq, 0, (uint16_t)fill);
         p = buf[cur];
     } else if (gw) {                        /* Greaseweazle: raw bytes, no header */
@@ -261,7 +309,7 @@ static bool pump(void)
         n = sizeof(h) + fill;
         p = buf[cur] + HDR - sizeof(h);
     }
-    if (ufi_usb_tx_start(p, n) != UFI_OK) {
+    if ((v2 ? ufi_native_tx_start(p, n) : ufi_usb_tx_start(p, n)) != UFI_OK) {
         ufi_flux_capture_stop();
         stop();
         if (gw) {
@@ -270,6 +318,7 @@ static bool pump(void)
         return false;
     }
     tx_start_ms = HAL_GetTick();
+    if(v2)ufi_evidence_usb(n,false);
     cur ^= 1u;
     fill = 0;
     return true;
@@ -315,7 +364,8 @@ void ufi_stream_begin_v2(uint8_t seq)
     v2 = true;
     v2_seq = seq;
     cap = UFI_V2_MAX_PAYLOAD;
-    send_at = UFI_V2_MAX_PAYLOAD - ROOM + 1u;  /* the encoder stops above cap - ROOM */
+    if (ufi_job_live()) cap-=UFI_JOB_HEADER;
+    send_at = cap - ROOM + 1u;
 }
 
 void ufi_stream_abort(void)
@@ -336,18 +386,18 @@ void ufi_stream_service(void)
     if (!active) {
         return;
     }
-    const capture_state_t st = *(volatile capture_state_t*)&g_capture.state;
+    const capture_state_t st = gw ? ufi_flux_poll() : g_capture.state;
 
     if (st == CAPTURE_ERROR) {
         /* DMA error, no index or overflow before 2 index pulses: drop the partial data */
         fill = 0;
-        const int err = g_capture.error_code == 2 ? UFI_ERR_DMA :
+        const int err = g_capture.error_code == 4 ? UFI_ERR_MEDIA_CHANGED : g_capture.error_code == 2 ? UFI_ERR_DMA :
                         g_capture.error_code == 3 ? UFI_ERR_NO_INDEX : UFI_ERR_BUFFER_FULL;
         if (gw) {
             finish(err);                    /* 0 byte + status, ERR LED by the host */
             return;
         }
-        if (ufi_usb_tx_idle()) {
+        if ((v2 ? ufi_native_tx_idle() : ufi_usb_tx_idle())) {
             ufi_usb_send_read_done(err, 0);
             stop();
             led_set(&PIN_LED_ERR, true);
@@ -358,11 +408,11 @@ void ufi_stream_service(void)
         return;                             /* waiting for the first index pulse */
     }
     if (!started) {
-        t_last = ufi_flux_index_time(0);
+        t_last = gw ? ufi_flux_gw_origin() : ufi_flux_index_time(0);
         started = true;
     }
     const bool halted = (st == CAPTURE_COMPLETE);
-    if (halted && n_final == 0) {
+    if (!gw && halted && n_final == 0) {
         uint8_t n = (uint8_t)(ufi_flux_index_count() - 1u);
         if (n > g_capture.revolutions_requested) {
             n = g_capture.revolutions_requested;

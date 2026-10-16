@@ -3,18 +3,19 @@
  * 
  * Memory Layout:
  * - FLASH:    1MB   @ 0x08000000
- * - DTCM:     128KB @ 0x20000000 (schnellster RAM, für DMA)
+ * - DTCM:     128KB @ 0x20000000 (CPU/Stack; not accessible to DMA1/2)
  * - AXI SRAM: 320KB @ 0x24000000 (großer RAM)
  * - SRAM1:    16KB  @ 0x30000000
  * - SRAM2:    16KB  @ 0x30004000
- * - SRAM4:    16KB  @ 0x38000000 (Backup)
+ * - SRAM4:    16KB  @ 0x38000000 (D3 SRAM, not battery-backed backup SRAM)
  */
 
 ENTRY(Reset_Handler)
 
 /* Stack und Heap Größen */
-_Min_Heap_Size = 0x4000;   /* 16KB Heap */
-_Min_Stack_Size = 0x2000;  /* 8KB Stack */
+_Min_Heap_Size = 0x2000;   /* 8 KiB bounded newlib heap; see ufi_heap.c */
+_Min_Stack_Size = 0x4000;  /* enforce 16 KiB minimum CPU stack reserve */
+_Min_AXI_Reserve = 0x8000; /* keep at least 32 KiB for future AXI allocations */
 
 MEMORY
 {
@@ -115,6 +116,10 @@ SECTIONS
         . = ALIGN(4);
         _sdtcm = .;
         *(.dtcm)
+        . = ALIGN(32);
+        __usb_rx_start = .;
+        *(.dtcm.usb_rx)
+        __usb_rx_end = .;
         *(.dtcm*)
         . = ALIGN(4);
         _edtcm = .;
@@ -152,9 +157,14 @@ SECTIONS
         . = ALIGN(8);
         PROVIDE(end = .);
         PROVIDE(_end = .);
+        __heap_start = .;
         . = . + _Min_Heap_Size;
         . = ALIGN(8);
+        __heap_end = .;
     } >AXI_SRAM
+    ASSERT(__heap_end + _Min_AXI_Reserve <= ORIGIN(AXI_SRAM) + LENGTH(AXI_SRAM),
+           "AXI SRAM: less than 32 KiB reserve")
+    ASSERT(__usb_rx_end - __usb_rx_start == 16384, "USB RX rings: expected 16 KiB in DTCM")
 
     /* USB Buffer in SRAM1 (für USB OTG) */
     .usb_buffer (NOLOAD) :
@@ -163,6 +173,14 @@ SECTIONS
         *(.usb_buffer)
         . = ALIGN(4);
     } >SRAM1
+
+    .evidence (NOLOAD) :
+    {
+        . = ALIGN(32);
+        *(.evidence)
+        . = ALIGN(32);
+    } >SRAM1
+    ASSERT(SIZEOF(.evidence) <= 8192, "capture evidence exceeds 8 KiB budget")
 
     /* D2 SRAM2: write streaming ring (DMA1 reachable) */
     .sram2 (NOLOAD) :
@@ -173,7 +191,7 @@ SECTIONS
         . = ALIGN(4);
     } >SRAM2
 
-    /* Backup SRAM */
+    /* D3 SRAM4 (not the battery-backed backup SRAM) */
     .backup (NOLOAD) :
     {
         . = ALIGN(4);

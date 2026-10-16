@@ -11,6 +11,36 @@ from ufi_host import protocol as P
 from ufi_host import protocol2 as P2
 
 
+def test_describe_schema_and_forward_extension():
+    payload = P2.DESCRIBE_FMT.pack(1, 3, 0, 1 << 16, 275000000, 68750000,
+                                  38224, 1024, 200, 0x3fffffff, 110, 100000)
+    assert len(payload) == 36
+    result = P2.ProtocolDescription.unpack(payload + b"future")
+    assert result.native_hz == 4 * result.gw_hz
+    assert result.transports == 3 and result.flags == 0
+    assert result.min_gw_write_ticks == 110
+    for truncated in (b"", payload[:35], bytes([2]) + payload[1:]):
+        with pytest.raises(ValueError):
+            P2.ProtocolDescription.unpack(truncated)
+
+
+def test_describe_device_request():
+    class Transport:
+        def write(self, data):
+            request = list(P2.FrameParser().feed(data))[0]
+            assert request.cmd == P2.DESCRIBE and request.payload == b""
+            payload = P2.DESCRIBE_FMT.pack(1, 3, 0, 65536, 275000000, 68750000,
+                                          38224, 1024, 200, 0x3fffffff, 110, 100000)
+            self.response = P2.encode_frame(P2.T_RESPONSE, request.cmd, request.seq, 0, payload)
+            return len(data)
+
+        def read(self, size):
+            data, self.response = self.response[:size], self.response[size:]
+            return data
+
+    assert P2.Device2(Transport()).describe().store_words == 38224
+
+
 def decode_write(code: bytes) -> list[int]:
     """Independent decoder for WRITE data (stream code without FD)."""
     out, i = [], 0
@@ -306,7 +336,8 @@ def test_info_caps_status():
     assert "PSRAM ok" in lines
     i = dev.device_info()
     assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x7FFF
-    assert all(on for _, on in i.caps_list())
+    assert all(on for _, on in i.caps_list()[:15])
+    assert not i.caps_list()[15][1]  # firmware 1.15 has no addressed status API
     st = dev.status()
     assert st.drive == 1 and st.motor_on and st.track0 and st.track == 5
     assert st.board.flags == 8 and st.board.board_id_mv == 2200
@@ -329,6 +360,7 @@ def test_diagnostics():
     with pytest.raises(P2.DeviceError):
         dev.index_sim(1000)
     assert dev.index_sim() == (360, 2) and dev.index_sim(0) == (0, 0)
+    fake.revs = [(10000, [1000, 2000])]
     dev.read_track(1, 0, 1, hard_sectors=16)
     assert fake.requests[-1].payload == P2.READ_REQ.pack(1, 0, 1, P2.HARD_SECTORS, 0) + b"\x10"
     dev.write_track(1, 0, [1000, 1000, 1000], hard_sectors=10)
@@ -637,7 +669,8 @@ def test_iec_blocks():
     dev = P2.Device2(fake, timeout=0.5)
     assert dev.iec_status() == "00, OK,00,00"
     assert dev.iec_block_read(18, 1) == bytes([18, 1]) * 128
-    assert fake.requests[-1].payload == bytes([0, 18, 1, 0])
+    assert fake.requests[-2].payload == bytes([0, 18, 1, 0])
+    assert fake.requests[-1].cmd == P2.IEC_MEM  # DOS status must be checked
     blk = bytes(range(256))
     assert dev.iec_block_write(17, 3, blk, device=9) == 0
     assert fake.requests[-1].payload == bytes([1, 17, 3, 9]) + blk
@@ -652,7 +685,7 @@ def test_iec_blocks():
     assert cbm.image_size("d64", 35) == 174848 and cbm.image_size("d71", 70) == 349696
     assert cbm.image_size("d81", 80) == 819200 and sum(1 for _ in cbm.blocks("d64", 40)) == 768
     assert [cbm.sectors_per_track("d64", t) for t in (1, 17, 18, 24, 25, 30, 31, 35)] == [21, 21, 19, 19, 18, 18, 17, 17]
-    assert cbm.sectors_per_track("d71", 36) == 21 and cbm.kind_for("1571", 35) == ("d71", 35)
+    assert cbm.sectors_per_track("d71", 36) == 21 and cbm.kind_for("1571", 35) == ("d64", 35)
     with pytest.raises(ValueError):
         cbm.geometry(1000)
 

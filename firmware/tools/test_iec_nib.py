@@ -168,7 +168,8 @@ check("cur 0: step only, no movement, status 0", d.steps == [] and r["status"] =
 # 6. raw mode on an unformatted half track
 d = Drive(tracks, halftrack=37)
 r = d.run(37, mode=1, cur=37)
-check("raw mode status 3, 512 bytes of the noise track", r["status"] == 3 and r["data"][:512] == noise_track(37)[d.pos() - 512 - 1:][:0] + r["data"][:512], r["status"])
+check("raw mode status 3, 512 bytes of the noise track", r["status"] == 3 and len(r["data"]) >= 512 and
+      r["data"][:512] in noise_track(37) * 2, r["status"])
 check("raw bytes come from the noise stream", r["data"][:16] in noise_track(37) * 2, r["data"][:16].hex())
 
 # 7. mode 0 on an unformatted track: no sync -> status 1 within the timeout

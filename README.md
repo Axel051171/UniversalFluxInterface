@@ -25,7 +25,7 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | [`kicad/C64_PSU_Guard/`](kicad/C64_PSU_Guard/README.md) | Eigenständige Schutzplatine: 5 V / 12 V aus einem PC-Netzteil für ein 1541-II / 1581 (eFuse, Verpolschutz, Fehler-LEDs), JLC-Fertigungsdaten |
 | [`firmware/`](firmware/) | STM32H723-Firmware (CMake, STM32Cube HAL) |
 | [`software/ufi_host/`](software/ufi_host/README.md) | Python-Host (`ufi`): Lesen/Schreiben, SCP-Export, Protokollbeschreibung |
-| [`docs/`](docs/) | Amiga-DB23-Adapterkabel |
+| [`docs/`](docs/README.md) | USB-Protokoll, Umsetzungsstand und Nachweise der Firmware, Speicheraufteilung, Abnahmepläne, Vergleiche mit fremder Floppy-Firmware, Amiga-DB23-Adapterkabel |
 
 ## Firmware bauen
 
@@ -39,9 +39,25 @@ Erwartet arm-none-eabi-gcc und STM32Cube H7 V1.11.0 unter `~/STM32Cube/Repositor
 
 Flashen per SWD oder USB-DFU (Taster A beim Einschalten halten bzw. `ufi bootloader`).
 
+## Prüfen ohne Hardware
+
+```bash
+pip install -r requirements-test.txt     # pytest, pyserial, py65 (festgelegte Versionen)
+python firmware/tests/check_all.py       # native Tests, Firmware-Regressionen, Host-Tests, 6502-Laufwerkscode
+```
+
+Braucht clang oder gcc. Die externen Referenzkorpora werden ohne Download übersprungen
+(`python firmware/tests/test_flux_corpus.py --download`, ebenso `test_gcr_corpus.py`,
+`test_hfe_v3_reference.py`); mit `--require-corpora` schlägt der Lauf ohne sie fehl.
+Ergebnis in `firmware/tests/build/offline_gate.json`. Weitere Schritte der CI:
+`firmware/tools/check_static.py` (Clang-Analyse), `firmware/tests/run_fuzz.py` (LibFuzzer).
+
 ## Status
 
-Platine v0.6 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md).
-Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md).
+Platine v0.7 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md).
+Firmware 1.18-dev: Umfang und Nachweise in [docs/Implementation_Status.md](docs/Implementation_Status.md) und
+[docs/Firmware_Erweiterungen_2026-10-16.md](docs/Firmware_Erweiterungen_2026-10-16.md), Schnittstelle in [docs/USB_Protokoll.md](docs/USB_Protokoll.md).
+Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md),
+Schreibpfad: [Abnahme](docs/Abnahme_Schreibpfad.md).
 
 Lizenz: siehe [LICENSE](LICENSE).

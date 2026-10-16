@@ -10,6 +10,7 @@ firmware code, not a model of it.
 Needs clang or gcc on the PATH.  Objects and executables go to firmware/tests/build/.
 """
 import pathlib
+import os
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,21 @@ BUILD = HERE / "build"
 
 # test program -> firmware sources it exercises
 TESTS = {
+    "test_raw_verify": ["src/ufi_raw_verify.c"],
+    "test_hfe_v3": ["src/ufi_hfe_v3.c"],
+    "test_capabilities": ["src/ufi_capabilities.c"],
+    "test_recognition": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_local": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_mac": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_media_check": ["src/ufi_media.c"],
+    "test_compare": ["src/ufi_compare.c"],
+    "test_evidence": ["src/ufi_evidence.c", "src/ufi_drive_extra.c"],
+    "test_gcr": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_legacy": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_quality": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_amiga": ["src/ufi_mfm.c", "src/ufi_verify.c"],
+    "test_job": ["src/ufi_job.c", "src/ufi_resources.c"],
+    "test_write_wave": ["src/ufi_write_wave.c"],
     "test_write_codec": ["src/ufi_write_codec.c"],
     "test_write_verify": ["src/ufi_verify.c", "src/ufi_mfm.c", "src/ufi_write_codec.c"],
     "test_write_stream": ["src/ufi_write_stream.c"],
@@ -28,7 +44,7 @@ TESTS = {
 
 
 def compiler():
-    for cc in ("clang", "gcc", "cc"):
+    for cc in (os.environ.get("CC", "clang"), "gcc", "cc"):
         if shutil.which(cc):
             return cc
     sys.exit("no C compiler (clang or gcc) on the PATH")
@@ -46,6 +62,8 @@ def main(argv):
         cmd = [cc, "-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-D_CRT_SECURE_NO_WARNINGS",
                "-I", str(FW / "include"), "-I", str(HERE),
                str(HERE / (name + ".c"))] + [str(FW / s) for s in sources] + ["-o", str(out)]
+        if os.environ.get("UFI_SANITIZE"):
+            cmd[1:1] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode:
             print(f"{name}: build failed\n{r.stdout}{r.stderr}")

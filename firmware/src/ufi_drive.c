@@ -11,6 +11,21 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_drive_extra.h"
+#include "ufi_media.h"
+#include "ufi_capabilities.h"
+#include <string.h>
+static drive_extra_t extra_timing={0,0,20000,0,0,0};
+static uint32_t motor_started_ms;
+static bool motor_step_pending;
+static void motor_step_wait(void){
+    if(!motor_step_pending)return;
+    uint32_t elapsed=HAL_GetTick()-motor_started_ms;
+    if(elapsed<extra_timing.motor_step_ms)HAL_Delay(extra_timing.motor_step_ms-elapsed);
+    motor_step_pending=false;
+}
+drive_extra_t ufi_drive_extra_get(void){return extra_timing;}
+bool ufi_drive_extra_set(const drive_extra_t* t){if(!drive_extra_valid(t))return false;extra_timing=*t;ufi_config_changed();return true;}
 
 /* ============================================================================
  * GLOBALE VARIABLEN
@@ -18,6 +33,7 @@
 
 static drive_type_t g_current_drive = DRIVE_NONE;
 static drive_status_t g_drive_status[DRIVE_TYPE_COUNT];
+static media_state_t media[DRIVE_TYPE_COUNT];
 
 // Timing-Konstanten (µs)
 // Timing (host-tunable per drive via UFI_CMD_DRIVE_TIMING, defaults = PC/Amiga safe values)
@@ -83,6 +99,7 @@ static void apl_release(void)
     for (int d = 0; d < 2; d++) {
         if (apl_qt[d] > 0 && (apl_qt[d] & 1)) {
             apl_qt[d] = -1;                 /* unpowered on a quarter: head snaps to a pole */
+            media[d?DRIVE_APPLE2:DRIVE_APPLE_II].position_valid=false;
         }
     }
     HAL_GPIO_WritePin(PIN_APL_EN1.port, PIN_APL_EN1.pin, GPIO_PIN_SET);
@@ -93,6 +110,7 @@ static void apl_release(void)
 /* Move the current Apple drive to quarter track `target` (from qt, which may be assumed) */
 static void apl_move_qt(int qt, int target)
 {
+    motor_step_wait();
     int h = qt / 2;                         /* half track; an odd qt sits between h and h+1 */
     if (qt & 1) {
         apl_phase(h + 1, false);            /* back onto the pole of h first */
@@ -117,6 +135,7 @@ static void apl_move_qt(int qt, int target)
     }
     apl_qt[g_current_drive == DRIVE_APPLE2] = (int16_t)target;
     g_drive_status[g_current_drive].current_track = (uint8_t)(target / 4);
+    media[g_current_drive].position_valid=true;
 }
 
 static int apl_recalibrate(void)
@@ -131,6 +150,8 @@ static int apl_seek_qt(int target)
     if (target < 0 || target > APL_MAX_QT) {
         return UFI_ERR_SEEK_FAIL;
     }
+    if(target/4>media[g_current_drive].drive[1])return UFI_ERR_SEEK_FAIL;
+    if(!media[g_current_drive].position_valid)apl_qt[g_current_drive==DRIVE_APPLE2]=-1;
     const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
     if (qt < 0) {
         apl_recalibrate();
@@ -148,6 +169,7 @@ static int apl_seek(uint8_t track)
 
 int ufi_drive_apple_step(int direction)
 {
+    if(!media[g_current_drive].position_valid)return apl_recalibrate();
     const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
     if (qt < 0) {
         return apl_recalibrate();
@@ -180,10 +202,14 @@ int ufi_drive_seek_q(uint8_t track, uint8_t quarter)
 
 void ufi_drive_init(void)
 {
+    ufi_config_changed();
     /* GPIO modes/levels are set by board_gpio_init(); all lines released */
     for (int i = 0; i < DRIVE_TYPE_COUNT; i++) {
         g_drive_status[i] = (drive_status_t){0};
         g_drive_status[i].type = DRIVE_NONE;
+        bool apple=i==DRIVE_APPLE_II || i==DRIVE_APPLE2;
+        media_init(&media[i],apple?39:83,apple?1:2,
+                   i==DRIVE_SHUGART_A || i==DRIVE_SHUGART_B || i==DRIVE_AMIGA || i==DRIVE_AMIGA2);
     }
     g_current_drive = DRIVE_NONE;
 }
@@ -216,6 +242,8 @@ static const gpio_pin_t* amiga_sel(drive_type_t t)
 
 int ufi_drive_select(drive_type_t type)
 {
+    if((unsigned)type>=DRIVE_TYPE_COUNT)return UFI_ERR_BAD_ARGS;
+    ufi_config_changed(); /* selection releases shared lines, even on failure */
     bus_out(&PIN_FDD_DRV_SEL_A, false);
     bus_out(&PIN_FDD_DRV_SEL_B, false);
     if (is_apple(g_current_drive) || is_apple(type)) {
@@ -277,6 +305,50 @@ drive_type_t ufi_drive_get_current(void)
     return g_current_drive;
 }
 
+uint32_t ufi_drive_media_token(void){
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return 0;
+    media_state_t* s=&media[g_current_drive];
+    if(ufi_drive_motor_is_on())media_observe(s,ufi_drive_disk_changed());
+    return s->generation;
+}
+bool ufi_drive_media_matches(uint32_t token){
+    return token && token==ufi_drive_media_token();
+}
+void ufi_drive_media_status(uint8_t out[40]){
+    (void)ufi_drive_media_token();
+    media_pack(&media[g_current_drive],(uint8_t)g_current_drive,g_drive_status[g_current_drive].current_track,
+               g_drive_status[g_current_drive].current_side,is_apple(g_current_drive),out);
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC){out[2]=0;memset(out+4,0,4);}
+}
+int ufi_drive_profile_set(const uint8_t p[8]){
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
+    if(!media_drive_valid(p) || (is_apple(g_current_drive) && (p[1]>39 || p[2]!=1)) ||
+       ((is_apple(g_current_drive) || is_shugart(g_current_drive)) && p[3]))return UFI_ERR_BAD_ARGS;
+    ufi_config_changed();
+    media_state_t* s=&media[g_current_drive];memcpy(s->drive,p,8);s->position_valid=false;
+    s->change_asserted=false;media_invalidate(s,3);(void)ufi_drive_media_token();return UFI_OK;
+}
+int ufi_drive_media_set(const uint8_t p[12]){
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
+    if(!media_profile_valid(p))return UFI_ERR_BAD_ARGS;
+    (void)ufi_drive_media_token();
+    const uint8_t* d=media[g_current_drive].drive;
+    if(p[0] && ((p[1] && (unsigned)(p[1]-1)*p[5]>d[1]) || p[2]>d[2]))return UFI_ERR_BAD_ARGS;
+    memcpy(media[g_current_drive].media,p,12);ufi_config_changed();return UFI_OK;
+}
+void ufi_drive_media_notify(void){
+    if(g_current_drive!=DRIVE_NONE && g_current_drive!=DRIVE_IEC)media_invalidate(&media[g_current_drive],2);
+}
+void ufi_drive_position_invalidate(void){
+    for(unsigned i=0;i<DRIVE_TYPE_COUNT;i++)media[i].position_valid=false;
+}
+void ufi_drive_media_observed(uint8_t format,uint32_t rate){
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return;
+    media_state_t* s=&media[g_current_drive];if(s->media[6]==1)return;
+    uint8_t p[12]={0};p[0]=format;p[5]=g_timing.double_step?2:1;p[6]=1;memcpy(p+8,&rate,4);
+    if(media_profile_valid(p)){p[6]=2;memcpy(s->media,p,12);}
+}
+
 /* ============================================================================
  * MOTOR STEUERUNG
  * ============================================================================ */
@@ -296,6 +368,8 @@ static void amiga_motor(bool on)
 
 int ufi_drive_motor(bool on)
 {
+    if(on && !ufi_drive_motor_is_on()){motor_started_ms=HAL_GetTick();motor_step_pending=true;}
+    if(!on)motor_step_pending=false;
     switch (g_current_drive) {
         case DRIVE_SHUGART_A:
             bus_out(&PIN_FDD_MOTOR_A, on);
@@ -349,9 +423,13 @@ int ufi_drive_step(int direction)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
+    motor_step_wait();
+    (void)ufi_drive_media_token(); /* sample DSKCHG before STEP can clear its latch */
     if (is_apple(g_current_drive)) {
         return ufi_drive_apple_step(direction);
     }
+    if(media[g_current_drive].position_valid && direction>0 &&
+       g_drive_status[g_current_drive].current_track>=media[g_current_drive].drive[1])return UFI_ERR_SEEK_FAIL;
 
     /* DIR asserted = step in (towards the spindle) */
     bus_out(&PIN_FDD_DIR, direction > 0);
@@ -387,7 +465,7 @@ int ufi_drive_seek(uint8_t track)
     if (is_apple(g_current_drive)) {
         return apl_seek(track);
     }
-    const uint8_t max_track = 83;
+    const uint8_t max_track = media[g_current_drive].drive[1];
     /* double step: logical track n sits at physical track 2n (40-track disk, 80-track drive);
      * current_track counts physical tracks */
     const uint32_t phys = g_timing.double_step ? 2u * track : track;
@@ -397,7 +475,7 @@ int ufi_drive_seek(uint8_t track)
     track = (uint8_t)phys;
 
     drive_status_t* status = &g_drive_status[g_current_drive];
-    if (!status->track0 && status->current_track == 0) {
+    if (!media[g_current_drive].position_valid) {
         /* head position unknown: find track 0 first */
         if (ufi_drive_recalibrate() != UFI_OK) {
             return UFI_ERR_SEEK_FAIL;
@@ -409,13 +487,15 @@ int ufi_drive_seek(uint8_t track)
     steps = (steps > 0) ? steps : -steps;
 
     for (int i = 0; i < steps; i++) {
-        ufi_drive_step(direction);
+        if(ufi_drive_step(direction)!=UFI_OK){media[g_current_drive].position_valid=false;return UFI_ERR_SEEK_FAIL;}
         if (direction < 0 && ufi_drive_at_track0()) {
             status->current_track = 0;
+            if(track!=0){media[g_current_drive].position_valid=false;return UFI_ERR_SEEK_FAIL;}
             break;
         }
     }
     status->track0 = ufi_drive_at_track0();
+    if(status->track0!=(track==0)){media[g_current_drive].position_valid=false;return UFI_ERR_SEEK_FAIL;}
     tg43_apply(status->current_track);
 
     delay_us(SETTLE_TIME_US);
@@ -427,6 +507,7 @@ int ufi_drive_recalibrate(void)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
+    media[g_current_drive].position_valid=false;
     if (is_apple(g_current_drive)) {
         return apl_recalibrate();
     }
@@ -456,6 +537,7 @@ int ufi_drive_recalibrate(void)
     }
     status->current_track = 0;
     status->track0 = true;
+    media[g_current_drive].position_valid=true;
     tg43_apply(0);
     delay_us(SETTLE_TIME_US);
     return UFI_OK;
@@ -470,6 +552,7 @@ int ufi_drive_select_side(uint8_t side)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
+    if(side>=media[g_current_drive].drive[2])return UFI_ERR_BAD_ARGS;
     if (is_apple(g_current_drive)) {
         return side ? UFI_ERR_NOT_IMPL : UFI_OK;   /* Disk II: one head */
     }
@@ -486,9 +569,89 @@ int ufi_drive_select_side(uint8_t side)
 static uint8_t rpm_line;                /* 0 none, 1 DENSITY (pin 2), 2 DRATE (pin 6) */
 static bool rpm_360_low = true;         /* line asserted (low on the cable) = 360 rpm */
 static uint16_t rpm_set;                /* 0 = not set since start */
+static uint8_t operating_profiles[DRIVE_TYPE_COUNT][40];
+
+/* Conflict bits: DRATE/DS3=1, DENSITY/TG43=2, unsupported port=4. */
+static uint8_t line_conflicts(drive_type_t drive,uint8_t line,bool tg43)
+{
+    uint8_t reasons=0;
+    if(line==2 && is_shugart(drive))reasons|=1;
+    if(line==1 && tg43)reasons|=2;
+    if((line || tg43) && (drive==DRIVE_NONE || drive==DRIVE_IEC || is_apple(drive)))reasons|=4;
+    return reasons;
+}
+
+void ufi_drive_port_report(uint8_t out[24])
+{
+    memset(out,0,24);out[0]=1;out[1]=(uint8_t)g_current_drive;
+    bool flux=g_current_drive!=DRIVE_NONE && g_current_drive!=DRIVE_IEC;
+    out[2]=flux?1:0; /* shared flux engine */
+    if(is_shugart(g_current_drive))out[2]|=2|4; /* shared motor, DRATE reserved for DS3 */
+    if(flux && !is_apple(g_current_drive))out[2]|=8; /* density output */
+    if(media[g_current_drive].drive[3] && flux)out[2]|=16;
+    if(is_shugart(g_current_drive))out[2]|=32; /* pin 34 READY */
+    if(g_current_drive==DRIVE_SHUGART_DS3 || g_current_drive==DRIVE_AMIGA2)out[2]|=64; /* jumper required */
+    out[3]=is_shugart(g_current_drive)?15:(g_current_drive==DRIVE_SHUGART_A || g_current_drive==DRIVE_SHUGART_B)?3:0;
+    out[4]=rpm_line;out[5]=rpm_360_low;out[6]=(uint8_t)g_timing.tg43;
+    out[7]=line_conflicts(g_current_drive,rpm_line,g_timing.tg43!=0);
+    memcpy(out+8,&rpm_set,2);out[10]=operating_profiles[g_current_drive][39];
+    uint32_t limit=WRITE_MIN_DELTA;memcpy(out+12,&limit,4);
+    limit=WRITE_MAX_DELTA;memcpy(out+16,&limit,4);
+    limit=FLUX_TIMER_FREQ;memcpy(out+20,&limit,4);
+}
+
+int ufi_drive_timing_checked(const drive_timing_t* t)
+{
+    if(t->double_step>1 || t->tg43>1 || line_conflicts(g_current_drive,rpm_line,t->tg43!=0))return UFI_ERR_BAD_ARGS;
+    ufi_drive_set_timing(t);return UFI_OK;
+}
+
+int ufi_drive_operating_profile(const uint8_t* input,uint8_t out[40])
+{
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
+    if(input){
+        drive_timing_t timing;drive_extra_t extra;uint16_t rpm;
+        memcpy(&timing,input+1,22);memcpy(&extra,input+23,12);memcpy(&rpm,input+37,2);
+        if(input[0]!=1 || input[35]>2 || input[36]>1 || input[39] ||
+           timing.double_step>1 || timing.tg43>1 || !timing.step_pulse_us ||
+           !drive_extra_valid(&extra) || (rpm && rpm!=300 && rpm!=360) ||
+           ((rpm!=0)!=(input[35]!=0)) || line_conflicts(g_current_drive,input[35],timing.tg43!=0))return UFI_ERR_BAD_ARGS;
+        /* Validate everything before changing settings or physical lines. */
+        g_timing=timing;extra_timing=extra;ufi_drive_rpm_config(input[35],input[36]!=0);
+        if(rpm){int ret=ufi_drive_set_rpm(rpm);if(ret)return ret;}
+        if(!is_apple(g_current_drive)){
+            if(rpm_line!=1){
+                bus_out(&PIN_FDD_DENSITY,g_timing.tg43 && media[g_current_drive].position_valid &&
+                        g_drive_status[g_current_drive].current_track>=43);
+            }
+            if(rpm_line!=2 && !is_shugart(g_current_drive))bus_out(&PIN_FDD_DRATE,false);
+            delay_us(extra_timing.density_us);
+        }
+        memcpy(operating_profiles[g_current_drive],input,40);operating_profiles[g_current_drive][39]=1;
+    }
+    memset(out,0,40);out[0]=1;memcpy(out+1,&g_timing,22);memcpy(out+23,&extra_timing,12);
+    out[35]=rpm_line;out[36]=rpm_360_low;memcpy(out+37,&rpm_set,2);
+    out[39]=operating_profiles[g_current_drive][39];return UFI_OK;
+}
+
+int ufi_drive_select_native(drive_type_t type)
+{
+    if(type>=DRIVE_TYPE_COUNT)return UFI_ERR_BAD_ARGS;
+    drive_timing_t previous_timing=g_timing;drive_extra_t previous_extra=extra_timing;
+    if(operating_profiles[type][39]){
+        memcpy(&g_timing,operating_profiles[type]+1,22);
+        memcpy(&extra_timing,operating_profiles[type]+23,12);
+    }
+    int ret=ufi_drive_select(type);
+    if(ret){g_timing=previous_timing;extra_timing=previous_extra;return ret;}
+    if(!operating_profiles[type][39])return UFI_OK;
+    uint8_t profile[40],out[40];memcpy(profile,operating_profiles[type],40);profile[39]=0;
+    return ufi_drive_operating_profile(profile,out);
+}
 
 void ufi_drive_rpm_config(uint8_t line, bool low_is_360)
 {
+    ufi_config_changed();
     rpm_line = line > 2u ? 0u : line;
     rpm_360_low = low_is_360;
     rpm_set = 0;
@@ -506,14 +669,17 @@ uint16_t ufi_drive_get_rpm(void)
 
 int ufi_drive_set_rpm(uint16_t rpm)
 {
+    if(line_conflicts(g_current_drive,rpm_line,g_timing.tg43!=0))return UFI_ERR_BAD_ARGS;
     if (rpm != 300u && rpm != 360u) {
         return UFI_ERR_BAD_ARGS;
     }
     if (!rpm_line) {
         return UFI_ERR_NOT_IMPL;            /* no speed-select line configured */
     }
+    ufi_config_changed();
     const bool assert = (rpm == 360u) == rpm_360_low;
     bus_out(rpm_line == 2u ? &PIN_FDD_DRATE : &PIN_FDD_DENSITY, assert);
+    delay_us(extra_timing.density_us);
     const bool changed = rpm_set != rpm;
     rpm_set = rpm;
     if (changed && g_current_drive != DRIVE_NONE && g_drive_status[g_current_drive].motor_on) {
@@ -524,7 +690,18 @@ int ufi_drive_set_rpm(uint16_t rpm)
 
 int ufi_drive_density_line(bool assert)
 {
+    if(rpm_line==1 || g_timing.tg43)return UFI_ERR_BAD_ARGS;
+    ufi_config_changed();
     bus_out(&PIN_FDD_DENSITY, assert);
+    delay_us(extra_timing.density_us);
+    return UFI_OK;
+}
+int ufi_drive_lines_set(bool density,bool drate){
+    if(is_shugart(g_current_drive) || rpm_line || g_timing.tg43 ||
+       g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC || is_apple(g_current_drive))return UFI_ERR_BAD_ARGS;
+    ufi_config_changed();
+    bus_out(&PIN_FDD_DENSITY,density);bus_out(&PIN_FDD_DRATE,drate);
+    delay_us(extra_timing.density_us);
     return UFI_OK;
 }
 
@@ -535,7 +712,8 @@ int ufi_drive_density_line(bool assert)
 static void tg43_apply(uint32_t phys)
 {
     if (g_timing.tg43 && rpm_line != 1u && !is_apple(g_current_drive)) {
-        bus_out(&PIN_FDD_DENSITY, phys >= 43u);
+        bus_out(&PIN_FDD_DENSITY,phys >= 43u);
+        delay_us(extra_timing.density_us);
     }
 }
 
@@ -617,6 +795,7 @@ bool ufi_drive_motor_is_on(void)
 /* Everything that could move the head or write: off/released (USB lost, abort) */
 void ufi_drive_safe_state(void)
 {
+    ufi_drive_position_invalidate();
     if (ufi_drive_motor_is_on()) {
         ufi_drive_motor(false);
     }
@@ -671,6 +850,7 @@ int ufi_drive_probe_tracks(uint8_t* highest)
         return UFI_ERR_SEEK_FAIL;
     }
     const uint16_t rate = g_timing.step_rate_us;
+    media[g_current_drive].position_valid=false; /* explicit end-stop probe counts actual return steps */
     g_timing.step_rate_us = (rate < 30000u) ? (uint16_t)(rate * 2u) : rate;
     for (int i = 0; i < 90; i++) {
         ufi_drive_step(1);
@@ -686,12 +866,14 @@ int ufi_drive_probe_tracks(uint8_t* highest)
     }
     g_drive_status[g_current_drive].current_track = 0;
     g_drive_status[g_current_drive].track0 = true;
+    media[g_current_drive].position_valid=true;
     *highest = (uint8_t)n;
     return UFI_OK;
 }
 
 void ufi_drive_set_timing(const drive_timing_t* t)
 {
+    ufi_config_changed();
     g_timing = *t;
     if (g_timing.step_pulse_us == 0) {
         g_timing.step_pulse_us = 1;

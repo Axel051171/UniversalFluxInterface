@@ -105,6 +105,22 @@ def test_gcr_roundtrip_and_header():
     assert nib.header_track(b"\x55" * 10) is None
 
 
+def test_overlap_maps_variable_sync_lengths():
+    assert nib.overlap_end(b"AB\xff\xffCDEF", b"AB\xff\xff\xff\xffCD") == 6
+    assert nib.overlap_end(b"AB\xff\xff\xff\xffCDEF", b"AB\xffCD") == 8
+    assert nib.overlap_end(b"AB\xffCD", b"AB\xffCE") is None
+
+
+@pytest.mark.parametrize("result", [nib.TrackResult(2, raw=[b"unordered"]),
+    nib.TrackResult(2, data=b"x" * (nib.G64_MAX + 1)), nib.TrackResult(2, note="no origin")])
+def test_g64_refuses_unproven_data_without_truncating(tmp_path, result):
+    path = tmp_path / "keep.g64"
+    path.write_bytes(b"previous image")
+    with pytest.raises(ValueError):
+        nib.write_g64(str(path), [result])
+    assert path.read_bytes() == b"previous image"
+
+
 def test_stitch_formatted_track():
     d = FakeDrive(TRACKS)
     rd = nib.NibReader(d, log=lambda *_: None)

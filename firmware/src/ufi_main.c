@@ -7,12 +7,23 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_analysis_job.h"
+#include "ufi_evidence.h"
+#include "ufi_media.h"
 
 /* ============================================================================
  * GLOBALE VARIABLEN (extern referenziert in ufi_flux.c, ufi_write.c)
  * ============================================================================ */
 
 capture_context_t g_capture;
+
+/* Single main-loop owner of the shared drive/store. ISR callbacks only publish state. */
+bool ufi_operation_busy(void)
+{
+    return ufi_analysis_job_active() || ufi_dump_active() || ufi_stream_active() || ufi_iec_reset_active() ||
+           g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
+           ufi_write_get_state() != WRITE_IDLE;
+}
 
 /* ============================================================================
  * SYSTEM-BOOTLOADER (USB-DFU im ROM)
@@ -119,17 +130,20 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
                         uint8_t quarter)
 {
     if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
-        ufi_stream_active()) {
+        ufi_stream_active() || (ufi_write_get_state() != WRITE_IDLE &&
+                               ufi_write_get_state() != WRITE_VERIFYING)) {
         return UFI_ERR_BUSY;
     }
     if (ufi_drive_get_current() == DRIVE_NONE) {
         return UFI_ERR_NO_DRIVE;
     }
+    uint32_t media_token=ufi_drive_media_token();
     const int sret = ufi_drive_seek_q(track, quarter);
     if (sret != 0) {
         return sret == UFI_ERR_BAD_ARGS ? UFI_ERR_BAD_ARGS : UFI_ERR_SEEK_FAIL;
     }
-    ufi_drive_select_side(side);
+    int side_ret=ufi_drive_select_side(side);if(side_ret)return side_ret;
+    if(!ufi_drive_media_matches(media_token))return UFI_ERR_MEDIA_CHANGED;
 
     g_capture.current_track = track;
     g_capture.current_side = side;
@@ -142,7 +156,9 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
         period_ticks = FLUX_TIMER_FREQ / 5u;
     }
 
+    ufi_evidence_begin(track,side,revolutions,period_ticks);
     int ret = ufi_flux_capture_start(revolutions, period_ticks);
+    if(ret)ufi_evidence_finish();
     if (ret == UFI_OK) {
         led_set(&PIN_LED_ERR, false);
         led_set(&PIN_LED_FDD, true);
@@ -160,7 +176,8 @@ int ufi_capture_abort(void)
 
 capture_state_t ufi_capture_get_state(void)
 {
-    return ufi_flux_poll();
+    capture_state_t state=ufi_flux_poll();
+    ufi_evidence_service();return state;
 }
 
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution)
@@ -211,7 +228,9 @@ void ufi_main_loop(void)
         ufi_floppy_service();           /* USB floppy mode: write back idle tracks */
 
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
-        if (ufi_dump_active()) {
+        if (ufi_analysis_job_active()) {
+            ufi_analysis_job_service();
+        } else if (ufi_dump_active()) {
             ufi_dump_service();             /* stand-alone dump owns the capture */
         } else if (ufi_stream_active()) {
             ufi_stream_service();           /* READ_TRACK: sends while the disk turns */
@@ -222,7 +241,7 @@ void ufi_main_loop(void)
                 led_set(&PIN_LED_FDD, false);
                 break;
             case CAPTURE_ERROR:
-                ufi_usb_send_read_done(g_capture.error_code == 2 ? UFI_ERR_DMA :
+                ufi_usb_send_read_done(g_capture.error_code == 4 ? UFI_ERR_MEDIA_CHANGED : g_capture.error_code == 2 ? UFI_ERR_DMA :
                                        g_capture.error_code == 3 ? UFI_ERR_NO_INDEX : UFI_ERR_BUFFER_FULL, 0);
                 g_capture.state = CAPTURE_IDLE;
                 led_set(&PIN_LED_FDD, false);

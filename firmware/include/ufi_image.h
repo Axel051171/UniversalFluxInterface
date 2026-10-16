@@ -60,6 +60,7 @@ bool scp_parse_track(const uint8_t* trk, uint8_t revs, uint8_t rev, uint8_t trac
 /* SCP cells (u16 big endian, 0 = +65536 to the next) -> 275 MHz deltas appended to out.
  * State across calls: *acc_cells (cells since the index), *prev_ticks, *pending (overflow
  * cells carried into the next value).  Returns the number of deltas written; stops at max. */
+/* Returns UINT32_MAX if the accumulated timestamp exceeds the tick range. */
 uint32_t scp_cells_to_deltas(const uint8_t* words, uint32_t n_words, uint32_t* out, uint32_t max,
                              uint32_t* n_out, uint32_t* acc_cells, uint32_t* prev_ticks,
                              uint32_t* pending);
@@ -87,6 +88,7 @@ typedef struct {
     uint16_t rpm;               /* 0 = unknown */
     uint16_t lut_block;         /* track table position in 512-byte blocks */
     bool double_step;           /* single_step == 0: 40-track image */
+    bool v3;                    /* HXCHFEV3, explicit bytecode timing */
 } hfe_header_t;
 
 /* 512-byte header -> fields; false if magic/counts are unusable */

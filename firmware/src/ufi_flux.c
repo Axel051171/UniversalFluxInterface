@@ -15,6 +15,11 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_metrics.h"
+#include "ufi_evidence.h"
+#include "ufi_media.h"
+static uint32_t capture_media_token;
+#include <string.h>
 
 extern capture_context_t g_capture;
 
@@ -28,9 +33,9 @@ DMA_HandleTypeDef hdma_tim2;
 __attribute__((section(".axi_sram"), aligned(32)))
 static uint32_t flux_fallback[FLUX_STORE_FALLBACK_WORDS];
 
-/* overrun target after the last chunk, until the DMA ISR stops the stream */
-__attribute__((section(".axi_sram"), aligned(32)))
-static uint32_t dma_scratch[256];
+/* Reserve one FULL DMA chunk inside the store as the overrun target. A small
+ * separate buffer cannot contain NDTR transfers while an interrupt is delayed. */
+static uint32_t* dma_scratch;
 
 static uint32_t* flux_store = flux_fallback;
 static uint32_t store_words = FLUX_STORE_FALLBACK_WORDS;
@@ -59,6 +64,37 @@ static volatile bool stream_scratch;    /* no free chunk: the DMA runs into dma_
 /* Index-less capture (no index hole/sensor, flippy side, hard-sectored): revolution
  * boundaries every `period` ticks from the capture start instead of index pulses */
 static uint32_t period;
+static bool gw_capture, gw_linger;
+static uint32_t gw_origin;
+static uint64_t gw_origin64, gw_limit, gw_linger_ticks, gw_end;
+static volatile uint32_t timer_high;
+static uint16_t gw_indexes;
+static uint32_t index_mask_ticks, index_previous;
+static bool index_seen;
+
+void ufi_flux_index_mask(uint16_t us)
+{
+    index_mask_ticks = (uint32_t)us * (FLUX_TIMER_FREQ / 1000000u);
+    index_seen = false;
+}
+
+uint32_t ufi_flux_gw_origin(void) { return gw_origin; }
+bool ufi_flux_gw_past_end(uint32_t t)
+{
+    const uint64_t now = ufi_flux_now64();
+    const uint64_t at = now - (uint32_t)((uint32_t)now - t);
+    const uint64_t elapsed = at - gw_origin64;
+    return (gw_limit && elapsed >= gw_limit) ||
+           (gw_linger && at >= gw_end);
+}
+
+uint32_t ufi_flux_gw_cursor(void)
+{
+    uint64_t now=ufi_flux_now64();
+    if(gw_limit && now>gw_origin64+gw_limit)now=gw_origin64+gw_limit;
+    if(gw_linger && now>gw_end)now=gw_end;
+    return (uint32_t)now;
+}
 
 /* Flux input: RDATA on TIM2_CH1 (34-pin / Amiga) or Apple RDDATA on TIM2_CH3 (v0.7);
  * both share the counter, only the DMA request and source register change */
@@ -105,15 +141,28 @@ static uint32_t dma_pos(void)
  * FLUX TIMER INITIALISIERUNG
  * ============================================================================ */
 
+static void configure_store(uint32_t available)
+{
+    chunk_words = (available / 3u < CHUNK_MAX_WORDS) ? available / 3u : CHUNK_MAX_WORDS;
+    chunk_words &= ~7u;  /* cache-line aligned chunk boundaries */
+    n_chunks = available / chunk_words - 1u;
+    store_words = n_chunks * chunk_words;
+    dma_scratch = &flux_store[store_words];
+}
+
+/* Every selection starts from known capacities, including a failed re-init. */
+static void select_store(bool psram_ready)
+{
+    store_psram = psram_ready;
+    flux_store = psram_ready ? (uint32_t*)OCTOSPI1_BASE : flux_fallback;
+    configure_store(psram_ready ? PSRAM_SIZE_BYTES / sizeof(uint32_t)
+                               : FLUX_STORE_FALLBACK_WORDS);
+}
+
 void ufi_flux_init(void)
 {
-    if (ufi_psram_init() == UFI_OK) {
-        flux_store = (uint32_t*)OCTOSPI1_BASE;
-        store_words = PSRAM_SIZE_BYTES / sizeof(uint32_t);
-        store_psram = true;
-    }
-    chunk_words = (store_words / 2u < CHUNK_MAX_WORDS) ? store_words / 2u : CHUNK_MAX_WORDS;
-    n_chunks = store_words / chunk_words;
+    __HAL_RCC_D2SRAM1_CLK_ENABLE(); /* CPU-only capture evidence */
+    select_store(ufi_psram_init() == UFI_OK);
 
     __HAL_RCC_TIM2_CLK_ENABLE();
     __HAL_RCC_DMA1_CLK_ENABLE();
@@ -156,6 +205,9 @@ void ufi_flux_init(void)
     HAL_TIM_IC_Start(&htim2, FLUX_RDATA_CHANNEL);
     HAL_TIM_IC_Start(&htim2, TIM_CHANNEL_3);
     HAL_TIM_IC_Start(&htim2, FLUX_INDEX_CHANNEL);
+    TIM2->SR = ~TIM_SR_UIF;
+    timer_high = 0;
+    TIM2->DIER |= TIM_DIER_UIE;
 
     HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
     HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 1, 0);
@@ -168,6 +220,22 @@ void ufi_flux_init(void)
 uint32_t ufi_flux_now(void)
 {
     return TIM2->CNT;
+}
+
+/* The update flag is accounted under PRIMASK, including a pending overflow ISR. */
+uint64_t ufi_flux_now64(void)
+{
+    const uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    uint32_t low=TIM2->CNT;
+    if (TIM2->SR & TIM_SR_UIF) {
+        timer_high++;
+        TIM2->SR=~TIM_SR_UIF;
+        low=TIM2->CNT;
+    }
+    const uint64_t result=((uint64_t)timer_high<<32)|low;
+    __set_PRIMASK(mask);
+    return result;
 }
 
 uint32_t* ufi_flux_store(uint32_t* words)
@@ -223,7 +291,10 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
         return UFI_ERR_BUFFER_FULL;
     }
     period = period_ticks;
+    capture_media_token=ufi_drive_media_token();
+    gw_capture = false;
     stream_consumed = 0;
+    ufi_metrics.capture_peak_words=ufi_metrics.capture_pending_words=0;
     stream_scratch = false;
 
     g_capture.revolutions_requested = revolutions;
@@ -249,6 +320,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
         idx_count = 1;
         TIM2->DIER |= rd_de;
         g_capture.state = CAPTURE_RUNNING;
+        if(evidence_flags()&EVIDENCE_RAW_INDEX){TIM2->SR=~(TIM_SR_CC2IF|TIM_SR_CC2OF);TIM2->DIER|=TIM_DIER_CC2IE;}
         __enable_irq();
         ufi_sched_arm(idx_time[0]);
         return UFI_OK;
@@ -267,8 +339,35 @@ static void capture_halt(void)
     dma_stop();
 }
 
+int ufi_flux_capture_gw(uint32_t ticks, uint16_t indexes, uint32_t linger)
+{
+    /* Keep timestamps within one timer wrap; report unsupported limits explicitly. */
+    if (indexes > REVOLUTIONS_STREAM)
+        return UFI_ERR_BAD_ARGS;
+    ufi_evidence_finish();
+    const uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    const int ret = ufi_flux_capture_start(REVOLUTIONS_STREAM, 0);
+    if (ret == UFI_OK) {
+        gw_capture = true;
+        gw_linger = false;
+        gw_origin64 = ufi_flux_now64();
+        gw_origin = (uint32_t)gw_origin64;
+        gw_limit = (uint64_t)ticks * 4u;
+        gw_indexes = indexes;
+        gw_linger_ticks = (uint64_t)linger * 4u;
+        idx_count = 0;                       /* actual pulses only, no synthetic index */
+        g_capture.state = CAPTURE_RUNNING;
+        TIM2->DIER |= rd_de;
+    }
+    __set_PRIMASK(mask);
+    return ret;
+}
+
 int ufi_flux_capture_stop(void)
 {
+    /* Snapshot while the DMA cursor and capture state still describe this run. */
+    ufi_evidence_finish();
     capture_halt();
     g_capture.state = CAPTURE_IDLE;
     return UFI_OK;
@@ -287,6 +386,16 @@ static volatile bool index_internal;    /* index pulses come from the simulation
 static uint8_t hard_sectors;
 static uint32_t hs_last, hs_gap;        /* last hole time, gap before it */
 static uint8_t hs_n;                    /* holes seen since the setting (0..2) */
+void ufi_flux_evidence_context(uint8_t out[6]) {
+    memcpy(out,&index_mask_ticks,4);out[4]=hard_sectors;out[5]=index_internal;
+}
+static void record_index(uint32_t t,uint32_t reason) {
+    if(!(evidence_flags()&EVIDENCE_RAW_INDEX) || gw_capture ||
+       (g_capture.state!=CAPTURE_WAITING_INDEX && g_capture.state!=CAPTURE_RUNNING))return;
+    uint64_t now=ufi_flux_now64();
+    evidence_index(now-(uint32_t)((uint32_t)now-t),g_capture.state==CAPTURE_RUNNING?dma_pos():0,
+                   reason|((index_internal && !(reason&16u))?8u:0u));
+}
 
 void ufi_flux_hard_sectors(uint8_t n)
 {
@@ -318,12 +427,14 @@ bool ufi_flux_index_asserted(void)
 
 void ufi_flux_tim2_irq(void)
 {
+    if (TIM2->SR & TIM_SR_UIF) (void)ufi_flux_now64();
     if (!(TIM2->SR & TIM_SR_CC2IF)) {
         return;
     }
     const uint32_t t = TIM2->CCR2;          /* reading CCR2 clears CC2IF */
     TIM2->SR = ~TIM_SR_CC2OF;
     if (index_internal) {
+        record_index(t,16);
         return;                             /* the drive's INDEX line is ignored */
     }
     ufi_flux_index_event(t);
@@ -333,12 +444,39 @@ void ufi_flux_tim2_irq(void)
  * simulation (TIM7 ISR at the same preemption level, so dma_pos() stays consistent) */
 void ufi_flux_index_event(uint32_t t)
 {
+    if (index_mask_ticks && index_seen && (uint32_t)(t - index_previous) < index_mask_ticks) {record_index(t,2);return;}
+    index_seen = true;
+    index_previous = t;
     if (hard_sectors && !hs_is_index(t)) {
+        record_index(t,4);
         return;                             /* sector hole */
     }
+    record_index(t,1);
     write_state_t ws = ufi_write_get_state();
     if (ws == WRITE_WAITING_INDEX || ws == WRITE_ACTIVE) {
         ufi_write_index_handler(t);
+        return;
+    }
+
+    if (gw_capture && g_capture.state == CAPTURE_RUNNING) {
+        const uint64_t now=ufi_flux_now64();
+        const uint64_t at=now-(uint32_t)((uint32_t)now-t);
+        if ((gw_limit && at-gw_origin64>=gw_limit) || (gw_linger && at>=gw_end)) {
+            capture_halt();g_capture.state=CAPTURE_COMPLETE;return;
+        }
+        if (idx_count >= REVOLUTIONS_STREAM) {
+            capture_halt();
+            g_capture.error_code = 1;
+            g_capture.state = CAPTURE_ERROR;
+            return;
+        }
+        idx_time[idx_count] = t;
+        idx_pos[idx_count++] = dma_pos();
+        last_index_ms = HAL_GetTick();
+        if (!gw_linger && gw_indexes && idx_count >= gw_indexes) {
+            gw_end = at + gw_linger_ticks;
+            gw_linger = true;
+        }
         return;
     }
 
@@ -359,7 +497,7 @@ void ufi_flux_index_event(uint32_t t)
             capture_halt();
             g_capture.state = CAPTURE_COMPLETE;
         }
-    } else {
+    } else if(g_capture.state!=CAPTURE_RUNNING || !(evidence_flags()&EVIDENCE_RAW_INDEX)) {
         TIM2->DIER &= ~TIM_DIER_CC2IE;      /* stray index while idle */
     }
 }
@@ -369,6 +507,7 @@ void ufi_flux_dma_irq(void)
     const uint32_t isr = DMA1->LISR;
 
     if (isr & (DMA_LISR_TEIF0 | DMA_LISR_DMEIF0)) {
+        ufi_metrics.capture_dma_errors++;
         DMA1->LIFCR = DMA_LIFCR_CTEIF0 | DMA_LIFCR_CDMEIF0;
         TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
         dma_stop();
@@ -387,6 +526,7 @@ void ufi_flux_dma_irq(void)
         TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
         dma_stop();
         if (g_capture.state == CAPTURE_RUNNING) {
+            ufi_metrics.capture_overruns++;
             end_pos = chunks_done * chunk_words;    /* logical: == store_words without ring */
             g_capture.error_code = 1;       /* overflow: fewer revolutions than requested */
             g_capture.state = (idx_count >= 2) ? CAPTURE_COMPLETE : CAPTURE_ERROR;
@@ -433,8 +573,33 @@ static uint32_t align_boundary(uint32_t pos, uint32_t t, uint32_t lo, uint32_t h
     return pos;
 }
 
+static void gw_poll_deadline(void)
+{
+    const uint32_t irq = __get_PRIMASK();
+    __disable_irq();
+    if (gw_capture && g_capture.state == CAPTURE_RUNNING) {
+        const uint64_t now = ufi_flux_now64();
+        const bool timed = gw_limit && now - gw_origin64 >= gw_limit;
+        const bool lingered = gw_linger && now >= gw_end;
+        if (timed || lingered) {
+            if (timed && (!gw_linger || gw_end - gw_origin64 > gw_limit))
+                gw_end = gw_origin64 + gw_limit;
+            capture_halt();
+            /* Poll latency must not add post-deadline index markers to the result. */
+            g_capture.state = CAPTURE_COMPLETE;
+        }
+    }
+    __set_PRIMASK(irq);
+}
+
 capture_state_t ufi_flux_poll(void)
 {
+    if(!gw_capture && capture_media_token &&
+       (g_capture.state==CAPTURE_WAITING_INDEX || g_capture.state==CAPTURE_RUNNING) &&
+       !ufi_drive_media_matches(capture_media_token)){
+        capture_halt();g_capture.error_code=4;g_capture.state=CAPTURE_ERROR;
+    }
+    gw_poll_deadline();
     if (period && g_capture.state == CAPTURE_RUNNING) {
         /* index-less: record the boundaries that have passed, stop after the last one */
         const uint8_t seen = ufi_flux_index_count();
@@ -450,7 +615,8 @@ capture_state_t ufi_flux_poll(void)
             __enable_irq();
         }
     }
-    if (!period && (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) &&
+    if (!period && !(gw_capture && (gw_limit || !gw_indexes || gw_linger)) &&
+        (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) &&
         HAL_GetTick() - last_index_ms > INDEX_TIMEOUT_MS) {
         capture_halt();
         g_capture.error_code = 3;           /* no index pulse: no disk / motor off */
@@ -466,6 +632,10 @@ capture_state_t ufi_flux_poll(void)
     uint8_t n = idx_count - 1;              /* full revolutions */
     if (n > g_capture.revolutions_requested) {
         n = g_capture.revolutions_requested;
+    }
+    if (n > REVOLUTIONS_BUFFER) {
+        n = REVOLUTIONS_BUFFER;
+        g_capture.error_code = 1;
     }
 
     uint32_t b[REVOLUTIONS_BUFFER + 1];
@@ -501,6 +671,7 @@ void ufi_flux_set_streaming(bool on)
 uint32_t ufi_flux_written(void)
 {
     uint32_t pos = 0;
+    const uint32_t mask=__get_PRIMASK();
     __disable_irq();                        /* chunks_done / NDTR / state must agree */
     const capture_state_t s = g_capture.state;
     if (s == CAPTURE_RUNNING) {
@@ -508,7 +679,11 @@ uint32_t ufi_flux_written(void)
     } else if (s == CAPTURE_COMPLETE || s == CAPTURE_ERROR) {
         pos = end_pos;
     }
-    __enable_irq();
+    __set_PRIMASK(mask);
+    uint32_t pending=pos>=stream_consumed?pos-stream_consumed:0;
+    if(pending>store_words)pending=store_words;
+    ufi_metrics.capture_pending_words=pending;
+    if(pending>ufi_metrics.capture_peak_words)ufi_metrics.capture_peak_words=pending;
     return pos;
 }
 

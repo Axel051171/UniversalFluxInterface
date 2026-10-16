@@ -8,6 +8,7 @@
 #include "usbd_core.h"
 #include "usbd_cdc.h"
 #include "usbd_msc.h"
+#include "ufi_composite.h"
 
 /* USB Device Handle */
 PCD_HandleTypeDef hpcd_USB_OTG_HS;
@@ -143,6 +144,7 @@ void HAL_PCD_ConnectCallback(PCD_HandleTypeDef *hpcd)
 
 void HAL_PCD_DisconnectCallback(PCD_HandleTypeDef *hpcd)
 {
+    ufi_composite_disconnect();
     USBD_LL_DevDisconnected((USBD_HandleTypeDef *)hpcd->pData);
 }
 
@@ -178,6 +180,7 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev)
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 0, 0x40);     /* EP0 TX: 64 words */
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 1, 0x100);    /* EP1 TX: 256 words (CDC data IN 0x81) */
     HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 2, 0x20);     /* EP2 TX: 32 words (CDC cmd 0x82) */
+    HAL_PCDEx_SetTxFiFo(&hpcd_USB_OTG_HS, 3, 0x100);    /* native bulk IN; total 736/1024 words */
 
     return USBD_OK;
 }

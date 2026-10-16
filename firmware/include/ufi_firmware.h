@@ -65,7 +65,7 @@ typedef enum {
 } capture_state_t;
 
 typedef struct {
-    capture_state_t state;
+    volatile capture_state_t state;
     uint8_t current_track;
     uint8_t current_side;
     uint8_t revolutions_requested;
@@ -305,6 +305,9 @@ void ufi_main_loop(void);
 
 // Flux-Capture (high level, ufi_main.c: seek + side + capture)
 int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks);
+bool ufi_operation_busy(void);
+int ufi_iec_read_block_status(uint8_t device, uint8_t track, uint8_t sector,
+                              uint8_t* buffer, uint16_t* len, uint8_t* dos);
 int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t period_ticks,
                         uint8_t quarter);   // 1.14: Apple quarter track offset
 void ufi_write_set_quarter(uint8_t quarter);    // after ufi_write_prepare*(): seek offset (1.14)
@@ -328,6 +331,12 @@ typedef struct {
     uint64_t weak_mask;         // bit w = window w weak
 } analyze_result_t;             // 40 bytes, packed little endian on the wire
 int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r);
+uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
+void ufi_quality_clear(void);
+int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);
+void ufi_write_set_source_index(uint32_t ticks);
+void ufi_write_set_expected(uint64_t sectors,uint8_t c,uint8_t h,uint8_t n);
+uint16_t ufi_write_coverage(uint8_t* out);
 // head steps on a schedule during the next READ / WRITE (ufi_sched.c, 1.14)
 int ufi_sched_set(const uint8_t* items, uint8_t n, bool quarter_units);   // n x (at_ms u16, pos u8)
 uint8_t ufi_sched_pending(void);
@@ -340,6 +349,11 @@ flux_revolution_t* ufi_capture_get_data(uint8_t revolution);
 
 // Flux engine (ufi_flux.c)
 int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks);  // period 0 = index pulses
+int ufi_flux_capture_gw(uint32_t ticks, uint16_t indexes, uint32_t linger);
+void ufi_flux_index_mask(uint16_t us);
+void ufi_flux_evidence_context(uint8_t out[6]);
+uint32_t ufi_flux_gw_origin(void);
+bool ufi_flux_gw_past_end(uint32_t t);
 int ufi_flux_capture_stop(void);
 capture_state_t ufi_flux_poll(void);           // finalises a completed capture
 flux_revolution_t* ufi_flux_get_revolution(uint8_t index);
@@ -348,6 +362,9 @@ uint32_t* ufi_flux_store(uint32_t* words);      // shared buffer (write path use
 bool ufi_flux_store_is_psram(void);
 int ufi_psram_init(void);                       // ufi_psram.c
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter
+uint64_t ufi_flux_now64(void);
+void ufi_write_set_extended(bool on);
+uint32_t ufi_flux_gw_cursor(void);
 void ufi_flux_tim2_irq(void);
 void ufi_flux_dma_irq(void);
 // live access for streaming (thread context)
@@ -391,11 +408,12 @@ int ufi_usb_set_msc(bool on);                   // re-enumerates the USB device
 
 // USB personalities (v0.6): mode switch on J9 (ufi_mode.c), buttons, USB_MSC [mode]
 // UFI_USB_GW: Greaseweazle-compatible flux device (UFI.CFG protocol=gw, switch in middle)
-enum { UFI_USB_FLUX = 0, UFI_USB_SD = 1, UFI_USB_FLOPPY = 2, UFI_USB_GW = 3 };
+enum { UFI_USB_FLUX = 0, UFI_USB_SD = 1, UFI_USB_FLOPPY = 2, UFI_USB_GW = 3, UFI_USB_COMPOSITE = 4 };
 int ufi_usb_set_mode(uint8_t mode);
 uint8_t ufi_usb_get_mode(void);
 uint8_t ufi_usb_flux_mode(void);                // UFI_USB_FLUX or UFI_USB_GW per UFI.CFG
 bool ufi_config_protocol_gw(void);              // UFI.CFG protocol=gw
+bool ufi_config_protocol_composite(void);
 bool ufi_config_apple_sync(void);              // UFI.CFG apple_sync=1: Disk II sync sensor on J19
 int ufi_usb_tx_blocking(const uint8_t* p, uint32_t len);
 
@@ -481,6 +499,9 @@ bool ufi_drive_disk_changed(void);
 bool ufi_drive_ready(void);              // Shugart bus: J6 pin 34 (READY)
 bool ufi_drive_is_shugart_bus(void);    // current drive is DS0-DS3 (no DSKCHG line)
 int ufi_drive_density_line(bool assert);   // 34-pin pin 2; meaning is drive dependent
+int ufi_drive_lines_set(bool density,bool drate);
+int ufi_drive_select_native(drive_type_t type);
+int ufi_drive_timing_checked(const drive_timing_t* t);
 drive_timing_t ufi_drive_get_timing(void);
 void ufi_drive_set_timing(const drive_timing_t* t);
 int ufi_drive_check_disk(bool* changed, bool* present);
@@ -495,6 +516,9 @@ void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead
 
 // IEC Bus (C64)
 int ufi_iec_reset(void);
+bool ufi_iec_reset_active(void);
+int ufi_iec_reset_begin(void);
+int ufi_iec_reset_step(void);
 int ufi_iec_command(uint8_t device, const char* cmd, uint8_t len);   // command channel 15
 // drive memory (1.14): M-W (<= 32 bytes), M-R, M-E; wait until the drive answers ATN again
 int ufi_iec_mem_write(uint8_t device, uint16_t addr, const uint8_t* data, uint8_t n);
@@ -567,6 +591,11 @@ void ufi_write_set_precomp(bool enable);
 void ufi_write_service(void);
 int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms);
 int ufi_write_local(uint8_t track, uint8_t side, uint32_t flux_count, bool clamp);  // deltas in the flux store; clamp = tolerate out-of-range periods
+int ufi_write_local_extended(uint8_t track,uint8_t side,uint32_t count,uint32_t index_ticks);
+int ufi_write_local_checked(uint8_t track,uint8_t side,uint32_t count,bool extended,
+                            uint32_t index_ticks,uint64_t expected,uint8_t expected_head,uint8_t* level);
+int ufi_write_local_gw(uint8_t track, uint8_t side, uint32_t flux_count,
+                       bool cue_index, bool terminate_index, uint16_t pre_us);
 void ufi_write_result_payload(uint8_t out[5]);  // WRITE END payload: verify level u8, clamped u32 (1.15)
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
@@ -644,6 +673,7 @@ int ufi_format_revolution(uint32_t* ticks);     // measured revolution of the se
 
 // SELFTEST (1.14, ufi_selftest.c): items of (id u8, status u8, value u32), also SELFTEST.LOG
 uint8_t ufi_selftest(uint8_t* out, uint8_t max_items);
+uint8_t ufi_selftest_selected(uint8_t* out,uint8_t max_items,uint16_t mask);
 uint8_t ufi_iec_loopback(void);         // ufi_iec.c: bit0-3 ATN/CLK/DATA/SRQ not asserted, bit4-7 not released
 
 // fault record / reset cause (1.14, ufi_crash.c)

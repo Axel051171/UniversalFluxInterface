@@ -17,6 +17,7 @@ when the device does not answer a v2 PING (firmware < 1.12).
 from __future__ import annotations
 
 import logging
+import secrets
 import struct
 import sys
 import time
@@ -53,6 +54,13 @@ T_REQUEST, T_RESPONSE, T_EVENT, T_DATA, T_END = 1, 2, 3, 4, 5
 PING, INFO, STATUS, RESET, BOOTLOADER, USB_MODE, EVENTS = 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
 SELFTEST = 0x07                         # firmware 1.14: board self-test
 WRITE_LIMITS = 0x08                     # firmware 1.15: effective write backend limits
+DESCRIBE = 0x09                         # firmware 1.18: clocks, transports and limits
+RESOURCE = 0x0A
+JOB = 0x0B
+GUARDED_WRITE = 0x27
+FEATURES = 0x0C
+DIAGNOSTICS = 0x0D
+DESCRIBE_FMT = struct.Struct("<BBHIIIIHHIII")
 WRITE_LIMITS_FMT = struct.Struct("<BBIIII")
 SELFTEST_ITEMS = {
     1: ("timer", "TIM2 ticks per ms (275000 expected)"),
@@ -87,6 +95,7 @@ ENCODINGS = {0: "unknown", 1: "FM", 2: "MFM", 3: "GCR"}
 IEC_RESET, IEC_SEND, IEC_RECV = 0x30, 0x31, 0x32
 IEC_MEM, IEC_NIB = 0x33, 0x34           # firmware 1.14: drive memory, 1541 raw GCR chunks
 IEC_BLOCK = 0x35                        # firmware 1.16: U1/U2 block read/write through the drive's DOS
+IEC_TARGET, IEC_READ_STATUS = 0x36, 0x37 # firmware 1.18, capability bit 15
 NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
@@ -108,15 +117,17 @@ STATUS_TEXT = {
     15: "unknown command", 16: "invalid arguments", 17: "file not found",
     18: "flux interval not representable (1.6-238 us); write with clamp=True to force",
     19: "track longer than one revolution: the index ended the write",
+    20: "operation cancelled",
+    21: "media changed; prepare the operation again",
 }
 
 # INFO caps bits
 CAPS = ("PSRAM ok", "SD NAND ready", "IEC", "Amiga", "Amiga2 / JP3 capable", "Shugart bus",
         "Apple port", "sync sensor enabled (apple_sync=1)", "Greaseweazle mode available",
         "file access", "events", "drive diagnostics + index simulation",
-        "FORMAT (firmware encodes tracks)", "SELFTEST", "WRITE_LIMITS query")
+        "FORMAT (firmware encodes tracks)", "SELFTEST", "WRITE_LIMITS query", "addressed IEC + DOS read status", "DESCRIBE query", "integrity jobs", "resource ownership", "feature state query", "runtime diagnostics")
 CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_SYNC, \
-    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG, CAP_FORMAT, CAP_SELFTEST, CAP_WRITE_LIMITS = \
+    CAP_GW, CAP_FILES, CAP_EVENTS, CAP_DIAG, CAP_FORMAT, CAP_SELFTEST, CAP_WRITE_LIMITS, CAP_IEC_ADDRESSED, CAP_DESCRIBE, CAP_JOBS, CAP_RESOURCES, CAP_FEATURES, CAP_DIAGNOSTICS = \
     (1 << i for i in range(len(CAPS)))
 
 # events (3.5); EVENTS mask bit = code - 0x80
@@ -126,7 +137,7 @@ EVENT_NAMES = {EV_DISK_CHANGED: "disk changed", EV_BUTTON: "button",
                EV_MODE_SWITCH: "mode switch moved"}
 EVENTS_ALL = sum(1 << (c - 0x80) for c in EVENT_NAMES)
 
-USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3}
+USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3, "composite": 4}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
@@ -329,9 +340,14 @@ class WriteResult:
     """END frame of a WRITE (firmware 1.15; older firmware: level 0, clamped 0)."""
     verify_level: int = 0
     clamped: int = 0
+    host_verified_sectors: int = 0
+    host_verified_format: str = "IBM MFM"
+    readback_quality: dict | None = None
 
     @property
     def verify_text(self) -> str:
+        if self.host_verified_sectors:
+            return f"host: {self.host_verified_sectors} checksum-valid {self.host_verified_format} sectors compared byte-for-byte"
         return VERIFY_LEVELS.get(self.verify_level, str(self.verify_level))
 
     @classmethod
@@ -424,6 +440,28 @@ def _name(name: str) -> bytes:
     return name.encode("ascii")
 
 
+@dataclass(frozen=True)
+class ProtocolDescription:
+    schema: int
+    transports: int
+    flags: int
+    caps: int
+    native_hz: int
+    gw_hz: int
+    store_words: int
+    max_payload: int
+    max_indexes: int
+    max_gw_duration_ticks: int
+    min_gw_write_ticks: int
+    max_gw_write_ticks: int
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "ProtocolDescription":
+        if len(data) < DESCRIBE_FMT.size or data[0] != 1:
+            raise ValueError("unsupported or truncated DESCRIBE reply")
+        return cls(*DESCRIBE_FMT.unpack_from(data))
+
+
 class DeviceError(P.DeviceError):
     """Non-zero v2 status; subclass of the v1 error so callers catch both."""
 
@@ -449,6 +487,9 @@ class Device2:
         self.events: deque[Event] = deque()
         self.max_payload = MAX_PAYLOAD
         self._seq = 0
+        self._iec_addressed: bool | None = None
+        self.integrity = False
+        self.extended = False
 
     # -- framing ------------------------------------------------------------
     def _next_seq(self) -> int:
@@ -463,12 +504,20 @@ class Device2:
         return self.s.read(waiting or 1)
 
     def send(self, ftype: int, cmd: int, seq: int, payload: bytes = b"") -> None:
-        self.s.write(encode_frame(ftype, cmd, seq, 0, payload))
+        data = encode_frame(ftype, cmd, seq, 0, payload)
+        offset = 0
+        while offset < len(data):
+            written = self.s.write(data[offset:])
+            if not isinstance(written, int) or not 0 < written <= len(data) - offset:
+                raise TimeoutError("serial write made no valid progress")
+            offset += written
 
     def read_frame(self, timeout: float | None = None) -> Frame:
         """Next non-event frame; events are queued in self.events."""
         deadline = time.monotonic() + (timeout if timeout is not None else self.timeout)
         while True:
+            if time.monotonic() > deadline:
+                raise TimeoutError("no v2 frame from device")
             while self.frames:
                 f = self.frames.popleft()
                 if f.type == T_EVENT:
@@ -482,8 +531,12 @@ class Device2:
                 raise TimeoutError("no v2 frame from device")
 
     def _wait(self, cmd: int, seq: int, types: tuple[int, ...], timeout: float | None) -> Frame:
+        deadline = time.monotonic() + (timeout if timeout is not None else self.timeout)
         while True:
-            f = self.read_frame(timeout)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("no matching v2 response from device")
+            f = self.read_frame(remaining)
             if f.type == T_RESPONSE and f.cmd == BAD_FRAME_CMD and f.seq == 0:
                 raise DeviceError(cmd, f.status or FRAME_ERROR)
             if f.seq == seq and f.cmd == cmd and f.type in types:
@@ -516,6 +569,60 @@ class Device2:
 
     def caps(self) -> int:
         return self.device_info().caps
+
+    def describe(self) -> ProtocolDescription:
+        return ProtocolDescription.unpack(self.request(DESCRIBE))
+
+    def diagnostics(self) -> dict:
+        data=self.request(DIAGNOSTICS)
+        if len(data)!=64 or data[0]!=1:
+            raise ValueError("unsupported or truncated DIAGNOSTICS reply")
+        names=("sample_hz","store_words","pending_words","peak_words","capture_overruns",
+               "capture_dma_errors","write_dma_errors","write_underruns","native_rx_pauses",
+               "native_tx_timeouts","lease_releases","heap_bytes","axi_free_bytes",
+               "stack_space_bytes","native_idle_timeout_ms")
+        return dict(schema=data[0],psram=bool(data[1]&1),owner=data[2],
+                    **dict(zip(names,struct.unpack_from('<15I',data,4))))
+
+    def features(self) -> list[dict]:
+        data = self.request(FEATURES)
+        if len(data) < 2 or data[0] != 1 or len(data) != 2 + 8*data[1]:
+            raise ValueError("invalid FEATURES reply")
+        result = []
+        for pos in range(2, len(data), 8):
+            ident, flags, owner, limit = struct.unpack_from("<HBBI", data, pos)
+            result.append(dict(id=ident, supported=bool(flags&1), configured=bool(flags&2),
+                               available=bool(flags&4), hardware_qualified=bool(flags&8),
+                               owner=owner, limit=limit))
+        return result
+
+    def resource(self, acquire: bool | None = None) -> int:
+        reply = self.request(RESOURCE, b"" if acquire is None else bytes([int(acquire)]))
+        if len(reply) != 1:
+            raise ValueError("invalid RESOURCE reply")
+        return reply[0]
+
+    def job_status(self) -> dict:
+        data = self.request(JOB)
+        if len(data) != 24 or data[0] != 1:
+            raise ValueError("invalid job status")
+        schema, kind, state, status, job_id, packets, size, crc = struct.unpack("<BBBBQIII", data)
+        return dict(id=job_id, kind=kind, state=state, status=status,
+                    packets=packets, bytes=size, crc=crc)
+
+    def close(self):
+        try:
+            if hasattr(self.s, "cancel"):
+                self.resource(False)
+        finally:
+            if hasattr(self.s, "close"):
+                self.s.close()
+
+    def _job_open(self, kind):
+        from .jobs import JobStream
+        job = JobStream(secrets.randbits(64) or 1)
+        self.request(JOB, struct.pack("<BBQ", 1, kind, job.id))
+        return job
 
     def status(self) -> DriveStatus2:
         b = self.request(STATUS)
@@ -633,30 +740,76 @@ class Device2:
         return rpm_now, mode_now
 
     # -- IEC drive memory / 1541 raw reads (firmware 1.14) ------------------------
-    def iec_mem_write(self, addr: int, data: bytes) -> None:
+    def _iec_request(self, payload: bytes, device: int = 0) -> bytes:
+        if device and not 8 <= device <= 30:
+            raise ValueError("IEC device must be 8..30 (0 selects UFI.CFG)")
+        if device:
+            if self._iec_addressed is None:
+                self._iec_addressed = bool(self.caps() & CAP_IEC_ADDRESSED)
+            if not self._iec_addressed:
+                raise RuntimeError("addressed IEC commands require firmware 1.18; refusing to use another device")
+            return self.request(IEC_TARGET, bytes([1, device]) + payload, timeout=10.0)
+        return self.request(IEC_MEM, payload, timeout=10.0)
+
+    def iec_mem_write(self, addr: int, data: bytes, device: int = 0) -> None:
         """M-W: up to 32 bytes into the drive's RAM."""
-        self.request(IEC_MEM, bytes([0]) + struct.pack("<H", addr) + bytes(data), timeout=5.0)
+        if not 1 <= len(data) <= 32:
+            raise ValueError("M-W accepts 1..32 bytes")
+        self._iec_request(bytes([0]) + struct.pack("<H", addr) + bytes(data), device)
 
-    def iec_mem_read(self, addr: int, n: int) -> bytes:
+    def iec_mem_read(self, addr: int, n: int, device: int = 0) -> bytes:
         """M-R: n (1-255) bytes from the drive's RAM."""
-        return self.request(IEC_MEM, bytes([1]) + struct.pack("<H", addr) + bytes([n]), timeout=5.0)[:n]
+        if not 1 <= n <= 255:
+            raise ValueError("M-R accepts 1..255 bytes")
+        data = self._iec_request(bytes([1]) + struct.pack("<H", addr) + bytes([n]), device)
+        if len(data) != n:
+            raise ValueError("short IEC memory response")
+        return data
 
-    def iec_mem_exec(self, addr: int) -> None:
-        self.request(IEC_MEM, bytes([2]) + struct.pack("<H", addr), timeout=5.0)
+    def iec_mem_exec(self, addr: int, device: int = 0) -> None:
+        self._iec_request(bytes([2]) + struct.pack("<H", addr), device)
 
-    def iec_command(self, cmd: bytes | str) -> None:
+    def iec_command(self, cmd: bytes | str, device: int = 0) -> None:
         """DOS command on channel 15, e.g. b'I0'."""
         if isinstance(cmd, str):
             cmd = cmd.encode("ascii")
-        self.request(IEC_MEM, bytes([3, 0, 0]) + cmd, timeout=5.0)
+        if not 1 <= len(cmd) <= 40:
+            raise ValueError("DOS command must be 1..40 bytes")
+        self._iec_request(bytes([3, 0, 0]) + cmd, device)
 
-    def iec_status(self) -> str:
+    def iec_status(self, device: int = 0) -> str:
         """DOS status line of channel 15 (firmware 1.16), e.g. '00, OK,00,00'."""
-        return self.request(IEC_MEM, bytes([4, 0, 0]), timeout=5.0).decode("latin-1").rstrip("\r\n")
+        return self._iec_request(bytes([4, 0, 0]), device).decode("latin-1").rstrip("\r\n")
+
+    def iec_block_result(self, track: int, sector: int, device: int = 0) -> tuple[int, bytes]:
+        """Return DOS status and data separately; never mask a media read error."""
+        if device and not 8 <= device <= 30:
+            raise ValueError("IEC device must be 8..30")
+        if self._iec_addressed is None:
+            self._iec_addressed = bool(self.caps() & CAP_IEC_ADDRESSED)
+        if self._iec_addressed:
+            p = self.request(IEC_READ_STATUS, bytes([1, device, track, sector]), timeout=10.0)
+            if len(p) < 4 or p[0] != 1 or p[2:4] != bytes([track, sector]) or len(p) != (260 if p[1] == 0 else 4):
+                raise ValueError("invalid structured IEC block response")
+            return p[1], bytes(p[4:])
+        # Old firmware does not check DOS after U1. Check it explicitly before accepting data.
+        if device:
+            raise RuntimeError("addressed IEC status requires firmware 1.18")
+        data = bytes(self.request(IEC_BLOCK, bytes([0, track, sector, device]), timeout=5.0))
+        status = self.iec_status(device)
+        if len(status) < 3 or not status[:2].isdigit() or status[2] != ',':
+            raise ValueError("invalid DOS status")
+        code = int(status[:2])
+        if code == 0 and len(data) != 256:
+            raise ValueError("short IEC block response")
+        return code, data if code == 0 else b""
 
     def iec_block_read(self, track: int, sector: int, device: int = 0) -> bytes:
         """One 256-byte block via U1 (firmware 1.16); device 0 = UFI.CFG iec_device."""
-        return bytes(self.request(IEC_BLOCK, bytes([0, track, sector, device]), timeout=5.0)[:256])
+        code, data = self.iec_block_result(track, sector, device)
+        if code:
+            raise RuntimeError(f"IEC DOS {code:02d} at track {track}, sector {sector}")
+        return data
 
     def iec_block_write(self, track: int, sector: int, data: bytes, device: int = 0) -> int:
         """Write one 256-byte block via B-P + U2 (firmware 1.16).  Returns the DOS error
@@ -717,7 +870,7 @@ class Device2:
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
-                   quarter: int = 0) -> Capture:
+                   quarter: int = 0, frame_sink=None, integrity: bool | None = None) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
         hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
         quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5)."""
@@ -726,29 +879,50 @@ class Device2:
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
+        job = self._job_open(1) if (self.integrity if integrity is None else integrity) else None
         seq = self._next_seq()
+        crc_errors = self.parser.crc_errors
         self.send(T_REQUEST, READ, seq, READ_REQ.pack(track, side, revolutions, flags, period_ms)
                   + (bytes([hard_sectors]) if hard_sectors else b""))
         f = self._wait(READ, seq, (T_RESPONSE,), 5.0)
+        if frame_sink is not None:
+            frame_sink(f.encode())
         if f.status:
             raise DeviceError(READ, f.status)
         data = bytearray()
         while True:
             f = self._wait(READ, seq, (T_DATA, T_END), 2.0 + 0.4 * revolutions)
+            if frame_sink is not None:
+                frame_sink(f.encode())
             if f.type == T_DATA:
-                data += f.payload
+                data += job.decode(f.payload) if job else f.payload
                 continue
             if f.status and f.status != OVERFLOW:
                 raise DeviceError(READ, f.status)
+            if self.parser.crc_errors != crc_errors:
+                raise ValueError("CRC error during flux capture; refusing a potentially incomplete stream")
             rflags = 0x01 | (0x02 if f.status == OVERFLOW else 0)
             revs = decode_stream(bytes(data), track, side, rflags)
-            if f.payload:
-                revs = revs[:f.payload[0]]
+            end = job.finish(f.payload) if job else f.payload
+            if len(end) != 1 or end[0] > len(revs) or end[0] > revolutions:
+                raise ValueError("invalid capture END count")
+            if f.status == 0 and end[0] != revolutions:
+                raise ValueError("successful capture returned fewer revolutions than requested")
+            revs = revs[:end[0]]
             return Capture(revs, f.status)
 
     def write_limits(self) -> WriteLimits:
         """Effective limits of the write backend (firmware 1.15, caps bit 14)."""
         return WriteLimits.unpack(self.request(WRITE_LIMITS))
+
+    def configuration(self, expected: int | None = None) -> dict:
+        from .capabilities import decode_configuration
+        payload = bytes([23]) + (struct.pack('<I', expected) if expected is not None else b'')
+        return decode_configuration(self.request(0x0f, payload))
+
+    def capability_matrix(self) -> dict:
+        from .capabilities import decode_capabilities
+        return decode_capabilities(self.request(0x0f, bytes([22])))
 
     def _preflight(self, deltas: list[int], scale: float, clamp: bool) -> None:
         """Refuse locally what firmware 1.15 would refuse (status 10/18); older firmware
@@ -773,16 +947,49 @@ class Device2:
 
     def write_track(self, track: int, side: int, deltas: list[int], verify: bool = False,
                     hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0,
-                    clamp: bool = False) -> WriteResult:
+                    clamp: bool = False, integrity: bool | None = None, extended: bool | None = None,
+                    index_ticks: int | None = None, firmware_verify: bool = False,
+                    expected_config: int | None = None, expected_media: int | None = None) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
         scale: the firmware multiplies every interval (0.5..2.0; firmware 1.14), e.g.
         rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
         clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
-        status 18 otherwise); the result counts the clamped ones."""
-        self._preflight(deltas, scale, clamp)
+        status 18 otherwise); the result counts the clamped ones.
+        firmware_verify selects native extended readback instead of host verify;
+        index_ticks then supplies the source revolution period for reference decoding."""
+        extended = self.extended if extended is None else extended
+        guarded = expected_config is not None or expected_media is not None
+        if guarded and (expected_config is None or expected_media is None or
+                        not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
+            raise ValueError('guarded write requires nonzero u32 configuration and media generations')
+        expected = None
+        if firmware_verify and (not extended or verify):
+            raise ValueError("firmware_verify requires extended writing and excludes host verify")
+        if firmware_verify and index_ticks is not None and not 1 <= index_ticks <= 0xffffffff:
+            raise ValueError("source index period outside u32 range")
+        if extended:
+            if clamp or scale != 1 or quarter:
+                raise ValueError("extended writes require host timing and separate readback verification")
+            limits = self.describe()
+            if not limits.flags & 2:
+                raise ValueError("firmware does not advertise the extended write backend")
+            if len(deltas) < 3 or len(deltas) > limits.store_words:
+                raise ValueError("extended write exceeds flux store capacity")
+            if any(d < 220 or d > 0xffffffff for d in deltas):
+                raise ValueError("extended interval outside 220..4294967295 ticks")
+            if verify:
+                from .readback import reference
+                rate,expected=reference(deltas,index_ticks=index_ticks)  # refuse unsupported verification before writing
+                if hasattr(expected, 'track') and expected.track != track * 2 + side:
+                    raise ValueError('Amiga source track does not match destination; no disk was written')
+        else:
+            self._preflight(deltas, scale, clamp)
         code = encode_flux(deltas)
-        seq = self._next_seq()
-        flags = (WRITE_VERIFY if verify else 0) | (HARD_SECTORS if hard_sectors else 0)
+        flags = (WRITE_VERIFY if verify and not extended else 0) | (HARD_SECTORS if hard_sectors else 0)
+        if firmware_verify:
+            flags |= WRITE_VERIFY
+        if extended:
+            flags |= 0x20
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
@@ -795,16 +1002,43 @@ class Device2:
             extra += struct.pack("<H", per_mille)
         if clamp:
             flags |= WRITE_CLAMP
-        self.send(T_REQUEST, WRITE, seq, WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra)
-        f = self._wait(WRITE, seq, (T_RESPONSE,), 5.0)
+        if firmware_verify and index_ticks is not None:
+            flags |= 0x40
+            extra += struct.pack("<I", index_ticks)
+        payload = WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra
+        command = GUARDED_WRITE if guarded else WRITE
+        if guarded:
+            payload = struct.pack('<II', expected_config, expected_media) + payload
+        job = self._job_open(2) if (self.integrity if integrity is None else integrity) else None
+        seq = self._next_seq()
+        self.send(T_REQUEST, command, seq, payload)
+        f = self._wait(command, seq, (T_RESPONSE,), 5.0)
+        if f.status:
+            if job:
+                try:
+                    self.abort()
+                except Exception:
+                    log.warning('failed to close rejected write job', exc_info=True)
+            raise DeviceError(command, f.status)
+        chunk_size = self.max_payload - (16 if job else 0)
+        for off in range(0, len(code), chunk_size):
+            chunk = code[off:off + chunk_size]
+            self.send(T_DATA, WRITE, seq, job.encode(chunk) if job else chunk)
+        if job:
+            self.request(JOB, struct.pack("<BI", 2, job.crc))
+        f = self._wait(WRITE, seq, (T_END,), max(10.0,sum(deltas)/P.FLUX_CLOCK_HZ+3.0) if extended else 10.0)
         if f.status:
             raise DeviceError(WRITE, f.status)
-        for off in range(0, len(code), self.max_payload):
-            self.send(T_DATA, WRITE, seq, code[off:off + self.max_payload])
-        f = self._wait(WRITE, seq, (T_END,), 10.0)
-        if f.status:
-            raise DeviceError(WRITE, f.status)
-        return WriteResult.unpack(f.payload)
+        result=WriteResult.unpack(job.finish(f.payload) if job else f.payload)
+        if expected is not None:
+            from .readback import verify_capture
+            capture=self.read_track(track,side,2,hard_sectors=hard_sectors,integrity=integrity)
+            quality = {}
+            result.host_verified_sectors=verify_capture(expected,rate,capture,quality=quality)
+            result.host_verified_format=getattr(expected,'format','IBM MFM')
+            result.readback_quality=quality or None
+            result.verify_level=3
+        return result
 
     def erase(self, track: int, side: int) -> None:
         self.request(ERASE, bytes([track, side]), timeout=3.0)
@@ -814,6 +1048,8 @@ class Device2:
                      timeout=3.0 + duration_ms / 1000)
 
     def abort(self) -> None:
+        if hasattr(self.s, "cancel"):
+            self.s.cancel()
         self.request(ABORT)
 
     def rpm(self) -> int:
@@ -964,10 +1200,23 @@ def connect_stream(stream: Stream, timeout: float = 5.0, ping_timeout: float = 0
 
 
 def open_serial(port: str | None = None):
+    if port == "usb" or (port and port.startswith("usb:")):
+        from .usb_bulk import open_bulk
+        return open_bulk(port[4:] if port.startswith("usb:") else None)
     return P.open_serial(port)
 
 
 def connect(port: str | None = None, timeout: float = 5.0) -> Device2 | P.Device:
     ser = open_serial(port)
     channel_reset(ser)
+    if hasattr(ser, "cancel"):
+        dev = Device2(ser, timeout)
+        try:
+            if not dev.ping(secrets.token_bytes(16), timeout=timeout):
+                raise TimeoutError("native bulk interface did not answer UFI v2")
+            dev.device_info()
+        except Exception:
+            ser.close()
+            raise
+        return dev
     return connect_stream(ser, timeout)

@@ -24,6 +24,7 @@ extern capture_context_t g_capture;
 
 static uint8_t sw_mode, sw_raw;         /* debounced / last raw switch position */
 static uint32_t sw_since, blink_t;
+static uint32_t retry_at;
 static bool pending;
 static uint8_t blink_n;
 
@@ -52,14 +53,13 @@ static void show_mode(uint8_t mode)
     led_set(&PIN_LED_ACT, false);
 }
 
-static void apply(uint8_t mode)
+static bool apply(uint8_t mode)
 {
-    if (mode != ufi_usb_get_mode()) {
-        ufi_v2_event_now(UFI_V2_EVT_MODE, &mode, 1);   /* before the re-enumeration */
-    }
     if (ufi_usb_set_mode(mode) == UFI_OK) {
         show_mode(mode);
+        return true;
     }
+    return false;
 }
 
 void ufi_mode_init(void)
@@ -67,7 +67,8 @@ void ufi_mode_init(void)
     sw_raw = sw_mode = read_switch();
     sw_since = HAL_GetTick();
     if (sw_mode != 0xFF && sw_mode != UFI_USB_FLUX) {   /* USB starts as UFI flux device */
-        apply(sw_mode);
+        pending = !apply(sw_mode);
+        retry_at = HAL_GetTick() + 1000u;
     }
 }
 
@@ -89,12 +90,11 @@ void ufi_mode_service(void)
     } else if (raw != sw_mode && raw != 0xFF && now - sw_since >= DEBOUNCE_MS) {
         sw_mode = raw;
         pending = true;
+        retry_at = now;
     }
-    if (pending && !busy()) {
-        pending = false;
-        if (sw_mode != ufi_usb_get_mode()) {
-            apply(sw_mode);
-        }
+    if (pending && !busy() && (int32_t)(now - retry_at) >= 0) {
+        pending = !apply(sw_mode);
+        retry_at = HAL_GetTick() + 1000u;
     }
     if (blink_n && now - blink_t >= BLINK_MS) {
         blink_t = now;

@@ -4,11 +4,35 @@ from __future__ import annotations
 
 import argparse
 import random
+import struct
+import pytest
 
 from ufi_host import cli
 from ufi_host import hfe as H
 from ufi_host import protocol2 as P2
 from ufi_host.protocol import FLUX_CLOCK_HZ
+
+
+def test_hfe_rejects_unsupported_and_truncated_input(tmp_path):
+    path = tmp_path / "bad.hfe"
+    blob = bytearray(1536)
+    blob[:8] = b"HXCPICFE"
+    blob[9:12] = bytes([1, 2, 0])
+    struct.pack_into("<H", blob, 12, 253)
+    struct.pack_into("<H", blob, 18, 1)
+    struct.pack_into("<HH", blob, 512, 2, 512)
+    path.write_bytes(blob)
+    assert H.read_hfe(path).rate_bps == 253000
+    for cut in (8, 511, 513, 1024, 1535):
+        path.write_bytes(blob[:cut])
+        with pytest.raises(ValueError):
+            H.read_hfe(path)
+    for offset, value in ((8, 1), (8, 255), (12, 0), (18, 0), (512, 1), (514, 1)):
+        damaged = bytearray(blob)
+        damaged[offset] = value
+        path.write_bytes(damaged)
+        with pytest.raises(ValueError):
+            H.read_hfe(path)
 
 
 def test_fit_cell16_matches_firmware_constants():

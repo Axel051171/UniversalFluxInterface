@@ -11,6 +11,7 @@
 #include <string.h>
 #include "ufi_firmware.h"
 #include "ufi_mfm.h"
+#include "ufi_cancel.h"
 
 #define HIST_NS         100u                    /* bin width */
 #define HIST_BINS       200u                    /* 0 .. 20 us */
@@ -21,6 +22,15 @@ extern capture_context_t g_capture;
 
 static mfm_decoder_t dec;
 static uint16_t hist[HIST_BINS];
+
+static int analysis_progress(uint32_t since)
+{
+    UFI_WATCHDOG_FEED();
+    int ret=ufi_cancel_requested()?UFI_ERR_CANCELLED:
+            HAL_GetTick()-since>ANALYZE_MS?UFI_ERR_TIMEOUT:UFI_OK;
+    if (ret) g_capture.state=CAPTURE_IDLE;
+    return ret;
+}
 
 typedef struct { uint32_t t_acc, first_t; uint8_t sectors; } sec_ctx_t;
 
@@ -50,6 +60,10 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
     const uint32_t t0 = HAL_GetTick();
     capture_state_t cs;
     while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
+        UFI_WATCHDOG_FEED();
+        if (ufi_cancel_requested()) {
+            ufi_capture_abort();g_capture.state=CAPTURE_IDLE;return UFI_ERR_CANCELLED;
+        }
         if (HAL_GetTick() - t0 > ANALYZE_MS) {
             ufi_capture_abort();
             g_capture.state = CAPTURE_IDLE;
@@ -57,9 +71,9 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
         }
     }
     const uint8_t n = ufi_flux_get_revolution_count();
-    if (cs == CAPTURE_ERROR || n == 0) {
+    if (cs == CAPTURE_ERROR || n == 0 || g_capture.error_code) {
         g_capture.state = CAPTURE_IDLE;
-        return UFI_ERR_NO_INDEX;
+        return g_capture.error_code==4?UFI_ERR_MEDIA_CHANGED:g_capture.error_code ? UFI_ERR_BUFFER_FULL : UFI_ERR_NO_INDEX;
     }
     const flux_revolution_t* rev = ufi_capture_get_data(0);
     r->revs = n;
@@ -72,6 +86,7 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
     /* histogram of the intervals (100 ns bins), peaks = local maxima above 2 % */
     memset(hist, 0, sizeof(hist));
     for (uint32_t i = 1; i < rev->count; i++) {
+        if (!(i&1023u) && (ret=analysis_progress(t0))!=UFI_OK) return ret;
         const uint32_t d = rev->samples[i].timestamp - rev->samples[i - 1].timestamp;
         const uint32_t ns = (uint32_t)((uint64_t)d * 1000000000ull / FLUX_TIMER_FREQ);
         const uint32_t b = ns / HIST_NS;
@@ -123,6 +138,7 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
                 const uint32_t b = (uint32_t)((uint64_t)rk->index_time * (w + 1u) / WEAK_WINDOWS);
                 uint32_t cnt = 0;
                 for (uint32_t i = 0; i < rk->count; i++) {
+                    if (!(i&4095u) && (ret=analysis_progress(t0))!=UFI_OK) return ret;
                     const uint32_t t = rk->samples[i].timestamp;
                     if (t >= a && t < b) cnt++;
                     if (t >= b) break;
@@ -140,8 +156,9 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
     /* IBM MFM sectors and the index-to-first-ID time */
     if (r->encoding == 2u && r->bitcell_ns) {
         sec_ctx_t c = {0, 0, 0};
-        mfm_dec_init(&dec, 1000000000u / r->bitcell_ns, on_sector, &c);
+        mfm_dec_init(&dec, 1000000000u / (2u*r->bitcell_ns), on_sector, &c);
         for (uint32_t i = 1; i < rev->count; i++) {
+            if (!(i&1023u) && (ret=analysis_progress(t0))!=UFI_OK) return ret;
             const uint32_t d = rev->samples[i].timestamp - rev->samples[i - 1].timestamp;
             c.t_acc = rev->samples[i].timestamp;
             mfm_dec_interval(&dec, d);

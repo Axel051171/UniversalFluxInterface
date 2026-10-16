@@ -28,9 +28,10 @@ ufi rm NAME.BIN
 ufi cfg                                   # UFI.CFG anzeigen
 ufi cfg drive=amiga revs=5                # Zeilen setzen/anhängen, zurückschreiben, CFG_RELOAD
 ufi events                                # alle Ereignisse einschalten und ausgeben bis Strg+C
-ufi mode flux|sd|floppy|gw                # USB-Betriebsart (Gerät meldet sich neu an)
+ufi mode flux|sd|floppy|gw|composite                # USB-Betriebsart (Gerät meldet sich neu an)
 ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | copy
 ufi power [MASKE]                         # Board-Status; Maske Bit0 FDD_5V, Bit1 FDD_12V
+ufi erase SPUR SEITE                      # eine Umdrehung löschen (ERASE 0x23), z. B. vor einem Schreibtest
 ```
 
 Laufwerksdiagnose (Firmware ≥ 1.13, caps-Bit 11):
@@ -57,6 +58,59 @@ ufi dump --format hfe                     # Firmware ≥ 1.17: HxC HFE v1 nach D
 ufi dump --drive iec --tracks 35          # Firmware ≥ 1.14: 1541 an J8 über den Laufwerkscontroller nach DUMPnnnn.D64 (+ .LOG mit Fehlerblöcken)
 ufi iec-nib -o disk.g64 [--halftracks] [--tracks 41]   # Firmware ≥ 1.14: Rohspuren (GCR) per Laufwerkscode in eine G64, Kopierschutz/Halbspuren
 ```
+
+## Erweiterungen in 1.18-dev: Composite, Jobs und IEC-Wiederaufnahme
+
+Die Firmware bietet `protocol=composite` beziehungsweise `ufi mode composite`:
+Greaseweazle auf CDC, UFI v2 auf einem zusätzlichen Bulk-Interface am selben USB-
+Gerät. Physische Laufwerksaktionen sind gegenseitig gesperrt. Das CLI gibt Native-
+Besitz am Ende frei; zusätzlich verfällt Native-Besitz nach 30 s Leerlauf.
+Aktive Jobs und ausstehende Antworten sind davon ausgenommen; eine eigene Anwendung verwendet `Device2.close()` oder
+`resource(False)`. GW gibt bei DESELECT/Watchdog frei. Die USB-/Laufwerksfunktion
+ist bisher offline getestet; die fertige Platine muss noch qualifiziert werden.
+
+```bash
+pip install -e 'software/ufi_host[usb]'
+ufi mode composite
+ufi --port usb features
+ufi --port usb diagnostics
+ufi --port usb describe
+ufi --port usb --integrity read 0 0 -r 3
+ufi --port usb job-status
+ufi --port usb release
+ufi read-disk -o disk.ufi --tracks 80 --sides 2 -r 3   # natives Archiv (SQLite, nur v2): jeder CRC-geprüfte Rahmen wird vor dem Dekodieren gespeichert, Zeitstempel in voller 275-MHz-Auflösung; abgebrochene Spuren bleiben als unvollständig markiert
+ufi archive-check disk.ufi                             # SHA-256 der Aufnahmen offline prüfen, unvollständige Aufnahmen melden
+ufi iec-identify --device 8 --fingerprint
+ufi iec-read disk.d64 --type auto --device 8 --retries 2
+ufi iec-write disk.d64 --checkpoint disk.write.json --retries 2
+ufi iec-write disk.d64 --checkpoint disk.write.json --resume
+```
+
+`--port usb:SERIENNUMMER` wählt eines von mehreren Geräten. Der Bulk-Adapter
+beansprucht ausschließlich Interface 2. Auf Linux können passende udev-Rechte
+nötig sein. Die Entwicklungs-PID 1209:4F58 und WinUSB-Enumeration sind noch nicht
+für eine Veröffentlichung qualifiziert. Ohne Composite bleiben die CDC-Modi nutzbar.
+
+`--integrity` aktiviert Flux-Job-ID, Paketnummern, Byteoffsets und Gesamt-CRC32;
+WRITE beginnt erst nach geprüftem COMMIT. Es bestätigt Transportintegrität,
+keine magnetische Inhaltsgleichheit. `--extended` aktiviert für WRITE die langen
+und kurzen Rohintervalle des neuen Schreibpfads. Dieser erwartet fertige Host-
+Zeitabstände und lässt sich nicht mit `--clamp`, Skalierung oder
+Apple-Viertelspuren kombinieren. `--extended --verify` automatisiert einen
+anschließenden Leseauftrag für IBM-MFM und Amiga-DD/HD: Referenzsektoren müssen
+mit gültigen Prüfsummen und identischen Daten zurückkommen, bei Amiga inklusive Labels. Andere Formate werden bei angeforderter Prüfung
+vor dem Schreiben abgewiesen. Dies prüft Sektorinhalte, keine Flux-Identität oder
+Kopierschutzstrukturen. WRITE_LIMITS gilt weiterhin für den klassischen Schreibpfad.
+
+IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
+prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
+Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein
+Wechsel nicht erkennbar. Ein neues Formatieren (`--new`) ist bei Resume verboten.
+ROM-Erkennung meldet unbekannte ROMs ausdrücklich; eine ROM-Familie bestimmt nicht
+sicher die physische Laufwerksrevision. Das Journal bleibt bei Fehlern erhalten.
+
+Verbindliche Wire-Layouts und Grenzen stehen in
+[USB_Protokoll.md, Abschnitt 4](../../docs/USB_Protokoll.md#4-implementierte-erweiterungen-ab-118-dev).
 
 ## Protokoll UFI v2 (Standard)
 
@@ -86,3 +140,39 @@ ufi iec-nib -o disk.g64 [--halftracks] [--tracks 41]   # Firmware ≥ 1.14: Rohs
 - Sicherheit in der Firmware: USB weg > 300 ms → Transfers abbrechen, Motor aus, Laufwerk abwählen, WGATE frei; Laufwerksversorgung > 1,5 A für 50 ms → Schiene aus.
 
 Tests ohne Hardware (simuliertes v1- und v2-Gerät auf Byte-Ebene, inkl. geteilter Rahmen, CRC-Fehler, Dateien, Rückfall auf v1): `python -m pytest software/ufi_host/tests`.
+
+## Amiga-Prüflesen und schwache Spuren
+
+`ufi --port usb --extended write disk.scp 0 0 --verify` prüft jetzt auch
+vollständige Amiga-DD/HD-Spuren einschließlich der 16 Labelbytes zurück.
+`ufi amiga-quality disk.scp -o quality.json` analysiert vorhandene Rohfluxdaten
+ohne Board. Für HD `--spt 22 --bitrate 500` (gegebenenfalls 250) angeben.
+`ufi --port usb read 0 0 -r 3 -o track.scp --amiga-quality quality.json`
+erzeugt Fluxabbild und Bericht mit Fehlern, Varianten und PLL-Rettungsversuchen.
+Gültige widersprüchliche Inhalte werden nicht per Mehrheit akzeptiert.
+[Bedienung, JSON-Bedeutung und Grenzen](../../docs/Amiga_Prueflesen.md).
+
+## HFEv3 und lokale Firmwareanalyse
+
+Native Generationen: `Device2.capability_matrix()` und `configuration()` liefern
+Fähigkeiten sowie getrennte Konfigurations-/Medientoken. Nach Unterstützungserkennung
+über Matrixbyte23 kann `write_track(..., expected_config=..., expected_media=...)`
+den Schreibstart an beide Token binden. Kein automatischer Rückfall auf ungeprüftes
+Schreiben. `ufi_host.capabilities.guarded_analysis(..., media_generation=...)`
+erzeugt den entsprechenden Analyse-Start. Layouts: USB-Protokoll4.19/4.20.
+
+Zusätzliche Offline-Prüfung: `python firmware/tools/check_static.py` benötigt Clang
+und prüft zehn hardwareunabhängige Firmwaremodule. Die vollständige Testsuite bleibt
+`python firmware/tests/check_all.py`; Hardwarequalifikation ist davon getrennt.
+
+HFEv3-Import erhält variable Zellzeiten, Indexmarken und RAND-Bereiche.
+Deterministische Spuren schreibt `write`/`write-disk` über das native UFI-Protokoll
+mit Extended WRITE; `--verify` nutzt dabei Firmware-Prüflesen. Kein automatisches
+Skalieren oder Clamping. RAND-/Mehrfachindex-Spuren bleiben lesbare Metadaten,
+werden aber nicht automatisch physisch geschrieben. Ein Export als HFEv1 wird
+für HFEv3-Objekte abgewiesen. SD-HFE in der MCU bleibt v1.
+
+Die Firmware liefert mit TIMING oder WINDOWS zusätzlich 32 lokale Zeitfenster;
+REV_COMPARE ergänzt Flankenunterschiede. Der Host kann Abschnitt 14 mit
+`ufi_host.regions.decode_regions()` auswerten. Wire-Layout und Flags:
+[USB-Protokoll, Abschnitt 4.17](../../docs/USB_Protokoll.md).

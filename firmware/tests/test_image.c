@@ -48,6 +48,12 @@ int main(void)
     CHECK(!scp_parse_header(hdr, &h), "bad magic refused");
     hdr[0] = 'S'; hdr[5] = 0;
     CHECK(!scp_parse_header(hdr, &h), "0 revolutions refused");
+    hdr[5] = 3; hdr[9] = 8;
+    CHECK(!scp_parse_header(hdr, &h), "unsupported SCP cell width refused");
+    hdr[9] = 0; hdr[11] = 1;
+    CHECK(!scp_parse_header(hdr, &h), "SD writer refuses unsupported SCP resolution");
+    hdr[11] = 0; hdr[8] |= 0x40;
+    CHECK(!scp_parse_header(hdr, &h), "extended SCP table refused");
 
     /* TRK header: 3 revolutions, revolution 0 at offset 40 */
     uint8_t trk[4 + 12 * 3] = {'T', 'R', 'K', 7};
@@ -84,12 +90,20 @@ int main(void)
     /* max stops the conversion mid-way and the rest can continue */
     n = 0; acc = 0; prev = 0; pend = 0;
     CHECK(scp_cells_to_deltas(cells, 4, out, 2, &n, &acc, &prev, &pend) == 2 && n == 2, "stops at max");
+    n = 0; acc = 0; prev = 0; pend = UINT32_MAX - 10u;
+    CHECK(scp_cells_to_deltas(cells, 4, out, 16, &n, &acc, &prev, &pend) == UINT32_MAX && n == 0,
+          "SCP pending overflow cannot wrap into a short write pulse");
 
     /* ---- HFE (1.17) ---- */
     CHECK(image_identify("DISK.hfe", 500u, &g) == IMG_HFE, "HFE by extension");
     static uint8_t hh[512];
     hfe_make_header(hh, 80, 2, HFE_ENC_ISOIBM_MFM, 250000u, 300, false);
     hfe_header_t hf;
+    hh[8] = 1;
+    CHECK(!hfe_parse_header(hh, &hf), "HFEv2 opcodes must not become raw cells");
+    hh[8] = 255;
+    CHECK(!hfe_parse_header(hh, &hf), "unknown HFE revision refused");
+    hh[8] = 0;
     CHECK(hfe_parse_header(hh, &hf) && hf.tracks == 80 && hf.sides == 2 && hf.encoding == 0 &&
           hf.rate_bps == 250000u && hf.rpm == 300 && hf.lut_block == 1 && !hf.double_step &&
           hf.interface_mode == HFE_IF_IBMPC_DD && hh[20] == 0xFF && hh[511] == 0xFF, "HFE header round trip");

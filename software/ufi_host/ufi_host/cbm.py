@@ -62,8 +62,13 @@ def blocks(kind: str, tracks: int) -> Iterator[tuple[int, int]]:
 
 def kind_for(type_name: str, tracks: int) -> tuple[str, int]:
     """--type 1541|1571|1581 and --tracks -> (kind, tracks) for reading."""
-    if type_name == "1581":
+    if type_name == "1581" and tracks in (0, 80):
         return "d81", 80
     if type_name == "1571":
-        return "d71", 70 if tracks not in (35, 40) else tracks
-    return "d64", 40 if tracks == 40 else 35
+        if tracks in (0, 70):
+            return "d71", 70
+        if tracks in (35, 40):
+            return "d64", tracks
+    if type_name in ("1541", "1541-II", "1541C") and tracks in (0, 35, 40):
+        return "d64", tracks or 35
+    raise ValueError(f"unsupported geometry: {type_name}, {tracks} tracks")

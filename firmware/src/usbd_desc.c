@@ -109,7 +109,8 @@ uint8_t *USBD_HS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
 {
     (void)speed;
     static const char* const names[] = {USBD_PRODUCT_STRING, USBD_PRODUCT_STRING_MSC,
-                                        USBD_PRODUCT_STRING_FLOPPY, USBD_PRODUCT_STRING_GW};
+                                        USBD_PRODUCT_STRING_FLOPPY, USBD_PRODUCT_STRING_GW,
+                                        "UFI Native + Flux (gw-compat)"};
     USBD_GetString((uint8_t *)names[usb_mode], USBD_StrDesc, length);
     return USBD_StrDesc;
 }
@@ -121,12 +122,18 @@ uint8_t *USBD_HS_ProductStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
  */
 void usbd_desc_set_mode(uint8_t mode)
 {
-    static const uint16_t pids[] = {USBD_PID, USBD_PID_MSC, USBD_PID_FLOPPY, USBD_PID_GW};
-    usb_mode = (mode <= 3u) ? mode : 0u;
+    static const uint16_t pids[] = {USBD_PID, USBD_PID_MSC, USBD_PID_FLOPPY, USBD_PID_GW, 0x4F58};
+    usb_mode = (mode <= 4u) ? mode : 0u;
     const uint16_t pid = pids[usb_mode];
     const uint8_t cls = (usb_mode == 0u || usb_mode == 3u) ? 0x02 : 0x00;  /* CDC / per interface */
     USBD_HS_DeviceDesc[4] = cls;
     USBD_HS_DeviceDesc[5] = cls;
+    USBD_HS_DeviceDesc[6] = 0;
+    if (usb_mode == 4u) {
+        USBD_HS_DeviceDesc[4] = 0xef; /* composite IAD */
+        USBD_HS_DeviceDesc[5] = 2;
+        USBD_HS_DeviceDesc[6] = 1;
+    }
     USBD_HS_DeviceDesc[10] = LOBYTE(pid);
     USBD_HS_DeviceDesc[11] = HIBYTE(pid);
 }

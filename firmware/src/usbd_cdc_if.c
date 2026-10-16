@@ -8,8 +8,8 @@
 #include <string.h>
 
 /* CDC Buffer Sizes */
-#define APP_RX_DATA_SIZE  2048
-#define APP_TX_DATA_SIZE  2048
+#define APP_RX_DATA_SIZE  CDC_DATA_FS_MAX_PACKET_SIZE
+#define APP_TX_DATA_SIZE  CDC_DATA_FS_MAX_PACKET_SIZE
 
 /* Receive Buffer */
 uint8_t UserRxBufferHS[APP_RX_DATA_SIZE];

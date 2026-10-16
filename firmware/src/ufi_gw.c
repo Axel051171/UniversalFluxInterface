@@ -14,12 +14,11 @@
  * - Not supported (ACK_BAD_COMMAND): firmware update / mode switch, test mode,
  *   hard-sectored writes.  SOURCE/SINK_BYTES (gw bandwidth, with the host's byte
  *   generator) and NOCLICK_STEP (one outward step at cylinder 0, flippy drives) work.
- * - Parameters: pre_write delays the first flux after WGATE, post_write keeps WGATE on
- *   after the last one (both <= 238 us), ERASE_FLUX honours its tick count; index_mask
- *   is stored only (index debouncing lives in ufi_flux.c).
- * - Writes always start at the index pulse and end at the next one (cue_at_index and
- *   terminate_at_index as gw sends them by default); the firmware's own write
- *   precompensation is off, gw applies its own.
+ * - pre/post_write are minimum quiet times outside WGATE (rounded up to ms).
+ *   index_mask suppresses repeated index edges; READ supports tick/index/linger limits.
+ * - Writes honour cue_at_index and terminate_at_index, discard the host's final
+ *   sacrificial interval and reject intervals outside backend limits without clamping.
+ *   Firmware precompensation is off: the host applies its own.
  *
  * Commands arrive as [cmd, len, args...] in the CDC byte stream (no packet alignment);
  * every reply starts with [cmd, ack].  The USB IRQ fills a ring buffer and pauses the OUT
@@ -27,6 +26,8 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_resources.h"
+#include "ufi_cancel.h"
 #include "usbd_cdc_if.h"
 #include <string.h>
 
@@ -72,10 +73,13 @@ enum { FLUXOP_INDEX = 1, FLUXOP_SPACE = 2, FLUXOP_ASTABLE = 3 };
 #define RX_PAUSE_FREE   1024u           /* pause the OUT endpoint below this much room */
 #define RX_RESUME_FREE  4096u
 
-static uint8_t rx[RX_SIZE];
+/* CPU-only ring, never a USB/DMA destination. Head/tail initialize the lifetime;
+ * every consumed byte has first been written by the USB IRQ. */
+__attribute__((section(".dtcm.usb_rx"), aligned(32))) static uint8_t rx[RX_SIZE];
 static volatile uint32_t rx_head;       /* written by the USB IRQ */
 static uint32_t rx_tail;                /* main loop */
 static volatile bool rx_paused, clear_req;
+static volatile bool transport_fault;
 
 typedef enum { ST_CMD, ST_READ, ST_WDATA, ST_SINK } gw_state_t;
 static gw_state_t state;
@@ -97,8 +101,8 @@ typedef struct {
     uint16_t seek_settle;               /* ms */
     uint16_t motor_delay;               /* ms */
     uint16_t watchdog;                  /* ms */
-    uint16_t pre_write;                 /* us (kept, not used) */
-    uint16_t post_write;                /* us (kept, not used) */
+    uint16_t pre_write;                 /* us, minimum quiet time before write */
+    uint16_t post_write;                /* us, minimum quiet time after write */
     uint16_t index_mask;                /* us (kept, not used) */
 } gw_delays_t;
 static gw_delays_t delays;
@@ -115,6 +119,7 @@ static bool watchdog_armed;
 /* write stream decoder */
 static uint32_t w_count, w_space;
 static bool w_overflow, w_bad;
+static bool w_cue_index, w_terminate_index;
 static uint8_t w_code[6], w_have, w_need;
 
 /* ============================================================================
@@ -125,6 +130,7 @@ static uint8_t ack_of(int ret)
 {
     switch (ret) {
         case UFI_OK:              return ACK_OKAY;
+        case UFI_ERR_BAD_ARGS:    return ACK_BAD_COMMAND;
         case UFI_ERR_NO_INDEX:    return ACK_NO_INDEX;
         case UFI_ERR_SEEK_FAIL:   return ACK_NO_TRK0;
         case UFI_ERR_WRITE_PROT:  return ACK_WRPROT;
@@ -223,7 +229,7 @@ static uint32_t rx_free(void)
 
 bool ufi_gw_rx(const uint8_t* buf, uint32_t len)
 {
-    if (clear_req) {
+    if (clear_req || transport_fault) {
         return true;                    /* comms being cleared: drop */
     }
     uint32_t h = rx_head;
@@ -241,6 +247,7 @@ bool ufi_gw_rx(const uint8_t* buf, uint32_t len)
 
 void ufi_gw_clear_comms(void)
 {
+    if (ufi_resources_owner()!=UFI_OWNER_NATIVE) ufi_cancel_request();
     clear_req = true;
 }
 
@@ -378,16 +385,14 @@ static void start_read(void)
     }
     const uint32_t ticks = get32(&cbuf[2]);
     const uint32_t max_index = get16(&cbuf[6]);
-    uint32_t revs;
-    if (max_index > 0) {
-        revs = (max_index > 1u) ? max_index - 1u : 1u;     /* stream starts at an index */
-    } else {
-        revs = ticks / (GW_SAMPLE_FREQ / 5u) + 1u;         /* 200 ms per revolution */
-    }
-    if (revs > REVOLUTIONS_STREAM) {
-        revs = REVOLUTIONS_STREAM;
-    }
-    const int ret = ufi_capture_start((uint8_t)cyl[unit], head, (uint8_t)revs, 0);
+    uint8_t optional[4];
+    put32(optional, GW_SAMPLE_FREQ / 2000u); /* default 500 us */
+    if (clen > 8) memcpy(optional, &cbuf[8], clen - 8u);
+    ufi_flux_select_apple(false);
+    ufi_flux_index_mask(delays.index_mask);
+    g_capture.current_track = (uint8_t)cyl[unit];
+    g_capture.current_side = head;
+    const int ret = ufi_flux_capture_gw(ticks, (uint16_t)max_index, get32(optional));
     if (ret != UFI_OK) {
         flux_status = ack_of(ret);
         reply(CMD_READ_FLUX, flux_status, NULL, 0);
@@ -414,7 +419,9 @@ static void start_write(void)
         reply(CMD_WRITE_FLUX, ACK_BAD_COMMAND, NULL, 0);
         return;
     }
-    if (clen == 8 && get32(&cbuf[4]) != 0u) {
+    uint8_t optional[4] = {0};
+    if (clen > 4) memcpy(optional, &cbuf[4], clen - 4u);
+    if (get32(optional) != 0u) {
         reply(CMD_WRITE_FLUX, ACK_BAD_COMMAND, NULL, 0);    /* hard-sectored: not supported */
         return;
     }
@@ -427,6 +434,9 @@ static void start_write(void)
         return;
     }
     w_count = w_space = 0;
+    ufi_flux_index_mask(delays.index_mask);
+    w_cue_index = cbuf[2] != 0;
+    w_terminate_index = cbuf[3] != 0;
     w_overflow = w_bad = false;
     w_have = w_need = 0;
     reply(CMD_WRITE_FLUX, ACK_OKAY, NULL, 0);
@@ -465,7 +475,7 @@ static void do_source(void)
         for (uint32_t i = 0; i < n; i++) {
             buf[i] = bw_next();
         }
-        ufi_usb_tx_blocking(buf, n);
+        if (ufi_cancel_requested() || ufi_usb_tx_blocking(buf, n)!=UFI_OK) break;
         left -= n;
         UFI_WATCHDOG_FEED();
     }
@@ -547,6 +557,12 @@ static void process_command(void)
 {
     const uint8_t cmd = cbuf[0];
     uint8_t ack = ACK_OKAY;
+    if (ufi_usb_get_mode() == UFI_USB_COMPOSITE &&
+        cmd != CMD_GET_INFO && cmd != CMD_GET_FLUX_STATUS &&
+        !ufi_resources_acquire(UFI_OWNER_GW)) {
+        reply(cmd, ACK_BAD_COMMAND, NULL, 0);
+        return;
+    }
 
     ufi_board_activity();               /* motor idle timer */
     last_cmd_ms = HAL_GetTick();
@@ -622,8 +638,8 @@ static void process_command(void)
             }
             break;
         case CMD_DESELECT:
-            ufi_drive_select(DRIVE_NONE);
-            unit = -1;
+            drives_off();
+            ufi_resources_release(UFI_OWNER_GW);
             break;
         case CMD_SET_BUS_TYPE:
             if (clen != 3 || cbuf[2] > BUS_SHUGART) {
@@ -637,7 +653,7 @@ static void process_command(void)
             if (clen != 4 || cbuf[3] > 1u) {
                 ack = ACK_BAD_COMMAND;
             } else if (cbuf[2] == 2u) {
-                ufi_drive_density_line(cbuf[3] == 0u);  /* level 0 = line asserted */
+                if(ufi_drive_density_line(cbuf[3] == 0u))ack=ACK_BAD_PIN; /* existing GW status */
             } else {
                 ack = ACK_BAD_PIN;
             }
@@ -680,6 +696,10 @@ static void process_command(void)
 
 static void w_put(uint32_t gw_ticks)
 {
+    if (!gw_ticks || gw_ticks > (UINT32_MAX >> GW_TICK_SHIFT)) {
+        w_bad = true;
+        return;
+    }
     uint32_t words;
     uint32_t* store = ufi_flux_store(&words);
     if (w_count >= words) {
@@ -700,14 +720,15 @@ static void write_finish(void)
     int ret;
     if (w_overflow) {
         ret = UFI_ERR_BUFFER_FULL;
-    } else if (w_bad || w_count < 3u) {
+    } else if (w_bad || w_have || w_space || w_count < 4u) {
         ret = UFI_ERR_DMA;
     } else {
         ufi_write_set_precomp(false);   /* gw precompensates on the host */
-        /* gw has no channel for a refusal: long/short periods are clamped as before */
-        ufi_write_set_pre_post(delays.pre_write, delays.post_write);
-        ret = ufi_write_local((uint8_t)cyl[unit], head, w_count, true);
-        ufi_write_set_pre_post(0, 0);
+        /* GW's final interval is sacrificial: do not emit its transition. */
+        ret = ufi_write_local_gw((uint8_t)cyl[unit], head, w_count - 1u,
+                                 w_cue_index, w_terminate_index, delays.pre_write);
+        /* Minimum quiet time AFTER WGATE is off, not an extra recorded gap. */
+        if (delays.post_write) ufi_delay_us(delays.post_write);
         ufi_write_set_precomp(true);
     }
     flux_status = w_overflow ? ACK_OUT_OF_SRAM :
@@ -728,15 +749,21 @@ static bool w_byte(uint8_t b)
             return true;
         }
         w_need = 0;
+        w_have = 0;
         if (w_code[0] == 0xFFu) {
+            if (!(w_code[2] & w_code[3] & w_code[4] & w_code[5] & 1u)) {
+                w_bad = true;
+                return true;
+            }
             const uint32_t n = n28(&w_code[2]);
             if (w_code[1] == FLUXOP_SPACE) {
-                w_space += n;
+                if (n > (UINT32_MAX >> GW_TICK_SHIFT) - w_space) w_bad = true;
+                else w_space += n;
             } else if (w_code[1] == FLUXOP_ASTABLE && n > 0u) {
                 /* no-flux area: regular transitions at period n over the preceding space */
                 uint32_t left = w_space;
                 w_space = 0;
-                while (left >= 2u * n) {
+                while (left >= 2u * n && !w_overflow && !w_bad) {
                     w_put(n);
                     left -= n;
                 }
@@ -747,6 +774,7 @@ static bool w_byte(uint8_t b)
                 w_bad = true;           /* index ops are not allowed in a write stream */
             }
         } else {
+            if (!w_code[1]) w_bad = true;
             w_put(w_space + 250u + (uint32_t)(w_code[0] - 250u) * 255u + w_code[1] - 1u);
             w_space = 0;
         }
@@ -780,6 +808,7 @@ void ufi_gw_begin(void)
 {
     rx_tail = rx_head = 0;
     rx_paused = clear_req = false;
+    transport_fault = false;
     reset_parser();
     ufi_flux_hard_sectors(0);           /* gw has no hard-sector support here */
     drive_timing_t t = ufi_drive_get_timing();
@@ -792,6 +821,7 @@ void ufi_gw_begin(void)
 
 void ufi_gw_end(void)
 {
+    ufi_flux_index_mask(0);
     ufi_write_set_pre_post(0, 0);
     if (state == ST_READ) {
         ufi_capture_abort();
@@ -810,6 +840,8 @@ void ufi_gw_service(void)
         reset_parser();
         rx_tail = rx_head;
         clear_req = false;
+        transport_fault = false;
+        if (ufi_resources_owner()!=UFI_OWNER_NATIVE) ufi_cancel_clear();
         if (rx_paused) {
             rx_paused = false;
             USBD_CDC_ReceivePacket(&hUsbDevice);
@@ -817,6 +849,15 @@ void ufi_gw_service(void)
         return;
     }
 
+    if (transport_fault) return;
+    if (state == ST_WDATA || state == ST_SINK) {
+        if (rx_tail != rx_head) last_cmd_ms=HAL_GetTick();
+        else if (delays.watchdog && HAL_GetTick()-last_cmd_ms>delays.watchdog) {
+            flux_status=ACK_FLUX_UNDERFLOW;send_byte(flux_status);
+            transport_fault=true;reset_parser();drives_off();
+            ufi_resources_release(UFI_OWNER_GW);return;
+        }
+    }
     if (state == ST_READ) {
         last_cmd_ms = HAL_GetTick();    /* the read keeps the watchdog quiet */
         return;                         /* ufi_stream.c sends; ends via ufi_gw_read_done() */
@@ -860,6 +901,9 @@ void ufi_gw_service(void)
     if (watchdog_armed && state == ST_CMD && delays.watchdog &&
         HAL_GetTick() - last_cmd_ms > delays.watchdog) {
         watchdog_armed = false;
-        drives_off();
+        if (ufi_usb_get_mode() != UFI_USB_COMPOSITE || ufi_resources_owner() == UFI_OWNER_GW) {
+            drives_off();
+            ufi_resources_release(UFI_OWNER_GW);
+        }
     }
 }

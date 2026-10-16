@@ -139,7 +139,8 @@ bool scp_parse_header(const uint8_t* hdr, scp_header_t* h)
     h->end = hdr[7];
     h->index = (hdr[8] & 0x01u) != 0;
     h->heads = hdr[10];
-    h->ok = h->revs >= 1u && h->end >= h->start && h->end < 168u && h->heads <= 2u;
+    h->ok = h->revs >= 1u && h->end >= h->start && h->end < 168u && h->heads <= 2u &&
+            !(hdr[8] & 0x40u) && (hdr[9] == 0u || hdr[9] == 16u) && hdr[11] == 0u;
     return h->ok;
 }
 
@@ -168,6 +169,10 @@ uint32_t scp_cells_to_deltas(const uint8_t* w, uint32_t n_words, uint32_t* out, 
     uint32_t made = 0;
     for (uint32_t i = 0; i < n_words && *n_out < max; i++) {
         const uint32_t c = ((uint32_t)w[2 * i] << 8) | w[2 * i + 1];
+        const uint64_t total = (uint64_t)*acc_cells + *pending + (c ? c : 0x10000u);
+        if ((total * 55u + 4u) / 8u > UINT32_MAX) {
+            return UINT32_MAX;                    /* refuse timestamp/overflow wrap */
+        }
         if (c == 0u) {
             *pending += 0x10000u;               /* overflow: the next value is 65536 later */
             continue;
@@ -198,7 +203,8 @@ static uint16_t le16(const uint8_t* p)
 bool hfe_parse_header(const uint8_t* hdr, hfe_header_t* h)
 {
     memset(h, 0, sizeof(*h));
-    if (memcmp(hdr, "HXCPICFE", 8) != 0) {
+    h->v3=memcmp(hdr,"HXCHFEV3",8)==0;
+    if ((!h->v3 && memcmp(hdr, "HXCPICFE", 8) != 0) || hdr[8] != 0u) {
         return false;
     }
     h->tracks = hdr[9];

@@ -49,6 +49,23 @@ def collapse(b: bytes) -> bytes:
     return SYNC_RUN.sub(b"\xff", b)
 
 
+def overlap_end(chunk: bytes, overlap: bytes) -> int | None:
+    """Map a normalised matching prefix back to its real byte offset.
+
+    Sync runs can differ in length between reads. Using len(overlap) as the
+    source offset would drop or duplicate non-sync bytes after those runs.
+    """
+    pos = 0
+    for value in collapse(overlap):
+        if pos == len(chunk) or chunk[pos] != value:
+            return None
+        pos += 1
+        if value == 0xFF:
+            while pos < len(chunk) and chunk[pos] == 0xFF:
+                pos += 1
+    return pos
+
+
 def speed_zone(track: int) -> int:
     return 3 if track <= 17 else 2 if track <= 24 else 1 if track <= 30 else 0
 
@@ -63,36 +80,46 @@ class TrackResult:
 
 
 class NibReader:
-    def __init__(self, dev: P2.Device2, device: int = 0, log=print):
+    def __init__(self, dev: P2.Device2, device: int = 0, log=print, chunk_sink=None):
         self.dev = dev
         self.device = device
         self.flags = 0
         self.log = log
         self.cur = 0                    # drive position counter (half tracks), 0 = unknown
+        self.chunk_sink = chunk_sink
+
+    def _chunk(self, *args):
+        chunk = self.dev.iec_nib(*args)
+        if self.chunk_sink is not None:
+            self.chunk_sink(args, chunk)
+        return chunk
 
     # -- drive position ---------------------------------------------------------
     def set_cur(self, halftrack: int) -> None:
-        self.dev.iec_mem_write(0x0308, bytes([halftrack]))
+        if self.device:
+            self.dev.iec_mem_write(0x0308, bytes([halftrack]), self.device)
+        else:
+            self.dev.iec_mem_write(0x0308, bytes([halftrack]))
         self.cur = halftrack
 
     def calibrate(self) -> None:
         """Learn the head position from a sector header without moving, then check the
         stepper direction with one step; falls back to a bump to track 1."""
-        self.dev.iec_nib(2, 0, 2, self.flags | P2.NIB_REUPLOAD, self.device)   # upload, no move
+        self._chunk(2, 0, 2, self.flags | P2.NIB_REUPLOAD, self.device)   # upload, no move
         self.set_cur(0)
-        c = self.dev.iec_nib(2, 0, 0, self.flags, self.device)
+        c = self._chunk(2, 0, 0, self.flags, self.device)
         t = header_track(c.data) if c.status == 0 else None
         if t is None or not 1 <= t <= 41:
             self.log("position unknown: bumping to track 1")
             self.set_cur(86)                                    # assume far in: 84 steps out
-            self.dev.iec_nib(2, 0, 2, self.flags, self.device)
+            self._chunk(2, 0, 2, self.flags, self.device)
             self.set_cur(2)
             t = 1
         else:
             self.set_cur(2 * t)
         # direction: one track in must read track t + 1
         target = 2 * t + 2 if t < 35 else 2 * t - 2
-        c = self.dev.iec_nib(target, 0, 0, self.flags, self.device)
+        c = self._chunk(target, 0, 0, self.flags, self.device)
         t2 = header_track(c.data) if c.status == 0 else None
         if t2 is not None and t2 == (t - 1 if target < 2 * t else t + 1):
             self.cur = target               # the drive counted the step itself
@@ -112,7 +139,7 @@ class NibReader:
         s = 0
         retries = 0
         while s < 128:
-            c = self.dev.iec_nib(ht, s, 0, self.flags, self.device)
+            c = self._chunk(ht, s, 0, self.flags, self.device)
             res.chunks += 1
             if c.status in (1, 2):
                 res.note = "no sync" if c.status == 1 else "no origin"
@@ -127,15 +154,19 @@ class NibReader:
                     continue
                 pos = ends[s - 1]
                 overlap = bytes(stream[pos:])
-                if not collapse(c.data[:len(overlap) + 16]).startswith(collapse(overlap)):
+                end = overlap_end(c.data, overlap)
+                if end is None:
                     retries += 1
                     if retries > 3:
                         res.note = "chunks do not line up"
                         break
                     continue
-                stream += c.data[len(overlap):]
+                stream += c.data[end:]
             idx = stream.find(origin, 64)
             if idx > 0:
+                if idx < 5000:
+                    res.note = "ambiguous repeated origin before a full 1541 revolution"
+                    return res
                 res.data = bytes(stream[:idx])  # ends with the origin sync run
                 return res
             s += 2
@@ -144,7 +175,7 @@ class NibReader:
             res.note = "no wrap-around found"
         if res.note in ("no sync", "no origin"):
             for _ in range(raw_chunks):     # unformatted / protection: loose raw chunks
-                c = self.dev.iec_nib(ht, 0, 1, self.flags, self.device)
+                c = self._chunk(ht, 0, 1, self.flags, self.device)
                 res.chunks += 1
                 if c.status == 3:
                     res.raw.append(c.data)
@@ -153,16 +184,33 @@ class NibReader:
     def read_disk(self, tracks: int = 35, halftracks: bool = False) -> list[TrackResult]:
         out = []
         step = 1 if halftracks else 2
-        for ht in range(2, 2 * tracks + 1, step):
-            r = self.read_halftrack(ht)
-            n = len(r.data) if r.data else sum(len(x) for x in r.raw)
-            self.log(f"track {ht / 2:4.1f}: {n:5d} bytes, {r.chunks:2d} chunks{(' - ' + r.note) if r.note else ''}")
-            out.append(r)
-        self.dev.iec_command(b"I0")         # restore the DOS BAM buffer
+        try:
+            for ht in range(2, 2 * tracks + 1, step):
+                r = self.read_halftrack(ht)
+                n = len(r.data) if r.data else sum(len(x) for x in r.raw)
+                self.log(f"track {ht / 2:4.1f}: {n:5d} bytes, {r.chunks:2d} chunks{(' - ' + r.note) if r.note else ''}")
+                out.append(r)
+        finally:
+            if self.device:
+                self.dev.iec_command(b"I0", self.device)
+            else:
+                self.dev.iec_command(b"I0")     # restore the DOS BAM buffer
         return out
 
 
 def write_g64(path: str, results: list[TrackResult]) -> None:
+    """Export proven track sequences only. Unordered fragments are not a track."""
+    if len({r.halftrack for r in results}) != len(results):
+        raise ValueError("duplicate halftracks")
+    for r in results:
+        if not 2 <= r.halftrack < 2 + G64_TRACKS:
+            raise ValueError("halftrack outside G64 table")
+        if r.raw and not r.data:
+            raise ValueError(f"halftrack {r.halftrack}: unordered fragments cannot be exported as G64")
+        if not r.data:
+            raise ValueError(f"halftrack {r.halftrack}: no reconstructed track ({r.note})")
+        if r.data and len(r.data) > G64_MAX:
+            raise ValueError(f"halftrack {r.halftrack}: too long for this G64 export; refusing truncation")
     by_ht = {r.halftrack: r for r in results}
     hdr = b"GCR-1541" + bytes([0, G64_TRACKS]) + struct.pack("<H", G64_MAX)
     offsets, speeds, body = [], [], bytearray()
@@ -170,12 +218,11 @@ def write_g64(path: str, results: list[TrackResult]) -> None:
     for i in range(G64_TRACKS):
         ht = i + 2
         r = by_ht.get(ht)
-        data = r.data if r and r.data else (b"".join(r.raw)[:G64_MAX] if r and r.raw else b"")
+        data = r.data if r and r.data else b""
         if not data:
             offsets.append(0)
             speeds.append(0)
             continue
-        data = data[:G64_MAX]
         offsets.append(base + len(body))
         speeds.append(speed_zone(ht // 2))
         body += struct.pack("<H", len(data)) + data + bytes(G64_MAX - len(data))

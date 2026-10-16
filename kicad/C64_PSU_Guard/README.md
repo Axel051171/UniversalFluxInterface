@@ -68,7 +68,7 @@ Die FLT-Pins der eFuses liegen ohne Fehler auf Schienenspannung (bis 12 V über 
 
 ## Fertigung (JLCPCB)
 
-`fertigung/`: Gerber-ZIP, `C64_PSU_Guard-bom-jlc.csv`, `C64_PSU_Guard-cpl-jlc.csv`, `JLC_Rotation_Check.md` (Pin-1-Kontrolle im Bestückungsviewer). 2 Lagen, 1,6 mm, Leiterbahnen ≥ 0,25 mm, Versorgung 1,0 mm. Alle LCSC-Nummern stehen im Schaltplan (`LCSC`-Feld) und sind am 2026-10-11 auf Lager geprüft; Bauteile ≈ 3,30 USD je Platine bei 5 Stück, 13 Extended-Positionen (Einrichtgebühr), TPS25921ADR C189199 nur rund 1000 Stück am Lager.
+`fertigung/`: Gerber und Bohrdaten in `gerber/` (das Upload-ZIP erzeugt `scripts/make_fab.sh`; ZIP-Dateien sind nicht versioniert), `C64_PSU_Guard-bom-jlc.csv`, `C64_PSU_Guard-cpl-jlc.csv`, `JLC_Rotation_Check.md` (Pin-1-Kontrolle im Bestückungsviewer). 2 Lagen, 1,6 mm, Leiterbahnen ≥ 0,25 mm, Versorgung 1,0 mm. Alle LCSC-Nummern stehen im Schaltplan (`LCSC`-Feld) und sind am 2026-10-11 auf Lager geprüft; Bauteile ≈ 3,30 USD je Platine bei 5 Stück, 13 Extended-Positionen (Einrichtgebühr), TPS25921ADR C189199 nur rund 1000 Stück am Lager.
 
 ## Werkzeugweg
 

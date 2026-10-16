@@ -52,6 +52,8 @@ class ScpRevolution:
 def _encode_cells(cells: list[int]) -> bytes:
     out = bytearray()
     for c in cells:
+        if c <= 0 or c % 0x10000 == 0:
+            raise ValueError("SCP cannot encode a transition at an exact 65536-unit interval; retain native ticks")
         while c > 0xFFFF:
             out += b"\x00\x00"
             c -= 0x10000
@@ -63,6 +65,10 @@ def write_scp(path: str, tracks: dict[int, list[ScpRevolution]], revolutions: in
               heads: int = 0) -> None:
     """tracks: SCP track number -> revolutions (all tracks with the same count)."""
     nums = sorted(tracks)
+    if not nums or not 1 <= revolutions <= 255 or heads not in (0, 1, 2):
+        raise ValueError("invalid SCP geometry")
+    if any(not 0 <= n < N_TRACKS or len(tracks[n]) < revolutions for n in nums):
+        raise ValueError("invalid SCP track number or insufficient revolutions")
     body = bytearray()
     offsets = [0] * N_TRACKS
     base = 0x10 + 4 * N_TRACKS
@@ -81,7 +87,7 @@ def write_scp(path: str, tracks: dict[int, list[ScpRevolution]], revolutions: in
     tail = table + bytes(body)
     checksum = sum(tail) & 0xFFFFFFFF
     header = b"SCP" + bytes([0x22, DISK_OTHER, revolutions, nums[0] if nums else 0,
-                             nums[-1] if nums else 0, FLAG_INDEX, 0, heads, 0])
+                             nums[-1] if nums else 0, FLAG_INDEX | 0x80, 0, heads, 0])
     with open(path, "wb") as f:
         f.write(header + struct.pack("<I", checksum) + tail)
 
@@ -90,28 +96,43 @@ def read_scp(path: str) -> tuple[int, dict[int, list[ScpRevolution]]]:
     """-> (revolutions, track number -> revolutions)."""
     with open(path, "rb") as f:
         blob = f.read()
-    if blob[:3] != b"SCP":
+    if len(blob) < 0x10 + 4 * N_TRACKS or blob[:3] != b"SCP":
         raise ValueError("not an SCP file")
     nrev, start, end, cellw = blob[5], blob[6], blob[7], blob[9]
+    if not nrev or not 0 <= start <= end < N_TRACKS or blob[10] > 2:
+        raise ValueError("invalid SCP geometry")
+    if blob[8] & 0x40:
+        raise ValueError("extended SCP media are not supported")
+    checksum = struct.unpack_from("<I", blob, 12)[0]
+    if (checksum or not blob[8] & 0x10) and checksum != sum(blob[16:]) & 0xFFFFFFFF:
+        raise ValueError("SCP checksum mismatch")
+    resolution = blob[11] + 1
     if cellw not in (0, 16):
         raise ValueError(f"unsupported cell width {cellw}")
     offsets = struct.unpack_from(f"<{N_TRACKS}I", blob, 0x10)
     tracks = {}
     for n in range(start, end + 1):
         off = offsets[n]
-        if not off or blob[off:off + 3] != b"TRK":
+        if not off:
             continue
+        header_size = 4 + 12 * nrev
+        if off < 0x10 + 4 * N_TRACKS or off + header_size > len(blob) or blob[off:off + 4] != b"TRK" + bytes([n]):
+            raise ValueError(f"invalid SCP track header {n}")
         revs = []
         for r in range(nrev):
             idx, count, doff = struct.unpack_from("<III", blob, off + 4 + 12 * r)
+            if doff < header_size or off + doff + 2 * count > len(blob):
+                raise ValueError(f"SCP flux data out of bounds at track {n}")
             raw = struct.unpack_from(f">{count}H", blob, off + doff)
             cells, carry = [], 0
             for v in raw:
                 if v == 0:
                     carry += 0x10000
                 else:
-                    cells.append(v + carry)
+                    cells.append((v + carry) * resolution)
                     carry = 0
+            if carry:
+                raise ValueError(f"SCP unterminated overflow at track {n}")
             revs.append(ScpRevolution(idx, cells))
         tracks[n] = revs
     return nrev, tracks

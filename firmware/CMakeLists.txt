@@ -23,7 +23,7 @@ project(ufi_firmware C ASM)
 # revision comes only from a git work tree whose top level is this project's root (the
 # parent of firmware/), never from an enclosing foreign repository (audit F07).  A work
 # tree with uncommitted changes gets a "+" suffix.
-set(UFI_FW_VERSION "1.17")
+set(UFI_FW_VERSION "1.18-dev")
 set(UFI_GIT_REV "" CACHE STRING "git revision to embed in the firmware (empty = detect)")
 if(NOT UFI_GIT_REV)
     execute_process(COMMAND git -C "${CMAKE_SOURCE_DIR}" rev-parse --show-toplevel
@@ -149,6 +149,8 @@ set(STARTUP_SOURCE ${CMSIS_PATH}/Device/ST/STM32H7xx/Source/Templates/gcc/startu
 
 set(PROJECT_SOURCES
     src/ufi_main.c
+    src/ufi_heap.c
+    src/ufi_metrics.c
     src/board_headless.c
     src/ufi_psram.c
     src/syscalls.c
@@ -174,10 +176,26 @@ set(PROJECT_SOURCES
     src/ufi_selftest.c
     src/ufi_crash.c
     src/ufi_write.c
+    src/ufi_write_wave.c
+    src/ufi_resources.c
+    src/ufi_job.c
+    src/ufi_cancel.c
+    src/ufi_composite.c
     src/ufi_write_codec.c
     src/ufi_verify.c
+    src/ufi_quality.c
+    src/ufi_quality_runtime.c
+    src/ufi_compare.c
+    src/ufi_media.c
+    src/ufi_capabilities.c
+    src/ufi_analysis_job.c
+    src/ufi_evidence.c
+    src/ufi_evidence_runtime.c
+    src/ufi_drive_extra.c
     src/ufi_write_stream.c
     src/ufi_image.c
+    src/ufi_hfe_v3.c
+    src/ufi_raw_verify.c
     src/ufi_debug.c
     src/ufi_diag.c
     src/ufi_clock.c
@@ -231,8 +249,16 @@ add_executable(${PROJECT_NAME}.elf
 set_source_files_properties(${HAL_SOURCES} ${USB_SOURCES}
     PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter")
 
-# Generate .hex and .bin
+# Validate the linked memory layout on every link, locally and in CI.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set_property(TARGET ${PROJECT_NAME}.elf APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/STM32H723ZGTX_FLASH.ld"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py")
+# Generate .hex and .bin only after the memory gate succeeds.
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py"
+            "$<TARGET_FILE:${PROJECT_NAME}.elf>" --nm "${CMAKE_NM}" --objdump "${CMAKE_OBJDUMP}"
+            --report "${CMAKE_CURRENT_BINARY_DIR}/memory_usage.json"
     COMMAND ${CMAKE_OBJCOPY} -O ihex ${PROJECT_NAME}.elf ${PROJECT_NAME}.hex
     COMMAND ${CMAKE_OBJCOPY} -O binary ${PROJECT_NAME}.elf ${PROJECT_NAME}.bin
     COMMAND ${CMAKE_SIZE} ${PROJECT_NAME}.elf

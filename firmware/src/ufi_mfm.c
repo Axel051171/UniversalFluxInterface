@@ -50,12 +50,30 @@ void mfm_dec_init(mfm_decoder_t* d, uint32_t rate_bps, mfm_sector_cb cb, void* c
     d->pmax = d->nominal + d->nominal / 8u;
     d->cb = cb;
     d->ctx = ctx;
+    d->encoding = 1;
+    d->period_divisor = 16;
+    d->phase_divisor = 2;
+}
+
+void mfm_dec_profile(mfm_decoder_t* d, uint8_t profile)
+{
+    d->period_divisor = profile == 1 ? 8 : profile == 2 ? 32 : 16;
+    d->phase_divisor = profile == 2 ? 4 : 2;
+    d->period = (uint32_t)((uint64_t)d->nominal * (profile == 1 ? 960 : profile == 2 ? 1040 : 1000) / 1000);
 }
 
 void mfm_dec_init_amiga(mfm_decoder_t* d, uint32_t rate_bps, mfm_sector_cb cb, void* ctx)
 {
     mfm_dec_init(d, rate_bps, cb, ctx);
-    d->amiga = true;
+    d->amiga = true;d->encoding=2;
+}
+
+void mfm_dec_init_format(mfm_decoder_t* d,uint8_t format,uint32_t rate,mfm_sector_cb cb,void* ctx)
+{
+    mfm_dec_init(d,rate,cb,ctx);
+    d->encoding=format;d->amiga=format==2;
+    d->check_encoding=format>=3;
+    if(format==5 || format==6){d->nominal=(uint32_t)(((uint64_t)MFM_TICK_HZ*256u)/rate);d->period=d->nominal;d->pmin=d->nominal-d->nominal/8;d->pmax=d->nominal+d->nominal/8;}
 }
 
 static uint8_t raw_to_byte(uint32_t raw)
@@ -71,7 +89,8 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
 {
     d->crc = mfm_crc16(d->crc, &b, 1);
     if (d->state == S_MARK) {
-        d->mark = b;
+        d->mark = b;d->last_mark=b;d->marks++;
+        d->sector_flags=b==0xf8?2:0;
         d->got = 0;
         if (b == 0xFE) {
             d->want = 6;
@@ -91,6 +110,8 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
     }
     if (d->mark == 0xFE) {
         d->id_ok = (d->crc == 0);
+        if (!d->id_ok) d->header_errors++;
+        if(d->field_bad)d->id_ok=false;
         if (d->id_ok) {
             d->id = (mfm_id_t){d->buf[0], d->buf[1], d->buf[2], d->buf[3]};
             d->id_age = 0;
@@ -100,6 +121,7 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
             }
         }
     } else {
+        if (d->crc != 0) d->data_errors++;
         if (d->cb) {
             d->cb(d->ctx, &d->id, d->buf, d->crc == 0);
         }
@@ -131,8 +153,10 @@ static void amiga_sector(mfm_decoder_t* d)
     const bool hdr_ok = (hsum & M55) == odd_even(r[10], r[11]);
     const bool data_ok = (dsum & M55) == odd_even(r[12], r[13]);
     if (!hdr_ok) {
+        d->header_errors++;
         return;
     }
+    if (!data_ok) d->data_errors++;
     d->ids_seen++;
     for (int i = 0; i < 128; i++) {
         const uint32_t v = odd_even(r[14 + i], r[14 + 128 + i]);
@@ -141,9 +165,102 @@ static void amiga_sector(mfm_decoder_t* d)
         d->buf[4 * i + 2] = (uint8_t)(v >> 8);
         d->buf[4 * i + 3] = (uint8_t)v;
     }
+    for (int i = 0; i < 4; i++) {
+        const uint32_t v = odd_even(r[2 + i], r[6 + i]);
+        d->buf[512 + 4 * i] = (uint8_t)(v >> 24);
+        d->buf[513 + 4 * i] = (uint8_t)(v >> 16);
+        d->buf[514 + 4 * i] = (uint8_t)(v >> 8);
+        d->buf[515 + 4 * i] = (uint8_t)v;
+    }
     const mfm_id_t id = {(uint8_t)(track >> 1), (uint8_t)(track & 1u), (uint8_t)(sector + 1u), 2};
+    d->buf[528] = (uint8_t)info; /* sectors until gap, for the quality report */
     if (d->cb) {
         d->cb(d->ctx, &id, d->buf, data_ok);
+    }
+}
+
+/* FM and HP MMFM: independent implementation from HP service manual 2-11..2-15.
+ * CRC runs over chronological data bits; HP bytes are LSB-first but CRC bits
+ * are emitted x^15 first. HP payload remains in physical byte order (not HPI). */
+static uint8_t reverse_byte(uint8_t b) {
+    b=(uint8_t)((b>>4)|(b<<4));
+    b=(uint8_t)(((b&0xcc)>>2)|((b&0x33)<<2));
+    return (uint8_t)(((b&0xaa)>>1)|((b&0x55)<<1));
+}
+static void code_byte(mfm_decoder_t* d,uint16_t raw,bool hp) {
+    for(int i=7;i>=0;i--) {
+        bool clock=((raw>>(2*i+1))&1)!=0,data=((raw>>(2*i))&1)!=0;
+        bool expected=hp?(!data && !d->previous_transition):true;
+        if(clock!=expected){d->code_errors++;d->field_bad=true;}
+        d->previous_transition=clock||data;
+    }
+}
+static void legacy_cell(mfm_decoder_t* d) {
+    const bool hp=d->encoding==4;
+    if(d->id_age<UINT32_MAX)d->id_age++;
+    if(d->state==S_SEARCH) {
+        uint16_t raw=(uint16_t)d->sr;uint8_t mark=0;
+        if(hp && (uint16_t)(d->sr>>16)==0x5555) {
+            if(raw==0x2a54)mark=0x70;
+            else if(raw==0x2a55)mark=0xf0;
+            else if(raw==0x2a44)mark=0x50;
+            else if(raw==0x2a45)mark=0xd0;
+        } else if(!hp && (uint16_t)(d->sr>>16)==0xaaaa) {
+            if(raw==0xf57e)mark=0xfe;
+            else if(raw==0xf56f)mark=0xfb;
+            else if(raw==0xf56a)mark=0xf8;
+            else if(raw==0xf77a)mark=0xfc;
+        }
+        if(!mark)return;
+        d->marks++;d->last_mark=mark;d->mark=mark;
+        bool header=hp?(mark==0x70 || mark==0xf0):mark==0xfe;
+        if(header)d->id_ok=false;
+        /* ECC-marked HP data is recognised but its layout is not guessed. */
+        if(mark==0xd0 || mark==0xfc){d->id_ok=false;return;}
+        if(!header && (!d->id_ok || d->id_age>=ID_DATA_CELLS))return;
+        d->state=S_FIELD;d->cells=0;d->got=0;d->field_bad=false;
+        d->previous_transition=(raw&3)!=0;
+        d->crc=hp?0xffff:mfm_crc16(0xffff,&mark,1);
+        d->want=header?(hp?4:6):(uint16_t)((128u<<d->id.n)+2u);
+        d->sector_flags=hp?d->id_flags:(mark==0xf8?2:0);
+        if(header)d->id_flags=mark==0xf0?4:0;
+        return;
+    }
+    if(++d->cells!=16)return;
+    d->cells=0;
+    uint16_t raw=(uint16_t)d->sr;uint8_t serial=raw_to_byte(raw);
+    code_byte(d,raw,hp);
+    d->crc=mfm_crc16(d->crc,&serial,1);
+    d->buf[d->got++]=hp?reverse_byte(serial):serial;
+    if(d->got<d->want)return;
+    bool header=hp?(d->mark==0x70 || d->mark==0xf0):d->mark==0xfe;
+    if(header) {
+        if(d->crc)d->header_errors++;
+        d->id_ok=!d->crc && !d->field_bad;
+        if(hp) {
+            if(d->buf[0]>76 || (d->buf[1]&0x7f)>=30)d->id_ok=false;
+            d->id=(mfm_id_t){d->buf[0],(uint8_t)(d->buf[1]>>7),(uint8_t)(d->buf[1]&0x7f),1};
+        } else {
+            d->id=(mfm_id_t){d->buf[0],d->buf[1],d->buf[2],d->buf[3]};
+            if(d->id.n>3)d->id_ok=false;
+        }
+        if(d->id_ok){d->ids_seen++;d->id_age=0;}
+    } else {
+        if(d->crc)d->data_errors++;
+        if(d->field_bad)d->sector_flags|=16;
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,d->crc==0);
+        d->id_ok=false;
+    }
+    d->state=S_SEARCH;
+}
+
+/* Validate ordinary MFM clock/data pairs only after sync alignment. */
+static void check_mfm_word(mfm_decoder_t* d,uint16_t raw) {
+    if(!d->check_encoding)return;
+    for(int i=7;i>=0;i--) {
+        bool data=((raw>>(2*i))&1)!=0,clock=((raw>>(2*i+1))&1)!=0;
+        if(clock!=(!d->previous_transition && !data)){d->code_errors++;d->field_bad=true;}
+        d->previous_transition=data;
     }
 }
 
@@ -152,11 +269,14 @@ static void amiga_cell(mfm_decoder_t* d)
     if (d->state == S_SEARCH) {
         if ((uint32_t)d->sr == SYNC_AMIGA) {
             d->state = S_FIELD;
+            d->field_bad=false;d->previous_transition=true;d->sector_flags=0;
+            d->marks++;d->last_mark=0xa1;
             d->cells = 0;
             d->got = 0;
         }
         return;
     }
+    if(d->cells==15 || d->cells==31)check_mfm_word(d,(uint16_t)d->sr);
     if (++d->cells == 32u) {
         d->cells = 0;
         d->raw[d->got++] = (uint32_t)d->sr;
@@ -169,9 +289,132 @@ static void amiga_cell(mfm_decoder_t* d)
     }
 }
 
+/* Commodore 1541/1571 GCR: sync, 8-byte header, 260-byte data block.
+ * Keep the on-disk track number and disk ID; physical head is not in the header. */
+static void gcr_cell(mfm_decoder_t* d,uint32_t bit) {
+    static const int8_t decode[32]={-1,-1,-1,-1,-1,-1,-1,-1,-1,8,0,1,-1,12,4,5,
+                                   -1,-1,2,3,-1,15,6,7,-1,9,10,11,-1,13,14,-1};
+    if(d->id_age<UINT32_MAX)d->id_age++;
+    if(bit){if(d->gcr_ones<255)d->gcr_ones++;}
+    else {
+        if(d->gcr_ones>=10){d->state=S_FIELD;d->cells=0;d->got=0;d->gcr_half=0;d->want=1;d->field_bad=false;d->sector_flags=0;}
+        d->gcr_ones=0;
+    }
+    if(d->gcr_ones>=10){d->state=S_SEARCH;return;}
+    if(d->state!=S_FIELD || ++d->cells<5)return;
+    d->cells=0;int8_t nibble=decode[d->sr&31];
+    if(nibble<0){d->code_errors++;d->field_bad=true;d->id_ok=false;d->state=S_SEARCH;return;}
+    if(!d->gcr_half){d->gcr_value=(uint8_t)(nibble<<4);d->gcr_half=1;return;}
+    d->gcr_half=0;uint8_t b=(uint8_t)(d->gcr_value|nibble);d->buf[d->got++]=b;
+    if(d->got==1) {
+        d->mark=d->last_mark=b;d->marks++;
+        if(b==8){d->id_ok=false;d->want=8;}
+        else if(b==7 && d->id_ok && d->id_age<1000)d->want=260;
+        else {d->state=S_SEARCH;return;}
+    }
+    if(d->got<d->want)return;
+    if(d->mark==8) {
+        uint8_t sum=0;for(unsigned i=1;i<6;i++)sum^=d->buf[i];
+        if(sum)d->header_errors++;
+        uint8_t track=d->buf[3],sector=d->buf[2];
+        d->id_ok=!sum && track>=1 && track<=84 && sector<21;
+        if(d->id_ok){d->id=(mfm_id_t){track,0,sector,1};d->disk_id=(uint16_t)(d->buf[4]|(uint16_t)d->buf[5]<<8);d->id_age=0;d->ids_seen++;}
+    } else {
+        uint8_t sum=0;for(unsigned i=1;i<258;i++)sum^=d->buf[i];
+        if(sum)d->data_errors++;
+        memmove(d->buf,d->buf+1,256);d->buf[256]=(uint8_t)d->disk_id;d->buf[257]=(uint8_t)(d->disk_id>>8);
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,sum==0);
+        d->id_ok=false;
+    }
+    d->state=S_SEARCH;
+}
+
+/* Macintosh 3.5-inch 6-and-2 GCR, independently implemented from the documented
+ * on-disk layout. Sources and checksum provenance: docs/Floppy_Emu_Review.md.
+ * Decode in place: each four-symbol group yields at most three bytes, so writes
+ * remain behind unread input. Output retains 12 tags + 512 data + format byte. */
+static bool mac_payload(mfm_decoder_t* d)
+{
+    uint16_t a=0,b=0,c=0;unsigned in=1,out=0;
+    while(out<524){
+        uint8_t hi=d->buf[in++],x=d->buf[in++],y=d->buf[in++];
+        bool last=out==522;uint8_t z=last?0:d->buf[in++];
+        a=(uint16_t)((a&255u)<<1);if(a&256)a++;
+        uint8_t v=(uint8_t)((x|((hi<<2)&192))^a);
+        c+=v;if(a&256){c++;a&=255;}d->buf[out++]=v;
+        v=(uint8_t)((y|((hi<<4)&192))^c);
+        b+=v;if(c>255){b++;c&=255;}d->buf[out++]=v;
+        if(!last){
+            v=(uint8_t)((z|((hi<<6)&192))^b);
+            a+=v;if(b>255){a++;b&=255;}d->buf[out++]=v;
+        }
+    }
+    uint8_t high=(uint8_t)(((a>>6)&3)|((b>>4)&12)|((c>>2)&48));
+    bool ok=d->buf[in]==high && d->buf[in+1]==(c&63) &&
+            d->buf[in+2]==(b&63) && d->buf[in+3]==(a&63);
+    d->buf[524]=(uint8_t)d->disk_id;
+    return ok;
+}
+
+static int mac_symbol(uint8_t byte)
+{
+    static const uint8_t symbols[64]={
+        0x96,0x97,0x9a,0x9b,0x9d,0x9e,0x9f,0xa6,0xa7,0xab,0xac,0xad,0xae,0xaf,0xb2,0xb3,
+        0xb4,0xb5,0xb6,0xb7,0xb9,0xba,0xbb,0xbc,0xbd,0xbe,0xbf,0xcb,0xcd,0xce,0xcf,0xd3,
+        0xd6,0xd7,0xd9,0xda,0xdb,0xdc,0xdd,0xde,0xdf,0xe5,0xe6,0xe7,0xe9,0xea,0xeb,0xec,
+        0xed,0xee,0xef,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf9,0xfa,0xfb,0xfc,0xfd,0xfe,0xff};
+    for(unsigned i=0;i<64;i++)if(symbols[i]==byte)return (int)i;
+    return -1;
+}
+
+static void mac_cell(mfm_decoder_t* d)
+{
+    if(d->id_age<UINT32_MAX)d->id_age++;
+    if(d->state==S_SEARCH){
+        uint32_t sync=(uint32_t)d->sr&0xffffffu;
+        if(sync==0xd5aa96u || (sync==0xd5aaadu && d->id_ok && d->id_age<2000)){
+            d->mark=d->last_mark=(uint8_t)sync;d->marks++;
+            d->want=d->mark==0x96?7:706;d->got=d->cells=0;
+            d->field_bad=false;d->sector_flags=0;d->state=S_FIELD;
+            if(d->mark==0x96)d->id_ok=false;
+        }
+        return;
+    }
+    if(++d->cells<8)return;
+    d->cells=0;uint8_t byte=(uint8_t)d->sr;
+    if(d->got<d->want-2){
+        int symbol=mac_symbol(byte);
+        if(symbol<0){d->code_errors++;d->field_bad=true;d->id_ok=false;d->state=S_SEARCH;return;}
+        byte=(uint8_t)symbol;
+    }
+    d->buf[d->got++]=byte;
+    if(d->got<d->want)return;
+    bool ending=d->buf[d->want-2]==0xde && d->buf[d->want-1]==0xaa;
+    if(d->mark==0x96){
+        uint8_t sum=0;for(unsigned i=0;i<5;i++)sum^=d->buf[i];
+        uint8_t cyl=(uint8_t)(d->buf[0]|((d->buf[2]&1)<<6));
+        d->id_ok=ending && !sum && cyl<80 && !(d->buf[2]&0x1e);
+        if(d->id_ok){
+            d->id=(mfm_id_t){cyl,(uint8_t)(d->buf[2]>>5),d->buf[1],2};
+            d->disk_id=d->buf[3];d->id_age=0;d->ids_seen++;
+        }else d->header_errors++;
+    }else{
+        bool sector_match=d->buf[0]==d->id.r;
+        bool checksum=mac_payload(d);
+        bool ok=ending && sector_match && checksum;
+        if(!ok)d->data_errors++;
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
+        d->id_ok=false;
+    }
+    d->state=S_SEARCH;
+}
+
 static void cell(mfm_decoder_t* d, uint32_t bit)
 {
     d->sr = (d->sr << 1) | bit;
+    if(d->encoding==6){mac_cell(d);return;}
+    if(d->encoding==5){gcr_cell(d,bit);return;}
+    if(d->encoding>=3){legacy_cell(d);return;}
     if (d->amiga) {
         amiga_cell(d);
         return;
@@ -180,6 +423,7 @@ static void cell(mfm_decoder_t* d, uint32_t bit)
     if (d->state == S_SEARCH) {
         if ((d->sr & 0xFFFFFFFFFFFFull) == SYNC3) {
             d->state = S_MARK;
+            d->field_bad=false;d->previous_transition=true;
             d->cells = 0;
             d->crc = CRC_A1A1A1;
         }
@@ -187,6 +431,7 @@ static void cell(mfm_decoder_t* d, uint32_t bit)
     }
     if (++d->cells == 16u) {
         d->cells = 0;
+        check_mfm_word(d,(uint16_t)d->sr);
         field_byte(d, raw_to_byte((uint32_t)d->sr & 0xFFFFu));
     }
 }
@@ -198,8 +443,14 @@ void mfm_dec_interval(mfm_decoder_t* d, uint32_t ticks)
     if (n < 1) {
         n = 1;
     }
+    if(d->margin_permille && n>=1 && n<=8 && d->state!=S_SEARCH) {
+        int64_t residual=t-n*d->period;if(residual<0)residual=-residual;
+        if((uint64_t)residual*1000u>(uint64_t)d->period*d->margin_permille)d->margin_errors++;
+    }
     if (n > 8) {                        /* no flux / damage: resynchronise */
+        if(d->state!=S_SEARCH && d->check_encoding)d->code_errors++;
         d->state = S_SEARCH;
+        if(d->encoding>=3)d->id_ok=false;
         d->phase = 0;
         d->period = d->nominal;
         for (int i = 0; i < 8; i++) {
@@ -209,11 +460,11 @@ void mfm_dec_interval(mfm_decoder_t* d, uint32_t ticks)
     }
     /* frequency: 1/16 of the per-cell error; phase: keep half of the residual */
     const int64_t err = t - n * (int64_t)d->period;
-    int64_t p = (int64_t)d->period + err / (n * 16);
+    int64_t p = (int64_t)d->period + err / (n * d->period_divisor);
     if (p < d->pmin) p = d->pmin;
     if (p > d->pmax) p = d->pmax;
     d->period = (uint32_t)p;
-    d->phase = (int32_t)(err / 2);
+    d->phase = (int32_t)(err / d->phase_divisor);
     for (int64_t i = 1; i < n; i++) {
         cell(d, 0);
     }
@@ -400,11 +651,19 @@ uint32_t mfm_encode_amiga_track(uint32_t rate_bps, uint32_t track_cells, uint8_t
                                 uint8_t head, uint8_t spt, const uint8_t* sectors,
                                 uint32_t* deltas, uint32_t max)
 {
-    if ((spt != AMIGA_SECTORS && spt != AMIGA_SECTORS_HD) || track_cells < spt * 1088u * 8u) {
+    if (!rate_bps || head > 1u || cyl > 127u ||
+        (spt != AMIGA_SECTORS && spt != AMIGA_SECTORS_HD) ||
+        track_cells < spt * 1088u * 8u + 4u) {
         return 0;
     }
     enc_t e = {.out = deltas, .max = max, .rate = rate_bps, .pos = 4};
     const uint8_t track = (uint8_t)(cyl * 2u + head);
+    /* Put the spare cells before the sectors. Keep two trailing null bytes
+     * when space permits, so the write seam lies in the gap at both ends. */
+    const uint32_t sector_cells = (uint32_t)spt * 1088u * 8u;
+    while ((uint64_t)e.pos + 16u + sector_cells + 32u <= track_cells) {
+        put_byte(&e, 0x00);
+    }
     for (uint8_t s = 0; s < spt; s++) {
         const uint8_t* d = sectors + (uint32_t)s * 512u;
         put_run(&e, 0x00, 2);

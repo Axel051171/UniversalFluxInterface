@@ -6,18 +6,19 @@
 #include "check.h"
 #include <string.h>
 
-#define MAXN 80000u
+#define MAXN 200000u
 static uint32_t deltas[MAXN], deltas2[MAXN];
 static uint16_t arr[MAXN], arr2[MAXN];
-static uint8_t sectors[22 * 512], sectors2[22 * 512];
+static uint8_t sectors[36 * 512], sectors2[36 * 512];
 static mfm_decoder_t dec;
 
 static uint8_t size_code;       /* IBM sector size for make_track(), 0 = 512 */
+static uint32_t period_ticks=55000000u;
 
 static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head, const uint8_t* data,
                            uint32_t* out, uint16_t* packed, bool amiga)
 {
-    const uint32_t cells = (uint32_t)(((uint64_t)55000000u * 2u * rate / FLUX_TIMER_FREQ) * 98u / 100u);
+    const uint32_t cells = (uint32_t)(((uint64_t)period_ticks * 2u * rate / FLUX_TIMER_FREQ) * 98u / 100u);
     uint32_t n;
     if (amiga) {
         n = mfm_encode_amiga_track(rate, cells, cyl, head, spt, data, out, MAXN);
@@ -80,6 +81,16 @@ int main(void)
     CHECK(level_for(&ref, arr, n * 9u / 10u, 0, 1, true) == 0, "truncated read-back -> fails");
 
     /* 720K at 250 kbit/s and Amiga */
+    /* 360 KB media at 360 RPM: nine sectors, 300 kbit/s, logical cylinder
+     * remains 39 although the drive moves to physical cylinder 78. */
+    period_ticks=(uint32_t)((uint64_t)FLUX_TIMER_FREQ*60/360);
+    n=make_track(300000u,9,39,1,sectors,deltas,arr,false);
+    verify_ref_build(&ref,&dec,arr,n);
+    CHECK(ref.rate_bps==300000u && ref.n==9,"360K in 1.2M reference");
+    CHECK(level_for(&ref,arr,n,2,3,true)==VERIFY_CONTENT,"300 kbit/s readback");
+    n2=make_track(300000u,9,78,1,sectors,deltas2,arr2,false);
+    CHECK(level_for(&ref,arr2,n2,0,1,true)==0,"physical cylinder must not replace sector ID");
+    period_ticks=55000000u;
     n = make_track(250000u, 9, 40, 0, sectors, deltas, arr, false);
     verify_ref_build(&ref, &dec, arr, n);
     CHECK(ref.rate_bps == 250000u && ref.n == 9, "reference 720K: rate %u sectors %u", ref.rate_bps, ref.n);
@@ -133,5 +144,23 @@ int main(void)
     n2 = make_track(250000u, 16, 2, 1, sectors2, deltas2, arr2, false);
     CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "256-byte sector changed -> fails");
     size_code = 0;
+    /* ED: complete 36-sector track at 1 Mbit/s, including final sector data. */
+    const mfm_track_fmt_t ed={.rate_bps=1000000u,.track_cells=392000,.spt=36,.gap3=0x6c};
+    n=mfm_encode_track(&ed,79,1,sectors,deltas,MAXN);
+    CHECK(n>0,"ED complete track encoded");
+    const pack_cfg_t ed_cfg={.scale=1000,.precomp_ns=0,.track=79,.clamp=false};uint32_t ed_clamped;
+    CHECK(write_pack(deltas,n,&ed_cfg,arr,&ed_clamped)==WRITE_CODEC_ERR_RANGE,
+          "ED periods below qualified write minimum rejected");
+    /* Exercise content-reference decoding independently of physical write limits. */
+    for(uint32_t i=0;i<n;i++)arr[i]=(uint16_t)(deltas[i]-1);
+    verify_ref_build(&ref,&dec,arr,n);
+    CHECK(ref.rate_bps==1000000u && ref.n==36 && !ref.overflow,"ED reference has all 36 sectors");
+    CHECK(level_for(&ref,arr,n,2,11,true)==VERIFY_CONTENT,"ED full readback with jitter");
+    memcpy(sectors2,sectors,sizeof(sectors));sectors2[35*512+511]^=1;
+    n2=mfm_encode_track(&ed,79,1,sectors2,deltas2,MAXN);
+    for(uint32_t i=0;i<n2;i++)arr2[i]=(uint16_t)(deltas2[i]-1);
+    CHECK(level_for(&ref,arr2,n2,0,1,true)==0,"ED final-sector corruption rejected");
+    CHECK(level_for(&ref,arr,n/2,0,1,true)==0,"ED truncated capture rejected");
+    CHECK(!mfm_encode_track(&ed,79,1,sectors,deltas,100),"ED insufficient output capacity rejected");
     CHECK_SUMMARY("test_write_verify");
 }
