@@ -3,7 +3,7 @@ import hashlib
 import subprocess
 import sys
 import urllib.request
-from run_tests import BUILD,FW,compiler
+from run_tests import BUILD,FW,compiler,extra_cflags
 SHA='e4d39194a67991127457a23114cec3330d92e362feafc483646e70e504ddef02'
 BASE='https://raw.githubusercontent.com/dbalsom/fluxfox/1d72ff1b329cc072cec00fe42ae51bededf5374f/tests/images/transylvania/'
 def main():
@@ -17,7 +17,7 @@ def main():
     if hashlib.sha256(path.read_bytes()).hexdigest()!=SHA:raise ValueError('reference SHA256 mismatch')
     exe=BUILD/('hfe_v3_reference.exe' if sys.platform=='win32' else 'hfe_v3_reference')
     subprocess.run([compiler(),'-std=c11','-O2','-Wall','-Wextra','-Werror','-D_CRT_SECURE_NO_WARNINGS',
-                    '-I',str(FW/'include'),str(FW/'tests/hfe_v3_reference.c'),
+                    *extra_cflags(),'-I',str(FW/'include'),str(FW/'tests/hfe_v3_reference.c'),
                     str(FW/'src/ufi_hfe_v3.c'),str(FW/'src/ufi_image.c'),'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(path)],check=True,timeout=30)
 if __name__=='__main__':main()

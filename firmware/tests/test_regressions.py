@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-from run_tests import compiler, BUILD, FW
+from run_tests import compiler, extra_cflags, BUILD, FW
 
 
 def function(file, name):
@@ -35,9 +35,8 @@ def run(name, code, sources=()):
         subprocess.run([compiler(), '--analyze', '-Xanalyzer', '-analyzer-output=text',
                         '-Xanalyzer', '-analyzer-werror', '-Wno-pointer-to-int-cast',
                         '-I', str(FW/'include'), str(src)],check=True,timeout=60)
-    flags = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if os.environ.get("UFI_SANITIZE") else []
     subprocess.run([compiler(), "-std=c11", "-Wall", "-Wextra", "-Werror",
-                    "-Wno-pointer-to-int-cast", "-I", str(FW / "include"), *flags,
+                    "-Wno-pointer-to-int-cast", "-I", str(FW / "include"), *extra_cflags(),
                     str(src), *[str(FW / s) for s in sources], "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True, timeout=15)
     print(name + ": passed", flush=True)

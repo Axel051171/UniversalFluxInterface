@@ -50,6 +50,27 @@ def compiler():
     sys.exit("no C compiler (clang or gcc) on the PATH")
 
 
+def llvm_tool(name):
+    """llvm-nm / llvm-profdata / llvm-cov from the same installation as the compiler."""
+    cc = pathlib.Path(shutil.which(compiler()))
+    beside = cc.with_name(name + cc.suffix)
+    found = str(beside) if beside.exists() else shutil.which(name)
+    if not found:
+        sys.exit(f"{name} not found next to {cc}")
+    return found
+
+
+def extra_cflags():
+    """Flags every native build honours: UFI_SANITIZE=1 (ASan/UBSan) and
+    UFI_COVERAGE=1 (clang source coverage, profiles go where LLVM_PROFILE_FILE says)."""
+    flags = []
+    if os.environ.get("UFI_SANITIZE"):
+        flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+    if os.environ.get("UFI_COVERAGE"):
+        flags += ["-fprofile-instr-generate", "-fcoverage-mapping"]
+    return flags
+
+
 def main(argv):
     cc = compiler()
     BUILD.mkdir(exist_ok=True)
@@ -59,11 +80,9 @@ def main(argv):
         if argv and not any(a in name for a in argv):
             continue
         out = BUILD / (name + exe)
-        cmd = [cc, "-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-D_CRT_SECURE_NO_WARNINGS",
-               "-I", str(FW / "include"), "-I", str(HERE),
+        cmd = [cc, *extra_cflags(), "-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
+               "-D_CRT_SECURE_NO_WARNINGS", "-I", str(FW / "include"), "-I", str(HERE),
                str(HERE / (name + ".c"))] + [str(FW / s) for s in sources] + ["-o", str(out)]
-        if os.environ.get("UFI_SANITIZE"):
-            cmd[1:1] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode:
             print(f"{name}: build failed\n{r.stdout}{r.stderr}")

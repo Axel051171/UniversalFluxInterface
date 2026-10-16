@@ -7,7 +7,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from run_tests import BUILD, FW, compiler
+from run_tests import BUILD, FW, compiler, extra_cflags
 
 sys.path.insert(0, str(FW.parent / 'software/ufi_host'))
 from ufi_host.hfe import read_hfe
@@ -41,7 +41,7 @@ def main():
     vectors = cache.parent / 'tracks.bin'
     vectors.write_bytes(struct.pack('<I', len(records))+b''.join(records))
     exe = BUILD / 'hfe_corpus_decoder.exe'
-    subprocess.run([compiler(), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+    subprocess.run([compiler(), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', *extra_cflags(),
         '-D_CRT_SECURE_NO_WARNINGS', '-I', str(FW/'include'), str(FW/'tests/hfe_corpus_decoder.c'),
         *[str(FW/'src'/s) for s in ('ufi_mfm.c', 'ufi_verify.c', 'ufi_quality.c')],
         '-o', str(exe)], check=True)

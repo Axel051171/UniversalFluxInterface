@@ -50,7 +50,10 @@ Braucht clang oder gcc. Die externen Referenzkorpora werden ohne Download übers
 (`python firmware/tests/test_flux_corpus.py --download`, ebenso `test_gcr_corpus.py`,
 `test_hfe_v3_reference.py`); mit `--require-corpora` schlägt der Lauf ohne sie fehl.
 Ergebnis in `firmware/tests/build/offline_gate.json`. Weitere Schritte der CI:
-`firmware/tools/check_static.py` (Clang-Analyse), `firmware/tests/run_fuzz.py` (LibFuzzer).
+`firmware/tools/check_static.py` (Clang-Analyse), `firmware/tests/run_fuzz.py` (LibFuzzer: Dateiparser
+und der komplette v2-Dispatcher hinter erzeugten Treiber-Stubs, `--target v2`).
+`python firmware/tests/coverage.py` misst mit clang/llvm-cov, welche Zeilen und Zweige der nativ
+gebauten Firmware-Module die Tests erreichen (`firmware/tests/build/coverage.txt`, `cov/html/`).
 
 ## Status
 

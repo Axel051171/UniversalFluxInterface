@@ -32,7 +32,7 @@ jobs:
           UFI_SANITIZE: '1'
           UFI_ANALYZE: '1'
         run: python firmware/tests/check_all.py
-      - name: Coverage-guided parser fuzzing (ASan and UBSan)
+      - name: Coverage-guided fuzzing of the parsers and the v2 dispatcher (ASan and UBSan)
         run: python firmware/tests/run_fuzz.py --seconds 30
 
   build:

@@ -13,7 +13,7 @@ import subprocess
 import sys
 import urllib.request
 
-from run_tests import FW, BUILD, compiler
+from run_tests import FW, BUILD, compiler, extra_cflags
 
 sys.path.insert(0, str(FW.parent / 'software/ufi_host'))
 from ufi_host.scp import read_scp, scp_to_ticks
@@ -49,9 +49,8 @@ def main():
             f.write(struct.pack('<II', track, len(deltas)))
             f.write(struct.pack(f'<{len(deltas)}I', *deltas))
     exe = BUILD/('corpus_decoder.exe' if os.name == 'nt' else 'corpus_decoder')
-    flags = ['-fsanitize=address,undefined','-fno-omit-frame-pointer'] if os.environ.get('UFI_SANITIZE') else []
     subprocess.run([compiler(), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
-                    *flags,
+                    *extra_cflags(),
                     '-D_CRT_SECURE_NO_WARNINGS', '-I', str(FW/'include'),
                     str(FW/'tests/corpus_decoder.c'), str(FW/'src/ufi_mfm.c'),
                     '-o', str(exe)], check=True)

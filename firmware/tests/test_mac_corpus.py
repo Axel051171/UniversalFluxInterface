@@ -7,7 +7,7 @@ import subprocess
 import zipfile
 import zlib
 from pathlib import Path
-from run_tests import BUILD, FW, compiler
+from run_tests import BUILD, FW, compiler, extra_cflags
 
 SHA = 'd5fac3b5bfd4b2ad8caa7ac69a6a179632d3d0bf44582fa0455a6e9e5584a94f'
 IMAGES = {'Blank 400K.moof': ('b941df385d8a7dbc99f975dcc81944dcf481847fa019eb4d44749e3a3c5abd0e', 1),
@@ -56,7 +56,7 @@ def main():
     vectors=cache.parent/'tracks.bin';vectors.write_bytes(struct.pack('<I',len(records))+b''.join(records))
     exe=BUILD/'mac_corpus_decoder.exe'
     subprocess.run([compiler(),'-std=c11','-O2','-Wall','-Wextra','-Werror','-D_CRT_SECURE_NO_WARNINGS','-I',str(FW/'include'),
-        str(FW/'tests/mac_corpus_decoder.c'),*[str(FW/'src'/s) for s in ('ufi_mfm.c','ufi_verify.c','ufi_quality.c')],'-o',str(exe)],check=True)
+        *extra_cflags(),str(FW/'tests/mac_corpus_decoder.c'),*[str(FW/'src'/s) for s in ('ufi_mfm.c','ufi_verify.c','ufi_quality.c')],'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(vectors)],check=True,timeout=90)
 
 if __name__=='__main__':main()

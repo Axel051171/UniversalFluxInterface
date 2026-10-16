@@ -654,3 +654,29 @@ not run. Source review and remaining work: Offline_Review_2026-10-16.md.
 Final warning-free ARM build: FLASH184968, AXI293080 used /34600 free,
 SRAM1 6560, heap8192, stack space24576. SHA-256:
 `19ad64901d2fe82c474cd7125d68fdeb82b4cfb1ac3157fdb67004e36a7750f7`.
+
+## Dispatcher fuzzing and coverage measurement — 2026-10-17
+
+`firmware/tests/run_fuzz.py --target v2` compiles `ufi_v2.c` as a whole on the host
+(`tests/hal_stub/` supplies the HAL declarations) and links the real job, resource,
+cancel, capability, media, write-codec and quality modules. Every other call out of
+the dispatcher goes to a stub that `fuzz_stubs.py` generates from the header
+prototypes: error codes, flags, states and counts come from the fuzz input, pointers
+point at a zeroed buffer, structs are zero. The harness feeds CRC-correct request and
+DATA frames, raw byte streams, operation ends, events and comms clears, lets
+Greaseweazle own the drive in some inputs, and checks every emitted frame (magic,
+length field, CRC) besides ASan and the libFuzzer timeout. Runs: 2.1 M executions in
+61 s without a finding. Two early reports were contract violations of the generic
+stubs (a report length above the given capacity, an oversized internal end payload)
+and were corrected in the harness; the firmware was not changed. No firmware
+behaviour changed in this step, so the protocol document is unchanged.
+
+`firmware/tests/coverage.py` measures line and branch coverage (clang, llvm-cov) of
+every native whole-unit build: the runner, the five corpora and the v2 fuzzer corpus
+replay. First measurement: 96.1 % lines, 83.2 % branches over 18 modules; `ufi_v2.c`
+99.2 % / 95.9 %, `ufi_media.c` 52.9 % branches, `ufi_cancel.c` 20 % lines (delays are
+not exercised). 38 of 56 modules are not measured because they run only through the
+function-extraction regressions or need hardware; llvm-cov ignores `#line`, so those
+programs cannot be attributed to the source files. Coverage states which lines ran,
+not that their results were checked; the generated stubs do not model driver timing
+or state. Output: `firmware/tests/build/coverage.txt`, `coverage.json`, `cov/html/`.

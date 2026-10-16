@@ -8,7 +8,7 @@ import struct
 import subprocess
 import sys
 import urllib.request
-from run_tests import FW, BUILD, compiler
+from run_tests import FW, BUILD, compiler, extra_cflags
 
 
 def main():
@@ -64,9 +64,8 @@ def main():
             f.write(struct.pack('<III', track+1, rate, len(deltas)))
             f.write(struct.pack(f'<{len(deltas)}I', *deltas))
     exe = BUILD/('gcr_corpus_decoder'+suffix)
-    flags = ['-fsanitize=address,undefined','-fno-omit-frame-pointer'] if os.environ.get('UFI_SANITIZE') else []
     subprocess.run([compiler(), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
-                    '-D_CRT_SECURE_NO_WARNINGS', *flags, '-I', str(FW/'include'),
+                    '-D_CRT_SECURE_NO_WARNINGS', *extra_cflags(), '-I', str(FW/'include'),
                     str(FW/'tests/gcr_corpus_decoder.c'), str(FW/'src/ufi_mfm.c'),
                     str(FW/'src/ufi_verify.c'), '-o', str(exe)], check=True, timeout=120)
     subprocess.run([str(exe), str(disk), str(binary)], check=True, timeout=60)
