@@ -449,7 +449,9 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) |
-| 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 || 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
+| 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
+| 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
+| 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
 | 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer für Firmware-Prüflesen), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32 (Abschnitt 5.2) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
@@ -1123,12 +1125,27 @@ damit das Tool Decoderfähigkeit und Schreibfähigkeit getrennt darstellen kann.
 
 ### 4.5 Mediengebundene Starts und robuste Anfrageprüfung
 
-**Discovery:** `0x0F [25]` liefert 16 Bytes: Byte0 Schema1, Byte1 neuer
-Schreibstart `0x27`, Byte2 Daten-/Endkommando `0x22`, Byte3 Präfixgröße8.
-u32 bei4 ist die Pflichtprüfmaske3 (Bit0 Konfiguration, Bit1 Medium), bei8
-die aktuelle Konfigurationsgeneration, bei12 die aktuelle Mediengeneration.
-Byte23 der Op22-Matrix kündigt Op25 an. Alte Builds mit Byte23=0 unterstützen
-diesen Start nicht; kein stiller Rückfall auf ungeprüftes Schreiben.
+**Discovery:** `0x0F [25]` liefert ab 1.18-dev 20 Bytes (Schema 2; Builds mit Schema 1
+liefern die ersten 16): Byte0 Schema, Byte1 Schreibstart `0x27`, Byte2 Daten-/Endkommando
+`0x22`, Byte3 Präfixgröße8. u32 bei4 ist die Pflichtprüfmaske3 (Bit0 Konfiguration,
+Bit1 Medium), bei8 die aktuelle Konfigurationsgeneration, bei12 die aktuelle
+Mediengeneration. Schema 2 ergänzt Byte16 Lesestart `0x28`, Byte17 Daten-/Endkommando
+`0x20`, Byte18 Präfixgröße8, Byte19 reserviert 0. Ein Parser akzeptiert Schema 1 mit
+≥16 und Schema 2 mit ≥20 Bytes. Byte23 der Op22-Matrix kündigt Op25 an. Alte Builds mit
+Byte23=0 unterstützen diese Starts nicht; kein stiller Rückfall auf ungeprüftes Schreiben
+oder ungebundenes Lesen.
+
+**GUARDED_READ `0x28` (1.18-dev):** Nutzlast `expected_config:u32, expected_media:u32,
+READ-Nutzlast...` mit der unveränderten READ-Nutzlast (Längen 3/4/6/7 und alle Flags wie
+bei 0x20; optionale Felder bleiben eindeutig, weil der Präfix vor dem Kommando steht).
+Beide Generationen müssen ungleich0 sein. Veraltete/fehlende Konfiguration: Status16;
+fehlendes/gewechseltes Medium: Status21; vor der Annahme geht kein Daten-Rahmen hinaus.
+Nach dem Aufnahmestart wird das Medium wie bei 0x27 erneut geprüft; ein inzwischen
+erkannter Wechsel bricht die Aufnahme ab und die Annahme trägt Status21. Die Annahme
+antwortet mit Kommando `0x28`; DATA und END kommen mit **Kommando0x20 und derselben
+Sequenznummer**, der Ende-Rahmen trägt den Generationsblock. BUSY-, Ressourcen- und
+Parameterprüfungen bleiben wie bei READ. Host: `read_track(..., expected_config=,
+expected_media=)`.
 
 **GUARDED_WRITE `0x27`:** Nutzlast
 `expected_config:u32, expected_media:u32, WRITE-Nutzlast...`.

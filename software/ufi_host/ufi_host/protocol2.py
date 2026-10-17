@@ -58,6 +58,7 @@ DESCRIBE = 0x09                         # firmware 1.18: clocks, transports and 
 RESOURCE = 0x0A
 JOB = 0x0B
 GUARDED_WRITE = 0x27
+GUARDED_READ = 0x28                     # 1.18: media-bound READ start (4.5); DATA/END on READ
 FEATURES = 0x0C
 DIAGNOSTICS = 0x0D
 ANALYSIS_JOB = 0x0F                     # firmware 1.18: sub-operations (op u8 first), 4.10-4.23
@@ -924,6 +925,21 @@ class Device2:
         value = reply[1] | reply[2] << 8
         return {"flags": value, "flag_names": flag_names(value, TOLERANCE_FLAGS)}
 
+    def guarded_starts(self) -> dict:
+        """Op 25 discovery of the media-bound starts (4.5): schema 1 names GUARDED_WRITE, schema 2
+        (firmware 1.18) also GUARDED_READ.  Returns the start/data commands, prefix size, the
+        mandatory check mask and the current configuration and media generations."""
+        reply = self.analysis_op(25)
+        if len(reply) < 16 or reply[0] not in (1, 2) or (reply[0] == 2 and len(reply) < 20):
+            raise DeviceError("guarded starts: unexpected reply")
+        mask, config, media = struct.unpack_from("<III", reply, 4)
+        info = {"schema": reply[0], "write_start": reply[1], "write_data": reply[2], "prefix": reply[3],
+                "check_mask": mask, "config_generation": config, "media_generation": media,
+                "read_start": None, "read_data": None}
+        if reply[0] == 2:
+            info["read_start"], info["read_data"] = reply[16], reply[17]
+        return info
+
     def write_lock(self, engage: bool = False) -> dict:
         """Session write lock (op 37, firmware 1.18).  engage=True engages it; there is no
         disengage over USB, only an MCU reset clears it.  Returns {'session': bool,
@@ -1116,25 +1132,35 @@ class Device2:
     # -- flux ---------------------------------------------------------------
     def read_track(self, track: int, side: int, revolutions: int = 3,
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
-                   quarter: int = 0, frame_sink=None, integrity: bool | None = None) -> Capture:
+                   quarter: int = 0, frame_sink=None, integrity: bool | None = None,
+                   expected_config: int | None = None, expected_media: int | None = None) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
         hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
-        quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5)."""
+        quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5).
+        expected_config/expected_media (both, firmware 1.18): start with GUARDED_READ 0x28, which
+        refuses a stale configuration (16) or another medium (21) before any DATA frame."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
+        guarded = expected_config is not None or expected_media is not None
+        if guarded and (expected_config is None or expected_media is None or
+                        not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
+            raise ValueError('guarded read requires nonzero u32 configuration and media generations')
         job = self._job_open(1) if (self.integrity if integrity is None else integrity) else None
         seq = self._next_seq()
         crc_errors = self.parser.crc_errors
-        self.send(T_REQUEST, READ, seq, READ_REQ.pack(track, side, revolutions, flags, period_ms)
-                  + (bytes([hard_sectors]) if hard_sectors else b""))
-        f = self._wait(READ, seq, (T_RESPONSE,), 5.0)
+        payload = READ_REQ.pack(track, side, revolutions, flags, period_ms) + (bytes([hard_sectors]) if hard_sectors else b"")
+        command = GUARDED_READ if guarded else READ
+        if guarded:
+            payload = struct.pack('<II', expected_config, expected_media) + payload
+        self.send(T_REQUEST, command, seq, payload)
+        f = self._wait(command, seq, (T_RESPONSE,), 5.0)
         if frame_sink is not None:
             frame_sink(f.encode())
         if f.status:
-            raise DeviceError(READ, f.status)
+            raise DeviceError(command, f.status)
         data = bytearray()
         while True:
             f = self._wait(READ, seq, (T_DATA, T_END), 2.0 + 0.4 * revolutions)

@@ -906,3 +906,21 @@ layout in `test_native_requests.py`. Host: `generation_block()`, `Capture.genera
 `WriteResult.generations`, READ END accepts >= 1 byte; FakeV2 appends the block with
 `config_gen`/`media_gen`/`capture_id` attributes. Protocol doc 4.5 (new subsection),
 command table rows 0x20/0x22, READ and WRITE bullets in 3.3.
+
+## Media-bound READ start — 2026-10-17
+
+UFT wish P1.4, same pattern as GUARDED_WRITE: GUARDED_READ 0x28 carries `expected_config,
+expected_media` (u32 each, nonzero) in front of the unchanged READ payload; a stale
+configuration answers 16, another or no medium 21, and nothing is sent before acceptance.
+After the capture start the medium is checked again and a change seen in between aborts
+the capture with 21, so a medium swapped between check and start never becomes the
+baseline. The reply carries 0x28, DATA and END stay 0x20 with the same sequence, the END
+carries the generation block. Discovery: op 25 is schema 2 with 20 bytes, bytes 16..19
+name read start 0x28, read data/end 0x20, prefix 8, reserved 0; schema 1 parsers keep the
+first 16 bytes. Native tests: guarded start rejections, prefix-only request, READ flag
+check behind the prefix, seek failure, abort on a change after the start
+(`test_native_requests.py`), op 25 schema 2 (`test_analysis_job.py`). Host:
+`read_track(expected_config=, expected_media=)`, `guarded_starts()` (schema 1 and 2);
+new `GuardedDevice(FakeV2)` with `config_gen`, `media_gen`, `bump_media()`, op 25,
+0x27/0x28 checks and the accepted-start counter, for UFT's bridge. Protocol doc 4.5
+(discovery schema 2, GUARDED_READ), command table row 0x28.

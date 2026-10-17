@@ -21,9 +21,39 @@ static void ufi_stream_begin_v2(uint8_t seq){(void)seq;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t rev,uint32_t period,uint8_t quarter){
     (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;return start_error;
 }
+/* GUARDED_READ doubles: configuration generation, media token, capture abort */
+static uint32_t get32(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+static uint32_t config_gen=5,media_gen=9,media_after_start;
+static unsigned aborts;
+static uint32_t ufi_config_generation(void){return config_gen;}
+static bool ufi_drive_media_matches(uint32_t t){return t==media_gen;}
+static int ufi_capture_abort(void){aborts++;return 0;}
+enum {CAPTURE_IDLE,CAPTURE_RUNNING};
+static struct {int state;} g_capture;
 '''
-    code += function('ufi_v2.c', 'cmd_read') + r'''
+    code += function('ufi_v2.c', 'cmd_read')
+    # the guarded start must see the medium "change" right after the capture start
+    code += function('ufi_v2.c', 'cmd_guarded_read').replace(
+        "const int ret = cmd_read(seq, p + 8, (uint16_t)(len - 8u));",
+        "const int ret = cmd_read(seq, p + 8, (uint16_t)(len - 8u)); if(media_after_start)media_gen=media_after_start;")
+    code += r'''
+static void guarded_checks(void){
+    uint8_t q[19]={0};q[8]=0;q[9]=0;q[10]=2;         /* READ payload: track 0, side 0, 2 revs */
+    unsigned before=starts;op_read=false;
+    assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before);          /* config 0 */
+    q[0]=4;q[4]=9;assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before);   /* stale config */
+    q[0]=5;q[4]=8;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before); /* other medium */
+    q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
+    q[4]=9;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before);            /* prefix only */
+    assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
+    op_read=false;q[11]=9;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1); /* READ flags still checked */
+    q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
+    media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
+    assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
+    media_after_start=0;media_gen=9;starts=0;op_read=false;   /* the plain READ checks count from zero */
+}
 int main(void){
+    guarded_checks();
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;

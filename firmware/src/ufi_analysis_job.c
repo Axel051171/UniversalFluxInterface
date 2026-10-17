@@ -400,9 +400,12 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
        ((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18) && n>1) || p[0]==16))return UFI_ERR_BUSY;
     if(p[0]==0 && n==1){*size=capabilities(out);return UFI_OK;}
     if(p[0]==25 && n==1){
-        memset(out,0,16);out[0]=1;out[1]=0x27;out[2]=0x22;out[3]=8;
+        /* Media-bound starts (4.5), schema 2: write start 0x27 (data/end 0x22), then
+         * read start 0x28 (data/end 0x20); both with an 8-byte generation prefix. */
+        memset(out,0,20);out[0]=2;out[1]=0x27;out[2]=0x22;out[3]=8;
         wr(out+4,3);wr(out+8,ufi_config_generation());wr(out+12,ufi_drive_media_token());
-        *size=16;return UFI_OK;
+        out[16]=0x28;out[17]=0x20;out[18]=8;
+        *size=20;return UFI_OK;
     }
     if(p[0]==22 && n==1){
         uint8_t port[24];ufi_drive_port_report(port);

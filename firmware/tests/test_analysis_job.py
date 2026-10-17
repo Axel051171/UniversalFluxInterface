@@ -138,7 +138,8 @@ int main(void){
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;
-    uint8_t write_guard=25;assert(!ufi_analysis_command(&write_guard,1,out,&size) && size==16 && out[1]==0x27 && out[2]==0x22 && rd(out+4)==3);
+    uint8_t write_guard=25;assert(!ufi_analysis_command(&write_guard,1,out,&size) && size==20 && out[0]==2 && out[1]==0x27 && out[2]==0x22 && out[3]==8 && rd(out+4)==3);
+    assert(rd(out+8)==ufi_config_generation() && rd(out+12)==media_token && out[16]==0x28 && out[17]==0x20 && out[18]==8 && !out[19]);
     busy=true;assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BUSY);busy=false;
     integrity=true;assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BUSY);integrity=false;
     assert(!ufi_analysis_command(media_guarded,42,out,&size) && size==64 && out[1]==A_CAPTURE);

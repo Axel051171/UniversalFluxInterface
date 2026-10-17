@@ -84,6 +84,7 @@ enum {
     V2_INDEX_SIM = 0x1D, V2_SET_RPM = 0x1E, V2_STEP_SCHEDULE = 0x1F,
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25, V2_FORMAT = 0x26,
     V2_GUARDED_WRITE = 0x27,
+    V2_GUARDED_READ = 0x28,             /* 1.18: media-bound READ start (4.5), DATA/END on 0x20 */
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34, V2_IEC_BLOCK = 0x35,
     V2_IEC_TARGET = 0x36, V2_IEC_READ_STATUS = 0x37,
@@ -487,6 +488,25 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         read_seq = seq;
         ufi_stream_begin_v2(seq);           /* DATA frames follow the reply */
     } else ufi_flux_hard_sectors(previous[4]);
+    return ret;
+}
+
+/* GUARDED_READ 0x28 (4.5): expected_config u32, expected_media u32, then the unchanged
+ * READ payload.  16 = stale configuration, 21 = other/no medium; no DATA before acceptance.
+ * The reply carries 0x28, DATA/END keep 0x20 with the same sequence number. */
+static int cmd_guarded_read(uint8_t seq, const uint8_t* p, uint16_t len)
+{
+    if (len < 11u || !get32(p) || get32(p) != ufi_config_generation()) return UFI_ERR_BAD_ARGS;
+    if (!get32(p + 4) || !ufi_drive_media_matches(get32(p + 4))) return UFI_ERR_MEDIA_CHANGED;
+    const int ret = cmd_read(seq, p + 8, (uint16_t)(len - 8u));
+    /* The capture start samples the media too: a change line asserted between the first
+     * check and the start must not become the new baseline. */
+    if (!ret && !ufi_drive_media_matches(get32(p + 4))) {
+        ufi_capture_abort();
+        g_capture.state = CAPTURE_IDLE;
+        op_read = false;
+        return UFI_ERR_MEDIA_CHANGED;
+    }
     return ret;
 }
 
@@ -925,6 +945,9 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         /* ---- flux ---- */
         case UFI_V2_READ:
             ret = cmd_read(seq, p, len);
+            break;
+        case V2_GUARDED_READ:
+            ret = cmd_guarded_read(seq, p, len);
             break;
         case V2_ABORT: {                    /* the running operation ends with status 4 */
             if(iec_reset_pending) {

@@ -409,6 +409,62 @@ class FakeV2:
             r(P2.UNKNOWN_COMMAND)
 
 
+class GuardedDevice(FakeV2):
+    """FakeV2 plus the media-bound starts of 4.5: op 25 discovery (schema 2, 20 bytes),
+    GUARDED_WRITE 0x27 and GUARDED_READ 0x28 check `config_gen` / `media_gen` (16 stale
+    configuration, 21 other medium) and then behave like WRITE / READ with DATA and END on
+    0x22 / 0x20.  bump_media() simulates a disk change between requests (a bridge calls it
+    after the N-th accepted guarded start); `guarded_starts` counts the accepted ones.
+    Same constructor arguments as FakeV2."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.guarded_starts = 0
+
+    def bump_media(self):
+        self.media_gen += 1
+
+    def _handle(self, f: P2.Frame):
+        if f.type == P2.T_REQUEST and f.cmd == P2.ANALYSIS_JOB and f.payload == bytes([25]):
+            self.requests.append(f)
+            self._frame(P2.T_RESPONSE, f.cmd, f.seq, 0,
+                        bytes([2, 0x27, 0x22, 8]) + struct.pack("<III", 3, self.config_gen, self.media_gen)
+                        + bytes([0x28, 0x20, 8, 0]))
+            return
+        if f.type == P2.T_REQUEST and f.cmd in (P2.GUARDED_WRITE, P2.GUARDED_READ):
+            inner = P2.WRITE if f.cmd == P2.GUARDED_WRITE else P2.READ
+            if self.soft_locked and inner == P2.WRITE:
+                self.requests.append(f)
+                self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.SOFT_WRITE_LOCK)
+                return
+            if len(f.payload) < 8:
+                self.requests.append(f)
+                self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.BAD_ARGS)
+                return
+            config, media = struct.unpack_from("<II", f.payload)
+            if config != self.config_gen:
+                self.requests.append(f)
+                self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.BAD_ARGS)
+                return
+            if media != self.media_gen:
+                self.requests.append(f)
+                self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.MEDIA_CHANGED)
+                return
+            self.guarded_starts += 1
+            # accepted: the plain handler runs, its response is re-labelled with the guarded command
+            mark = len(self.out)
+            super()._handle(P2.Frame(f.type, inner, f.seq, f.status, f.payload[8:]))
+            self.requests[-1] = f                            # log the guarded request, not the inner one
+            reply = P2.FrameParser().feed(bytes(self.out[mark:]))
+            self.out = self.out[:mark]
+            for r in reply:
+                if r.type == P2.T_RESPONSE and r.cmd == inner:
+                    r = P2.Frame(r.type, f.cmd, r.seq, r.status, r.payload)
+                self.out += P2.encode_frame(r.type, r.cmd, r.seq, r.status, r.payload)
+            return
+        super()._handle(f)
+
+
 REVS = [(55_000_000, [1100, 2200, 3300, 3300 + 4000, 3300 + 900_000]),
         (55_000_100, [1000, 2000, 2000 + 0xEF + 7])]
 
@@ -933,6 +989,39 @@ def test_end_generation_block():
     assert P2.generation_block(b"\x03", 1) is None
     raw = bytes([2]) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 9)
     assert P2.generation_block(raw, 1)["capture_id"] == 9
+
+
+def test_guarded_read_and_discovery():
+    """4.5: op 25 schema 2 names 0x27/0x22 and 0x28/0x20; GUARDED_READ refuses a stale configuration (16)
+    or another medium (21) before any DATA frame, accepts with the reply on 0x28 and DATA/END on 0x20."""
+    import pytest
+    fake = GuardedDevice(revolutions=REVS)
+    dev = P2.Device2(fake)
+    starts = dev.guarded_starts()
+    assert starts == {"schema": 2, "write_start": 0x27, "write_data": 0x22, "prefix": 8, "check_mask": 3,
+                      "config_generation": 7, "media_generation": 42, "read_start": 0x28, "read_data": 0x20}
+    cap = dev.read_track(0, 0, 2, expected_config=starts["config_generation"], expected_media=starts["media_generation"])
+    req = fake.requests[-1]
+    assert req.cmd == P2.GUARDED_READ and req.payload[:8] == struct.pack("<II", 7, 42) and req.payload[8:] == P2.READ_REQ.pack(0, 0, 2, 0, 0)
+    assert len(cap.revolutions) == 2 and cap.generations["media_generation_start"] == 42 and fake.guarded_starts == 1
+    with pytest.raises(P2.DeviceError) as e:
+        dev.read_track(0, 0, 2, expected_config=6, expected_media=42)
+    assert e.value.status == P2.BAD_ARGS and e.value.command == P2.GUARDED_READ
+    fake.bump_media()                                        # the bridge's media change between requests
+    with pytest.raises(P2.DeviceError) as e:
+        dev.read_track(0, 0, 2, expected_config=7, expected_media=42)
+    assert e.value.status == P2.MEDIA_CHANGED and fake.guarded_starts == 1
+    assert len(dev.read_track(0, 0, 1, expected_config=7, expected_media=43).revolutions) == 1
+    with pytest.raises(ValueError):
+        dev.read_track(0, 0, 1, expected_config=7)          # both generations or none
+    r = dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=43)
+    assert r.verify_level == 1 and r.generations["media_generation_start"] == 43 and fake.guarded_starts == 3
+    with pytest.raises(P2.DeviceError) as e:
+        dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
+    assert e.value.status == P2.MEDIA_CHANGED and e.value.command == P2.GUARDED_WRITE
+    with pytest.raises(P2.DeviceError):
+        P2.Device2(FakeV2(revolutions=REVS)).guarded_starts()   # the plain fake has no op 25
+    assert len(dev.read_track(0, 0, 1).revolutions) == 1        # an unguarded READ still works on the guarded fake
 
 
 def test_apple_gcr_stats(monkeypatch, capsys):
