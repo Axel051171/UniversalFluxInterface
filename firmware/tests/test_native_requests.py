@@ -99,6 +99,32 @@ int main(void){
 '''
     run('regression_session_write_lock', code)
 
+    # END generation block (4.5): schema 1, configuration generation, media generation the
+    # operation was bound to, media generation now, capture id; 17 bytes little endian.
+    code = BASE + ERRORS + r'''
+#define UFI_V2_GEN_BLOCK 17u
+static uint32_t config_gen=0x01020304u,media_now=0x0a0b0c0du;
+static uint32_t ufi_config_generation(void){return config_gen;}
+static uint32_t ufi_drive_media_token(void){return media_now;}
+'''
+    # put16 is a one-line helper: the extractor runs on to the next line-start brace and
+    # brings put32/get16/get32/st along, so only put16 is named here.
+    for name in ('put16','ufi_v2_generations'):
+        code += function('ufi_v2.c', name)
+    code += r'''
+int main(void){
+    uint8_t out[24];memset(out,0xee,sizeof out);
+    assert(st(-22)==22 && get32(out)==0xeeeeeeeeu);         /* helpers dragged in by put16 */
+    assert(ufi_v2_generations(out,0x11223344u,0x55667788u)==17);
+    static const uint8_t want[17]={1,4,3,2,1,0x44,0x33,0x22,0x11,0x0d,0x0c,0x0b,0x0a,0x88,0x77,0x66,0x55};
+    assert(!memcmp(out,want,17) && out[17]==0xee);
+    media_now=0x11223344u;ufi_v2_generations(out,0x11223344u,0);
+    assert(!memcmp(out+5,out+9,4) && !out[13] && !out[14] && !out[15] && !out[16]);
+    puts("END generation block: layout, bound vs current medium, capture id passed");
+}
+'''
+    run('regression_generation_block', code)
+
 
 if __name__ == '__main__':
     main()

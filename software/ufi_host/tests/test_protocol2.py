@@ -90,6 +90,9 @@ class FakeV2:
         self.caps = self.CAPS_1_18 if caps is None else caps
         self.dos_errors: dict[tuple[int, int], int] = {}
         self.soft_locked = False        # session write lock (op 37): engage-only, status 22 on disk/drive writes
+        self.config_gen = 7             # generation block in READ/WRITE END (4.5): configuration generation
+        self.media_gen = 42             # ... media generation (start and end are equal unless bumped mid-run)
+        self.capture_id = 0x1234        # ... capture id reported by READ END (0 for WRITE)
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -132,6 +135,10 @@ class FakeV2:
             self._evseq = (self._evseq + 1) & 0xFF
             self._frame(P2.T_EVENT, code, self._evseq, 0, payload)
 
+    def _gen_block(self, capture_id):
+        """Generation block firmware 1.18 appends to READ/WRITE END (4.5): schema 1, config, media start, media end, capture id."""
+        return P2.GEN_BLOCK.pack(1, self.config_gen, self.media_gen, self.media_gen, capture_id)
+
     @staticmethod
     def _locked_write(cmd, a):
         """Requests the session write lock refuses (4.6): disk writes, SD-to-disk starts and IEC drive writes."""
@@ -170,7 +177,8 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
-                self._frame(P2.T_END, P2.WRITE, f.seq, 0, struct.pack("<BI", 2 if self.write_req[3] & 1 else 1, 3 if self.write_req[3] & P2.WRITE_CLAMP else 0))
+                self._frame(P2.T_END, P2.WRITE, f.seq, 0, struct.pack("<BI", 2 if self.write_req[3] & 1 else 1, 3 if self.write_req[3] & P2.WRITE_CLAMP else 0)
+                            + self._gen_block(0))
                 self.write_req = None
             return
         assert f.type == P2.T_REQUEST and f.status == 0
@@ -353,7 +361,7 @@ class FakeV2:
             data = encode_stream(self.revs[:revs])
             for k in range(0, len(data), self.data_chunk):
                 self._frame(P2.T_DATA, cmd, seq, 0, data[k:k + self.data_chunk])
-            self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]))
+            self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id))
         elif cmd == P2.WRITE:
             self.write_req = (seq, *struct.unpack_from("<II", a, 3), a[2])
             self.write_code = bytearray()
@@ -905,6 +913,26 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_end_generation_block():
+    """4.5: READ/WRITE END carry schema 1, config, media start/end and capture id behind the old payload;
+    old one-byte / five-byte END frames still parse (generations None)."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    cap = dev.read_track(0, 0, 2)
+    assert len(cap.revolutions) == 2 and cap.generations == {
+        "config_generation": 7, "media_generation_start": 42, "media_generation_end": 42, "capture_id": 0x1234}
+    fake.media_gen = 43                                      # a later capture binds to the new medium
+    assert dev.read_track(0, 0, 1).generations["media_generation_start"] == 43
+    r = dev.write_track(3, 1, [1100] * 2000)
+    assert r.verify_level == 1 and r.generations == {
+        "config_generation": 7, "media_generation_start": 43, "media_generation_end": 43, "capture_id": 0}
+    assert P2.WriteResult.unpack(struct.pack("<BI", 1, 0)).generations is None          # firmware 1.15 END
+    assert P2.generation_block(bytes([3]) + P2.GEN_BLOCK.pack(2, 1, 1, 1, 0), 1) is None  # unknown schema
+    assert P2.generation_block(b"\x03", 1) is None
+    raw = bytes([2]) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 9)
+    assert P2.generation_block(raw, 1)["capture_id"] == 9
 
 
 def test_apple_gcr_stats(monkeypatch, capsys):

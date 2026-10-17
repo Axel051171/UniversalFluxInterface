@@ -16,6 +16,12 @@
  * ============================================================================ */
 
 capture_context_t g_capture;
+static uint32_t capture_media_token;    /* media generation the running/last capture was bound to */
+
+uint32_t ufi_capture_media_token(void)
+{
+    return capture_media_token;
+}
 
 /* Single main-loop owner of the shared drive/store. ISR callbacks only publish state. */
 bool ufi_operation_busy(void)
@@ -144,6 +150,7 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
     }
     int side_ret=ufi_drive_select_side(side);if(side_ret)return side_ret;
     if(!ufi_drive_media_matches(media_token))return UFI_ERR_MEDIA_CHANGED;
+    capture_media_token=media_token;        /* READ END generation block (4.5) */
 
     g_capture.current_track = track;
     g_capture.current_side = side;

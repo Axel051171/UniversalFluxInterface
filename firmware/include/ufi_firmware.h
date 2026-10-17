@@ -603,6 +603,10 @@ int ufi_write_local_checked(uint8_t track,uint8_t side,uint32_t count,bool exten
 int ufi_write_local_gw(uint8_t track, uint8_t side, uint32_t flux_count,
                        bool cue_index, bool terminate_index, uint16_t pre_us);
 void ufi_write_result_payload(uint8_t out[5]);  // WRITE END payload: verify level u8, clamped u32 (1.15)
+uint32_t ufi_write_media_token(void);           // media generation the native WRITE was bound to (END block, 1.18)
+uint32_t ufi_capture_media_token(void);         // media generation the capture was bound to (ufi_main.c, END block)
+#define UFI_V2_GEN_BLOCK 17u                    // END generation block: schema u8, config/media start/media end/capture id u32
+uint16_t ufi_v2_generations(uint8_t* out, uint32_t media_start, uint32_t capture_id);  // ufi_v2.c, writes UFI_V2_GEN_BLOCK bytes
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
 

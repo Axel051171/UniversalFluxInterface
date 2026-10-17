@@ -325,6 +325,11 @@ void ufi_write_result_payload(uint8_t out[5]) {
     memcpy(&out[1], &g_write.clamped, 4);
 }
 
+/* Media generation the current/last native WRITE was bound to (END generation block, 4.5) */
+uint32_t ufi_write_media_token(void) {
+    return write_media_token;
+}
+
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
  * markers are not allowed), decoded on arrival into the same u32 delta buffer */
 int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,

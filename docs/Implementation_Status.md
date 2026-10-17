@@ -890,3 +890,19 @@ state and the exhaustive refusal predicate in `test_native_requests.py`, the sta
 in the write regression. Host: `write_lock(engage=)`, `ufi write-lock [engage]`,
 `BoardStatus.session_locked`, status text 22; FakeV2 models op 37, bit7 and the
 refusals. Protocol doc 4.6, status table, op table, board_status flags.
+
+## Generation block in READ/WRITE END frames — 2026-10-17
+
+UFT wish P1.3. Behind the existing END payload of READ 0x20 (`revs`) and WRITE 0x22
+(`verify_level`, `clamped`; also after a GUARDED_WRITE start) the firmware appends 17
+bytes: schema 1, configuration generation, the media generation the operation was bound
+to at its start, the media generation at the END frame, and the capture id op 8 / the
+quality report use (0 for WRITE). READ END is 18 bytes, WRITE END 22; old parsers keep
+reading the front. The capture start keeps its bound token (`ufi_capture_media_token()`),
+the write path exposes its own (`ufi_write_media_token()`), `ufi_v2_generations()` packs
+the block and the job trailer buffer grew to hold it; the READ end after ABORT now goes
+through `ufi_usb_send_read_done()` so it carries the block too. Native test of the block
+layout in `test_native_requests.py`. Host: `generation_block()`, `Capture.generations`,
+`WriteResult.generations`, READ END accepts >= 1 byte; FakeV2 appends the block with
+`config_gen`/`media_gen`/`capture_id` attributes. Protocol doc 4.5 (new subsection),
+command table rows 0x20/0x22, READ and WRITE bullets in 3.3.

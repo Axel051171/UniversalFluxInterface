@@ -92,6 +92,8 @@ class Revolution:
 class Capture:
     revolutions: list[Revolution] = field(default_factory=list)
     status: int = 0                  # READ_DONE status (10 = store full, fewer revs)
+    generations: dict | None = None  # v2 END generation block (firmware 1.18): config_generation,
+                                     # media_generation_start/_end, capture_id; None on older firmware
 
 
 def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01) -> list[Revolution]:

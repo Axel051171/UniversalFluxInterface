@@ -448,10 +448,9 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8 |
-| 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.20 |
-| 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer für Firmware-Prüflesen), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32 (Abschnitt 5.2) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) |
+| 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 || 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer für Firmware-Prüflesen), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32 (Abschnitt 5.2) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -547,11 +546,11 @@ fehl, endet WRITE mit Status 3.
 - **Zeitüberschreitung:** Kommt eine Antwort nicht (z. B. wegen CRC-Fehler verworfen), wartet der Host 1 s (Lesen/Schreiben: bis zum Ende-Rahmen, Zeitlimit großzügig) und setzt dann den Kanal zurück (10000 Baud). Eine Antwort mit `cmd=0xFF, seq=0, status=14` gehört zur gerade offenen Anfrage.
 - **INFO:** `store_bytes` = Größe des Flussspeichers (8 MB PSRAM, sonst interner Ersatzpuffer), nicht der SD-NAND (dafür SD_INFO). Der Text danach ist ASCII, Zeilen durch `\n` getrennt, ohne abschließendes Nullbyte: Name/Version, Git-Stand, Build-Datum, PSRAM-Ergebnis, ab 1.14 die Reset-Ursache (`reset: …`).
 - **board_status (8 Byte):** `power` u8 (Bit0 FDD_5V an, Bit1 FDD_12V an), `flags` u8 (Bit0 WRITE-LOCK gesteckt, Bit1/2 Überstrom 5 V/12 V ausgelöst, Bit3 SD-NAND bereit, Bit4/5 Taster A/B gedrückt, Bit6 Sicherheitsmodus, Bit7 Sitzungs-Schreibsperre aktiv, Abschnitt 4.6, 1.18), `i5_ma` u16, `i12_ma` u16, `board_id_mv` u16.
-- **READ:** `revs` 1…200. Der Ende-Rahmen ist maßgeblich: Nur so viele Umdrehungen gelten, wie er meldet (bei Überlauf können `FD`-Marken fehlen oder überzählig sein). Ende-Status 4 = kein Index **oder** per ABORT abgebrochen; 10 = Überlauf (Host las zu langsam).
+- **READ:** `revs` 1…200. Der Ende-Rahmen ist maßgeblich: Nur so viele Umdrehungen gelten, wie er meldet (bei Überlauf können `FD`-Marken fehlen oder überzählig sein). Ende-Status 4 = kein Index **oder** per ABORT abgebrochen; 10 = Überlauf (Host las zu langsam). Ab 1.18 folgt hinter `revs` der 17-Byte-Generationsblock (4.5); alte Parser lesen weiter nur Byte 0, neue prüfen `len ≥ 18`.
 - **WRITE_LIMITS (1.15):** reine Abfrage (auch während eines Dumps), Nutzdaten müssen leer sein (sonst 16). Der Host (`ufi write`, `write-disk`) holt die Grenzen einmal je Verbindung und weist Aufträge lokal ab, die die Firmware mit Status 10 oder 18 ablehnen würde – mit Spur, Index und Wert; mit Kappen-Flag entfällt die Intervallprüfung. Ältere Firmware ohne Bit 14: keine Vorprüfung.
 - **WRITE Index während des Schreibens (1.15):** Kommt der nächste Indeximpuls, bevor die letzte Periode ausgegeben ist, fällt das Schreibtor sofort und der Auftrag endet mit Status 19 (zuvor galt dieser Sicherheitsstopp als Erfolg). Die Spur war länger als eine Umdrehung; Abhilfe: Zeitskala < 1 oder weniger Flusswechsel.
 - **WRITE Bereichsprüfung (1.15):** Nach Zeitskala und Präkompensation muss jede Periode 440…65 536 Takte (1,6…238 µs) betragen. Liegt eine außerhalb, wird der Auftrag **vor** Kopfbewegung und Schreibtor mit Ende-Status 18 abgewiesen; nichts auf der Diskette ändert sich. Mit `flags` Bit4 werden solche Perioden stattdessen auf die Grenze gesetzt, und der Ende-Rahmen meldet ihre Zahl in `clamped`. Firmware ≤ 1.14 kappte still. Diese Grenzen gelten für den klassischen nativen Pfad. GW und WRITE-Bit5 verwenden den erweiterten Pfad und weisen unzulässige Daten vor WGATE ab.
-- **WRITE Ende-Nutzdaten (1.15):** `verify_level` u8: 0 keine Aussage, 1 Schreiben abgeschlossen (Timer/DMA ohne Fehler), 2 Rücklesen plausibel (nur Zahl der Flusswechsel ±5 %), 3 Inhalt geprüft, 4 nicht prüfbar; `clamped` u32. Stufe 3: Die Firmware dekodiert vor dem Rücklesen die gepackte Spur selbst (IBM-MFM, sonst Amiga; Datenrate 250/300/500/1000 kbit/s aus dem kürzesten häufigen Abstand) und merkt sich Sektorkennung, Größencode und CRC-32 der Datenbytes (128 << N, bis 64 Sektoren; Firmware 1.15–1.16 prüfte stets 512 Byte, bei 1024-Byte-Sektoren also nur die erste Hälfte). Dann liest sie zwei Umdrehungen zurück: Alle Referenzsektoren wieder mit gültiger CRC und gleichen Daten gefunden → 3 (Jitter stört nicht, die Zahl der Flusswechsel ist dann unerheblich); ein fehlender oder veränderter Sektor → Ende-Status 6. Spuren ohne dekodierbare Sektoren (GCR, Schutzspuren, nur Flux) erhalten höchstens Stufe 2 (Zahl der Flusswechsel ±5 %, mindestens 100), sonst Status 6 – „verifiziert“ heißt das nicht. Der Ende-Rahmen trägt die Nutzdaten auch bei Fehlerstatus; Firmware ≤ 1.14 sendet keine.
+- **WRITE Ende-Nutzdaten (1.15):** `verify_level` u8: 0 keine Aussage, 1 Schreiben abgeschlossen (Timer/DMA ohne Fehler), 2 Rücklesen plausibel (nur Zahl der Flusswechsel ±5 %), 3 Inhalt geprüft, 4 nicht prüfbar; `clamped` u32. Stufe 3: Die Firmware dekodiert vor dem Rücklesen die gepackte Spur selbst (IBM-MFM, sonst Amiga; Datenrate 250/300/500/1000 kbit/s aus dem kürzesten häufigen Abstand) und merkt sich Sektorkennung, Größencode und CRC-32 der Datenbytes (128 << N, bis 64 Sektoren; Firmware 1.15–1.16 prüfte stets 512 Byte, bei 1024-Byte-Sektoren also nur die erste Hälfte). Dann liest sie zwei Umdrehungen zurück: Alle Referenzsektoren wieder mit gültiger CRC und gleichen Daten gefunden → 3 (Jitter stört nicht, die Zahl der Flusswechsel ist dann unerheblich); ein fehlender oder veränderter Sektor → Ende-Status 6. Spuren ohne dekodierbare Sektoren (GCR, Schutzspuren, nur Flux) erhalten höchstens Stufe 2 (Zahl der Flusswechsel ±5 %, mindestens 100), sonst Status 6 – „verifiziert“ heißt das nicht. Der Ende-Rahmen trägt die Nutzdaten auch bei Fehlerstatus; Firmware ≤ 1.14 sendet keine. Ab 1.18 folgt hinter `clamped` der 17-Byte-Generationsblock (4.5), auch nach einem Start über GUARDED_WRITE 0x27; alte Parser lesen weiter Byte 0 und 1–4.
 - **WRITE Zeitskala (Bit3, 1.14):** Die Firmware multipliziert jeden Flussabstand mit `scale`/1000 (Rest wird mitgeführt, kein Drift), bevor Präkompensation und Grenzen greifen. Damit lassen sich Abbilder mit anderer Drehzahl auf einem Laufwerk mit fester Drehzahl schreiben (Faktor = Drehzahl der Quelle / Drehzahl des Ziels, z. B. 360-U/min-Abbild auf 300-U/min-Laufwerk: 1,2) und die Zonen von Macintosh-400K/800K-Disketten (variable Drehzahl) auf einem PC-Laufwerk nachbilden (Faktor je Spurzone). Außerhalb 0,5…2,0 Status 16.
 - **WRITE-Daten (1.15):** Zulässig sind nur die Codes `01…EF`, `F0…FC b` und `FE u32` (u32 ≠ 0); `00`, `FD` (Indexmarke) und `FF` sowie mehr Übergänge als `flux_count` beenden den Auftrag **sofort** mit Ende-Status 10, weitere Daten-Rahmen dieser seq werden verworfen (Firmware ≤ 1.14 sammelte danach weiter und konnte dabei Speicher überschreiben). `flux_count` ist nur durch den Flussspeicher begrenzt (Status 10 in der Annahme-Antwort): Die Firmware spielt die Perioden aus einem Ring von zwei 2048er-Hälften in SRAM2, den die DMA-Halb-/Vollinterrupts aus der gepackten Spur nachladen (ein DMA-Transfer kann höchstens 65 535 Perioden; Firmware ≤ 1.14 übergab längere Spuren trotzdem einem einzigen Transfer und schnitt sie damit ab). Der Stopp nach der letzten Periode wird gegen den DMA-Zähler ausgezählt; kommt ein Nachladen zu spät (Unterlauf), endet der Auftrag mit Status 6 und das Schreibtor fällt sofort ab.
 - **WRITE:** Der Host wartet die Annahme-Antwort ab und sendet erst dann die Daten-Rahmen (je ≤ 4096 Byte Nutzdaten, beliebig aufgeteilt, zusammen genau `byte_count`). Ende-Status: 0 OK, 12 schreibgeschützt, 4 kein Index (Laufwerk mit Index), 6 Prüflesen fehlgeschlagen (`flags` Bit0), 10 Daten fehlerhaft/zu viele Wechsel.
@@ -1189,6 +1188,33 @@ und löschen keinen vorhandenen Prüfbericht mehr. Die Fähigkeitsmatrix meldet
 BUSY auch bei einer noch gehaltenen Greaseweazle-Ressource. Diese Korrekturen
 und Erweiterungen benötigen **keine zusätzlichen Flags**; Greaseweazle-Wireformat
 und die bisherigen gültigen WRITE-Anfragen bleiben unverändert.
+
+#### Generationsblock in den Ende-Rahmen (1.18-dev)
+
+Damit ein Bericht belegen kann, dass eine Spur von **einem** Medium stammt, auch wenn kein
+geschützter Start (0x27, 0x28, Op 26) benutzt wurde, hängt die Firmware hinter die
+bisherigen Ende-Nutzdaten von READ 0x20 (`revs` u8) und WRITE 0x22 (`verify_level` u8,
+`clamped` u32; ebenso nach einem Start über 0x27) denselben 17-Byte-Block:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u32 | Konfigurationsgeneration (Op 23) zum Zeitpunkt des Ende-Rahmens |
+| 5 | u32 | Mediengeneration, an die die Operation beim Start gebunden wurde |
+| 9 | u32 | Mediengeneration zum Zeitpunkt des Ende-Rahmens |
+| 13 | u32 | Capture-ID der Aufnahme (dieselbe wie Op 8 / Qualitätsbericht); 0 bei WRITE |
+
+Die Ende-Nutzdaten sind damit 18 Byte (READ) beziehungsweise 22 Byte (WRITE) lang; die
+alten Felder stehen unverändert vorn, alte Parser lesen weiter nur sie. Der Block steht
+auch in Ende-Rahmen mit Fehlerstatus, soweit diese bisher Nutzdaten trugen (READ-Ende nach
+ABORT trägt `revs` = 0 plus Block; WRITE-Ende mit 16/10/5/20 ohne Nutzdaten bleibt leer).
+Start- und Endgeneration sind bei einem fehlerfreien Lauf gleich, weil ein erkannter
+Wechsel die Operation mit Status 21 beendet; eine Differenz ist nur bei Status 21 oder
+bei einem Wechsel nach dem letzten Prüfpunkt sichtbar. Der Block ersetzt Op 16 nicht:
+ohne auswertbares Wechselsignal bleibt die Generation gleich, obwohl die Diskette
+getauscht wurde. Host: `Capture.generations`, `WriteResult.generations` (Wörterbuch mit
+`config_generation`, `media_generation_start`, `media_generation_end`, `capture_id`;
+`None` bei älterer Firmware).
 
 ### 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
 

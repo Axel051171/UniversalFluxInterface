@@ -315,6 +315,20 @@ static void rx_resume_if_room(void)
  * END FRAMES / EVENTS
  * ============================================================================ */
 
+/* Generation block appended to READ/WRITE END payloads (4.5, 1.18): schema 1, the
+ * configuration generation, the media generation the operation was bound to at its
+ * start, the media generation now, and the capture id (0 for WRITE).  A report can
+ * prove the track came from one medium even when no guarded start was used. */
+uint16_t ufi_v2_generations(uint8_t* out, uint32_t media_start, uint32_t capture_id)
+{
+    out[0] = 1;
+    put32(out + 1, ufi_config_generation());
+    put32(out + 5, media_start);
+    put32(out + 9, ufi_drive_media_token());
+    put32(out + 13, capture_id);
+    return UFI_V2_GEN_BLOCK;
+}
+
 bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
 {
     bool* op = (cmd == UFI_V2_READ) ? &op_read : &op_write;
@@ -326,7 +340,7 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
         result = UFI_ERR_DMA;           /* verify capture timed out: verify failed (6) */
     }
     if (ufi_job_live()) {
-        uint8_t end[32];
+        uint8_t end[64];                /* 20-byte job trailer + END payload (WRITE: up to 26) */
         put32(end,(uint32_t)ufi_job.id); put32(end+4,(uint32_t)(ufi_job.id>>32));
         put32(end+8,ufi_job.packets); put32(end+12,ufi_job.bytes); put32(end+16,ufi_job.crc);
         if (len>sizeof(end)-20u) len=sizeof(end)-20u;
@@ -927,8 +941,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             }
             send(UFI_V2_REPLY, cmd, seq, 0, NULL, 0);
             if (r) {
-                const uint8_t revs = 0;
-                ufi_v2_end(UFI_V2_READ, UFI_ERR_NO_INDEX, &revs, 1);
+                ufi_usb_send_read_done(UFI_ERR_NO_INDEX, 0);   /* revs 0 + generation block */
             }
             if (w) {
                 ufi_v2_end(UFI_V2_WRITE, UFI_ERR_NO_INDEX, NULL, 0);

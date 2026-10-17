@@ -441,14 +441,31 @@ class OperatingProfile:
                                 self.rpm_line, self.rpm_360_low, self.rpm, 0)
 
 
+GEN_BLOCK = struct.Struct("<BIIII")     # END generation block (4.5, 1.18): schema 1, config, media start, media end, capture id
+
+
+def generation_block(payload: bytes, offset: int) -> dict | None:
+    """Decode the generation block firmware 1.18 appends to READ/WRITE END payloads; None
+    when the frame is too short (older firmware) or carries an unknown schema."""
+    if len(payload) < offset + GEN_BLOCK.size:
+        return None
+    schema, config, start, end, capture = GEN_BLOCK.unpack_from(payload, offset)
+    if schema != 1:
+        return None
+    return {"config_generation": config, "media_generation_start": start,
+            "media_generation_end": end, "capture_id": capture}
+
+
 @dataclass
 class WriteResult:
-    """END frame of a WRITE (firmware 1.15; older firmware: level 0, clamped 0)."""
+    """END frame of a WRITE (firmware 1.15; older firmware: level 0, clamped 0).
+    generations: the 1.18 generation block (config, media at start and end, capture id 0)."""
     verify_level: int = 0
     clamped: int = 0
     host_verified_sectors: int = 0
     host_verified_format: str = "IBM MFM"
     readback_quality: dict | None = None
+    generations: dict | None = None
 
     @property
     def verify_text(self) -> str:
@@ -460,7 +477,7 @@ class WriteResult:
     def unpack(cls, b: bytes) -> "WriteResult":
         if len(b) < 5:
             return cls()
-        return cls(b[0], struct.unpack_from("<I", b, 1)[0])
+        return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5))
 
 
 @dataclass
@@ -1133,12 +1150,12 @@ class Device2:
             rflags = 0x01 | (0x02 if f.status == OVERFLOW else 0)
             revs = decode_stream(bytes(data), track, side, rflags)
             end = job.finish(f.payload) if job else f.payload
-            if len(end) != 1 or end[0] > len(revs) or end[0] > revolutions:
+            if len(end) < 1 or end[0] > len(revs) or end[0] > revolutions:
                 raise ValueError("invalid capture END count")
             if f.status == 0 and end[0] != revolutions:
                 raise ValueError("successful capture returned fewer revolutions than requested")
             revs = revs[:end[0]]
-            return Capture(revs, f.status)
+            return Capture(revs, f.status, generation_block(end, 1))
 
     def write_limits(self) -> WriteLimits:
         """Effective limits of the write backend (firmware 1.15, caps bit 14)."""

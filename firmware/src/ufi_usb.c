@@ -13,6 +13,7 @@
 #include "usbd_cdc_if.h"
 #include "usbd_msc.h"
 #include "ufi_text.h"
+#include "ufi_evidence.h"                /* evidence_id(): capture id in the READ END generation block */
 #include <string.h>
 
 extern USBD_StorageTypeDef ufi_msc_fops;    /* ufi_msc.c: SD NAND */
@@ -330,7 +331,13 @@ int ufi_usb_send_flux(flux_packet_header_t* header, flux_sample_t* data) {
 /* End of a capture: status = error code of the capture (0 = all revolutions);
  * a v2 READ ends with an END frame instead */
 int ufi_usb_send_read_done(int result, uint8_t revolutions) {
-    if (ufi_v2_end(UFI_V2_READ, result, &revolutions, 1)) {
+    /* v2 END: revs u8, then the generation block (4.5): schema, configuration
+     * generation, media generation at start and now, capture id of op 8 / quality.
+     * ufi_v2_end() declines when no v2 READ is open; the v1 message keeps one byte. */
+    uint8_t end[1 + UFI_V2_GEN_BLOCK];
+    end[0] = revolutions;
+    ufi_v2_generations(end + 1, ufi_capture_media_token(), evidence_id());
+    if (ufi_v2_end(UFI_V2_READ, result, end, sizeof(end))) {
         return UFI_OK;
     }
     return reply(UFI_EVT_READ_DONE, st(result), &revolutions, 1);
@@ -338,8 +345,9 @@ int ufi_usb_send_read_done(int result, uint8_t revolutions) {
 
 /* Unsolicited completion notice (write finished; a v2 WRITE ends with an END frame) */
 int ufi_usb_send_event(uint8_t command, int result) {
-    uint8_t res[5];
+    uint8_t res[5 + UFI_V2_GEN_BLOCK];
     ufi_write_result_payload(res);             /* verify level, clamped periods (1.15) */
+    ufi_v2_generations(res + 5, ufi_write_media_token(), 0);   /* generation block (4.5) */
     if (ufi_v2_end(UFI_V2_WRITE, result, res, sizeof(res))) {
         return UFI_OK;
     }
