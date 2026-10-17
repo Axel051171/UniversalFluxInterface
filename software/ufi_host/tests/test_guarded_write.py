@@ -1,22 +1,7 @@
 import struct
 import pytest
 from ufi_host import protocol2 as P2
-from test_protocol2 import FakeV2
-
-
-class GuardedDevice(FakeV2):
-    def _handle(self, f):
-        if f.type == P2.T_REQUEST and f.cmd == P2.GUARDED_WRITE:
-            self.requests.append(f)
-            config, media = struct.unpack_from('<II', f.payload)
-            status = 16 if config != 7 else 21 if media != 42 else 0
-            if not status:
-                _, _, flags, count, size = P2.WRITE_REQ.unpack(f.payload[8:19])
-                self.write_req = (f.seq, count, size, flags)
-                self.write_code.clear()
-            self._frame(P2.T_RESPONSE, f.cmd, f.seq, status)
-        else:
-            super()._handle(f)
+from test_protocol2 import FakeV2, GuardedDevice   # GuardedDevice: op 25, 0x27/0x28 with config_gen 7 / media_gen 42
 
 
 def test_guarded_write_uses_existing_stream():

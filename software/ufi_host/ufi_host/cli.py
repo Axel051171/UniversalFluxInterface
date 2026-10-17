@@ -650,6 +650,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--steps", metavar="SPEC", help=st_help)
     p.add_argument("--scale", type=float, default=1.0, metavar="FACTOR", help=sc_help)
     p.add_argument("--clamp", action="store_true", help=cl_help)
+    p.add_argument("--erase-rest", action="store_true",
+                   help="firmware >= 1.18: keep the gate on without transitions from the last interval to the next index, "
+                        "so nothing of the old track survives behind the new data (reported as erased ticks)")
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -775,7 +778,7 @@ def main(argv: list[str] | None = None) -> int:
             lim = dev.write_limits()
             print(f"schema {lim.schema}, flags 0x{lim.flags:02X}"
                   f" (content verify {'yes' if lim.flags & 1 else 'no'}, long tracks {'yes' if lim.flags & 2 else 'no'},"
-                  f" clamp flag {'yes' if lim.flags & 4 else 'no'})")
+                  f" clamp flag {'yes' if lim.flags & 4 else 'no'}, erase remainder {'yes' if lim.flags & 8 else 'no'})")
             print(f"clock {lim.sample_hz} Hz, max {lim.max_flux} intervals per track")
             print(f"interval {lim.min_ticks}..{lim.max_ticks} ticks = "
                   f"{lim.min_ticks / lim.sample_hz * 1e6:.2f}..{lim.max_ticks / lim.sample_hz * 1e6:.2f} us")
@@ -971,9 +974,10 @@ def main(argv: list[str] | None = None) -> int:
             r = dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
                                 hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
                                 clamp=a.clamp,
-                                **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000}
-                                   if isinstance(dev,P2.Device2) else {}))
-            print(_write_text(r, a.verify))
+                                **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000,
+                                    'erase_rest': a.erase_rest} if isinstance(dev,P2.Device2) else {}))
+            print(_write_text(r, a.verify) + (f", erased tail {r.erased_ticks / P.FLUX_CLOCK_HZ * 1e3:.1f} ms"
+                                              if getattr(r, "erased_ticks", 0) else ""))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
         elif a.cmd == "erase":

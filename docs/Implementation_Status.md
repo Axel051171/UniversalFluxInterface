@@ -924,3 +924,23 @@ check behind the prefix, seek failure, abort on a change after the start
 new `GuardedDevice(FakeV2)` with `config_gen`, `media_gen`, `bump_media()`, op 25,
 0x27/0x28 checks and the accepted-start counter, for UFT's bridge. Protocol doc 4.5
 (discovery schema 2, GUARDED_READ), command table row 0x28.
+
+## Erase the remainder of the track — 2026-10-17
+
+UFT wish P1.11. The WRITE flags byte is full (bit 7 = EXPECT_SET), so the option travels
+as one optional trailing `flags2` byte behind every flag-driven field, announced by
+WRITE_LIMITS flags bit 3; other flags2 bits are BAD_ARGS. With bit 0 the write path does
+not drop WGATE after the last interval: WDATA goes idle (the ERASE 0x23 signal), the timer
+and DMA stop, and the next index pulse finishes the write; the END payload carries
+`erased_ticks` u32 (flux-timer ticks from the last interval to the index, 0 without the
+option or when the index cut the track, status 19 as before) behind the generation block,
+26 bytes in all. Apple Disk II drives have no index on that path and answer NOT_IMPL; the
+GW path never sets the option; an abort during the tail releases the gate like any other.
+Native tests: the gate stays on through `end_of_data()`, the index closes it and reports
+the tail, abort during the tail, early index still the cut-track error (write regression);
+flags2 parsing behind every optional field, two trailing bytes, unknown bits and the
+Apple refusal (`test_quality_runtime.py` write flags). Host: `write_track(erase_rest=)`
+checks WRITE_LIMITS bit 3 first, `WriteResult.erased_ticks`, `ufi write --erase-rest`,
+`ufi write-limits` names the bit; FakeV2 parses flags2, answers bit 3 for 1.18 and reports
+a tail. Protocol doc: command table rows 0x08 and 0x22 (bit 7 and flags2 now listed), 3.3
+bullet, 4.5 END sizes.

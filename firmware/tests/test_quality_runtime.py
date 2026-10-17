@@ -213,7 +213,9 @@ static uint32_t HAL_GetTick(void) {return 0;}
 static bool ufi_job_live(void) {return false;}
 static bool ufi_board_write_locked(void) {return false;}
 static bool ufi_drive_write_protected(void) {return false;}
-static bool ufi_drive_is_apple(void) {return false;}
+static bool apple_drive,erase_rest;
+static bool ufi_drive_is_apple(void) {return apple_drive;}
+static void ufi_write_set_erase_rest(bool x) {erase_rest=x;}
 static void ufi_flux_hard_sectors(uint8_t x) {hard_sectors=x;line_calls++;}
 static bool ufi_drive_media_matches(uint32_t token){return token==42 && !(change_during_prepare && media_checks++);}
 static void ufi_write_abort(void){write_aborts++;}
@@ -243,6 +245,16 @@ int main(void) {
     p[2]=0x31;assert(cmd_write(8,p,11)==UFI_ERR_NOT_IMPL);
     p[2]=0x80;assert(cmd_write(8,p,11)==UFI_ERR_BAD_ARGS);
     assert(prepare_calls==before);
+    /* flags2 (1.18): one trailing byte behind the flag-driven fields; bit0 erase remainder */
+    uint8_t f2[18]={0,0,0x21,3,0,0,0,3,0,0,0,1};
+    assert(cmd_write(8,f2,12)==0 && erase_rest);
+    f2[11]=0;assert(cmd_write(8,f2,12)==0 && !erase_rest);
+    f2[11]=2;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before);
+    f2[11]=1;apple_drive=true;assert(cmd_write(8,f2,12)==UFI_ERR_NOT_IMPL && prepare_calls==before);apple_drive=false;
+    f2[2]=0x61;memcpy(f2+11,"\xc0\x3b\x47\x03",4);f2[15]=1;      /* behind index_ticks */
+    assert(cmd_write(8,f2,16)==0 && erase_rest && source_ticks==55000000);
+    assert(cmd_write(8,f2,17)==UFI_ERR_BAD_ARGS);                /* two trailing bytes */
+    f2[2]=0x21;assert(cmd_write(8,f2,11)==0 && !erase_rest);     /* no flags2: option off again */
     uint8_t strict[23]={0,0,0xa1,3,0,0,0,3,0,0,0,0xfe,0x0f,0,0,0,0,0,0,0,0,2,0};
     assert(cmd_write(9,strict,23)==0 && requested_set==4094);
     strict[22]=1;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS);

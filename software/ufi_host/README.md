@@ -46,6 +46,7 @@ ufi read-disk -o d.scp --hard-sectors 16  # Firmware ≥ 1.14: hartsektoriert (1
 ufi read 17 0 --quarter 2                 # Firmware ≥ 1.14: Apple-Viertelspur (17,5); auch seek/write --quarter 1-3
 ufi read 17 0 --steps 50:17.1,100:17.2    # Firmware ≥ 1.14: Kopfschritte nach Zeitplan während des Lesens (Spiradisc); auch write
 ufi write-limits                          # Firmware ≥ 1.15: was der Schreibpfad annimmt (Takt, max. Intervalle, 1,6–238 µs); ufi write prüft damit vor dem Senden
+ufi write IMG SPUR SEITE --erase-rest     # Firmware ≥ 1.18: Spurrest hinter dem letzten Intervall bis zum Index löschen (Tor offen, keine Flusswechsel); Ende-Rahmen meldet die gelöschte Länge
 ufi timing tg43=1                         # Firmware ≥ 1.16: 8-Zoll-Laufwerke, Pin 2 = TG43 (reduzierter Schreibstrom ab Spur 43); auch UFI.CFG tg43=1
 ufi apple-gcr addr_prologue=d4aa96 flags=keep_bad_addr_checksum+any_track   # Firmware ≥ 1.18: Apple-II-5,25-Zoll-GCR-Decoder (Format 7) für Kopierschutz-Varianten; 'apple-gcr reset'
 ufi tolerance keep_bad_header+data_without_checksum   # Firmware ≥ 1.18: Toleranzflags der Analyse-Decoder für IBM-MFM/FM, HP, Amiga, Commodore, Macintosh (Op 34); Befunde je Sektor bleiben sichtbar; 'tolerance reset'

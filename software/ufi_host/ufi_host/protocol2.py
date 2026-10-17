@@ -334,7 +334,7 @@ class DeviceInfo:
 class WriteLimits:
     """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
     schema: int
-    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder (1.18)
     sample_hz: int
     max_flux: int               # flux_count limit (flux store)
     min_ticks: int
@@ -467,6 +467,7 @@ class WriteResult:
     host_verified_format: str = "IBM MFM"
     readback_quality: dict | None = None
     generations: dict | None = None
+    erased_ticks: int = 0               # flags2 bit0 (1.18): length of the erased tail up to the index, 275 MHz ticks
 
     @property
     def verify_text(self) -> str:
@@ -478,7 +479,8 @@ class WriteResult:
     def unpack(cls, b: bytes) -> "WriteResult":
         if len(b) < 5:
             return cls()
-        return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5))
+        erased = struct.unpack_from("<I", b, 5 + GEN_BLOCK.size)[0] if len(b) >= 9 + GEN_BLOCK.size else 0
+        return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5), erased_ticks=erased)
 
 
 @dataclass
@@ -1221,8 +1223,12 @@ class Device2:
                     hard_sectors: int = 0, quarter: int = 0, scale: float = 1.0,
                     clamp: bool = False, integrity: bool | None = None, extended: bool | None = None,
                     index_ticks: int | None = None, firmware_verify: bool = False,
-                    expected_config: int | None = None, expected_media: int | None = None) -> WriteResult:
+                    expected_config: int | None = None, expected_media: int | None = None,
+                    erase_rest: bool = False) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
+        erase_rest (firmware 1.18, WRITE_LIMITS flags bit3): after the last interval keep the
+        gate on with no transitions up to the next index, so nothing of the old track survives
+        behind the new data; the result reports the erased tail in erased_ticks.
         scale: the firmware multiplies every interval (0.5..2.0; firmware 1.14), e.g.
         rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
         clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
@@ -1277,6 +1283,10 @@ class Device2:
         if firmware_verify and index_ticks is not None:
             flags |= 0x40
             extra += struct.pack("<I", index_ticks)
+        if erase_rest:
+            if not self.write_limits().flags & 8:
+                raise ValueError("firmware does not announce the erase-remainder option (WRITE_LIMITS bit 3)")
+            extra += b"\x01"                                 # flags2: bit0 erase the remainder up to the index
         payload = WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra
         command = GUARDED_WRITE if guarded else WRITE
         if guarded:

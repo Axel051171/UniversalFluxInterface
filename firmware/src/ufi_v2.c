@@ -558,6 +558,14 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         if(!expected || n>3 || p[at+11])return UFI_ERR_BAD_ARGS;
         at+=12u;
     }
+    /* flags2 (1.18): one optional trailing byte behind every flag-driven field, announced by
+     * WRITE_LIMITS flags bit3.  bit0 = erase the remainder of the track up to the index. */
+    uint8_t flags2 = 0;
+    if (len == at + 1u) {
+        flags2 = p[at++];
+        if (flags2 & ~0x01u) return UFI_ERR_BAD_ARGS;
+        if ((flags2 & 0x01u) && ufi_drive_is_apple()) return UFI_ERR_NOT_IMPL;   /* no index on that path */
+    }
     if (len!=at) return UFI_ERR_BAD_ARGS;
     /* Extended data is already timed by the sender. Firmware verification is
      * supported; Apple/precomp/scaling still use the original backend. */
@@ -573,6 +581,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         ufi_write_set_source_index(source_index);
         ufi_write_set_expected(expected,c,h,n);
         ufi_write_set_clamp((p[2] & 0x10u) != 0);   /* bit4: clamp instead of status 18 (1.15) */
+        ufi_write_set_erase_rest((flags2 & 0x01u) != 0);
         op_write = true;
         write_seq = seq;
     }
@@ -771,7 +780,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             uint32_t words = 0;
             ufi_flux_store(&words);
             out[0] = 1;                     /* schema */
-            out[1] = 0x07;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag */
+            out[1] = 0x0F;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2 (erase remainder, 1.18) */
             put32(&out[2], FLUX_TIMER_FREQ);
             put32(&out[6], words);          /* max flux_count */
             put32(&out[10], WRITE_MIN_DELTA);

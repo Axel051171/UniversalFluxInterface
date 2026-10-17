@@ -66,6 +66,7 @@ typedef struct {
     uint32_t wait_since;        // HAL tick when the wait for the index pulse began
     uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
     uint16_t scale;             // time scale of the deltas in 1/1000 (1000 = as sent), 1.14
+    bool erase_rest;            // flags2 bit0 (1.18): keep WGATE on, WDATA idle, until the next index
 } write_context_t;
 
 /* Greaseweazle pre_write / post_write (ufi_gw.c SET_PARAMS), ticks; 0 = off.  Configuration,
@@ -74,6 +75,9 @@ static uint32_t cfg_pre_ticks, cfg_post_ticks;
 static uint32_t active_pre_ticks,active_post_ticks;
 static bool post_pending;           /* the silent post_write period is running */
 static bool index_cut;              /* the index ended an active write: track too long */
+static bool erase_pending;          /* flags2 bit0: data is out, gate stays on until the index */
+static uint32_t erase_start;        /* flux-timer time the erase tail began */
+static uint32_t erased_ticks;       /* END payload: length of the erased tail, 0 = none */
 static volatile bool receive_failed; /* IRQ -> main loop; never send USB from the IRQ */
 
 static write_context_t g_write;
@@ -290,6 +294,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.clamp = false;
     g_write.clamped = 0;
     g_write.verify_level = 0;
+    g_write.erase_rest = false;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -328,6 +333,17 @@ void ufi_write_result_payload(uint8_t out[5]) {
 /* Media generation the current/last native WRITE was bound to (END generation block, 4.5) */
 uint32_t ufi_write_media_token(void) {
     return write_media_token;
+}
+
+/* flags2 bit0 (1.18): after the last interval keep WGATE on with WDATA idle (the ERASE
+ * 0x23 signal) until the next index, so nothing of the old track survives behind the
+ * new data.  Native WRITE only; the GW path and Apple drives (no index) never use it. */
+void ufi_write_set_erase_rest(bool on) {
+    g_write.erase_rest = on;
+}
+
+uint32_t ufi_write_erased_ticks(void) {
+    return erased_ticks;
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
@@ -393,6 +409,10 @@ int ufi_write_start(void) {
         return UFI_ERR_BUFFER_FULL;         /* malformed / incomplete compact data */
     }
     g_write.apple = ufi_drive_is_apple();
+    if (g_write.erase_rest && g_write.apple) {  /* no index on the Disk II write path */
+        g_write.state = WRITE_ERROR;
+        return UFI_ERR_NOT_IMPL;
+    }
     drive_extra_t extra=ufi_drive_extra_get();
     active_pre_ticks=g_write.gw_mode?cfg_pre_ticks:(uint32_t)extra.gate_lead_us*(FLUX_TIMER_FREQ/1000000u);
     active_post_ticks=g_write.gw_mode?cfg_post_ticks:(uint32_t)extra.gate_tail_us*(FLUX_TIMER_FREQ/1000000u);
@@ -466,6 +486,8 @@ int ufi_write_start(void) {
     }
     post_pending = false;
     index_cut = false;
+    erase_pending = false;
+    erased_ticks = 0;
     wave_item_t first, second;
     if (g_write.wave_mode) {
         wave_next(&wave_cursor, &first);
@@ -587,6 +609,7 @@ static void write_finish(write_state_t final_state) {
     HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
     apple_wrdata(false);
     led_set(&PIN_LED_FDD, false);
+    erase_pending = false;
     g_write.state = final_state;
 }
 
@@ -616,6 +639,11 @@ void ufi_write_index_handler(uint32_t t) {
         if (!g_write.terminate_index) TIM2->DIER &= ~TIM_DIER_CC2IE;
     }
     else if (g_write.state == WRITE_ACTIVE && g_write.terminate_index) {
+        if (erase_pending) {
+            erased_ticks = t - erase_start;  /* the erased tail ends at this index */
+            write_finish(WRITE_COMPLETE);
+            return;
+        }
         if (g_write.gw_mode) {
             write_finish(WRITE_COMPLETE);   /* requested index termination is success */
             return;
@@ -623,6 +651,22 @@ void ufi_write_index_handler(uint32_t t) {
         index_cut = true;                   /* the track did not fit one revolution */
         write_finish(WRITE_ERROR);          /* never write past the index, never call it success */
     }
+}
+
+/* All data is out.  flags2 bit0 (1.18): keep WGATE on with WDATA idle, the same signal
+ * ERASE 0x23 produces, until the next index finishes the write; otherwise the gate drops
+ * now as before. */
+static void data_done(void) {
+    if (g_write.erase_rest && !g_write.apple && !g_write.gw_mode) {
+        wdata_idle();
+        __HAL_TIM_DISABLE(&htim3);
+        TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
+        dma_stop();
+        erase_start = TIM2->CNT;
+        erase_pending = true;               /* ufi_write_index_handler() completes */
+        return;
+    }
+    write_finish(WRITE_COMPLETE);
 }
 
 /* The last period has ended: gw post_write keeps WGATE on for one silent period */
@@ -633,7 +677,7 @@ static void end_of_data(void) {
         TIM3->ARR = active_post_ticks - 1u;    /* after the running (stale) period */
         g_write.updates_left = 2;
     } else {
-        write_finish(WRITE_COMPLETE);
+        data_done();
     }
 }
 
@@ -650,7 +694,7 @@ void ufi_write_tim3_irq(void) {
     }
     if (post_pending) {
         if (--g_write.updates_left == 0) {
-            write_finish(WRITE_COMPLETE);
+            data_done();
         }
         return;
     }

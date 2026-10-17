@@ -177,8 +177,9 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
+                erased = 0x1234567 if self.write_req[4] & 1 else 0   # flags2 bit0: an erased tail up to the index
                 self._frame(P2.T_END, P2.WRITE, f.seq, 0, struct.pack("<BI", 2 if self.write_req[3] & 1 else 1, 3 if self.write_req[3] & P2.WRITE_CLAMP else 0)
-                            + self._gen_block(0))
+                            + self._gen_block(0) + struct.pack("<I", erased))
                 self.write_req = None
             return
         assert f.type == P2.T_REQUEST and f.status == 0
@@ -315,7 +316,7 @@ class FakeV2:
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
         elif cmd == P2.WRITE_LIMITS:
-            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 7, 275_000_000, 1 << 21, 440, 65536))
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 15 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -363,7 +364,13 @@ class FakeV2:
                 self._frame(P2.T_DATA, cmd, seq, 0, data[k:k + self.data_chunk])
             self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id))
         elif cmd == P2.WRITE:
-            self.write_req = (seq, *struct.unpack_from("<II", a, 3), a[2])
+            flags = a[2]                    # optional fields in flag order, then an optional flags2 byte (1.18)
+            want = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0) + (4 if flags & 0x40 else 0) + (12 if flags & 0x80 else 0)
+            flags2 = a[want] if len(a) == want + 1 else 0
+            if len(a) not in (want, want + 1) or flags2 & ~0x01:
+                r(P2.BAD_ARGS)
+                return
+            self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2)
             self.write_code = bytearray()
             r()
         elif cmd == P2.ERASE:
@@ -875,7 +882,7 @@ def test_write_limits_and_preflight():
     dev = P2.Device2(fake)
     lim = dev.write_limits()
     assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
-        (1, 7, 275_000_000, 1 << 21, 440, 65536)
+        (1, 15, 275_000_000, 1 << 21, 440, 65536)
     n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
     with pytest.raises(ValueError):
         dev.write_track(1, 0, [1000, 439, 1000])
@@ -989,6 +996,27 @@ def test_end_generation_block():
     assert P2.generation_block(b"\x03", 1) is None
     raw = bytes([2]) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 9)
     assert P2.generation_block(raw, 1)["capture_id"] == 9
+
+
+def test_erase_remainder(monkeypatch, capsys):
+    """flags2 bit0 (1.18): announced by WRITE_LIMITS bit 3, sent as one trailing byte, END reports erased_ticks."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    deltas = [1100] * 2000
+    r = dev.write_track(3, 1, deltas)
+    assert fake.requests[-1].payload == P2.WRITE_REQ.pack(3, 1, 0, 2000, len(P2.encode_flux(deltas))) and r.erased_ticks == 0
+    r = dev.write_track(3, 1, deltas, erase_rest=True, clamp=True)
+    req = fake.requests[-1].payload
+    assert req[-1] == 1 and len(req) == 12 and req[2] & P2.WRITE_CLAMP and r.erased_ticks == 0x1234567 and r.generations
+    assert dev.write_limits().flags & 8
+    old = FakeV2(revolutions=REVS, firmware=(1, 15), caps=0x7FFF)   # WRITE_LIMITS flags 7: no bit 3
+    with pytest.raises(ValueError):
+        P2.Device2(old).write_track(3, 1, deltas, erase_rest=True)
+    assert not any(q.cmd == P2.WRITE for q in old.requests), "nothing sent to a firmware without the option"
+    assert P2.WriteResult.unpack(struct.pack("<BI", 1, 0) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 0)).erased_ticks == 0
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["write-limits"]) == 0 and "erase remainder yes" in capsys.readouterr().out
 
 
 def test_guarded_read_and_discovery():

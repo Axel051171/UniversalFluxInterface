@@ -345,9 +345,11 @@ int ufi_usb_send_read_done(int result, uint8_t revolutions) {
 
 /* Unsolicited completion notice (write finished; a v2 WRITE ends with an END frame) */
 int ufi_usb_send_event(uint8_t command, int result) {
-    uint8_t res[5 + UFI_V2_GEN_BLOCK];
+    uint8_t res[5 + UFI_V2_GEN_BLOCK + 4];
     ufi_write_result_payload(res);             /* verify level, clamped periods (1.15) */
     ufi_v2_generations(res + 5, ufi_write_media_token(), 0);   /* generation block (4.5) */
+    const uint32_t erased = ufi_write_erased_ticks();            /* flags2 bit0 tail, 0 = none (1.18) */
+    memcpy(res + 5 + UFI_V2_GEN_BLOCK, &erased, 4);
     if (ufi_v2_end(UFI_V2_WRITE, result, res, sizeof(res))) {
         return UFI_OK;
     }
