@@ -36,6 +36,7 @@ Geprüft wurde jeweils ein fester Commit beziehungsweise eine Datei mit Hash; es
 | [HxC_Gotek_Review.md](HxC_Gotek_Review.md) | HxC-Firmwarearchiv für Gotek |
 | [KryoFlux_Binary_Review.md](KryoFlux_Binary_Review.md) | KryoFlux-Binärdatei, statische Untersuchung |
 | [REA_Firmware_Analyse_2026-10-17.md](REA_Firmware_Analyse_2026-10-17.md) | REA mit Ghidra (WSL) über HxC-Archiv (UPD verschlüsselt) und KryoFlux-Abbild: Ladeformat, USB-Steueranfragen, 31 Parameter mit Standardwerten, Laufwerkssteuerung, Taktvergleich mit UFI |
+| [REA_SuperCard_Pro_Analyse_2026-10-17.md](REA_SuperCard_Pro_Analyse_2026-10-17.md) | SuperCard Pro Updater 1.3 und `.fwu` zerlegt: Containerformat (Schlüsselstrom aus Füllbytes), Drahtform der dsPIC33F-Programmwörter, Bootloader-Kommandos `SI`/`RF`/`WF`/`EX`, Flux-Lesen per Input Capture bei 25 ns, Schreiben per Output Compare, Index- und SRAM-Anbindung, Vergleich mit UFI |
 | [Sergev_Floppy_BIOS_Review.md](Sergev_Floppy_BIOS_Review.md) | sergev/floppy-bios |
 
 ## Hardware

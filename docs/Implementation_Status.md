@@ -811,3 +811,17 @@ report flag byte, FakeV2 answers op 34. Protocol doc 5.8, op table, sector entry
 quality header rows. Requested by the UFT integration session: active flags in every
 report (done, offsets 60/62) and a "tolerance changed the outcome" marker (derivable:
 sector in `seen` with one of bits 3/5/6/7, documented as the provenance rule in 5.8).
+
+## SuperCard Pro updater and firmware container taken apart — 2026-10-17
+
+`docs/REA_SuperCard_Pro_Analyse_2026-10-17.md`: the VB6 updater (Ghidra, VB6 prologue
+scan for the event handlers) decrypts `SCP.fwu` with a key stream made from the file's
+own filler bytes (4 bytes per plaintext byte, accumulator 0x55), the plaintext is an
+8-byte `FW` header plus a 64 KiB dsPIC33FJ256GP210A image in the bootloader's wire form
+(low word rotated by 3, high word = rotl6(raw low) XOR opcode << 6; erased `FFFFFF` =
+`C03FFFFF`). Decoded and analysed with Ghidra's dsPIC33F language: bootloader commands
+`SI`/`RF`/`WF`/`EX`/`R!` with 512-instruction pages, flux capture by Input Capture 5 on a
+40 MHz timer (25 ns, one interrupt per transition, 0x0000 overflow cells written by the
+Timer 3 overflow interrupt), index by change notification with a 32-bit timer, flux
+write by Output Compare 8 with a 750 ns minimum cell and 150 µs chunking, external byte
+SRAM on GPIO. Nothing was copied; the document compares the method with UFI's DMA path.
