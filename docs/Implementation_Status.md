@@ -944,3 +944,15 @@ checks WRITE_LIMITS bit 3 first, `WriteResult.erased_ticks`, `ufi write --erase-
 `ufi write-limits` names the bit; FakeV2 parses flags2, answers bit 3 for 1.18 and reports
 a tail. Protocol doc: command table rows 0x08 and 0x22 (bit 7 and flags2 now listed), 3.3
 bullet, 4.5 END sizes.
+
+## FakeV2 models DESCRIBE and the firmware read-back — 2026-10-17
+
+Last of the UFT bridge wishes; no protocol change. The reference double answers DESCRIBE
+(schema 1, flags 3 = firmware read-back and extended backend, store 2^21 words) so a
+host can take the extended write path against it without monkeypatching, and a WRITE
+with flags 0x21 or 0x61 models the firmware read-back of 5.2: fewer than
+`VERIFY_MIN_INTERVALS` (1000) intervals is a source without reference sectors and ends
+with status 16 before WGATE, longer sources end with verify level 3; the generation block
+and `erased_ticks` follow in both cases. Host test `test_firmware_verify_modelled`.
+UFT's bridge instantiates `GuardedDevice` for the media-bound starts and may lower the
+threshold per run.

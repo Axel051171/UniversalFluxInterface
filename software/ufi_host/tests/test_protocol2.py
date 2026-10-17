@@ -73,10 +73,15 @@ class FakeV2:
     ends every READ with that END status (OVERFLOW, NO_INDEX, CANCELLED, MEDIA_CHANGED);
     CANCELLED and MEDIA_CHANGED send no data frames, as the firmware's cancel path
     and media-generation check stop the capture.  `dos_errors` maps (track, sector)
-    to the DOS code IEC_READ_STATUS reports instead of data.
+    to the DOS code IEC_READ_STATUS reports instead of data.  DESCRIBE is answered
+    (flags 3: firmware read-back and extended backend).  A WRITE with flags 0x21/0x61
+    (extended + verify) models the firmware read-back: fewer than VERIFY_MIN_INTERVALS
+    intervals is a source without reference sectors (END status 16, nothing written),
+    otherwise the END reports verify level 3.
     """
 
     CAPS_1_18 = 0xFFFFFF7F
+    VERIFY_MIN_INTERVALS = 1000     # 0x21 path: shorter sources end with 16 before WGATE, longer ones verify (level 3)
 
     def __init__(self, revolutions=None, files=None, read_status=0, data_chunk=1000,
                  firmware=(1, 18), caps=None):
@@ -177,8 +182,14 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
-                erased = 0x1234567 if self.write_req[4] & 1 else 0   # flags2 bit0: an erased tail up to the index
-                self._frame(P2.T_END, P2.WRITE, f.seq, 0, struct.pack("<BI", 2 if self.write_req[3] & 1 else 1, 3 if self.write_req[3] & P2.WRITE_CLAMP else 0)
+                _seq, count, _size, flags, flags2 = self.write_req
+                erased = 0x1234567 if flags2 & 1 else 0            # flags2 bit0: an erased tail up to the index
+                status, level = 0, 2 if flags & 1 else 1
+                if flags & 0x21 == 0x21:
+                    # firmware read-back (5.2): the firmware decodes the source before WGATE; a
+                    # source without reference sectors ends with 16, a verified one with level 3
+                    status, level = (P2.BAD_ARGS, 0) if count < self.VERIFY_MIN_INTERVALS else (0, 3)
+                self._frame(P2.T_END, P2.WRITE, f.seq, status, struct.pack("<BI", level, 3 if flags & P2.WRITE_CLAMP else 0)
                             + self._gen_block(0) + struct.pack("<I", erased))
                 self.write_req = None
             return
@@ -315,6 +326,9 @@ class FakeV2:
                 self.index_sim = rpm
                 self.index_sim_mode = (a[4] or 1) if rpm and len(a) >= 5 else (1 if rpm else 0)
             r(0, struct.pack("<HB", self.index_sim, self.index_sim_mode))
+        elif cmd == P2.DESCRIBE:                             # 1.18: transport/clock limits; flags bit0 firmware read-back, bit1 extended backend
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.DESCRIBE_FMT.pack(1, 3, 3, 65536, 275_000_000, 68_750_000,
+                                                                          1 << 21, 1024, 200, 0x3fffffff, 110, 100000))
         elif cmd == P2.WRITE_LIMITS:
             r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 15 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
@@ -1017,6 +1031,29 @@ def test_erase_remainder(monkeypatch, capsys):
     assert P2.WriteResult.unpack(struct.pack("<BI", 1, 0) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 0)).erased_ticks == 0
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["write-limits"]) == 0 and "erase remainder yes" in capsys.readouterr().out
+
+
+def test_firmware_verify_modelled():
+    """0x21/0x61 against the fake: DESCRIBE answered, a short source ends with 16 before WGATE,
+    a long one verifies (level 3); the generation block and erased_ticks follow in both cases."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.describe().flags & 3 == 3 and fake.requests[-1].cmd == P2.DESCRIBE
+    long_source = [1100] * 2000
+    r = dev.write_track(3, 1, long_source, extended=True, firmware_verify=True)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[2] == 0x21 and r.verify_level == 3 and r.generations and r.erased_ticks == 0
+    r = dev.write_track(3, 1, long_source, extended=True, firmware_verify=True, index_ticks=55_000_000)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[2] == 0x61 and req[11:15] == struct.pack("<I", 55_000_000) and r.verify_level == 3
+    with pytest.raises(P2.DeviceError) as e:
+        dev.write_track(3, 1, [1100] * 999, extended=True, firmware_verify=True)
+    assert e.value.status == P2.BAD_ARGS and e.value.command == P2.WRITE and fake.write_req is None
+    r = dev.write_track(3, 1, [1100] * 999, extended=True)              # no verify: level 1 as before
+    assert r.verify_level == 1
+    fake.VERIFY_MIN_INTERVALS = 10                                        # the bridge may lower the threshold
+    assert dev.write_track(3, 1, [1100] * 999, extended=True, firmware_verify=True).verify_level == 3
 
 
 def test_guarded_read_and_discovery():

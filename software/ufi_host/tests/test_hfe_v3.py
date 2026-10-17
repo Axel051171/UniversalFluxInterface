@@ -67,6 +67,7 @@ def test_cli_preserves_v3_timing_and_preflights_all_tracks(monkeypatch):
 
 def test_firmware_verify_source_index_on_wire(monkeypatch):
     wire = FakeV2();dev = P2.Device2(wire)
+    wire.VERIFY_MIN_INTERVALS = 0           # three intervals: this test checks the wire, not the read-back model
     monkeypatch.setattr(dev,'describe',lambda:SimpleNamespace(flags=2,store_words=100000))
     dev.write_track(0,0,[550,4950,4950],extended=True,firmware_verify=True,index_ticks=13200)
     req = next(f for f in wire.requests if f.cmd == P2.WRITE)
