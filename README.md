@@ -52,8 +52,8 @@ Braucht clang oder gcc. Die externen Referenzkorpora werden ohne Download übers
 Ergebnis in `firmware/tests/build/offline_gate.json`. Weitere Schritte der CI:
 `firmware/tools/check_static.py` (Clang-Analyse, 34 Module, HAL-gebundene gegen `firmware/tests/hal_stub/`),
 `firmware/tests/run_fuzz.py` (LibFuzzer: Dateiparser, der komplette v2-Dispatcher, das Greaseweazle-Protokoll
-und das SD-Modul mit Bildladern, Dump-Writern und UFI.CFG über ein In-Memory-FatFs, alles hinter erzeugten
-Treiber-Stubs, `--target v2|gw|sd`).
+das SD-Modul mit Bildladern, Dump-Writern und UFI.CFG über ein In-Memory-FatFs und die Laufwerkssteuerung
+gegen ein Kopfmodell mit TRK00-Sensor, alles hinter erzeugten Treiber-Stubs, `--target v2|gw|sd|drive`).
 `python firmware/tests/coverage.py` misst mit clang/llvm-cov, welche Zeilen und Zweige der nativ
 gebauten Firmware-Module die Tests erreichen (`firmware/tests/build/coverage.txt`, `cov/html/`).
 

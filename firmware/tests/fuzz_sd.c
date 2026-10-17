@@ -235,7 +235,13 @@ static uint32_t synth_revolution(uint32_t pos, uint32_t limit, uint32_t* index_t
                                    .spt = (uint8_t)(4u + fuzz_byte() % 15u), .gap3 = (uint8_t)(20u + fuzz_byte() % 80u),
                                    .head_id_swap = (kind & 4u) != 0, .size_code = (uint8_t)(kind & 8u ? fuzz_byte() & 3u : 0u)};
         for (uint32_t i = 0; i < sizeof sector_data; i++) sector_data[i] = img_len ? img[i % img_len] : 0u;
-        count = mfm_encode_track(&f, g_capture.current_track, g_capture.current_side, sector_data, deltas, limit);
+        /* a 40-track disk in an 80-track drive stamps cylinder track/2 (double-step probe) */
+        const uint8_t cyl = fuzz_byte() < 64u ? (uint8_t)(g_capture.current_track / 2u) : g_capture.current_track;
+        count = mfm_encode_track(&f, cyl, g_capture.current_side, sector_data, deltas, limit);
+        /* weak track: a few damaged spots make the quality fall below spt (retry, +-1 search) */
+        for (uint8_t k = fuzz_byte() < 96u ? 1u + (fuzz_byte() & 3u) : 0u; k && count; k--) {
+            deltas[fuzz_u16() % count] += 400u;
+        }
         for (uint32_t i = 0; i < count; i++) {
             ts += deltas[i];
             samples[pos + i].timestamp = ts;
@@ -280,6 +286,16 @@ int ufi_capture_start(uint8_t track, uint8_t side, uint8_t revolutions, uint32_t
 }
 capture_state_t ufi_capture_get_state(void) { return g_capture.state; }
 int ufi_capture_abort(void) { g_capture.state = CAPTURE_IDLE; return UFI_OK; }
+/* re-capture at the current position (search_track, recapture): same synthesis */
+int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
+{
+    return ufi_capture_start(g_capture.current_track, g_capture.current_side, revolutions, period_ticks);
+}
+int ufi_flux_capture_stop(void) { g_capture.state = CAPTURE_IDLE; return UFI_OK; }
+/* the drive module is a stub here; keep the timing the dump module sets (double step) */
+static drive_timing_t timing = {.step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .precomp_ns = 0xFFFF};
+drive_timing_t ufi_drive_get_timing(void) { return timing; }
+void ufi_drive_set_timing(const drive_timing_t* t) { timing = *t; }
 uint8_t ufi_flux_get_revolution_count(void) { return rev_count; }
 flux_revolution_t* ufi_flux_get_revolution(uint8_t k)
 {
@@ -334,9 +350,10 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
     if (ufi_dump_active()) { ufi_dump_abort(); ufi_dump_service(); }
     /* known configuration per input (the module keeps UFI.CFG settings in statics) */
     static const char* const presets[] = {
-        "drive=a\n", "drive=b\ndouble_step=2\ntrack_search=1\nrevs=2\n", "drive=iec\niec_device=9\n",
+        "drive=a\n", "drive=b\ndouble_step=auto\ntrack_search=1\nrevs=2\n", "drive=iec\niec_device=9\n",
         "drive=amiga\nformat=adf\n", "drive=ds1\nformat=img\ncopy_from=ds1\ncopy_to=ds2\n",
-        "drive=a\nformat=hfe\nbutton_a=write\nwrite_file=FUZZ.IMG\n", "drive=apple\n", "drive=b\nauto_dump=1\nformat=hfe3\n"};
+        "drive=a\nformat=hfe\nbutton_a=write\nwrite_file=FUZZ.IMG\n", "drive=b\ndouble_step=1\ntrack_search=1\nformat=img\n",
+        "drive=b\nauto_dump=1\nformat=hfe3\n"};
     cfg_preset = presets[fuzz_byte() & 7u];
     ufi_config_load();
     cfg_preset = NULL;

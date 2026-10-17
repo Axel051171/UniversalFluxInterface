@@ -101,7 +101,15 @@ STUBBED = {
                real=('ufi_image', 'ufi_hfe_v3', 'ufi_mfm', 'ufi_verify', 'ufi_quality', 'ufi_compare',
                      'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
                extra=dict(LINKER_SYMBOLS)),
+    'drive': dict(harness='fuzz_drive.c', units=('ufi_drive',),
+                  real=('ufi_drive_extra', 'ufi_media', 'ufi_capabilities', 'ufi_verify'),
+                  extra=dict(LINKER_SYMBOLS)),
 }
+
+# drive scripts: byte 0 = first drive type, then one operation per byte (see fuzz_drive.c)
+DRIVE_SEEDS = (bytes([1, 4, 2, 2, 3, 3, 2, 4, 5, 1]), bytes([6, 1, 2, 2, 2, 6, 2, 4]),
+               bytes([2, 8, 9, 15, 10, 11, 0, 11]), bytes([3, 20, 21, 4, 2, 16]),
+               bytes([7, 12, 19, 13, 14, 22, 23, 17, 18]))
 
 
 def scp_seed():
@@ -129,7 +137,7 @@ def hfe_v3_seed():
 SD_SEEDS = (scp_seed(), hfe_seed(), hfe_v3_seed(), b'\x02' + bytes(1024), b'\x03' + bytes(512), b'\x04' + bytes(256),
             b'\x05' + bytes(256),
             b'\x06drive=a\ntracks=80\nsides=2\nrevs=3\nformat=hfe\nbutton_a=write\nwrite_file=GAME.ADF\n# x\nrpm_line=density\n',
-            b'\x06drive=b\ntracks=0\ntrack_search=1\ndouble_step=2\nauto_dump=1\ncopy_from=a\ncopy_to=b\nformat=img\n'
+            b'\x06drive=b\ntracks=0\ntrack_search=1\ndouble_step=auto\nauto_dump=1\ncopy_from=a\ncopy_to=b\nformat=img\n'
             b'index_sim=300\nprotocol=gw\ntg43=1\niec_device=9\n',
             b'\x07' + bytes(range(256)) * 4)
 
@@ -185,7 +193,8 @@ def build_stubbed(name):
 TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
            'v2': (lambda: build_stubbed('v2'), V2_SEEDS, 'fuzz_v2_corpus', 8192),
            'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
-           'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192)}
+           'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192),
+           'drive': (lambda: build_stubbed('drive'), DRIVE_SEEDS, 'fuzz_drive_corpus', 1024)}
 
 
 def run_target(name, seconds, replay):
@@ -207,7 +216,7 @@ def run_target(name, seconds, replay):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=('parsers', 'v2', 'gw', 'sd', 'all'), default='all')
+    parser.add_argument('--target', choices=('parsers', 'v2', 'gw', 'sd', 'drive', 'all'), default='all')
     parser.add_argument('--seconds', type=int, default=30)
     parser.add_argument('--replay', action='store_true', help='execute the stored corpus once, no mutation')
     args = parser.parse_args()
