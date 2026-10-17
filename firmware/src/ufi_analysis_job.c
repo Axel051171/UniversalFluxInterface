@@ -482,6 +482,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[0]=1;out[1]=(uint8_t)((ufi_board_soft_locked()?1u:0u)|(ufi_board_jumper_locked()?2u:0u));
         *size=2;return UFI_OK;
     }
+    if(p[0]==42 && n==1){
+        /* Weak windows of the last ANALYZE 0x25 (4.11): schema, revs, track, side/position, 64 counts */
+        *size=ufi_analyze_weak_report(out);return UFI_OK;
+    }
     if(p[0]==41 && (n==1 || n==4)){
         /* Speed check before writing (4.10): [41] reads, [41, 1, tolerance_permille u16] sets (0 = off) */
         if(n==4){

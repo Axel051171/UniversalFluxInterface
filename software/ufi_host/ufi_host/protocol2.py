@@ -953,6 +953,15 @@ class Device2:
             info["read_start"], info["read_data"] = reply[16], reply[17]
         return info
 
+    def weak_windows(self) -> dict:
+        """Op 42 (firmware 1.18, 4.11): max - min transition count per 1/64 revolution of the last
+        ANALYZE 0x25, raw, so the caller applies its own threshold (the ANALYZE reply uses 3).
+        Returns {'revs', 'track', 'side_byte', 'counts': [64 ints]}; revs 0 = nothing to compare."""
+        reply = self.analysis_op(42)
+        if len(reply) < 68 or reply[0] != 1:
+            raise DeviceError("weak windows: unexpected reply")
+        return {"revs": reply[1], "track": reply[2], "side_byte": reply[3], "counts": list(reply[4:68])}
+
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
         0 switches the check off, 1..500 sets the allowed deviation of the drive's index period

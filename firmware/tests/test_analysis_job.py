@@ -16,6 +16,7 @@ static uint32_t media_token=1;
 static bool soft_lock,jumper_lock;
 static uint8_t refusal_stub[6]={1,0x22,9,16,2,0x40};
 static uint16_t speed_tol;static uint32_t speed_meas=55500000u,speed_src=55000000u;
+uint16_t ufi_analyze_weak_report(uint8_t* out){memset(out,0,68);out[0]=1;out[1]=3;out[2]=40;out[3]=0x91;out[4+17]=6;return 68;}
 void ufi_write_set_speed_check(uint16_t p){speed_tol=p;}
 void ufi_write_speed_state(uint16_t* p,uint32_t* m,uint32_t* s){*p=speed_tol;*m=speed_meas;*s=speed_src;}
 void ufi_v2_last_refusal(uint8_t out[6]){memcpy(out,refusal_stub,6);}
@@ -370,6 +371,10 @@ int main(void){
     lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && soft_lock);
     jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==3);jumper_lock=false;
     soft_lock=false;
+    /* Op 42: weak windows of the last ANALYZE - 68 bytes straight from the analyser, read-only */
+    uint8_t ww[2]={42};assert(!ufi_analysis_command(ww,1,out,&size) && size==68 && out[0]==1 && out[1]==3 && out[2]==40 && out[3]==0x91 && out[4+17]==6 && !out[4+16]);
+    busy=true;assert(!ufi_analysis_command(ww,1,out,&size) && size==68);busy=false;
+    ww[1]=0;assert(ufi_analysis_command(ww,2,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 41: speed check before writing - read/set tolerance, range and busy checked, last measurement reported */
     uint8_t sp[4]={41};assert(!ufi_analysis_command(sp,1,out,&size) && size==11 && out[0]==1 && !out[1] && !out[2] && rd(out+3)==55500000u && rd(out+7)==55000000u);
     sp[1]=1;sp[2]=20;assert(!ufi_analysis_command(sp,4,out,&size) && size==11 && out[1]==20 && speed_tol==20);

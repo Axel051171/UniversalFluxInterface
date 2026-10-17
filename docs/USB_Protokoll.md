@@ -38,6 +38,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
   - 4.9 Prüflesebericht je Sektor (Op 40, 1.18-dev)
   - 4.10 Drehzahlprüfung vor dem Schreiben (Op 41, Status 23, 1.18-dev)
+  - 4.11 Weak-Fenster als Zähler (Op 42, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -430,7 +431,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–41), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–42), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1404,6 +1405,27 @@ und weist zu große Abweichungen ab:
 Die Prüfung ersetzt keine Zeitskala: Wer ein 360-U/min-Abbild auf 300 U/min schreiben
 will, setzt `scale` (Bit 3) und schickt kein Bit 6 oder eine passend umgerechnete Quelle.
 Host: `speed_check(tolerance_permille=None)`, `ufi speed-check [PROMILLE|off]`.
+
+### 4.11 Weak-Fenster als Zähler (Op 42, 1.18-dev)
+
+ANALYZE 0x25 zählt die Flusswechsel je 1/64 Umdrehung über alle aufgenommenen Umdrehungen
+und meldet in `weak_mask`/`weak_count` die Fenster, deren Zahl zwischen den Umdrehungen um
+mindestens 3 schwankt. Die feste Schwelle bleibt; zusätzlich behält der Analysator die
+Differenzen selbst, damit ein Werkzeug seine eigene Schwelle anlegt oder eine Wärmeleiste
+zeigt. `0x0F [42]` liefert 68 Bytes:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Umdrehungen, auf denen die Differenzen beruhen; 0 = kein ANALYZE seit Reset oder weniger als 2 Umdrehungen |
+| 2 | u8 | Spur der Analyse |
+| 3 | u8 | Seiten-/Positionsbyte wie gesendet (`side | 0x80 | quarter << 4` bei Viertelspuren) |
+| 4 + w | u8 | Fenster w (0–63): größte minus kleinste Flusswechselzahl über die Umdrehungen, auf 255 gekappt; Fenster w deckt [w/64, (w+1)/64) der Indexperiode ab, wie Bit w in `weak_mask` |
+
+Gehört zum letzten ANALYZE 0x25; der asynchrone Analysejob (Op 1) führt seine eigenen
+QX-Fenster und ist nicht abgedeckt. Ein abgebrochener oder fehlgeschlagener ANALYZE lässt
+Byte 1 auf 0. Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host:
+`weak_windows()`, `ufi weak [--min N]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2515,6 +2537,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 39 | 1 | Letzte Abweisung mit Status 16/21: Kommando, Sequenz, Status, Feld, Detail, 6 Bytes (4.8); reine Abfrage, nie BUSY |
 | 40 | 1 | Prüflesebericht je Sektor des letzten geprüften WRITE: Kopf 6 Bytes + 5 Bytes je Referenzsektor, höchstens 326 (4.9); reine Abfrage, nie BUSY |
 | 41 | 1 / 4 | Drehzahlprüfung vor dem Schreiben lesen / Toleranz setzen (`[41, 1, promille u16]`, 0 = aus), 11 Bytes Antwort mit letzter Messung (4.10) |
+| 42 | 1 | Weak-Fenster des letzten ANALYZE 0x25: Schema, Umdrehungen, Spur, Seitenbyte, 64 × Differenz der Flusswechselzahl je 1/64 Umdrehung, 68 Bytes (4.11); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

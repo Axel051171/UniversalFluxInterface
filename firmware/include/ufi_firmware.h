@@ -334,6 +334,8 @@ typedef struct {
 int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r);
 /* position: 0 = whole track, 0x80 | quarter << 4 = Apple quarter track (1.18) */
 int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r);
+/* op 42 (1.18): schema 1, revs, track, side/position byte, then 64 x max-min transition count per window */
+uint16_t ufi_analyze_weak_report(uint8_t* out);
 uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
 void ufi_quality_clear(void);
 int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);

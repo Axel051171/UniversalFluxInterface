@@ -1015,3 +1015,15 @@ the service path, failed measurement proceeds, GW path never measures (write reg
 op 41 range, busy and reply layout (analysis job harness). Host `speed_check()`,
 `ufi speed-check [PERMILLE|off]`, status text 23; FakeV2 op 41 with its own `index_ticks`
 and status 23. Protocol doc 4.10, status and op tables.
+
+## Weak windows as counts — 2026-10-17
+
+Fifth item of UFT's list. The weak-window loop of ANALYZE moved into its own function
+(`weak_windows()`, now unit-testable) and keeps the max - min transition count per 1/64
+revolution (capped at 255) beside the unchanged threshold-3 mask; ANALYSIS_JOB op 42
+returns 68 bytes: schema, revolutions compared (0 = nothing to compare), track, side/
+position byte as sent, 64 counts. Belongs to the last ANALYZE 0x25 only. Native test with
+three synthetic revolutions (raw differences 1/2/6, only the 6 reaches the mask, header,
+single revolution, cancel) in `test_native_requests.py`, op 42 in the analysis job
+harness. Host `weak_windows()`, `ufi weak [--min N]` with a heat strip; FakeV2 op 42
+derived from its ANALYZE answer (mask 0x11). Protocol doc 4.11 and op table.

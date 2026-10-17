@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -587,6 +587,9 @@ def main(argv: list[str] | None = None) -> int:
                    "(firmware 1.18, op 39); ask right after a refusal")
     sub.add_parser("verify-report", help="per-sector outcome of the last verified WRITE (firmware 1.18, op 40): CHRN and "
                    "missing / ok / CRC error / different content for every reference sector")
+    sub.add_parser("weak", help="weak windows of the last analyze (firmware 1.18, op 42): max-min transition count per 1/64 "
+                   "revolution as a heat strip; --min N lists windows at or above N (default 1)").add_argument(
+                   "--min", type=int, default=1, metavar="N")
     sub.add_parser("speed-check", help="speed check before writing (firmware 1.18, op 41): no argument shows tolerance and last "
                    "measurement, PERMILLE (1-500) sets the allowed deviation of the drive from the source index period "
                    "(writes with index_ticks end with status 23 outside it), 'off' disables").add_argument("tolerance", nargs="?")
@@ -901,6 +904,15 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "weak":
+            ww = dev.weak_windows()
+            if not ww["revs"]:
+                print("no weak-window data: run analyze with at least 2 revolutions first")
+            else:
+                strip = "".join(" .:-=+*#%@"[min(c, 9)] for c in ww["counts"])
+                print(f"track {ww['track']} side byte 0x{ww['side_byte']:02x}, {ww['revs']} revs: |{strip}|")
+                hits = [(w, c) for w, c in enumerate(ww["counts"]) if c >= a.min]
+                print("  " + (", ".join(f"w{w}={c}" for w, c in hits) if hits else f"no window at or above {a.min}"))
         elif a.cmd == "speed-check":
             sc = dev.speed_check(None if a.tolerance is None else 0 if a.tolerance == "off" else int(a.tolerance))
             tol = sc["tolerance_permille"]

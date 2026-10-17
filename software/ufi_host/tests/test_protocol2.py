@@ -376,8 +376,18 @@ class FakeV2:
             if a[1] & 0x4E or (not a[1] & 0x80 and a[1] > 1):    # side byte: side, or 0x80 | quarter << 4 (1.18)
                 r(P2.BAD_ARGS)
                 return
+            self.last_analyze = (a[0], a[1], a[2] or 3)      # op 42 header: track, side byte, revs
             r(0, P2.ANALYZE_FMT.pack(a[2] or 3, 2, 2000, 30012, 4000, 6000, 8000, 0, 55_000_000,
                                      50_000, 100_000, 18, 2, 1234, 0x11))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 42:          # weak windows of the last ANALYZE (4.11)
+            if len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            track, side_byte, revs = getattr(self, "last_analyze", (0, 0, 0))
+            counts = bytearray(64)
+            if revs >= 2:
+                counts[0], counts[4], counts[9] = 3, 5, 1          # weak_mask 0x11 = windows 0 and 4 at threshold 3
+            r(0, bytes([1, revs if revs >= 2 else 0, track, side_byte]) + bytes(counts))
         elif cmd == P2.STEP_SCHEDULE:
             r(0 if len(a) == 2 + 3 * a[1] else P2.BAD_ARGS)
         elif cmd == P2.SET_RPM:
@@ -1028,6 +1038,26 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_weak_windows(monkeypatch, capsys):
+    """Op 42: raw max-min counts of the last ANALYZE with its track and side byte; revs 0 before any analyze."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    ww = dev.weak_windows()
+    assert ww["revs"] == 0 and len(ww["counts"]) == 64 and not any(ww["counts"]) and fake.requests[-1].payload == bytes([42])
+    a = dev.analyze(17, 1, revs=4)
+    assert a["weak_mask"] == 0x11
+    ww = dev.weak_windows()
+    assert (ww["revs"], ww["track"], ww["side_byte"]) == (4, 17, 1)
+    assert ww["counts"][0] == 3 and ww["counts"][4] == 5 and ww["counts"][9] == 1 and sum(ww["counts"]) == 9
+    assert [w for w, c in enumerate(ww["counts"]) if c >= 3] == [0, 4]        # the host threshold reproduces the mask
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["weak", "--min", "2"]) == 0
+    out = capsys.readouterr().out
+    assert "track 17 side byte 0x01, 4 revs" in out and "w0=3, w4=5" in out and "w9" not in out
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
+    assert cli.main(["weak"]) == 0 and "no weak-window data" in capsys.readouterr().out
 
 
 def test_speed_check(monkeypatch, capsys):

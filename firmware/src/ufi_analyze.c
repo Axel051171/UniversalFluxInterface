@@ -32,6 +32,51 @@ static int analysis_progress(uint32_t since)
     return ret;
 }
 
+/* Weak windows (op 42, 1.18): max - min transition count per 1/64 revolution over the
+ * captured revolutions, kept from the last ANALYZE so a tool can apply its own threshold;
+ * the ANALYZE reply keeps the fixed threshold 3 in weak_mask / weak_count. */
+static uint8_t weak_diff[WEAK_WINDOWS];
+static uint8_t weak_revs, weak_track, weak_side;
+
+static int weak_windows(uint8_t n, uint32_t t0, analyze_result_t* r)
+{
+    memset(weak_diff, 0, sizeof weak_diff);
+    weak_revs = n >= 2u ? n : 0u;
+    if (n < 2u) return UFI_OK;
+    for (uint32_t w = 0; w < WEAK_WINDOWS; w++) {
+        uint32_t lo = 0xFFFFFFFFu, hi = 0;
+        for (uint8_t k = 0; k < n; k++) {
+            const flux_revolution_t* rk = ufi_capture_get_data(k);
+            const uint32_t a = (uint32_t)((uint64_t)rk->index_time * w / WEAK_WINDOWS);
+            const uint32_t b = (uint32_t)((uint64_t)rk->index_time * (w + 1u) / WEAK_WINDOWS);
+            uint32_t cnt = 0;
+            for (uint32_t i = 0; i < rk->count; i++) {
+                int ret;
+                if (!(i&4095u) && (ret=analysis_progress(t0))!=UFI_OK) return ret;
+                const uint32_t t = rk->samples[i].timestamp;
+                if (t >= a && t < b) cnt++;
+                if (t >= b) break;
+            }
+            if (cnt < lo) lo = cnt;
+            if (cnt > hi) hi = cnt;
+        }
+        const uint32_t diff = hi - lo;
+        weak_diff[w] = diff > 255u ? 255u : (uint8_t)diff;
+        if (diff >= 3u) {
+            r->weak_mask |= 1ull << w;
+            r->weak_count++;
+        }
+    }
+    return UFI_OK;
+}
+
+uint16_t ufi_analyze_weak_report(uint8_t* out)
+{
+    out[0] = 1; out[1] = weak_revs; out[2] = weak_track; out[3] = weak_side;
+    memcpy(out + 4, weak_diff, WEAK_WINDOWS);
+    return (uint16_t)(4u + WEAK_WINDOWS);
+}
+
 typedef struct { uint32_t t_acc, first_t; uint8_t sectors; } sec_ctx_t;
 
 static void on_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc_ok)
@@ -59,6 +104,8 @@ int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t posit
     if (revs == 0) revs = 3;
     if (revs > 8) revs = 8;
     if ((position & 0x80u) && !ufi_drive_is_apple()) return UFI_ERR_BAD_ARGS;   /* quarter tracks: Apple only */
+    weak_revs = 0; weak_track = track; weak_side = (uint8_t)(side | position);  /* op 42 header */
+    memset(weak_diff, 0, sizeof weak_diff);
     int ret = ufi_capture_start_q(track, side, revs, 0, (position & 0x80u) ? (uint8_t)((position >> 4) & 3u) : 0u);
     if (ret != UFI_OK) {
         return ret;
@@ -136,29 +183,7 @@ int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t posit
     }
 
     /* weak bits: transition counts per 1/64 revolution that differ between revolutions */
-    if (n >= 2u) {
-        for (uint32_t w = 0; w < WEAK_WINDOWS; w++) {
-            uint32_t lo = 0xFFFFFFFFu, hi = 0;
-            for (uint8_t k = 0; k < n; k++) {
-                const flux_revolution_t* rk = ufi_capture_get_data(k);
-                const uint32_t a = (uint32_t)((uint64_t)rk->index_time * w / WEAK_WINDOWS);
-                const uint32_t b = (uint32_t)((uint64_t)rk->index_time * (w + 1u) / WEAK_WINDOWS);
-                uint32_t cnt = 0;
-                for (uint32_t i = 0; i < rk->count; i++) {
-                    if (!(i&4095u) && (ret=analysis_progress(t0))!=UFI_OK) return ret;
-                    const uint32_t t = rk->samples[i].timestamp;
-                    if (t >= a && t < b) cnt++;
-                    if (t >= b) break;
-                }
-                if (cnt < lo) lo = cnt;
-                if (cnt > hi) hi = cnt;
-            }
-            if (hi - lo >= 3u) {
-                r->weak_mask |= 1ull << w;
-                r->weak_count++;
-            }
-        }
-    }
+    if ((ret = weak_windows(n, t0, r)) != UFI_OK) return ret;
 
     /* IBM MFM sectors and the index-to-first-ID time */
     if (r->encoding == 2u && r->bitcell_ns) {

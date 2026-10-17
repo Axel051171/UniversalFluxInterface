@@ -164,6 +164,59 @@ int main(void){
 '''
     run('regression_generation_block', code)
 
+    # Weak windows (op 42): max - min transition count per 1/64 revolution over the
+    # captured revolutions; the ANALYZE mask keeps threshold 3, the counts are reported raw.
+    code = BASE + ERRORS + r'''
+#define WEAK_WINDOWS 64u
+typedef struct { uint32_t timestamp; } flux_sample_t;
+typedef struct { flux_sample_t* samples; uint32_t count; uint32_t index_time; uint8_t revolution; } flux_revolution_t;
+typedef struct { uint8_t revs, encoding; uint16_t bitcell_ns, rpm_x100, peak_ns[4]; uint32_t index_ticks, transitions, bitcells;
+                 uint8_t sectors, weak_count; uint32_t first_sector_us; uint64_t weak_mask; } analyze_result_t;
+static flux_sample_t samples[3][4096];
+static flux_revolution_t revs[3];
+static unsigned progress_calls;
+static int progress_error;
+static flux_revolution_t* ufi_capture_get_data(uint8_t k){return &revs[k];}
+static int analysis_progress(uint32_t t0){(void)t0;progress_calls++;return progress_error;}
+static uint8_t weak_diff[WEAK_WINDOWS];
+static uint8_t weak_revs, weak_track, weak_side;
+/* window w of revolution k gets base(w) + extra(k, w) transitions, evenly spaced */
+static void build(uint8_t k, unsigned (*extra)(uint8_t, unsigned)){
+    unsigned n=0;
+    for(unsigned w=0;w<WEAK_WINDOWS;w++){
+        const unsigned cnt=10u+(w%3u)+extra(k,w);
+        for(unsigned i=0;i<cnt;i++)samples[k][n++].timestamp=(uint32_t)(w*1000u+i*1000u/cnt);
+    }
+    revs[k].samples=samples[k];revs[k].count=n;revs[k].index_time=64000u;revs[k].revolution=k;
+}
+static unsigned none(uint8_t k,unsigned w){(void)k;(void)w;return 0;}
+static unsigned some(uint8_t k,unsigned w){
+    if(w==5)return k;          /* 0,1,2 -> diff 2: below the mask threshold */
+    if(w==17)return 3u*k;      /* 0,3,6 -> diff 6: weak */
+    if(w==63)return k==2?1:0;  /* diff 1 */
+    return 0;
+}
+'''
+    code += function('ufi_analyze.c', 'weak_windows') + function('ufi_analyze.c', 'ufi_analyze_weak_report') + r'''
+int main(void){
+    analyze_result_t r;uint8_t out[70];
+    for(uint8_t k=0;k<3;k++)build(k,none);
+    memset(&r,0,sizeof r);assert(weak_windows(3,0,&r)==0 && !r.weak_mask && !r.weak_count && weak_revs==3 && progress_calls);
+    for(unsigned w=0;w<WEAK_WINDOWS;w++)assert(!weak_diff[w]);
+    for(uint8_t k=0;k<3;k++)build(k,some);
+    memset(&r,0,sizeof r);assert(weak_windows(3,0,&r)==0);
+    assert(weak_diff[5]==2 && weak_diff[17]==6 && weak_diff[63]==1 && !weak_diff[4] && !weak_diff[18]);
+    assert(r.weak_mask==(1ull<<17) && r.weak_count==1);              /* only >= 3 reaches the mask */
+    weak_track=40;weak_side=0x91;
+    assert(ufi_analyze_weak_report(out)==68 && out[0]==1 && out[1]==3 && out[2]==40 && out[3]==0x91 && out[4+17]==6 && out[4+5]==2);
+    memset(&r,0,sizeof r);assert(weak_windows(1,0,&r)==0 && !weak_revs && !weak_diff[17]);   /* one revolution: nothing to compare */
+    for(uint8_t k=0;k<3;k++)build(k,some);
+    progress_error=UFI_ERR_CANCELLED;assert(weak_windows(3,0,&r)==UFI_ERR_CANCELLED);progress_error=0;
+    puts("weak windows: raw differences, fixed mask threshold, header, single revolution and cancel passed");
+}
+'''
+    run('regression_weak_windows', code)
+
 
 if __name__ == '__main__':
     main()
