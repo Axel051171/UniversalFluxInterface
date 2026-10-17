@@ -248,7 +248,7 @@ path; other tools can use the native firmware path directly.
 Full offline gate: 141 host tests, 291 quality/flag assertions, 17 regression
 executables and 23/23 drive-code checks passed. ARM build passed; AXI reserve
 38392 bytes, stack address space 24608 bytes. No hardware test performed.
-See [USB protocol section 4.9](USB_Protokoll.md#49-firmware-detailanalyse-zwei-flag-bits-118-dev)
+See [USB protocol section 5.2](USB_Protokoll.md#52-firmware-detailanalyse-acht-flag-bits-118-dev)
 for byte layouts, flags, evidence limits and timeout requirements.
 
 
@@ -327,7 +327,7 @@ Implemented the eight follow-up improvements in firmware and offline tooling:
    pattern writes and driven IEC/index loopbacks. SD information is read-only.
    No automatic log or disk writes; disk-write tests stay separate commands.
 
-Wire details and host integration sequence: [USB protocol section 4.10](USB_Protokoll.md#410-analysejobs-discovery-und-prüfabdeckung-info-bit24-2026-10-14).
+Wire details and host integration sequence: [USB protocol section 6.1](USB_Protokoll.md#61-analysejobs-discovery-und-prüfabdeckung-info-bit24-2026-10-14).
 Greaseweazle framing and commands remain unchanged. The new features use native
 UFI commands and INFO bit24; no per-disk-format flag proliferation.
 
@@ -443,7 +443,7 @@ separate media description, and manual media-change notification. Five status
 bits describe position validity, configured change-signal support, last observed
 change level, media-profile presence and estimated position. No additional
 analysis flags or Greaseweazle wire commands/status codes were introduced.
-The complete layouts and restrictions are in USB_Protokoll.md section 4.13.
+The complete layouts and restrictions are in USB_Protokoll.md section 4.2.
 
 A rising change indication invalidates the media profile and advances a
 boot-local generation. Native capture, analysis jobs and WRITE reject observed
@@ -474,7 +474,7 @@ INSUFFICIENT_EVIDENCE, with a separate reason mask. Synthetic index, timed
 slices and configured hard-sector modes cannot establish spindle speed.
 GCR zone rates are not compared against a global media rate. This is a
 non-mutating check: no automatic RPM/density changes, retry or write operation.
-Greaseweazle commands remain unchanged. See USB_Protokoll.md section 4.14.
+Greaseweazle commands remain unchanged. See USB_Protokoll.md section 4.3.
 
 Validation passed: native operating-profile matrix, job protocol/retention and
 simulated-index rejection, 43 write-verification checks including 300 kbit/s
@@ -543,7 +543,7 @@ Section 13 separates inconsistent valid content, decoding errors, missing
 sectors and missing evidence. Comparison header fields distinguish missing
 and additional edges and explicitly mark alignment as unverified. Cross-track
 phase measurement and weak-bit writing are not implemented or advertised.
-See USB_Protokoll.md section 4.16 and Floppy_Emu_Review.md for exact semantics
+See USB_Protokoll.md section 5.4 and Floppy_Emu_Review.md for exact semantics
 and provenance; no femu.bin code was executed or imported.
 
 Validation: complete offline gate passed, including synchronous/cooperative
@@ -584,7 +584,7 @@ for local checksum/content distinction and the final HFEv3/parser cases passed.
 Final ARM build warning-free; FLASH 181820 bytes, AXI 292904 used / 34776 free,
 SRAM1 6560, heap 8192, stack address space 24576 bytes.
 SHA-256: `4d14ccde8ba6b058ece25b1332351eef319ba0e75379681638a4e9715c17f451`.
-Hardware qualification remains open. See USB_Protokoll.md 4.17 and HxC_Gotek_Review.md.
+Hardware qualification remains open. See USB_Protokoll.md 5.5 and HxC_Gotek_Review.md.
 
 ## Recognition and attempt causes — 2026-10-16
 
@@ -697,7 +697,7 @@ Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
 
 - Stored operating profiles persist in `UFIPROF.BIN` (header, 12 x 40 bytes, CRC-32):
   written by every successful Op 18 store, read after UFI.CFG, shape-checked per slot,
-  dropped on size/CRC/schema mismatch (protocol 4.15). Presets and single TIMING/Op 10
+  dropped on size/CRC/schema mismatch (protocol 4.4). Presets and single TIMING/Op 10
   changes do not touch the file.
 - New fuzz target `run_fuzz.py --target drive`: `ufi_drive.c` as a whole with the real
   media, capability, extra-timing and CRC modules; HAL GPIO, time and the SD file API are

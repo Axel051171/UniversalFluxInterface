@@ -4,7 +4,7 @@ Implementiert am 2026-10-13; ausschließlich offline geprüft.
 
 Nachfolgend ist der Python-Hostpfad beschrieben. Zusätzlich stehen Analyse und
 erweitertes Prüflesen jetzt direkt in der Firmware bereit: siehe
-[USB-Protokoll, Abschnitt 4.9](USB_Protokoll.md#49-firmware-detailanalyse-zwei-flag-bits-118-dev).
+[USB-Protokoll, Abschnitt 5.2](USB_Protokoll.md#52-firmware-detailanalyse-acht-flag-bits-118-dev).
 Andere Tools können diese Funktionen ohne den Python-Decoder verwenden.
 Eigene Implementierung, keine Übernahme von ADF-Drive-/GPL-Quellcode.
 

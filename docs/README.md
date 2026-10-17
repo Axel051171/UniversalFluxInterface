@@ -6,7 +6,7 @@ Stand: Firmware 1.18-dev, Platine v0.7; alle Softwareaussagen sind ohne aufgebau
 
 | Datei | Inhalt |
 |---|---|
-| [USB_Protokoll.md](USB_Protokoll.md) | Verbindliche Beschreibung beider USB-Protokolle (Greaseweazle-Modus, UFI v2 mit allen Erweiterungen ab 1.18-dev); wird mit jeder Firmwareänderung fortgeschrieben |
+| [USB_Protokoll.md](USB_Protokoll.md) | Verbindliche Beschreibung beider USB-Protokolle, sachlich gegliedert (Transport, Befehle, Laufwerk, Lesen/Schreiben, Analysejobs, SD, IEC, Greaseweazle); wird mit jeder Firmwareänderung fortgeschrieben |
 | [Implementation_Status.md](Implementation_Status.md) | Was in 1.18-dev umgesetzt ist, mit Nachweisen und Grenzen (englisch) |
 | [Firmware_Erweiterungen_2026-10-16.md](Firmware_Erweiterungen_2026-10-16.md) | Letzter geprüfter Stand: dauerhafte Analysepläne, Rohspurprofil, HFEv3-Export, Prüfläufe, Binärhashes |
 | [Firmware_Abschluss_2026-10-16.md](Firmware_Abschluss_2026-10-16.md) | Historischer Zwischenstand davor: Korrekturen zur Prüfungs- und Entwicklungsanweisung |

@@ -147,7 +147,7 @@ aus dem Binärabbild zu übernehmen. Native INFO-Capability Bit25 meldet:
 - Fünf zusätzliche Zeitparameter über versioniertes Op 10. Vor-/Nachlauf am
   WGATE über stille Segmente im nativen erweiterten 34-Pin-Schreibpfad.
 
-Details, Defaults und Grenzen: [USB-Protokoll, Abschnitt 4.11](USB_Protokoll.md#411-aufnahmebelege-und-zusätzliche-laufwerkszeiten-info-bit25).
+Details, Defaults und Grenzen: [USB-Protokoll, Abschnitt 4.1](USB_Protokoll.md#41-aufnahmebelege-und-zusätzliche-laufwerkszeiten-info-bit25).
 Die beiden Flags sind formatunabhängig und nutzen freie Jobbits. Standardaufnahmen
 konfigurieren sie über Op 7; Op 8 liest die Belege. Keine neuen Greaseweazle-Tokens.
 Eine automatische Erkennung der Sektorlochzahl ist weiterhin nicht implementiert.

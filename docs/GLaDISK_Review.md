@@ -83,7 +83,7 @@ Zähler ebenfalls invalidieren, A → B → A wird dadurch erkannt.
 Neue Befundflags: `CAPABILITY_UNCONFIRMED=1`, `WRITE_MODE_UNQUALIFIED=2`,
 `PROFILE_CHANGED=4`, `NO_FLUX_PORT=8`, `BUSY=16`, `LINE_CONFLICT=32`.
 Keine zusätzlichen Auftragsbits nötig. Layouts und Token-Gültigkeit stehen
-in [USB_Protokoll.md, Abschnitt 4.19](USB_Protokoll.md#419-fähigkeiten-und-konfigurationsgeneration-gladisk-anregungen).
+in [USB_Protokoll.md, Abschnitt 1.3](USB_Protokoll.md#13-fähigkeiten-und-konfigurationsgeneration-gladisk-anregungen).
 INFO verwendet inzwischen alle 32 Capability-Bits. Weitere Discovery sollte
 deshalb versionierte Einträge/Operationen erweitern, statt bestehende INFO-Bits
 umzudeuten. Kein neues Greaseweazle-Kommando erforderlich.

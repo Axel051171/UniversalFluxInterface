@@ -112,11 +112,11 @@ ROM-Erkennung meldet unbekannte ROMs ausdrücklich; eine ROM-Familie bestimmt ni
 sicher die physische Laufwerksrevision. Das Journal bleibt bei Fehlern erhalten.
 
 Verbindliche Wire-Layouts und Grenzen stehen in
-[USB_Protokoll.md, Abschnitt 4](../../docs/USB_Protokoll.md#4-implementierte-erweiterungen-ab-118-dev).
+[USB_Protokoll.md, Kapitel 1 bis 9](../../docs/USB_Protokoll.md).
 
 ## Protokoll UFI v2 (Standard)
 
-`ufi` spricht **UFI v2** – Spezifikation: [docs/USB_Protokoll.md](../../docs/USB_Protokoll.md), Abschnitt 3 (Rahmen `55 AA`, type/cmd/seq/status/len, CRC-16/CCITT-FALSE, Daten-/Ende-Rahmen für Lesen und Schreiben, Ereignisse, Dateien). Implementierung: `ufi_host/protocol2.py` (`Device2`, `FrameParser`, `connect`).
+`ufi` spricht **UFI v2** – Spezifikation: [docs/USB_Protokoll.md](../../docs/USB_Protokoll.md), Kapitel 2 und 3 (Rahmen `55 AA`, type/cmd/seq/status/len, CRC-16/CCITT-FALSE, Daten-/Ende-Rahmen für Lesen und Schreiben, Ereignisse, Dateien). Implementierung: `ufi_host/protocol2.py` (`Device2`, `FrameParser`, `connect`).
 
 - Beim Öffnen: Kanal-Reset (10000 Baud), dann `PING` als v2-Rahmen. Antwortet das Gerät nicht in v2 (alte Firmware), nimmt `ufi` das v1-Protokoll (unten) und weist auf ein Firmware-Update hin; v2-Befehle (`caps`, `files`, `cfg`, …) melden dann einen Fehler.
 - Lesen: `READ` → Annahme, Daten-Rahmen mit dem Flusscode (275 MHz, wie v1-Stream), Ende-Rahmen mit Umdrehungszahl. SCP-Ausgabe identisch zum v1-Weg.
@@ -161,7 +161,7 @@ Fähigkeiten sowie getrennte Konfigurations-/Medientoken. Nach Unterstützungser
 über Matrixbyte23 kann `write_track(..., expected_config=..., expected_media=...)`
 den Schreibstart an beide Token binden. Kein automatischer Rückfall auf ungeprüftes
 Schreiben. `ufi_host.capabilities.guarded_analysis(..., media_generation=...)`
-erzeugt den entsprechenden Analyse-Start. Layouts: USB-Protokoll4.19/4.20.
+erzeugt den entsprechenden Analyse-Start. Layouts: USB-Protokoll 1.3/4.5.
 
 Zusätzliche Offline-Prüfung: `python firmware/tools/check_static.py` benötigt Clang
 und prüft zehn hardwareunabhängige Firmwaremodule. Die vollständige Testsuite bleibt
@@ -177,4 +177,4 @@ für HFEv3-Objekte abgewiesen. SD-HFE in der MCU bleibt v1.
 Die Firmware liefert mit TIMING oder WINDOWS zusätzlich 32 lokale Zeitfenster;
 REV_COMPARE ergänzt Flankenunterschiede. Der Host kann Abschnitt 14 mit
 `ufi_host.regions.decode_regions()` auswerten. Wire-Layout und Flags:
-[USB-Protokoll, Abschnitt 4.17](../../docs/USB_Protokoll.md).
+[USB-Protokoll, Abschnitt 5.5](../../docs/USB_Protokoll.md#55-lokale-zeitfenster-hfev3-und-getrennte-schwachstellenbefunde).

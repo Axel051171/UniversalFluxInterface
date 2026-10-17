@@ -149,14 +149,14 @@ class FakeV2:
             if a:
                 self.timing = a[:P2.TIMING.size]
             r(0, self.timing)
-        elif cmd == P2.ANALYSIS_JOB and a[0] == 10:          # additional drive times (4.11)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 10:          # additional drive times (4.1)
             if len(a) == 14:
                 if a[1] != 1:
                     r(P2.BAD_ARGS)
                     return
                 self.extra = a[2:14]
             r(0, bytes([1]) + self.extra)
-        elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.15)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.4)
             if len(a) == 2:                                   # [18, id]: movement/settle times only
                 presets = {1: ((3000, 15000, 15000, 200, 500, 10000), (0, 0)),
                            2: ((8000, 40000, 38000, 1000, 800, 60000), (60000, 200))}
