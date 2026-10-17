@@ -9,7 +9,7 @@ def runtime_tests():
 #include "../mac_fixture.h"
 typedef struct {uint32_t timestamp;} flux_sample_t;
 typedef struct {flux_sample_t* samples;uint32_t count,index_time;uint8_t revolution;} flux_revolution_t;
-typedef struct {uint8_t current_track,current_side;uint32_t error_code;} capture_context_t;
+typedef struct {uint8_t current_track,current_side,current_quarter;uint32_t error_code;} capture_context_t;
 capture_context_t g_capture;
 static flux_sample_t samples[100000];
 static flux_revolution_t revolutions[8];
