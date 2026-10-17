@@ -405,6 +405,10 @@ int ufi_write_start(void) {
             return pret;
         }
     }
+    if (ufi_board_soft_locked()) {          /* session lock engaged after acceptance (op 37) */
+        g_write.state = WRITE_ERROR;
+        return UFI_ERR_SOFT_LOCK;
+    }
     if (ufi_board_write_locked()) {         /* WRITE LOCK jumper: WGATE is blocked anyway */
         g_write.state = WRITE_ERROR;
         return UFI_ERR_WRITE_PROT;

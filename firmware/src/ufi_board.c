@@ -94,9 +94,30 @@ static void sample_rails(void)
  * STATUS
  * ============================================================================ */
 
-bool ufi_board_write_locked(void)
+/* Session write lock (ANALYSIS_JOB op 37, 1.18): engage-only, lives in RAM, so only an
+ * MCU reset (power-on, NRST, watchdog) clears it; USB personality switches and protocol
+ * resets keep it.  The v2 paths refuse with status 22, everything that only asks
+ * ufi_board_write_locked() (jumper semantics) is blocked the same way the jumper blocks. */
+static bool session_lock;
+
+void ufi_board_soft_lock(void)
+{
+    session_lock = true;
+}
+
+bool ufi_board_soft_locked(void)
+{
+    return session_lock;
+}
+
+bool ufi_board_jumper_locked(void)
 {
     return HAL_GPIO_ReadPin(PIN_WLOCK.port, PIN_WLOCK.pin) == GPIO_PIN_SET;
+}
+
+bool ufi_board_write_locked(void)
+{
+    return session_lock || ufi_board_jumper_locked();
 }
 
 board_status_t ufi_board_status(void)
@@ -104,7 +125,8 @@ board_status_t ufi_board_status(void)
     sample_rails();
     board_status_t s = {0};
     s.power = power_mask;
-    s.flags = (uint8_t)((ufi_board_write_locked() ? 0x01u : 0u) | (uint8_t)(trip_mask << 1) |
+    s.flags = (uint8_t)((ufi_board_jumper_locked() ? 0x01u : 0u) | (uint8_t)(trip_mask << 1) |
+                        (session_lock ? 0x80u : 0u) |
                         (ufi_sd_present() ? 0x08u : 0u) |
                         (HAL_GPIO_ReadPin(PIN_BTN_A.port, PIN_BTN_A.pin) == GPIO_PIN_RESET ? 0x10u : 0u) |
                         (HAL_GPIO_ReadPin(PIN_BTN_B.port, PIN_BTN_B.pin) == GPIO_PIN_RESET ? 0x20u : 0u) |

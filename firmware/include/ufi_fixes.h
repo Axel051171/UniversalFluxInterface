@@ -45,6 +45,7 @@ typedef enum {
     UFI_ERR_TRACK_LONG  = -19,  /* write: the index came before the last interval (track cut) */
     UFI_ERR_CANCELLED   = -20,
     UFI_ERR_MEDIA_CHANGED = -21,
+    UFI_ERR_SOFT_LOCK   = -22,  /* session write lock engaged (ANALYSIS_JOB op 37), until MCU reset */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

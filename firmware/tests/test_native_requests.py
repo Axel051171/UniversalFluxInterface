@@ -63,6 +63,42 @@ int main(void){
 '''
     run('regression_compact_preparation', code, ('src/ufi_write_codec.c',))
 
+    # Session write lock (op 37, 4.6): the board keeps it until reset, the jumper stays
+    # separate, and the v2 dispatcher refuses exactly the disk/drive-changing requests.
+    code = BASE + ERRORS + r'''
+#define GPIO_PIN_SET 1
+#define GPIO_PIN_RESET 0
+static const struct {int port,pin;} PIN_WLOCK;
+static int jumper;
+static int HAL_GPIO_ReadPin(int port,int pin){(void)port;(void)pin;return jumper;}
+static bool session_lock;
+'''
+    for name in ('ufi_board_soft_lock','ufi_board_soft_locked','ufi_board_jumper_locked','ufi_board_write_locked'):
+        code += function('ufi_board.c', name)
+    code += r'''
+enum {UFI_V2_WRITE=0x22,V2_GUARDED_WRITE=0x27,V2_ERASE=0x23,V2_PATTERN=0x24,V2_FORMAT=0x26,
+      V2_COPY_START=0x63,V2_WRITE_START=0x64,V2_IEC_BLOCK=0x35,V2_IEC_MEM=0x33,V2_IEC_TARGET=0x36};
+'''
+    code += function('ufi_v2.c', 'locked_write') + r'''
+int main(void){
+    assert(!ufi_board_soft_locked() && !ufi_board_write_locked() && !ufi_board_jumper_locked());
+    jumper=1;assert(ufi_board_jumper_locked() && ufi_board_write_locked() && !ufi_board_soft_locked());
+    jumper=0;ufi_board_soft_lock();ufi_board_soft_lock();
+    assert(ufi_board_soft_locked() && ufi_board_write_locked() && !ufi_board_jumper_locked());
+    uint8_t p[8]={0};
+    for(unsigned cmd=0;cmd<256;cmd++)for(unsigned op=0;op<6;op++){
+        p[0]=p[2]=(uint8_t)op;
+        const bool always=cmd==0x22||cmd==0x27||cmd==0x23||cmd==0x24||cmd==0x26||cmd==0x63||cmd==0x64;
+        const bool iec=(cmd==0x35 && op==1)||((cmd==0x33||cmd==0x36) && (op==0||op==2||op==3));
+        assert(locked_write((uint8_t)cmd,p,8)==(always||iec));
+        assert(locked_write((uint8_t)cmd,p,0)==always);       /* empty payload: only the plain commands */
+    }
+    p[2]=0;assert(!locked_write(0x36,p,2) && locked_write(0x36,p,3));  /* TARGET needs the MEM op byte */
+    puts("session write lock: board state, jumper separation, v2 refusal set passed");
+}
+'''
+    run('regression_session_write_lock', code)
+
 
 if __name__ == '__main__':
     main()

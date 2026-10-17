@@ -577,12 +577,37 @@ static void write_data(uint8_t* p, uint16_t len)
     }
 }
 
+/* Requests the session write lock (op 37, 4.6) refuses with status 22: everything that
+ * can change a disk or a drive's memory.  Reads, status, M-R, IEC_READ_STATUS and SD
+ * file writes stay allowed; the SD card is not the evidence disk. */
+static bool locked_write(uint8_t cmd, const uint8_t* p, uint16_t len)
+{
+    switch (cmd) {
+        case UFI_V2_WRITE: case V2_GUARDED_WRITE: case V2_ERASE: case V2_PATTERN:
+        case V2_FORMAT: case V2_COPY_START: case V2_WRITE_START:
+            return true;
+        case V2_IEC_BLOCK:                  /* op 1 = U2 block write */
+            return len >= 1u && p[0] == 1u;
+        case V2_IEC_MEM:                    /* M-W, M-E, DOS command */
+            return len >= 1u && (p[0] == 0u || p[0] == 2u || p[0] == 3u);
+        case V2_IEC_TARGET:                 /* schema, device, then the MEM payload */
+            return len >= 3u && (p[2] == 0u || p[2] == 2u || p[2] == 3u);
+        default:
+            return false;
+    }
+}
+
 static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
 {
     ufi_resources_touch(HAL_GetTick());
     uint8_t* out = &tx[UFI_V2_HDR];
     uint16_t n = 0;
     int ret = UFI_OK;
+
+    if (ufi_board_soft_locked() && locked_write(cmd, p, len)) {
+        send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_SOFT_LOCK), NULL, 0);
+        return;
+    }
 
     const bool readonly = cmd == V2_PING || cmd == V2_INFO || cmd == V2_STATUS ||
         cmd == V2_DESCRIBE || cmd == V2_FEATURES || cmd == V2_DIAGNOSTICS || cmd == V2_WRITE_LIMITS || cmd == V2_EVENTS ||

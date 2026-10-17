@@ -484,7 +484,8 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
+           "write-lock"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -580,6 +581,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("tolerance", help="tolerance flags of the analysis decoders for IBM MFM/FM, HP, Amiga, Commodore and Macintosh (firmware 1.18, op 34): "
                    "keep_bad_header+ignore_epilogues+any_track+data_without_checksum+data_without_header, a number, or 'reset'; "
                    "no argument shows the current flags").add_argument("flags", nargs="?")
+    sub.add_parser("write-lock", help="session write lock (firmware 1.18, op 37): no argument shows lock and jumper state, 'engage' locks every disk "
+                   "and drive write (status 22) until the board is reset; there is no disengage").add_argument("action", nargs="?", choices=["engage"])
     sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
                    "'profile save' stores the effective settings so SELECT restores them (firmware 1.18)").add_argument(
         "action", nargs="?", choices=("standard", "konservativ", "save"))
@@ -886,6 +889,10 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "write-lock":
+            lk = dev.write_lock(engage=a.action == "engage")
+            print(f"session lock {'engaged (until MCU reset)' if lk['session'] else 'off'}, "
+                  f"WRITE-LOCK jumper {'set' if lk['jumper'] else 'open'}")
         elif a.cmd == "profile":
             if a.action == "save":
                 prof = dev.operating_profile_store()

@@ -13,6 +13,10 @@ def main():
 static uint8_t resource_owner;
 uint8_t ufi_resources_owner(void){return resource_owner;}
 static uint32_t media_token=1;
+static bool soft_lock,jumper_lock;
+void ufi_board_soft_lock(void){soft_lock=true;}
+bool ufi_board_soft_locked(void){return soft_lock;}
+bool ufi_board_jumper_locked(void){return jumper_lock;}
 int ufi_raw_verify_options(const uint8_t* p,uint16_t n,uint8_t* out){(void)p;(void)n;memset(out,0,8);return 0;}
 uint16_t ufi_raw_verify_report(uint8_t* out){(void)out;return 0;}
 static uint8_t saved_slots[2][128];
@@ -349,6 +353,17 @@ int main(void){
     assert(ufi_analysis_command(to,3,out,&size)==UFI_ERR_BAD_ARGS);
     assert(!ufi_analysis_command(to,1,out,&size) && out[1]==0x1f);
     to[2]=0;assert(!ufi_analysis_command(to,4,out,&size) && !out[1] && !mfm_get_tolerance());
+    /* Op 37: session write lock - query shows lock and jumper, engage-only, idempotent, no disengage, bad payloads refused */
+    uint8_t lk[3]={37};assert(!ufi_analysis_command(lk,1,out,&size) && size==2 && out[0]==1 && !out[1]);
+    jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==2);jumper_lock=false;
+    lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && !soft_lock);
+    lk[1]=2;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && !soft_lock);
+    lk[1]=1;assert(ufi_analysis_command(lk,3,out,&size)==UFI_ERR_BAD_ARGS && !soft_lock);
+    busy=true;assert(!ufi_analysis_command(lk,2,out,&size) && size==2 && out[1]==1 && soft_lock);busy=false;
+    assert(!ufi_analysis_command(lk,2,out,&size) && out[1]==1);
+    lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && soft_lock);
+    jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==3);jumper_lock=false;
+    soft_lock=false;
     /* Op 35: Apple II nibble statistics - 178 bytes, schema 1, no revolutions before a format 7 analysis */
     uint8_t ns[2]={35,0};assert(!ufi_analysis_command(ns,1,out,&size) && size==274 && out[0]==2 && out[1]==0);
     assert(ufi_analysis_command(ns,2,out,&size)==UFI_ERR_BAD_ARGS);

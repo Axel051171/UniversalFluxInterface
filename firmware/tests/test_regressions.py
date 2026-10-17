@@ -241,6 +241,8 @@ static int pack_deltas(void) {
 static bool ufi_drive_is_apple(void) { return false; }
 static bool ufi_config_apple_sync(void) { return false; }
 static bool ufi_board_write_locked(void) { return locked; }
+static bool soft_locked;
+static bool ufi_board_soft_locked(void) { return soft_locked; }
 static bool ufi_drive_write_protected(void) { return false; }
 static int ufi_drive_seek_q(uint8_t t, uint8_t q) { (void)t; (void)q; return 0; }
 static int ufi_drive_select_side(uint8_t s) { return s<2?0:UFI_ERR_BAD_ARGS; }
@@ -288,6 +290,9 @@ int main(void) {
     now += 1001; ufi_write_service();
     assert(g_write.state == WRITE_IDLE && last_result == UFI_ERR_NO_INDEX && !gate);
     prepare(); locked = true; assert(ufi_write_start() == UFI_ERR_WRITE_PROT && !gate); locked = false;
+    /* session write lock engaged between acceptance and start: status 22, nothing written */
+    prepare(); soft_locked = true; assert(ufi_write_start() == UFI_ERR_SOFT_LOCK && !gate && g_write.state == WRITE_ERROR);
+    soft_locked = false;
     prepare(); unsigned before = events; ufi_write_receive_failed();
     assert(events == before && receive_failed && g_write.state == WRITE_ERROR);
     ufi_write_service(); assert(events == before+1 && last_result == UFI_ERR_BUFFER_FULL);

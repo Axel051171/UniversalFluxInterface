@@ -110,6 +110,7 @@ OK, BUSY, NO_DRIVE, SEEK_FAILED, NO_INDEX, TIMEOUT, DMA_ERROR, USB_ERROR = range
 IEC_NO_DEVICE, IEC_NO_ACK, OVERFLOW, UNSUPPORTED, WRITE_PROTECTED, STORAGE = range(8, 14)
 FRAME_ERROR, UNKNOWN_COMMAND, BAD_ARGS, NOT_FOUND = range(14, 18)
 NOT_REPRESENTABLE, TRACK_LONG, CANCELLED, MEDIA_CHANGED = range(18, 22)   # 1.15 / 1.15 / 1.18 / 1.18
+SOFT_WRITE_LOCK = 22                                                        # 1.18: session write lock (op 37)
 STATUS_TEXT = {
     1: "busy (dump running / operation active)", 2: "no drive selected / drive missing",
     3: "seek failed (track 0)", 4: "no index pulse / aborted", 5: "timeout",
@@ -121,6 +122,7 @@ STATUS_TEXT = {
     19: "track longer than one revolution: the index ended the write",
     20: "operation cancelled",
     21: "media changed; prepare the operation again",
+    22: "session write lock engaged (op 37); only an MCU reset clears it",
 }
 
 # INFO caps bits
@@ -285,10 +287,15 @@ def encode_flux(deltas: list[int]) -> bytes:
 @dataclass
 class BoardStatus:
     power: int                          # bit0 FDD_5V, bit1 FDD_12V
-    flags: int                          # bit0 WRITE-LOCK, bit1/2 overcurrent 5/12 V, bit3 SD, bit4/5 buttons
+    flags: int                          # bit0 WRITE-LOCK jumper, bit1/2 overcurrent 5/12 V, bit3 SD, bit4/5 buttons, bit6 safe mode, bit7 session lock (1.18)
     i5_ma: int
     i12_ma: int
     board_id_mv: int
+
+    @property
+    def session_locked(self) -> bool:
+        """Session write lock engaged (op 37, firmware 1.18); cleared only by an MCU reset."""
+        return bool(self.flags & 0x80)
 
     @classmethod
     def unpack(cls, b: bytes) -> BoardStatus:
@@ -899,6 +906,17 @@ class Device2:
             raise DeviceError("decoder tolerance: unexpected reply")
         value = reply[1] | reply[2] << 8
         return {"flags": value, "flag_names": flag_names(value, TOLERANCE_FLAGS)}
+
+    def write_lock(self, engage: bool = False) -> dict:
+        """Session write lock (op 37, firmware 1.18).  engage=True engages it; there is no
+        disengage over USB, only an MCU reset clears it.  Returns {'session': bool,
+        'jumper': bool, 'locked': bool}.  While engaged the firmware refuses WRITE,
+        GUARDED_WRITE, ERASE, PATTERN, FORMAT, SD-to-disk starts and IEC drive writes with
+        status 22; reads and SD file writes stay allowed."""
+        reply = self.analysis_op(37, b"\x01" if engage else b"")
+        if len(reply) < 2 or reply[0] != 1:
+            raise DeviceError("write lock: unexpected reply")
+        return {"session": bool(reply[1] & 1), "jumper": bool(reply[1] & 2), "locked": bool(reply[1] & 3)}
 
     def timing_preset(self, preset: int | str) -> OperatingProfile:
         """Apply a named timing set (op 18 with [18, id]): 'standard' or 'konservativ'.  Only the

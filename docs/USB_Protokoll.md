@@ -33,6 +33,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.3 Optionale Profilprüfung (2026-10-16)
   - 4.4 Portbelegung und gespeicherte Betriebsprofile (INFO Bit28, 2026-10-16)
   - 4.5 Mediengebundene Starts und robuste Anfrageprüfung
+  - 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -425,7 +426,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–36), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–37), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -538,13 +539,14 @@ fehl, endet WRITE mit Status 3.
 | 19 | Spur länger als eine Umdrehung: der Index hat das Schreiben beendet, die Spur ist abgeschnitten (1.15) |
 | 20 | über den Cancel-Pfad abgebrochen (1.18, Abschnitt 2.5) |
 | 21 | Mediengeneration oder angewähltes Laufwerk hat sich während einer geschützten nativen Operation geändert, `MEDIA_CHANGED` (INFO Bit27, Abschnitt 4.2) |
+| 22 | Sitzungs-Schreibsperre aktiv, `SOFT_WRITE_LOCK` (Op 37, Abschnitt 4.6): das Schreiben wurde von der Sperre dieser Sitzung abgewiesen, nicht vom Schreibschutz der Diskette oder dem Jumper (1.18) |
 
 ### 3.3 Festlegungen im Detail
 
 - **seq:** Der Host nummeriert Anfragen 1…255 (danach wieder 1); 0 ist der Rahmenfehler-Antwort vorbehalten. Höchstens **eine Anfrage gleichzeitig** offen. Ereignisse zählen ihre eigene seq ab 0 (Überlauf 255 → 0).
 - **Zeitüberschreitung:** Kommt eine Antwort nicht (z. B. wegen CRC-Fehler verworfen), wartet der Host 1 s (Lesen/Schreiben: bis zum Ende-Rahmen, Zeitlimit großzügig) und setzt dann den Kanal zurück (10000 Baud). Eine Antwort mit `cmd=0xFF, seq=0, status=14` gehört zur gerade offenen Anfrage.
 - **INFO:** `store_bytes` = Größe des Flussspeichers (8 MB PSRAM, sonst interner Ersatzpuffer), nicht der SD-NAND (dafür SD_INFO). Der Text danach ist ASCII, Zeilen durch `\n` getrennt, ohne abschließendes Nullbyte: Name/Version, Git-Stand, Build-Datum, PSRAM-Ergebnis, ab 1.14 die Reset-Ursache (`reset: …`).
-- **board_status (8 Byte):** `power` u8 (Bit0 FDD_5V an, Bit1 FDD_12V an), `flags` u8 (Bit0 WRITE-LOCK gesteckt, Bit1/2 Überstrom 5 V/12 V ausgelöst, Bit3 SD-NAND bereit, Bit4/5 Taster A/B gedrückt, Bit6 Sicherheitsmodus), `i5_ma` u16, `i12_ma` u16, `board_id_mv` u16.
+- **board_status (8 Byte):** `power` u8 (Bit0 FDD_5V an, Bit1 FDD_12V an), `flags` u8 (Bit0 WRITE-LOCK gesteckt, Bit1/2 Überstrom 5 V/12 V ausgelöst, Bit3 SD-NAND bereit, Bit4/5 Taster A/B gedrückt, Bit6 Sicherheitsmodus, Bit7 Sitzungs-Schreibsperre aktiv, Abschnitt 4.6, 1.18), `i5_ma` u16, `i12_ma` u16, `board_id_mv` u16.
 - **READ:** `revs` 1…200. Der Ende-Rahmen ist maßgeblich: Nur so viele Umdrehungen gelten, wie er meldet (bei Überlauf können `FD`-Marken fehlen oder überzählig sein). Ende-Status 4 = kein Index **oder** per ABORT abgebrochen; 10 = Überlauf (Host las zu langsam).
 - **WRITE_LIMITS (1.15):** reine Abfrage (auch während eines Dumps), Nutzdaten müssen leer sein (sonst 16). Der Host (`ufi write`, `write-disk`) holt die Grenzen einmal je Verbindung und weist Aufträge lokal ab, die die Firmware mit Status 10 oder 18 ablehnen würde – mit Spur, Index und Wert; mit Kappen-Flag entfällt die Intervallprüfung. Ältere Firmware ohne Bit 14: keine Vorprüfung.
 - **WRITE Index während des Schreibens (1.15):** Kommt der nächste Indeximpuls, bevor die letzte Periode ausgegeben ist, fällt das Schreibtor sofort und der Auftrag endet mit Status 19 (zuvor galt dieser Sicherheitsstopp als Erfolg). Die Spur war länger als eine Umdrehung; Abhilfe: Zeitskala < 1 oder weniger Flusswechsel.
@@ -1187,6 +1189,49 @@ und löschen keinen vorhandenen Prüfbericht mehr. Die Fähigkeitsmatrix meldet
 BUSY auch bei einer noch gehaltenen Greaseweazle-Ressource. Diese Korrekturen
 und Erweiterungen benötigen **keine zusätzlichen Flags**; Greaseweazle-Wireformat
 und die bisherigen gültigen WRITE-Anfragen bleiben unverändert.
+
+### 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
+
+Forensische Werkzeuge wollen vor dem ersten Lesen sicherstellen, dass die Firmware in
+dieser Sitzung **kein** Schreibkommando mehr ausführt, auch nicht durch einen Bedienfehler
+im Werkzeug oder ein zweites Programm am selben Port. Dafür gibt es eine Sperre, die nur
+eingeschaltet werden kann:
+
+- `0x0F [37]` liest den Zustand: Antwort `[Schema 1, state u8]` mit Bit0 = Sitzungssperre
+  aktiv, Bit1 = WRITE-LOCK-Jumper gesteckt. Beide sind getrennt sichtbar.
+- `0x0F [37, 1]` schaltet die Sperre ein und liefert dieselbe Antwort; wiederholtes
+  Einschalten ist erlaubt. Jede andere Nutzlast (`[37, 0]`, `[37, 2]`, längere Anfragen)
+  wird mit BAD_ARGS abgewiesen: **ein Ausschalten über USB gibt es nicht.** Die Sperre
+  endet nur mit einem Reset des Mikrocontrollers (Einschalten, NRST, Watchdog). Ein
+  Wechsel der USB-Persönlichkeit (Greaseweazle-Modus, Massenspeicher), ein Protokoll-Reset
+  oder ABORT heben sie nicht auf. Die Sperre ist nicht von der Laufwerksauswahl abhängig
+  und wird nicht gespeichert.
+- `board_status.flags` Bit7 (STATUS 0x02, POWER 0x40, Ereignis 0x83) zeigt die aktive
+  Sperre in jedem Statusblock; Bit0 bleibt der Jumper.
+
+**Was mit Status 22 abgewiesen wird** (bei der Annahme, bevor ein Kopf bewegt oder ein
+Tor geöffnet wird): WRITE 0x22, GUARDED_WRITE 0x27, ERASE 0x23, PATTERN 0x24, FORMAT 0x26,
+COPY_START 0x63 und WRITE_START 0x64 (SD → Diskette), IEC_BLOCK 0x35 mit Op 1 (U2-Block
+schreiben) sowie IEC_MEM 0x33 und IEC_TARGET 0x36 mit den Unterfunktionen 0 (M-W), 2 (M-E)
+und 3 (DOS-Befehl), weil sie den Laufwerksspeicher oder die Diskette im Laufwerk ändern
+können. Ein WRITE, der vor dem Einschalten angenommen wurde, endet mit Ende-Status 22,
+sobald die Firmware das Schreiben beginnen würde; nichts wird geschrieben. Status 22
+unterscheidet die Sitzungssperre vom Schreibschutz der Diskette und vom Jumper (beide 12).
+
+**Erlaubt bleiben** alle Lesekommandos, ANALYZE, Analysejobs, QUALITY, IEC_READ_STATUS,
+IEC_BLOCK Op 0, IEC_MEM Op 1 (M-R) und Op 4 (DOS-Status), Laufwerkssteuerung (SELECT,
+MOTOR, SEEK, RECAL, SIDE) sowie Dateischreibzugriffe auf die SD-NAND (WRITE_FILE, DELETE,
+Dumps nach SD): die SD-Karte ist nicht der Beweisträger.
+
+**Andere Pfade:** Im Greaseweazle-Modus wirkt die Sperre wie der Jumper, das heißt die
+GW-Schreibkommandos erhalten die vorhandene GW-Quittung „schreibgeschützt“; es gibt dort
+keinen eigenen Code. Ein Werkzeug darf diese GW-Antwort also nicht als „Jumper gesteckt“
+deuten, sondern fragt im nativen Modus Op 37. Der USB-Floppy-Modus (Massenspeicher) und
+das eigenständige Schreiben per Taster sind ebenfalls wie beim Jumper blockiert.
+
+Host: `write_lock(engage=False)` liefert `{'session', 'jumper', 'locked'}`, `ufi write-lock
+[engage]`; `BoardStatus.session_locked` liest Bit7. FakeV2 modelliert Op 37, Bit7 und die
+Abweisungen mit 22.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2293,6 +2338,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 34 | 1 / 4 | Toleranzflags der Decoder für Format 1–6 lesen / setzen, 3 Bytes Antwort (5.8) |
 | 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 274 Bytes, Schema 2 (5.7) |
 | 36 | 1 / 66 | Apple-II-6-and-2-Symboltabelle lesen / setzen, 65 Bytes Antwort (5.7) |
+| 37 | 1 / 2 | Sitzungs-Schreibsperre abfragen / einschalten (`[37, 1]`), 2 Bytes Antwort; kein Ausschalten über USB (4.6) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

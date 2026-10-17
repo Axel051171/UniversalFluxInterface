@@ -384,7 +384,10 @@ void ufi_board_service(void);                   // main loop: overcurrent, USB l
 void ufi_board_activity(void);                  // host command / transfer seen
 void ufi_board_power(uint8_t mask);
 board_status_t ufi_board_status(void);
-bool ufi_board_write_locked(void);
+bool ufi_board_write_locked(void);              // WRITE-LOCK jumper or session lock: WGATE must stay off
+bool ufi_board_jumper_locked(void);             // WRITE-LOCK jumper only (board_status bit 0)
+void ufi_board_soft_lock(void);                 // session write lock (op 37, 1.18): engage-only, cleared by MCU reset
+bool ufi_board_soft_locked(void);               // v2 write starts refuse with status 22 while engaged
 bool ufi_board_has_apple(void);                 // v0.7 board: Apple Disk II port J14
 uint16_t ufi_adc_mv(uint32_t channel);          // ufi_power.c, 0 if the ADC is not available
 int ufi_sd_info(sd_info_t* info);               // ufi_sd.c

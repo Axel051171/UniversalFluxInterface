@@ -469,6 +469,16 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         }
         out[0]=1;memcpy(out+1,mfm_apple_get_table(),64);*size=65;return UFI_OK;
     }
+    if(p[0]==37 && (n==1 || n==2)){
+        /* Session write lock (4.6): [37] reads, [37, 1] engages until MCU reset; there is no
+         * disengage over USB.  state bit0 = session lock, bit1 = WRITE-LOCK jumper. */
+        if(n==2){
+            if(p[1]!=1)return UFI_ERR_BAD_ARGS;
+            ufi_board_soft_lock();
+        }
+        out[0]=1;out[1]=(uint8_t)((ufi_board_soft_locked()?1u:0u)|(ufi_board_jumper_locked()?2u:0u));
+        *size=2;return UFI_OK;
+    }
     if(p[0]==35 && n==1){
         /* Apple II nibble statistics of the last format 7 analysis: 178 bytes, revs 0 = none yet */
         memcpy(out,mfm_apple_stats(),sizeof(apple_stats_t));*size=sizeof(apple_stats_t);return UFI_OK;

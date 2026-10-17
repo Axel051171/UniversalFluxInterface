@@ -871,3 +871,22 @@ fault, rotated alphabet breaking the standard track, positions, trailing histogr
 variant counts; op 36 and the 274-byte op 35 in `test_analysis_job.py`. Host:
 `apple_gcr_table()`, `ufi apple-table`, flag name `five_and_three`, schema 2 fields in
 `apple_gcr_stats()` and `ufi apple-stats`; FakeV2 ops 35/36. Protocol doc 5.7 and op table.
+
+## Session write lock — 2026-10-17
+
+First of the UFT forensic wishes (P1.10). ANALYSIS_JOB op 37 reads (`[37]` -> schema 1,
+state bit0 session lock, bit1 WRITE-LOCK jumper) or engages (`[37, 1]`) a write lock that
+lives in RAM and ends only with an MCU reset; there is no disengage over USB, every other
+payload is BAD_ARGS, and USB personality switches, protocol resets and ABORT keep it.
+New status 22 `SOFT_WRITE_LOCK` so a tool can tell the session lock from the disk tab or
+jumper (12). The v2 dispatcher refuses at acceptance, before any resource is taken: WRITE,
+GUARDED_WRITE, ERASE, PATTERN, FORMAT, COPY_START, WRITE_START, IEC_BLOCK op 1, IEC_MEM /
+IEC_TARGET ops 0/2/3; a WRITE accepted before the lock ends with END status 22 at the
+start check. `ufi_board_write_locked()` now includes the lock, so GW-mode writes (GW
+write-protect ack), the MSC floppy mode and the standalone button write are blocked like
+the jumper; `board_status.flags` bit7 shows the lock, bit0 stays the jumper
+(`ufi_board_jumper_locked()`). Native tests: op 37 in `test_analysis_job.py`, the board
+state and the exhaustive refusal predicate in `test_native_requests.py`, the start check
+in the write regression. Host: `write_lock(engage=)`, `ufi write-lock [engage]`,
+`BoardStatus.session_locked`, status text 22; FakeV2 models op 37, bit7 and the
+refusals. Protocol doc 4.6, status table, op table, board_status flags.

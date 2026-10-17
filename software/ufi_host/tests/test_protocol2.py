@@ -89,6 +89,7 @@ class FakeV2:
         self.firmware = firmware
         self.caps = self.CAPS_1_18 if caps is None else caps
         self.dos_errors: dict[tuple[int, int], int] = {}
+        self.soft_locked = False        # session write lock (op 37): engage-only, status 22 on disk/drive writes
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -132,6 +133,17 @@ class FakeV2:
             self._frame(P2.T_EVENT, code, self._evseq, 0, payload)
 
     @staticmethod
+    def _locked_write(cmd, a):
+        """Requests the session write lock refuses (4.6): disk writes, SD-to-disk starts and IEC drive writes."""
+        if cmd in (P2.WRITE, P2.GUARDED_WRITE, P2.ERASE, P2.PATTERN, P2.FORMAT, P2.COPY_START, P2.WRITE_START):
+            return True
+        if cmd == P2.IEC_BLOCK:
+            return len(a) >= 1 and a[0] == 1
+        if cmd == P2.IEC_MEM:
+            return len(a) >= 1 and a[0] in (0, 2, 3)
+        return cmd == P2.IEC_TARGET and len(a) >= 3 and a[2] in (0, 2, 3)
+
+    @staticmethod
     def _iec_mem(a, r):
         """IEC_MEM payload: 0 M-W (<= 32 bytes), 1 M-R n, 2 M-E, 3 DOS command (1-40 bytes), 4 DOS status."""
         if len(a) < 3 or a[0] > 4 or (a[0] == 0 and not 1 <= len(a) - 3 <= 32) \
@@ -165,6 +177,9 @@ class FakeV2:
         self.requests.append(f)
         cmd, seq, a = f.cmd, f.seq, f.payload
         r = lambda status=0, payload=b"": self._frame(P2.T_RESPONSE, cmd, seq, status, payload)
+        if self.soft_locked and self._locked_write(cmd, a):
+            r(P2.SOFT_WRITE_LOCK)
+            return
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
@@ -172,7 +187,14 @@ class FakeV2:
             r(0, P2.INFO_HDR.pack(2, *self.firmware, 7, self.caps, 275_000_000, 8 << 20, 4096)
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
-            r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
+            r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
+            if len(a) == 2 and a[1] == 1:
+                self.soft_locked = True
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            r(0, bytes([1, 1 if self.soft_locked else 0]))
         elif cmd == P2.TIMING_CMD:
             if a:
                 self.timing = a[:P2.TIMING.size]
@@ -857,6 +879,32 @@ def test_decoder_tolerance(monkeypatch, capsys):
     assert cli.main(["tolerance", "any_track"]) == 0 and "0x04 any_track" in capsys.readouterr().out
     assert cli.main(["tolerance"]) == 0 and "0x04 any_track" in capsys.readouterr().out
     assert cli.main(["tolerance", "reset"]) == 0 and "strict" in capsys.readouterr().out
+
+
+def test_session_write_lock(monkeypatch, capsys):
+    """Op 37: engage-only session lock; writes refused with status 22, reads and SD files allowed."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.write_lock() == {"session": False, "jumper": False, "locked": False}
+    assert fake.requests[-1].payload == bytes([37]) and not dev.status().board.session_locked
+    assert dev.write_lock(engage=True)["session"] and fake.requests[-1].payload == bytes([37, 1])
+    assert dev.write_lock()["locked"] and dev.status().board.session_locked
+    deltas = [1100] * 2000
+    for call in (lambda: dev.write_track(3, 1, deltas), lambda: dev.erase(3, 1),
+                 lambda: dev.pattern(3, 1, 4000, 100), lambda: dev.iec_block_write(18, 0, b"\0" * 256)):
+        with pytest.raises(P2.DeviceError) as e:
+            call()
+        assert e.value.status == P2.SOFT_WRITE_LOCK and "session write lock" in str(e.value)
+    assert fake.write_req is None, "the WRITE was refused before any DATA frame"
+    assert len(dev.read_track(0, 0, 2).revolutions) == 2    # reads stay allowed
+    assert dev.iec_block_read(18, 0) and fake.requests[-1].cmd == P2.IEC_READ_STATUS
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["write-lock"]) == 0 and "engaged" in capsys.readouterr().out
+    fake2 = FakeV2()
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
+    assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
+    assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
 
 
 def test_apple_gcr_stats(monkeypatch, capsys):
