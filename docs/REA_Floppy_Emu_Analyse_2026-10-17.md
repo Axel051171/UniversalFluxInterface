@@ -114,6 +114,37 @@ verworfen. Belegt durch Strings und die Trennung in Spuraufbau-Funktionen (0x65d
 - MFM-1440K-Emulation und HD20-Protokoll sind erkennbar (CRC-Tabelle, Protokollmeldungen),
   liefern aber nichts, was UFI nicht aus den Spezifikationen hat.
 
+## Zweites Abbild: `apple-II-0.1R-F8-modelB.zip` (Apple-II-Firmware, Modell B)
+
+Archiv-SHA-256 `62ded3c6…2fa2`; zweiteiliges Update: `femu.bin` (126 976 Byte, SHA-256
+`1f16fe32…1367`, AVR) und `firmware.xvf` (53 289 Byte, SHA-256 `df872cfc…0957`, CPLD),
+dazu `readme.txt` mit der getrennten Einspielreihenfolge (erst CPLD mit NEXT+PREV, dann
+AVR mit SELECT+PREV; „WRONG CPLD" bis beide Teile passen). Gleiche Werkzeugkette wie oben.
+
+| Befund | Apple-II-Abbild 0.1R / F8 | Macintosh-Abbild 231209M |
+|---|---|---|
+| Datei | AVR-Flash 0x00000–0x0bf48 (≈ 48 KiB Code), Rest Nullen, Abschluss `DD DD DD DD 00 01 00 00` bei 0x1eff8; CPLD getrennt | AVR ≈ 70 KiB plus CPLD-Strom ab 0x20000 |
+| Vektortabelle | gemischt `rjmp`/`jmp` (älterer Compilerstand), dieselben vier Interrupts: PCINT0 0x2aca, PCINT2 0x22a2, PCINT3 0x1fba, Timer0-Überlauf 0x7ba2 | 35 × `jmp`, gleiche vier Interrupts |
+| CPLD | XSVF für XC9572XL (IDCODE `0xF9604093`), identische Befehlsfolge und Längen, aber 6 612 abweichende Datenbytes: eigene Logik „F8" für Apple II | Logik für Mac/Lisa |
+| Betriebsarten (Strings) | Smartport, Apple II 5.25, Apple II 3.5; Menütexte kennen auch Lisa/Mac/Hard Disk als „nicht unterstützt" | Mac 3.5, HD20, Lisa |
+| Bildtypen | 140K NIB, 140K DOS-3.3-Reihenfolge, 140K ProDOS-Reihenfolge, 2MG (NIB/ProDOS/DOS 3.3, 140K und 800K), 800K DiskCopy, 800K roh; Prüfung „not ProDOS format", „bad 2MG format" | DiskCopy, MOOF, roh, Boxing |
+| Tabellen | DOS-3.3-Interleave 0x3c8 (`0 7 14 6 13 5 12 4 11 3 10 2 9 1 8 15`), ProDOS-Interleave 0x3d8 (`0 8 1 9 … 7 15`), kumulierte Mac-Sektoroffsets 0x3e8, Sektoren je Spur 16 × 12/11/10/9/8 bei 0x488, GCR-6&2-Kodiertabelle 0x514, Decodiertabelle 0x554, CRC-16-Tabelle 0x5be | gleiche GCR- und Zonentabellen, kein Interleave (Mac-Abbilder sind blockgeordnet) |
+| Nutzer der Tabellen | Interleaves und 6&2 in 0x2d2e–0x2dae (Funktion 0x15ae, 660 Byte, Datenfeld-Nibblizer), 6&2 und Zonentabelle in 0x22ca (3 282 Byte, größte Funktion, 3,5-Zoll-Spuraufbau); Smartport-Paketaufbau 0x2cae (Marken `C3 80 81 84 83`) | Kodierer 0x51f2, Spuraufbau 0x65d2 / 0x7512 |
+| Zonenzeiten | zwei Fünfergruppen u16 bei 0xbdcb: 403 439 483 538 604 und 394 429 472 525 590; Produkt mit 12/11/10/9/8 je ≈ 4 830 konstant, also Zeit- oder Längenwerte je Zone in zwei Varianten | im Code, nicht als Tabelle gefunden |
+| Hardwaretests | `CHECK PIN CLKO-H/-L`, `CHECK PIN RESET`, `SELF-TEST OK`, `BAD FUSES`, `WRONG CPLD: %d != %d` | gleich, plus Modellbuchstabe |
+
+Ghidra fand 190 Funktionen. Die Schnittstelle AVR↔CPLD (7 Datenleitungen, Strobe,
+Quittung) ist unverändert; die Spurdaten für 5,25 Zoll entstehen aus Sektorabbildern
+mit den beiden Interleave-Tabellen und derselben 6&2-Tabelle, der Lesepfad meldet
+`Saved trk %02d in %lu` wie beim Mac-Abbild.
+
+**Für UFI:** UFI kennt bisher den Macintosh-GCR-Decoder (Format 6, 6&2 mit 7-Byte-Kopf
+und 524-Byte-Sektoren), aber keinen Decoder für Apple-II-5,25-Zoll-Sektoren (Kopf mit
+4&4-kodierten Volume/Spur/Sektor/Prüfsumme, 343 Datennibbles, Epilog `DE AA EB`), obwohl
+der Apple-Port Disk-II-Laufwerke bedient. Die beiden Interleave-Tabellen und die
+Prüfregeln oben sind die Referenz dafür, falls ein solcher Decoder (als Format 7)
+gebaut werden soll; aus dem Abbild übernommen wird nichts.
+
 ## Reproduktion
 
 Scratchpad `femu/` (nicht versioniert): `femu_probe.py` (Aufbau, Entropie, Vektoren,
