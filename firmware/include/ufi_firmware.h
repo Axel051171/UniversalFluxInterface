@@ -608,6 +608,9 @@ void ufi_write_result_payload(uint8_t out[5]);  // WRITE END payload: verify lev
 uint32_t ufi_write_media_token(void);           // media generation the native WRITE was bound to (END block, 1.18)
 void ufi_write_set_erase_rest(bool on);         // flags2 bit0 (1.18): gate on, WDATA idle after the last interval until the index
 uint32_t ufi_write_erased_ticks(void);          // END payload: length of the erased tail in flux-timer ticks, 0 = none
+void ufi_write_set_start_offset(uint32_t ticks);     // flags2 bit1 (1.18): gate opens at index + ticks (native WRITE)
+uint32_t ufi_write_start_applied(void);              // END payload: measured gate-open time minus index time, 0 = at the index
+void ufi_write_delayed_start(uint32_t t);            // TIM2 compare channel 4 reached index + start_offset (ufi_flux.c ISR)
 void ufi_write_set_speed_check(uint16_t permille);   // op 41 (1.18): tolerance around the source index period, 0 = off
 void ufi_write_speed_state(uint16_t* permille, uint32_t* measured, uint32_t* source);  // op 41 reply: last check
 uint32_t ufi_capture_media_token(void);         // media generation the capture was bound to (ufi_main.c, END block)

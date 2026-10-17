@@ -665,6 +665,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--erase-rest", action="store_true",
                    help="firmware >= 1.18: keep the gate on without transitions from the last interval to the next index, "
                         "so nothing of the old track survives behind the new data (reported as erased ticks)")
+    p.add_argument("--start-offset", type=int, default=None, metavar="TICKS",
+                   help="firmware >= 1.18: open the gate TICKS (275 MHz, 1..275000000) after the index instead of at the "
+                        "index, so the track keeps its original splice position; the END reports the measured offset")
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -1022,9 +1025,11 @@ def main(argv: list[str] | None = None) -> int:
                                 hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
                                 clamp=a.clamp,
                                 **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000,
-                                    'erase_rest': a.erase_rest} if isinstance(dev,P2.Device2) else {}))
+                                    'erase_rest': a.erase_rest, 'start_offset': a.start_offset} if isinstance(dev,P2.Device2) else {}))
             print(_write_text(r, a.verify) + (f", erased tail {r.erased_ticks / P.FLUX_CLOCK_HZ * 1e3:.1f} ms"
-                                              if getattr(r, "erased_ticks", 0) else ""))
+                                              if getattr(r, "erased_ticks", 0) else "")
+                  + (f", started {r.start_offset_applied / P.FLUX_CLOCK_HZ * 1e6:.1f} us after the index"
+                     if getattr(r, "start_offset_applied", 0) else ""))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
         elif a.cmd == "erase":

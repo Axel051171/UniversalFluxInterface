@@ -33,6 +33,8 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | **Spurrest löschen (1.18)** | `ufi write … --erase-rest` mit einer Spur von etwa 100 ms Länge, Index-Simulation 200 ms; dieselbe Spur ohne `--erase-rest` als Gegenprobe | mit Option: nach dem letzten Impuls **kein** weiterer Flankenwechsel auf WDATA, WGATE bleibt aktiv und fällt erst mit der nächsten Indexflanke (Abstand zum letzten Impuls = `erased_ticks` ± 1 Takt, hier ≈ 100 ms); ohne Option fällt WGATE direkt nach der letzten Periode und `erased_ticks` = 0. Zusätzlich: Spur länger als die Index-Periode mit Option → Status 19, `erased_ticks` 0, kein Nachlauf |
 | Spurrest löschen, Abbruch (1.18) | wie oben, ABORT während des Nachlaufs | WGATE fällt sofort, Ende-Status 4, kein Impuls; danach normaler WRITE möglich |
 | Spurrest löschen, Apple (1.18) | `flags2` Bit0 bei angewähltem Disk-II-Laufwerk | Status 11 bei der Annahme, /WRREQ bleibt inaktiv |
+| **Startversatz (1.18)** | `ufi write … --start-offset 2750000` (10 ms), Index-Simulation 200 ms; Gegenprobe ohne Option | WGATE steigt 10 ms ± 0,5 µs nach der Indexflanke, der erste Impuls folgt mit dem ersten Intervall ab dort; `start_offset_applied` im Ende-Rahmen = gemessener Abstand (erwartet 2 750 000 plus wenige Takte Latenz); ohne Option steigt WGATE an der Indexflanke und das Feld ist 0. Mit `--erase-rest` zusätzlich: Tor bleibt bis zum nächsten Index offen; Spur länger als Rest der Umdrehung → Status 19 |
+| Startversatz, Wartezeit (1.18) | Versatz 250 ms bei 200 ms Index-Simulation; ABORT während der Wartezeit | der zweite Index wird ignoriert, Tor öffnet 50 ms nach dem zweiten Index; nach ABORT öffnet das Tor nie, Ende-Status 4 |
 
 ## 2 Fehlerfälle und Schutz
 

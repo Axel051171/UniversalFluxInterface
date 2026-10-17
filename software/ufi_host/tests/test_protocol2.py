@@ -104,6 +104,7 @@ class FakeV2:
         self.speed_tolerance = 0        # op 41 (4.10): per mille, 0 = off
         self.index_ticks = 55_000_000   # the fake drive's own index period (300 rpm)
         self.speed_last = (0, 0)        # last check: measured, source
+        self.last_start_offset = 0      # flags2 bit1 of the last accepted WRITE; END echoes it + 7 ticks "measured"
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -207,8 +208,9 @@ class FakeV2:
                     if level == 3:
                         self.verify_report = bytes([1, 1, self.verify_sectors, 4, track, side]) + b"".join(
                             bytes([track, side, r, 2, 1]) for r in range(1, self.verify_sectors + 1))
+                applied = self.last_start_offset + 7 if self.last_start_offset else 0   # measured: compare latency included
                 self._frame(P2.T_END, P2.WRITE, f.seq, status, struct.pack("<BI", level, 3 if flags & P2.WRITE_CLAMP else 0)
-                            + self._gen_block(0) + struct.pack("<I", erased))
+                            + self._gen_block(0) + struct.pack("<II", erased, applied))
                 self.write_req = None
             return
         assert f.type == P2.T_REQUEST and f.status == 0
@@ -239,7 +241,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x07, 0xFF, 0x01, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x07, 0xFF, 0x03, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -362,7 +364,7 @@ class FakeV2:
             r(P2.BAD_ARGS if a else 0, b"" if a else P2.DESCRIBE_FMT.pack(1, 3, 3, 65536, 275_000_000, 68_750_000,
                                                                           1 << 21, 1024, 200, 0x3fffffff, 110, 100000))
         elif cmd == P2.WRITE_LIMITS:
-            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 15 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 31 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -422,11 +424,15 @@ class FakeV2:
         elif cmd == P2.WRITE:
             flags = a[2]                    # optional fields in flag order, then an optional flags2 byte (1.18)
             want = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0) + (4 if flags & 0x40 else 0) + (12 if flags & 0x80 else 0)
-            flags2 = a[want] if len(a) == want + 1 else 0
-            if len(a) not in (want, want + 1) or flags2 & ~0x01:
-                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x01) if len(a) == want + 1 else (1, want))
+            flags2 = a[want] if len(a) > want else 0
+            start_offset = struct.unpack_from("<I", a, want + 1)[0] if flags2 & 2 and len(a) >= want + 5 else 0
+            expect = want + (5 if flags2 & 2 else 1 if len(a) > want else 0)
+            if flags2 & ~0x03 or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000):
+                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x03) if flags2 & ~0x03 else
+                                                          (14, 2) if flags2 & 2 and len(a) == expect else (1, expect))
                 r(P2.BAD_ARGS)
                 return
+            self.last_start_offset = start_offset
             at = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0)
             source = struct.unpack_from("<I", a, at)[0] if flags & 0x40 else 0   # bit6: source index period
             self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2, a[0], a[1], source)
@@ -944,7 +950,7 @@ def test_write_limits_and_preflight():
     dev = P2.Device2(fake)
     lim = dev.write_limits()
     assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
-        (1, 15, 275_000_000, 1 << 21, 440, 65536)
+        (1, 31, 275_000_000, 1 << 21, 440, 65536)
     n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
     with pytest.raises(ValueError):
         dev.write_track(1, 0, [1000, 439, 1000])
@@ -1040,6 +1046,32 @@ def test_session_write_lock(monkeypatch, capsys):
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
 
 
+def test_start_offset():
+    """flags2 bit1 + u32: announced by WRITE_LIMITS bit 4, range checked locally, END reports the measured offset."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    deltas = [1100] * 2000
+    r = dev.write_track(3, 1, deltas, start_offset=10_000)
+    req = fake.requests[-1].payload
+    assert req[11] == 2 and req[12:16] == struct.pack("<I", 10_000) and len(req) == 16
+    assert r.start_offset_applied == 10_007 and r.erased_ticks == 0
+    r = dev.write_track(3, 1, deltas, start_offset=20_000, erase_rest=True)
+    assert fake.requests[-1].payload[11] == 3 and r.start_offset_applied == 20_007 and r.erased_ticks == 0x1234567
+    assert dev.write_track(3, 1, deltas).start_offset_applied == 0
+    for bad in (0, 275_000_001):
+        with pytest.raises(ValueError):
+            dev.write_track(3, 1, deltas, start_offset=bad)
+    with pytest.raises(ValueError):
+        P2.Device2(FakeV2(revolutions=REVS, firmware=(1, 15), caps=0x7FFF)).write_track(3, 1, deltas, start_offset=5)
+    dev.send(P2.T_REQUEST, P2.WRITE, 78, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x02")          # bit1 without the u32
+    assert dev._wait(P2.WRITE, 78, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
+    assert dev.last_refusal()["field_name"] == "length"
+    end = struct.pack("<BI", 1, 0) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 0) + struct.pack("<II", 5, 9)
+    assert (P2.WriteResult.unpack(end).erased_ticks, P2.WriteResult.unpack(end).start_offset_applied) == (5, 9)
+    assert P2.WriteResult.unpack(end[:26]).start_offset_applied == 0
+
+
 def test_weak_windows(monkeypatch, capsys):
     """Op 42: raw max-min counts of the last ANALYZE with its track and side byte; revs 0 before any analyze."""
     fake = FakeV2(revolutions=REVS)
@@ -1129,13 +1161,13 @@ def test_last_refusal(monkeypatch, capsys):
         dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
     rf = dev.last_refusal()
     assert (rf["command"], rf["status"], rf["field"], rf["field_name"]) == (P2.GUARDED_WRITE, P2.MEDIA_CHANGED, 12, "media generation")
-    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x02")   # flags2 bit1: unknown
+    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x04")   # flags2 bit2: unknown
     assert dev._wait(P2.WRITE, 77, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
     rf = dev.last_refusal()
-    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 2)
+    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 4)
     assert len(dev.read_track(0, 0, 1).revolutions) == 1 and dev.last_refusal()["seq"] == 77   # an accepted request keeps the note
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
-    assert cli.main(["refusal"]) == 0 and "flags2, detail 2" in capsys.readouterr().out
+    assert cli.main(["refusal"]) == 0 and "flags2, detail 4" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
@@ -1144,7 +1176,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x07, "write_flags": 0xFF, "write_flags2": 0x01, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x07, "write_flags": 0xFF, "write_flags2": 0x03, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1153,7 +1185,7 @@ def test_flag_masks(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["masks"]) == 0
     out = capsys.readouterr().out
-    assert "write_flags2       0x0001" in out and "format_hint_max    7" in out
+    assert "write_flags2       0x0003" in out and "format_hint_max    7" in out
 
 
 def test_end_generation_block():

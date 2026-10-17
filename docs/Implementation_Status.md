@@ -1027,3 +1027,23 @@ three synthetic revolutions (raw differences 1/2/6, only the 6 reaches the mask,
 single revolution, cancel) in `test_native_requests.py`, op 42 in the analysis job
 harness. Host `weak_windows()`, `ufi weak [--min N]` with a heat strip; FakeV2 op 42
 derived from its ANALYZE answer (mask 0x11). Protocol doc 4.11 and op table.
+
+## WRITE start offset after the index — 2026-10-17
+
+Sixth item of UFT's list. flags2 bit1 announces `start_offset_ticks` u32 behind the flags2
+byte (1..275 000 000; 0, out of range or missing bytes -> 16 with op 39 field 14; Apple
+without sync sensor -> 11); WRITE_LIMITS flags bit4 announces the option, the op 38 flags2
+mask is 0x03. The index handler no longer opens the gate itself when an offset is set: it
+arms TIM2 compare channel 4 at index + offset, the flux-timer ISR dispatches the compare to
+`ufi_write_delayed_start()`, which opens the gate and starts the write timer
+(`start_now()`, shared with the immediate start and the Apple sensor start). Further index
+pulses while waiting are ignored, ABORT clears the pending compare, the cut-track stop and
+the erase remainder work from the delayed start. WRITE END grows to 30 bytes with
+`start_offset_applied` u32 = measured gate-open time minus index time (compare latency
+included), 0 without the option. Native tests: arm/ignore/compare/late-compare/abort in the
+write regression, parsing of flags2 bit1 with range, missing bytes, Apple and trailing
+bytes in the write flags harness. Host `write_track(start_offset=)` with the WRITE_LIMITS
+check, `WriteResult.start_offset_applied`, `ufi write --start-offset`; FakeV2 parses the
+field and echoes it plus 7 ticks. Protocol doc rows 0x08/0x22, 3.3 bullet, 4.5 END sizes,
+4.7/4.8 tables; acceptance plan rows (gate edge against the index on the analyser, long
+wait, abort).

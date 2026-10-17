@@ -40,7 +40,7 @@ uint16_t ufi_local_report(uint8_t* out,uint16_t capacity,uint32_t id){
  * flags, track byte as sent, side, then c, h, r, n, state per reference sector.  The
  * header is written when the verified WRITE is accepted (flags bit3 = read-back missing
  * until the matcher fills the rest); a WRITE without verify leaves it untouched. */
-static uint8_t verify_report[VERIFY_REPORT_MAX]={1};   /* schema 1, nothing verified yet */
+__attribute__((section(".dtcm"))) static uint8_t verify_report[VERIFY_REPORT_MAX];   /* DTCM: keeps the AXI reserve */
 
 void ufi_quality_clear(void) {available=false;}
 
@@ -51,7 +51,7 @@ void ufi_quality_verify_begin(uint8_t track,uint8_t side) {
 
 uint16_t ufi_quality_verify_report(uint8_t* out) {
     const uint16_t n=(uint16_t)(6u+5u*verify_report[2]);
-    memcpy(out,verify_report,n);return n;
+    memcpy(out,verify_report,n);out[0]=1;return n;   /* schema 1 also before the first verified WRITE (NOLOAD section) */
 }
 
 static int progress(void) {

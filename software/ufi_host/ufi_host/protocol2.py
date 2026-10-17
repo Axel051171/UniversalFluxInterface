@@ -336,7 +336,7 @@ class DeviceInfo:
 class WriteLimits:
     """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
     schema: int
-    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder (1.18)
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset (1.18)
     sample_hz: int
     max_flux: int               # flux_count limit (flux store)
     min_ticks: int
@@ -453,7 +453,7 @@ VERIFY_FORMATS = {0: "no reference", 1: "IBM MFM", 2: "Amiga", 3: "IBM FM", 4: "
 # op 39 (4.8): field codes of the last refusal, shared by READ/0x28, WRITE/0x27 and ANALYZE
 REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
                   6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
-                  11: "configuration generation", 12: "media generation", 13: "analysis options"}
+                  11: "configuration generation", 12: "media generation", 13: "analysis options", 14: "start offset"}
 
 
 def generation_block(payload: bytes, offset: int) -> dict | None:
@@ -479,6 +479,7 @@ class WriteResult:
     readback_quality: dict | None = None
     generations: dict | None = None
     erased_ticks: int = 0               # flags2 bit0 (1.18): length of the erased tail up to the index, 275 MHz ticks
+    start_offset_applied: int = 0       # flags2 bit1 (1.18): measured gate-open time after the index, 0 = at the index
 
     @property
     def verify_text(self) -> str:
@@ -490,8 +491,11 @@ class WriteResult:
     def unpack(cls, b: bytes) -> "WriteResult":
         if len(b) < 5:
             return cls()
-        erased = struct.unpack_from("<I", b, 5 + GEN_BLOCK.size)[0] if len(b) >= 9 + GEN_BLOCK.size else 0
-        return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5), erased_ticks=erased)
+        tail = 5 + GEN_BLOCK.size
+        erased = struct.unpack_from("<I", b, tail)[0] if len(b) >= tail + 4 else 0
+        applied = struct.unpack_from("<I", b, tail + 4)[0] if len(b) >= tail + 8 else 0
+        return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5),
+                   erased_ticks=erased, start_offset_applied=applied)
 
 
 @dataclass
@@ -1301,11 +1305,14 @@ class Device2:
                     clamp: bool = False, integrity: bool | None = None, extended: bool | None = None,
                     index_ticks: int | None = None, firmware_verify: bool = False,
                     expected_config: int | None = None, expected_media: int | None = None,
-                    erase_rest: bool = False) -> WriteResult:
+                    erase_rest: bool = False, start_offset: int | None = None) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
         erase_rest (firmware 1.18, WRITE_LIMITS flags bit3): after the last interval keep the
         gate on with no transitions up to the next index, so nothing of the old track survives
         behind the new data; the result reports the erased tail in erased_ticks.
+        start_offset (firmware 1.18, WRITE_LIMITS flags bit4): open the gate this many ticks
+        (1..275_000_000) after the index instead of at the index, so the track goes back with
+        its original splice position; the result reports the measured start_offset_applied.
         scale: the firmware multiplies every interval (0.5..2.0; firmware 1.14), e.g.
         rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
         clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
@@ -1360,10 +1367,18 @@ class Device2:
         if firmware_verify and index_ticks is not None:
             flags |= 0x40
             extra += struct.pack("<I", index_ticks)
-        if erase_rest:
-            if not self.write_limits().flags & 8:
+        if erase_rest or start_offset is not None:
+            limit_flags = self.write_limits().flags
+            if erase_rest and not limit_flags & 8:
                 raise ValueError("firmware does not announce the erase-remainder option (WRITE_LIMITS bit 3)")
-            extra += b"\x01"                                 # flags2: bit0 erase the remainder up to the index
+            if start_offset is not None:
+                if not limit_flags & 16:
+                    raise ValueError("firmware does not announce the start-offset option (WRITE_LIMITS bit 4)")
+                if not 1 <= start_offset <= 275_000_000:
+                    raise ValueError("start offset: 1..275000000 ticks (up to one second after the index)")
+            extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0)])   # flags2
+            if start_offset is not None:
+                extra += struct.pack("<I", start_offset)
         payload = WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra
         command = GUARDED_WRITE if guarded else WRITE
         if guarded:

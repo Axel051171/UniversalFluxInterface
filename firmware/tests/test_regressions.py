@@ -180,7 +180,9 @@ static uint32_t HAL_GetTick(void);
 static bool reference_poll(void) {return HAL_GetTick()-reference_started<10000u;}
 static struct { int state; } g_capture;
 enum { CAPTURE_IDLE };
-typedef struct { uint32_t DIER, SR, ARR, EGR, CCMR1, CR1, NDTR, CCR1, DCR, DMAR; } Timer;
+typedef struct { uint32_t DIER, SR, ARR, EGR, CCMR1, CR1, NDTR, CCR1, CCR4, DCR, DMAR; } Timer;
+#define TIM_DIER_CC4IE 16u
+#define TIM_SR_CC4IF 16u
 static Timer tim2, tim3, dma1;
 #define TIM2 (&tim2)
 #define TIM3 (&tim3)
@@ -223,6 +225,8 @@ static uint32_t erase_start, erased_ticks;
 /* op 41 speed check: tolerance, last measurement, and a settable drive period for ufi_diag_rpm */
 static uint16_t speed_tolerance_permille;
 static uint32_t speed_measured, speed_source;
+static bool start_pending;
+static uint32_t start_index_time, start_applied;
 typedef struct { uint32_t period_min, period_avg, period_max, pulse_avg; uint16_t rpm_x100; uint8_t revs; } diag_rpm_t;
 static uint32_t drive_period = 55000000u;
 static unsigned rpm_measurements;
@@ -277,8 +281,9 @@ static void ufi_usb_send_event(uint8_t c, int r) { (void)c; events++; last_resul
     # The Apple-only path references TIM2 CNT; its value is immaterial to these tests.
     code = code.replace("#define CR CR1", "#define CR CR1\n#define CNT ARR")
     code += "void ufi_write_index_handler(uint32_t t);\nvoid ufi_write_abort(void);\n"
-    for name in ("ufi_write_start", "write_finish", "ufi_write_abort", "data_done", "ufi_write_index_handler",
-                 "end_of_data", "write_event_cmd", "ufi_write_receive_failed", "ufi_write_data_complete", "ufi_write_service"):
+    for name in ("ufi_write_start", "write_finish", "ufi_write_abort", "data_done", "start_now", "ufi_write_delayed_start",
+                 "ufi_write_index_handler", "end_of_data", "write_event_cmd", "ufi_write_receive_failed",
+                 "ufi_write_data_complete", "ufi_write_service"):
         code += function("ufi_write.c", name)
     code += r'''
 static void prepare(void) {
@@ -344,6 +349,24 @@ int main(void) {
     prepare(); g_write.gw_mode = g_write.wave_mode = true; drive_period = 60000000u;   /* GW path never checks */
     assert(ufi_write_start() == 0 && rpm_measurements == 4); ufi_write_abort();
     speed_tolerance_permille = 0; source_index_ticks = 0; drive_period = 55000000u;
+    /* flags2 bit1 start offset: the index arms compare channel 4, the compare opens the gate;
+     * a second index while waiting is ignored, abort clears the pending start */
+    prepare(); g_write.start_offset = 5000; assert(ufi_write_start() == 0 && g_write.state == WRITE_WAITING_INDEX);
+    ufi_write_index_handler(100);
+    assert(g_write.state == WRITE_WAITING_INDEX && !gate && start_pending && TIM2->CCR4 == 5100 && (TIM2->DIER & TIM_DIER_CC4IE));
+    ufi_write_index_handler(200);           /* another index: still waiting for index + offset */
+    assert(g_write.state == WRITE_WAITING_INDEX && !gate && TIM2->CCR4 == 5100);
+    ufi_write_delayed_start(5107);          /* compare interrupt, 7 ticks late */
+    assert(g_write.state == WRITE_ACTIVE && gate && !start_pending && start_applied == 5007 && (TIM2->DIER & TIM_DIER_CC2IE));
+    ufi_write_index_handler(60000); assert(g_write.state == WRITE_ERROR && !gate);   /* cut from the delayed start as usual */
+    ufi_write_service(); assert(last_result == UFI_ERR_TRACK_LONG);
+    prepare(); g_write.start_offset = 5000; assert(ufi_write_start() == 0); ufi_write_index_handler(100);
+    assert(start_pending); ufi_write_abort();
+    assert(g_write.state == WRITE_IDLE && !start_pending && !(TIM2->DIER & TIM_DIER_CC4IE));
+    ufi_write_delayed_start(5100); assert(g_write.state == WRITE_IDLE && !gate);      /* late compare: ignored */
+    prepare(); assert(ufi_write_start() == 0); ufi_write_index_handler(100);
+    assert(g_write.state == WRITE_ACTIVE && gate && !start_applied);                /* no offset: start at the index, 0 */
+    ufi_write_abort();
     prepare(); unsigned before = events; ufi_write_receive_failed();
     assert(events == before && receive_failed && g_write.state == WRITE_ERROR);
     ufi_write_service(); assert(events == before+1 && last_result == UFI_ERR_BUFFER_FULL);

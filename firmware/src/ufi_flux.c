@@ -428,6 +428,12 @@ bool ufi_flux_index_asserted(void)
 void ufi_flux_tim2_irq(void)
 {
     if (TIM2->SR & TIM_SR_UIF) (void)ufi_flux_now64();
+    if ((TIM2->DIER & TIM_DIER_CC4IE) && (TIM2->SR & TIM_SR_CC4IF)) {
+        /* compare channel 4: delayed write start at index + start_offset (ufi_write.c) */
+        TIM2->SR = ~TIM_SR_CC4IF;
+        TIM2->DIER &= ~TIM_DIER_CC4IE;
+        ufi_write_delayed_start(TIM2->CNT);
+    }
     if (!(TIM2->SR & TIM_SR_CC2IF)) {
         return;
     }

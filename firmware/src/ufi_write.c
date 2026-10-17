@@ -67,6 +67,7 @@ typedef struct {
     uint8_t quarter;            // Apple quarter-track offset of the seek (1.14)
     uint16_t scale;             // time scale of the deltas in 1/1000 (1000 = as sent), 1.14
     bool erase_rest;            // flags2 bit0 (1.18): keep WGATE on, WDATA idle, until the next index
+    uint32_t start_offset;      // flags2 bit1 (1.18): open the gate this many ticks after the index, 0 = at the index
 } write_context_t;
 
 /* Greaseweazle pre_write / post_write (ufi_gw.c SET_PARAMS), ticks; 0 = off.  Configuration,
@@ -83,6 +84,10 @@ static uint32_t erased_ticks;       /* END payload: length of the erased tail, 0
  * before seek and WGATE and refuses with UFI_ERR_SPEED_MISMATCH outside the tolerance. */
 static uint16_t speed_tolerance_permille;
 static uint32_t speed_measured, speed_source;
+/* Start offset (flags2 bit1, 1.18): the index arms TIM2 compare channel 4 at index + offset,
+ * its interrupt opens the gate; start_applied = measured gate-open time minus index time. */
+static bool start_pending;
+static uint32_t start_index_time, start_applied;
 static volatile bool receive_failed; /* IRQ -> main loop; never send USB from the IRQ */
 
 static write_context_t g_write;
@@ -300,6 +305,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.clamped = 0;
     g_write.verify_level = 0;
     g_write.erase_rest = false;
+    g_write.start_offset = 0;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -360,6 +366,15 @@ void ufi_write_speed_state(uint16_t* permille, uint32_t* measured, uint32_t* sou
     *permille = speed_tolerance_permille;
     *measured = speed_measured;
     *source = speed_source;
+}
+
+/* flags2 bit1 (1.18): gate opens at index + ticks instead of at the index (native WRITE only) */
+void ufi_write_set_start_offset(uint32_t ticks) {
+    g_write.start_offset = ticks;
+}
+
+uint32_t ufi_write_start_applied(void) {
+    return start_applied;
 }
 
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
@@ -520,6 +535,8 @@ int ufi_write_start(void) {
     index_cut = false;
     erase_pending = false;
     erased_ticks = 0;
+    start_pending = false;
+    start_applied = 0;
     wave_item_t first, second;
     if (g_write.wave_mode) {
         wave_next(&wave_cursor, &first);
@@ -642,35 +659,56 @@ static void write_finish(write_state_t final_state) {
     apple_wrdata(false);
     led_set(&PIN_LED_FDD, false);
     erase_pending = false;
+    TIM2->DIER &= ~TIM_DIER_CC4IE;          /* a pending delayed start dies with the write */
+    start_pending = false;
     g_write.state = final_state;
+}
+
+/* Open the gate and start the write timer at flux-timer time t: at the index / sensor
+ * pulse, or at index + start_offset from the compare-channel interrupt. */
+static void start_now(uint32_t t) {
+    if (g_write.apple) {
+        /* Disk II with sync sensor: start at the sensor pulse (track alignment kept);
+         * the end comes from the last interval, not from the next pulse */
+        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
+    } else {
+        bus_out(&PIN_FDD_WGATE, true);
+    }
+    g_write.state = WRITE_ACTIVE;
+    g_write.updates_left = 0;
+    TIM3->DIER |= TIM_DIER_UDE;             // DMA: next interval on every update
+    __HAL_TIM_ENABLE(&htim3);               // first pulse after interval 0
+    ufi_sched_arm(t);
+    if (!g_write.apple && !g_write.terminate_index) TIM2->DIER &= ~TIM_DIER_CC2IE;
+}
+
+/* TIM2 compare channel 4 (ufi_flux_tim2_irq): index + start_offset reached */
+void ufi_write_delayed_start(uint32_t t) {
+    if (g_write.state != WRITE_WAITING_INDEX || !start_pending) return;
+    start_pending = false;
+    start_applied = t - start_index_time;   /* measured: compare latency included */
+    start_now(t);
 }
 
 /* Called from the TIM2 index-capture interrupt */
 void ufi_write_index_handler(uint32_t t) {
-    if (g_write.apple && g_write.state == WRITE_WAITING_INDEX) {
-        /* Disk II with sync sensor: start at the sensor pulse (track alignment kept);
-         * the end comes from the last interval, not from the next pulse */
-        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
-        g_write.state = WRITE_ACTIVE;
-        g_write.updates_left = 0;
-        TIM3->DIER |= TIM_DIER_UDE;
-        __HAL_TIM_ENABLE(&htim3);
-        ufi_sched_arm(t);
+    if (g_write.state == WRITE_WAITING_INDEX) {
+        if (start_pending) return;          /* another index while waiting for index + offset */
+        if (g_write.start_offset) {
+            start_index_time = t;
+            start_pending = true;
+            TIM2->CCR4 = t + g_write.start_offset;
+            TIM2->SR = ~TIM_SR_CC4IF;
+            TIM2->DIER |= TIM_DIER_CC4IE;
+            return;
+        }
+        start_now(t);
         return;
     }
     if (g_write.apple) {
         return;                             /* Disk II: no index safety stop */
     }
-    if (g_write.state == WRITE_WAITING_INDEX) {
-        bus_out(&PIN_FDD_WGATE, true);
-        g_write.state = WRITE_ACTIVE;
-        g_write.updates_left = 0;
-        TIM3->DIER |= TIM_DIER_UDE;         // DMA: next interval on every update
-        __HAL_TIM_ENABLE(&htim3);           // first pulse after interval 0
-        ufi_sched_arm(t);
-        if (!g_write.terminate_index) TIM2->DIER &= ~TIM_DIER_CC2IE;
-    }
-    else if (g_write.state == WRITE_ACTIVE && g_write.terminate_index) {
+    if (g_write.state == WRITE_ACTIVE && g_write.terminate_index) {
         if (erase_pending) {
             erased_ticks = t - erase_start;  /* the erased tail ends at this index */
             write_finish(WRITE_COMPLETE);
