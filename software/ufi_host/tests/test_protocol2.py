@@ -66,15 +66,29 @@ class FakeV2:
     read() hands out odd-sized pieces so frames straddle chunk borders; `garbage` is
     injected before every reply frame, `corrupt_next` breaks the CRC of an extra
     (bogus) frame placed before the next reply.
+
+    Speaks firmware 1.18-dev on a v0.7 board by default (INFO caps as the firmware
+    reports them with PSRAM, SD and Apple port present, sync sensor off); pass
+    firmware=(1, 15), caps=0x7FFF for the pre-addressed-IEC behaviour.  `read_status`
+    ends every READ with that END status (OVERFLOW, NO_INDEX, CANCELLED, MEDIA_CHANGED);
+    CANCELLED and MEDIA_CHANGED send no data frames, as the firmware's cancel path
+    and media-generation check stop the capture.  `dos_errors` maps (track, sector)
+    to the DOS code IEC_READ_STATUS reports instead of data.
     """
 
-    def __init__(self, revolutions=None, files=None, read_status=0, data_chunk=1000):
+    CAPS_1_18 = 0xFFFFFF7F
+
+    def __init__(self, revolutions=None, files=None, read_status=0, data_chunk=1000,
+                 firmware=(1, 18), caps=None):
         self.rx = P2.FrameParser()
         self.out = bytearray()
         self.revs = revolutions or []
         self.files = dict(files or {})
         self.read_status = read_status
         self.data_chunk = data_chunk
+        self.firmware = firmware
+        self.caps = self.CAPS_1_18 if caps is None else caps
+        self.dos_errors: dict[tuple[int, int], int] = {}
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -117,6 +131,19 @@ class FakeV2:
             self._evseq = (self._evseq + 1) & 0xFF
             self._frame(P2.T_EVENT, code, self._evseq, 0, payload)
 
+    @staticmethod
+    def _iec_mem(a, r):
+        """IEC_MEM payload: 0 M-W (<= 32 bytes), 1 M-R n, 2 M-E, 3 DOS command (1-40 bytes), 4 DOS status."""
+        if len(a) < 3 or a[0] > 4 or (a[0] == 0 and not 1 <= len(a) - 3 <= 32) \
+                or (a[0] == 1 and (len(a) != 4 or a[3] == 0)) or (a[0] == 3 and not 1 <= len(a) - 3 <= 40):
+            r(P2.BAD_ARGS)
+        elif a[0] == 4:
+            r(0, b"00, OK,00,00\r")
+        elif a[0] == 1:
+            r(0, bytes(a[3]))
+        else:
+            r()
+
     # -- host -> device -------------------------------------------------------
     def write(self, data: bytes):
         before = self.rx.crc_errors
@@ -141,8 +168,9 @@ class FakeV2:
         if cmd == P2.PING:
             r(0, a)
         elif cmd == P2.INFO:
-            r(0, P2.INFO_HDR.pack(2, 1, 15, 7, 0x7FFF, 275_000_000, 8 << 20, 4096)
-              + b"UFI Flux Engine 1.14 (abc1234, 2026-10-09)\0PSRAM ok\0")
+            text = f"UFI Flux Engine {self.firmware[0]}.{self.firmware[1]}-dev (abc1234, 2026-10-17)"
+            r(0, P2.INFO_HDR.pack(2, *self.firmware, 7, self.caps, 275_000_000, 8 << 20, 4096)
+              + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8, 120, 0, 2200))
         elif cmd == P2.TIMING_CMD:
@@ -182,8 +210,25 @@ class FakeV2:
                     return
                 self.timing, self.extra, self.profile_stored = a[2:24], a[24:36], True
             r(0, P2.PROFILE_FMT.pack(1, self.timing, self.extra, 0, 1, 0, int(self.profile_stored)))
-        elif cmd == P2.IEC_MEM and a[0] == 4:
-            r(0, b"00, OK,00,00\r")
+        elif cmd == P2.IEC_MEM:                              # op, addr u16, data / n
+            self._iec_mem(a, r)
+        elif cmd == P2.IEC_TARGET:                           # 1.18: addressed IEC_MEM (3.4)
+            if not (self.caps & P2.CAP_IEC_ADDRESSED):
+                r(P2.UNKNOWN_COMMAND)
+            elif len(a) < 2 or a[0] != 1 or not (a[1] == 0 or 8 <= a[1] <= 30):
+                r(P2.BAD_ARGS)
+            else:
+                self._iec_mem(a[2:], r)
+        elif cmd == P2.IEC_READ_STATUS:                      # 1.18: U1 plus DOS channel (3.4)
+            if not (self.caps & P2.CAP_IEC_ADDRESSED):
+                r(P2.UNKNOWN_COMMAND)
+            elif len(a) != 4 or a[0] != 1 or not (a[1] == 0 or 8 <= a[1] <= 30):
+                r(P2.BAD_ARGS)
+            else:
+                track, sector = a[2], a[3]
+                dos = self.dos_errors.get((track, sector), 0 if 1 <= track <= 35 and sector < 21 else 66)
+                data = self.blocks.get((track, sector), bytes([track, sector]) * 128) if dos == 0 else b""
+                r(0, bytes([1, dos, track, sector]) + data)
         elif cmd == P2.IEC_BLOCK:
             if a[0] == 0:
                 r(0, self.blocks.get((a[1], a[2]), bytes([a[1], a[2]]) * 128))
@@ -247,6 +292,9 @@ class FakeV2:
         elif cmd == P2.READ:
             _track, _side, revs, _flags, _period = P2.READ_REQ.unpack_from(a)
             r()
+            if self.read_status in (P2.CANCELLED, P2.MEDIA_CHANGED):
+                self._frame(P2.T_END, cmd, seq, self.read_status)
+                return
             data = encode_stream(self.revs[:revs])
             for k in range(0, len(data), self.data_chunk):
                 self._frame(P2.T_DATA, cmd, seq, 0, data[k:k + self.data_chunk])
@@ -367,15 +415,53 @@ def test_bad_request_frame_gets_frame_error():
 def test_info_caps_status():
     dev = P2.Device2(FakeV2())
     lines = dev.info()
-    assert lines[0] == "UFI v2 protocol, firmware 1.15, board v0.7"
+    assert lines[0] == "UFI v2 protocol, firmware 1.18, board v0.7"
     assert "PSRAM ok" in lines
     i = dev.device_info()
-    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0x7FFF
-    assert all(on for _, on in i.caps_list()[:15])
-    assert not i.caps_list()[15][1]  # firmware 1.15 has no addressed status API
+    assert i.sample_hz == 275_000_000 and i.max_payload == 4096 and i.caps == 0xFFFFFF7F
+    assert [on for _, on in i.caps_list()] == [k != 7 for k in range(len(P2.CAPS))]
+    assert i.caps & P2.CAP_IEC_ADDRESSED and i.caps & (1 << 27)
     st = dev.status()
     assert st.drive == 1 and st.motor_on and st.track0 and st.track == 5
     assert st.board.flags == 8 and st.board.board_id_mv == 2200
+    old = P2.Device2(FakeV2(firmware=(1, 15), caps=0x7FFF))
+    assert old.info()[0] == "UFI v2 protocol, firmware 1.15, board v0.7"
+    assert not old.device_info().caps_list()[15][1]  # firmware 1.15 has no addressed status API
+
+
+def test_iec_addressed_status_and_read_end_states():
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.iec_status(9) == "00, OK,00,00"
+    assert fake.requests[-1].cmd == P2.IEC_TARGET and fake.requests[-1].payload == bytes([1, 9, 4, 0, 0])
+    dev.iec_command("I0")
+    assert fake.requests[-1].cmd == P2.IEC_MEM           # device 0 keeps the unaddressed command
+    assert dev.iec_mem_read(0x300, 4, 8) == bytes(4)
+    with pytest.raises(ValueError):
+        dev.iec_status(31)
+    # block reads go through IEC_READ_STATUS; the DOS code arrives in the payload, not the frame status
+    dos, data = dev.iec_block_result(18, 0)
+    assert (dos, data) == (0, bytes([18, 0]) * 128)
+    assert fake.requests[-1].cmd == P2.IEC_READ_STATUS and fake.requests[-1].payload == bytes([1, 0, 18, 0])
+    fake.dos_errors[(18, 1)] = 23
+    assert dev.iec_block_result(18, 1, 9) == (23, b"")
+    assert dev.iec_block_result(40, 0) == (66, b"")
+    with pytest.raises(RuntimeError, match="DOS 23"):
+        dev.iec_block_read(18, 1, 9)
+    # firmware 1.15: U1 over IEC_BLOCK, then the error channel; addressed devices refused
+    old = FakeV2(firmware=(1, 15), caps=0x7FFF)
+    dev = P2.Device2(old)
+    assert dev.iec_block_result(18, 0) == (0, bytes([18, 0]) * 128)
+    assert [f.cmd for f in old.requests[-2:]] == [P2.IEC_BLOCK, P2.IEC_MEM]
+    with pytest.raises(RuntimeError):
+        dev.iec_block_result(18, 0, 9)
+    with pytest.raises(P2.DeviceError, match="unknown command"):
+        dev.request(P2.IEC_READ_STATUS, bytes([1, 0, 18, 0]))
+    # READ ended by the cancel path or by a media change: no data, named error
+    for status, text in ((P2.CANCELLED, "cancelled"), (P2.MEDIA_CHANGED, "media changed")):
+        with pytest.raises(P2.DeviceError, match=text) as e:
+            P2.Device2(FakeV2(REVS, read_status=status)).read_track(0, 0, 1)
+        assert e.value.status == status
 
 
 def test_diagnostics():
@@ -754,8 +840,8 @@ def test_iec_blocks():
     dev = P2.Device2(fake, timeout=0.5)
     assert dev.iec_status() == "00, OK,00,00"
     assert dev.iec_block_read(18, 1) == bytes([18, 1]) * 128
-    assert fake.requests[-2].payload == bytes([0, 18, 1, 0])
-    assert fake.requests[-1].cmd == P2.IEC_MEM  # DOS status must be checked
+    # 1.18: one structured request carries U1 and the DOS code (legacy pair tested elsewhere)
+    assert fake.requests[-1].cmd == P2.IEC_READ_STATUS and fake.requests[-1].payload == bytes([1, 0, 18, 1])
     blk = bytes(range(256))
     assert dev.iec_block_write(17, 3, blk, device=9) == 0
     assert fake.requests[-1].payload == bytes([1, 17, 3, 9]) + blk

@@ -109,6 +109,7 @@ BAD_FRAME_CMD = 0xFF                    # response to a request with CRC/length 
 OK, BUSY, NO_DRIVE, SEEK_FAILED, NO_INDEX, TIMEOUT, DMA_ERROR, USB_ERROR = range(8)
 IEC_NO_DEVICE, IEC_NO_ACK, OVERFLOW, UNSUPPORTED, WRITE_PROTECTED, STORAGE = range(8, 14)
 FRAME_ERROR, UNKNOWN_COMMAND, BAD_ARGS, NOT_FOUND = range(14, 18)
+NOT_REPRESENTABLE, TRACK_LONG, CANCELLED, MEDIA_CHANGED = range(18, 22)   # 1.15 / 1.15 / 1.18 / 1.18
 STATUS_TEXT = {
     1: "busy (dump running / operation active)", 2: "no drive selected / drive missing",
     3: "seek failed (track 0)", 4: "no index pulse / aborted", 5: "timeout",
