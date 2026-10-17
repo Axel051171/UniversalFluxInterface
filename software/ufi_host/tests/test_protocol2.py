@@ -186,7 +186,7 @@ class FakeV2:
             r(0, bytes([1]) + self.extra)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 33:          # Apple II GCR options (5.7)
             if len(a) == 14:
-                if a[1] != 1 or (a[12] | a[13] << 8) & ~0x1F or any(b < 0x80 for b in a[2:12]):
+                if a[1] != 1 or (a[12] | a[13] << 8) & ~0x3F or any(b < 0x80 for b in a[2:12]):
                     r(P2.BAD_ARGS)
                     return
                 self.apple = bytes(a[2:14])
@@ -196,10 +196,20 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             st = getattr(self, "apple_stats", None)
-            if st is None:                                    # no format 7 analysis yet
-                r(0, bytes([1, 0]) + bytes(176))
+            if st is None:                                    # no format 7 analysis yet (schema 2, 274 bytes)
+                r(0, bytes([2, 0]) + bytes(272))
             else:
                 r(0, st)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 36:          # Apple II 6-and-2 symbol table (5.7)
+            if len(a) == 66:
+                if a[1] != 1 or len(set(a[2:])) != 64 or min(a[2:]) < 0x80:
+                    r(P2.BAD_ARGS)
+                    return
+                self.apple_table = bytes(a[2:])
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            r(0, bytes([1]) + getattr(self, "apple_table", P2.APPLE_STD_TABLE))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 34:          # decoder tolerance flags, formats 1-6 (5.8)
             if len(a) == 4:
                 if a[1] != 1 or (a[2] | a[3] << 8) & ~0x1F:
@@ -850,10 +860,11 @@ def test_decoder_tolerance(monkeypatch, capsys):
 
 
 def test_apple_gcr_stats(monkeypatch, capsys):
+    import pytest
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.apple_gcr_stats() == {"revs": [], "sectors": [dict(volume=0, sync_before_addr=0, header_to_data=0, sync_before_data=0,
-                                                                   flags=0, seen=0, flag_names=[])] * 16}
+    assert dev.apple_gcr_stats() == {"revs": [], "variants": [], "sectors": [dict(volume=0, sync_before_addr=0, header_to_data=0,
+                                     sync_before_data=0, flags=0, seen=0, flag_names=[], position=0)] * 16}
     assert fake.requests[-1].payload == bytes([35])
     rev0 = struct.pack("<5H", 6128, 319, 17, 16, 1)
     sec = bytearray(96)
@@ -863,10 +874,28 @@ def test_apple_gcr_stats(monkeypatch, capsys):
     st = dev.apple_gcr_stats()
     assert st["revs"] == [dict(nibbles=6128, sync_nibbles=319, address_fields=17, data_fields=16, orphan_headers=1)]
     assert st["sectors"][0]["volume"] == 254 and st["sectors"][9]["flag_names"] == ["data checksum"] and st["sectors"][9]["seen"] == 3
+    assert "variants" not in st and "position" not in st["sectors"][0]
+    # schema 2: trailing-zero histogram, prologue variants, sector positions
+    tail = struct.pack("<3H", 0, 319, 2) + bytes(42) + struct.pack("<BBH", 0xB5, 0, 16) + bytes(12) + struct.pack("<16H", *range(100, 100 + 16 * 3104, 3104))
+    fake.apple_stats = bytes([2, 1]) + rev0 + bytes(70) + bytes(sec) + tail
+    st = dev.apple_gcr_stats()
+    assert st["revs"][0]["trail"] == [0, 319, 2] and st["variants"] == [{"third": 0xB5, "count": 16}]
+    assert st["sectors"][1]["position"] == 3204
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["apple-stats"]) == 0 and "D5 AA xx: b5 x16" in capsys.readouterr().out
+    # loadable 6-and-2 table (op 36)
+    assert dev.apple_gcr_table() == P2.APPLE_STD_TABLE and fake.requests[-1].payload == bytes([36])
+    rot = P2.APPLE_STD_TABLE[1:] + P2.APPLE_STD_TABLE[:1]
+    assert dev.apple_gcr_table(rot.hex()) == rot and fake.requests[-1].payload == bytes([36, 1]) + rot
+    assert dev.apple_gcr_table("standard") == P2.APPLE_STD_TABLE
+    with pytest.raises(ValueError):
+        dev.apple_gcr_table(bytes(64))
+    assert dev.apple_gcr_options(flags="five_and_three")["flag_names"] == ["five_and_three"]
+    assert cli.main(["apple-table"]) == 0 and "standard" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["apple-stats"]) == 0
     out = capsys.readouterr().out
-    assert "orphan headers 1" in out and "  9 254         14        11          6  0011  data checksum" in out
+    assert "orphan headers 1" in out and "  9 254         14        11          6  0011     28036  data checksum" in out
 
 
 def test_apple_gcr_options():

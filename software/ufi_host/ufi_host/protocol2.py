@@ -346,7 +346,12 @@ TIMING_PRESETS = {"standard": 1, "konservativ": 2}     # op 18 with [18, id] (fi
 # ANALYSIS_JOB op 33: Apple II 5.25-inch GCR decoder options (format 7, 5.7)
 APPLE_GCR_FIELDS = ("addr_prologue", "data_prologue", "addr_epilogue", "data_epilogue", "flags")
 APPLE_GCR_FLAGS = {"keep_bad_addr_checksum": 0x01, "ignore_epilogues": 0x02, "any_track": 0x04,
-                   "data_without_checksum": 0x08, "data_without_header": 0x10}
+                   "data_without_checksum": 0x08, "data_without_header": 0x10, "five_and_three": 0x20}
+APPLE_STD_TABLE = bytes([
+    0x96, 0x97, 0x9a, 0x9b, 0x9d, 0x9e, 0x9f, 0xa6, 0xa7, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb2, 0xb3,
+    0xb4, 0xb5, 0xb6, 0xb7, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf, 0xcb, 0xcd, 0xce, 0xcf, 0xd3,
+    0xd6, 0xd7, 0xd9, 0xda, 0xdb, 0xdc, 0xdd, 0xde, 0xdf, 0xe5, 0xe6, 0xe7, 0xe9, 0xea, 0xeb, 0xec,
+    0xed, 0xee, 0xef, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff])
 APPLE_GCR_SECTOR_FLAGS = {0x20: "addr checksum", 0x40: "data checksum", 0x80: "epilogue"}
 # ANALYSIS_JOB op 34: tolerance flags of the IBM MFM/FM, HP, Amiga, Commodore and Macintosh analysis
 # decoders (5.8); same bit values as the Apple flags.  SECTOR_FLAGS names the quality report's
@@ -840,19 +845,44 @@ class Device2:
          'sectors': [{volume, sync_before_addr, header_to_data, sync_before_data, flags, flag_names, seen}] x 16}.
         An empty 'revs' list means no format 7 analysis ran since the last reset."""
         b = self.analysis_op(35)
-        if len(b) < 178 or b[0] != 1:
+        if len(b) < 178 or b[0] not in (1, 2):
             raise DeviceError("Apple GCR statistics: unexpected reply")
         revs = []
         for r in range(b[1]):
             v = struct.unpack_from("<5H", b, 2 + 10 * r)
             revs.append(dict(zip(("nibbles", "sync_nibbles", "address_fields", "data_fields", "orphan_headers"), v, strict=True)))
+            if b[0] >= 2 and len(b) >= 274:       # schema 2: trailing-zero histogram of the self-sync nibbles
+                revs[-1]["trail"] = list(struct.unpack_from("<3H", b, 178 + 6 * r))
         sectors = []
         for s in range(16):
             v = struct.unpack_from("<6B", b, 82 + 6 * s)
             d = dict(zip(("volume", "sync_before_addr", "header_to_data", "sync_before_data", "flags", "seen"), v, strict=True))
             d["flag_names"] = flag_names(d["flags"], SECTOR_FLAGS)
+            if b[0] >= 2 and len(b) >= 274:
+                d["position"] = struct.unpack_from("<H", b, 242 + 2 * s)[0]
             sectors.append(d)
-        return {"revs": revs, "sectors": sectors}
+        out = {"revs": revs, "sectors": sectors}
+        if b[0] >= 2 and len(b) >= 274:           # D5 AA xx prologue variants that match neither configured prologue
+            out["variants"] = [{"third": b[226 + 4 * k], "count": struct.unpack_from("<H", b, 228 + 4 * k)[0]}
+                               for k in range(4) if struct.unpack_from("<H", b, 228 + 4 * k)[0]]
+        return out
+
+    def apple_gcr_table(self, table: bytes | str | None = None) -> bytes:
+        """6-and-2 symbol table of the format 7 decoder (op 36, firmware 1.18): 64 symbols >= 0x80,
+        all distinct.  None reads, 'standard' restores APPLE_STD_TABLE, else 64 bytes or 128 hex digits."""
+        if table is not None:
+            if table == "standard":
+                table = APPLE_STD_TABLE
+            elif isinstance(table, str):
+                table = bytes.fromhex(table)
+            if len(table) != 64 or len(set(table)) != 64 or min(table) < 0x80:
+                raise ValueError("Apple GCR table: 64 distinct symbols with bit 7 set")
+            reply = self.analysis_op(36, bytes([1]) + bytes(table))
+        else:
+            reply = self.analysis_op(36)
+        if len(reply) < 65 or reply[0] != 1:
+            raise DeviceError("Apple GCR table: unexpected reply")
+        return bytes(reply[1:65])
 
     def decoder_tolerance(self, flags=None) -> dict:
         """Tolerance flags of the analysis decoders for formats 1-6 (op 34, firmware 1.18).

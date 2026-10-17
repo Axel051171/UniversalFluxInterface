@@ -335,7 +335,7 @@ int main(void){
     /* Op 33: Apple II GCR options (format 7) - read defaults, reject bad schema/flags/marks, set and read back */
     uint8_t ao[14]={33};assert(!ufi_analysis_command(ao,1,out,&size) && size==13 && out[0]==1 && out[3]==0x96 && out[6]==0xad && !out[11] && !out[12]);
     memcpy(ao+1,out,13);ao[1]=2;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
-    ao[1]=1;ao[12]=0x20;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
+    ao[1]=1;ao[12]=0x40;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
     ao[12]=0x03;ao[2]=0xd4;ao[7]=0xb5;assert(!ufi_analysis_command(ao,14,out,&size) && size==13 && out[1]==0xd4 && out[6]==0xb5 && out[11]==0x03);
     ao[2]=0x54;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
     assert(!ufi_analysis_command(ao,1,out,&size) && out[1]==0xd4 && out[11]==0x03);
@@ -350,8 +350,17 @@ int main(void){
     assert(!ufi_analysis_command(to,1,out,&size) && out[1]==0x1f);
     to[2]=0;assert(!ufi_analysis_command(to,4,out,&size) && !out[1] && !mfm_get_tolerance());
     /* Op 35: Apple II nibble statistics - 178 bytes, schema 1, no revolutions before a format 7 analysis */
-    uint8_t ns[2]={35,0};assert(!ufi_analysis_command(ns,1,out,&size) && size==178 && out[0]==1 && out[1]==0);
+    uint8_t ns[2]={35,0};assert(!ufi_analysis_command(ns,1,out,&size) && size==274 && out[0]==2 && out[1]==0);
     assert(ufi_analysis_command(ns,2,out,&size)==UFI_ERR_BAD_ARGS);
+    /* Op 36: loadable 6-and-2 table - read the standard, reject duplicates/low symbols/bad schema, set and restore */
+    uint8_t tb[66]={36,1};assert(!ufi_analysis_command(tb,1,out,&size) && size==65 && out[0]==1 && out[1]==0x96 && out[64]==0xff);
+    memcpy(tb+2,out+1,64);tb[2]=0x97;assert(ufi_analysis_command(tb,66,out,&size)==UFI_ERR_BAD_ARGS);
+    tb[2]=0x16;assert(ufi_analysis_command(tb,66,out,&size)==UFI_ERR_BAD_ARGS);
+    tb[2]=0x96;tb[1]=2;assert(ufi_analysis_command(tb,66,out,&size)==UFI_ERR_BAD_ARGS);tb[1]=1;
+    tb[2]=0x97;tb[3]=0x96;busy=true;assert(ufi_analysis_command(tb,66,out,&size)==UFI_ERR_BUSY);busy=false;
+    assert(!ufi_analysis_command(tb,66,out,&size) && out[1]==0x97 && out[2]==0x96 && mfm_apple_get_table()[0]==0x97);
+    tb[2]=0x96;tb[3]=0x97;assert(!ufi_analysis_command(tb,66,out,&size) && out[1]==0x96);
+    assert(ufi_analysis_command(tb,10,out,&size)==UFI_ERR_BAD_ARGS);
     /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
     uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
     assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);

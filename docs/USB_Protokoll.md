@@ -425,7 +425,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–35), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–36), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -2178,6 +2178,7 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
 | 0x0004 | keine Grenze Spur < 40 / Sektor < 16 (Sektor < 64 bleibt; Spiral-/Halbspurschutz) |
 | 0x0008 | falsches Prüfnibble des Datenfelds setzt `crc_ok` nicht zurück (geänderte Prüfsummenregel) |
 | 0x0010 | Datenfeld auch ohne vorausgehenden gültigen Kopf annehmen; Kennung dann `c = r = 255` |
+| 0x0020 | 13-Sektor-Datenfelder (DOS 3.2, 5-and-3): 410 Nibbles aus dem 32er-Alphabet, Aufteilung 154 Niederbit- plus 256 Hochbit-Nibbles, XOR-Kette und Prüfnibble wie bei 6-and-2; Adressprolog dazu meist `D5 AA B5` (Op 33 setzen) |
 
 - **Nibble-Statistik (Op 35, 1.18-dev):** `[35]` liefert 178 Bytes über die letzte
   Format-7-Analyse (Rücksetzen bei jedem Analysestart mit Formathinweis 7, gezählt nur vom
@@ -2194,6 +2195,23 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
   `seen` (Umdrehungsmaske der Datenfelder). Damit lassen sich Nibble-Zählschutz,
   veränderte Sync-Längen, Volume-Wechsel je Sektor und Köpfe ohne Daten ohne Hostdecodierung
   erkennen. Host: `Device2.apple_gcr_stats()`, `ufi apple-stats`.
+  **Schema 2** (Antwort 274 Bytes, die ersten 178 wie Schema 1): ab Offset 178 je
+  Umdrehung drei u16 `trail1/trail2/trail3` (FF-Nibbles mit 1, 2 bzw. ≥ 3 nachlaufenden
+  Nullzellen; ≥ 3 = Zeitbits von Schutzverfahren), ab Offset 226 vier Einträge
+  `third` u8, reserviert u8, `count` u16 (häufigste dritte Nibbles nach `D5 AA`, die weder
+  Adress- noch Datenprolog sind, zum Auffinden fremder Marken ohne Raten), ab Offset 242
+  16 × u16 `position` (Zellen vom Umdrehungsbeginn bis zum Beginn des Adressprologs des
+  zuletzt gesehenen Kopfs je physischem Sektor; Sektorabstände und Spiralschutz).
+- **Symboltabelle (Op 36, 1.18-dev):** `[36]` liest, `[36, Schema 1, 64 Symbole]` setzt
+  (exakt 66 Bytes); Antwort `[1, 64 Symbole]`. Alle Symbole müssen Bit 7 gesetzt haben und
+  verschieden sein, sonst BAD_ARGS; Setzen bei aktiver Operation BUSY. Die Tabelle gilt für
+  den 6-and-2-Datenpfad des Format-7-Decoders bis zum nächsten Setzen oder Neustart (die
+  Standardtabelle setzt zurück); der Macintosh-Decoder bleibt unberührt. Host:
+  `Device2.apple_gcr_table()`, `ufi apple-table [standard|HEX128]`.
+- **13-Sektor-Disketten (Flag 0x0020):** Datenfelder werden als 5-and-3 gelesen (410
+  Nibbles, fester 32er-Zeichensatz, Aufteilung nach *Beneath Apple DOS*: 154 Nibbles mit den
+  unteren drei Bits, dann 256 mit den oberen fünf, Byte 255 getrennt), Kennung und Prüfregeln
+  wie bei 16 Sektoren. Für DOS-3.2-Disketten zusätzlich `addr_prologue = D5 AA B5` setzen.
 - **Befunde je Sektor:** Zusätzlich zu `crc_ok` setzt der Decoder Sektorflags, die der
   Qualitätsbericht in das Flagbyte des Sektoreintrags übernimmt: 0x08 Datenfeld ohne
   gültigen Kopf (Flag 0x0010), 0x20 Kopfprüfsumme falsch, 0x40 Datenprüfnibble falsch,
@@ -2273,7 +2291,8 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
 | 33 | 1 / 14 | Apple-II-GCR-Decoderoptionen lesen / setzen, 13 Bytes Antwort (5.7, Format 7) |
 | 34 | 1 / 4 | Toleranzflags der Decoder für Format 1–6 lesen / setzen, 3 Bytes Antwort (5.8) |
-| 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 178 Bytes (5.7) |
+| 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 274 Bytes, Schema 2 (5.7) |
+| 36 | 1 / 66 | Apple-II-6-and-2-Symboltabelle lesen / setzen, 65 Bytes Antwort (5.7) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

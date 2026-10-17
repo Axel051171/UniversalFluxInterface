@@ -484,7 +484,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -575,6 +575,8 @@ def main(argv: list[str] | None = None) -> int:
                    "'apple-gcr reset' restores the defaults").add_argument("set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("apple-stats", help="Apple II nibble statistics of the last format 7 analysis (firmware 1.18, op 35): nibbles, self-sync nibbles, "
                    "address/data fields and orphan headers per revolution; per sector volume, sync run lengths, header-to-data distance, findings")
+    sub.add_parser("apple-table", help="6-and-2 symbol table of the format 7 decoder (firmware 1.18, op 36): no argument shows it, "
+                   "'standard' restores the DOS 3.3 alphabet, 128 hex digits load a swapped alphabet").add_argument("table", nargs="?")
     sub.add_parser("tolerance", help="tolerance flags of the analysis decoders for IBM MFM/FM, HP, Amiga, Commodore and Macintosh (firmware 1.18, op 34): "
                    "keep_bad_header+ignore_epilogues+any_track+data_without_checksum+data_without_header, a number, or 'reset'; "
                    "no argument shows the current flags").add_argument("flags", nargs="?")
@@ -868,13 +870,19 @@ def main(argv: list[str] | None = None) -> int:
             if not st["revs"]:
                 print("no format 7 analysis since the last reset")
             for i, r in enumerate(st["revs"]):
+                trail = f"  trailing zeros 1/2/3+: {'/'.join(map(str, r['trail']))}" if "trail" in r else ""
                 print(f"rev {i}: nibbles {r['nibbles']}  sync {r['sync_nibbles']}  address fields {r['address_fields']}  "
-                      f"data fields {r['data_fields']}  orphan headers {r['orphan_headers']}")
-            print("sec vol  sync>addr  hdr>data  sync>data  seen  findings")
+                      f"data fields {r['data_fields']}  orphan headers {r['orphan_headers']}{trail}")
+            if st.get("variants"):
+                print("prologue variants D5 AA xx: " + ", ".join(f"{v['third']:02x} x{v['count']}" for v in st["variants"]))
+            print("sec vol  sync>addr  hdr>data  sync>data  seen  position  findings")
             for i, s in enumerate(st["sectors"]):
                 if s["seen"] or s["volume"] or s["sync_before_addr"]:
                     print(f"{i:3} {s['volume']:3}  {s['sync_before_addr']:9}  {s['header_to_data']:8}  {s['sync_before_data']:9}  "
-                          f"{s['seen']:04b}  {'+'.join(s['flag_names']) or '-'}")
+                          f"{s['seen']:04b}  {s.get('position', 0):8}  {'+'.join(s['flag_names']) or '-'}")
+        elif a.cmd == "apple-table":
+            t = dev.apple_gcr_table(a.table)
+            print(f"table {'standard' if t == P2.APPLE_STD_TABLE else 'custom'}: {t.hex()}")
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")

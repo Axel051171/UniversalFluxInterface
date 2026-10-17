@@ -460,6 +460,15 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         }
         const uint16_t t=mfm_get_tolerance();out[0]=1;out[1]=(uint8_t)t;out[2]=(uint8_t)(t>>8);*size=3;return UFI_OK;
     }
+    if(p[0]==36 && (n==1 || n==66)){
+        /* Apple II 6-and-2 symbol table: [36] reads, [36, schema 1, 64 symbols] sets (the standard table restores) */
+        if(n==66){
+            if(p[1]!=1 || !mfm_apple_table_valid(p+2))return UFI_ERR_BAD_ARGS;
+            if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
+            mfm_apple_set_table(p+2);
+        }
+        out[0]=1;memcpy(out+1,mfm_apple_get_table(),64);*size=65;return UFI_OK;
+    }
     if(p[0]==35 && n==1){
         /* Apple II nibble statistics of the last format 7 analysis: 178 bytes, revs 0 = none yet */
         memcpy(out,mfm_apple_stats(),sizeof(apple_stats_t));*size=sizeof(apple_stats_t);return UFI_OK;

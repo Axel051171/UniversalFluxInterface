@@ -24,6 +24,26 @@ static void apl_marks(uint8_t a0,uint8_t a1,uint8_t a2,uint8_t d0,uint8_t d1,uin
     apl_ae[0]=ae0;apl_ae[1]=ae1;apl_de[0]=de0;apl_de[1]=de1;
 }
 /* faults: 1 bad address checksum, 2 bad data checksum, 4 bad data epilogue */
+/* 13-sector 5-and-3 sector (DOS 3.2): address prologue apl_ap (set D5 AA B5), 410 data nibbles
+ * laid out as documented (low-bit block of 154, then high-bit block of 256), XOR chain, checksum. */
+static const uint8_t apl_codes53[32]={0xab,0xad,0xae,0xaf,0xb5,0xb6,0xb7,0xba,0xbb,0xbd,0xbe,0xbf,0xd6,0xd7,0xda,0xdb,
+                                      0xdd,0xde,0xdf,0xea,0xeb,0xed,0xee,0xef,0xf5,0xf6,0xf7,0xfa,0xfb,0xfd,0xfe,0xff};
+static void apl_sector53(unsigned volume,unsigned track,unsigned sector,const uint8_t b[256],unsigned faults){
+    apl_sync(10);apl_byte(apl_ap[0]);apl_byte(apl_ap[1]);apl_byte(apl_ap[2]);
+    apl_44((uint8_t)volume);apl_44((uint8_t)track);apl_44((uint8_t)sector);apl_44((uint8_t)(volume^track^sector^((faults&1)?1:0)));
+    apl_byte(apl_ae[0]);apl_byte(apl_ae[1]);apl_byte(0xeb);
+    apl_sync(6);apl_byte(apl_dp[0]);apl_byte(apl_dp[1]);apl_byte(apl_dp[2]);
+    uint8_t x[410];unsigned n=0;
+    x[n++]=(uint8_t)(b[255]&7u);
+    for(int k=2;k>=0;k--)for(unsigned j=0;j<51;j++)
+        x[n++]=(uint8_t)(((b[5*j+k]&7u)<<2)|(((b[5*j+3]>>(2-k))&1u)<<1)|((b[5*j+4]>>(2-k))&1u));
+    for(unsigned k=0;k<5;k++)for(int j=50;j>=0;j--)x[n++]=(uint8_t)(b[5*j+k]>>3);
+    x[n++]=(uint8_t)(b[255]>>3);
+    uint8_t prev=0;
+    for(unsigned i=0;i<410;i++){apl_byte(apl_codes53[(x[i]^prev)&31u]);prev=x[i];}
+    apl_byte(apl_codes53[(prev^((faults&2)?1:0))&31u]);
+    apl_byte(apl_de[0]);apl_byte(apl_de[1]);apl_byte(0xeb);apl_sync(4);
+}
 /* address field only (valid), no data field: an orphan header */
 static void apl_header_only(unsigned volume,unsigned track,unsigned sector){
     apl_sync(10);apl_byte(apl_ap[0]);apl_byte(apl_ap[1]);apl_byte(apl_ap[2]);

@@ -72,6 +72,7 @@ typedef struct {
     uint8_t profile;            /* PLL profile from mfm_dec_profile(); Apple statistics count profile 0 only */
     uint16_t nib_bits, nib_trail, sync_run, last_sync; /* format 7 nibble framing in the search state */
     bool last_ff;               /* the nibble just framed was FF (sync candidate) */
+    uint8_t nib_prev1, nib_prev2; /* the two nibbles framed before the current one (prologue variants) */
 } mfm_decoder_t;
 
 /* Apple II (format 7) nibble statistics of the last analysis, ANALYSIS_JOB op 35 (1.18).
@@ -96,7 +97,17 @@ typedef struct {
         uint8_t flags;              /* sector_flags of the last data field (0x08/0x20/0x40/0x80) */
         uint8_t seen;               /* revolution mask of data fields for this sector */
     } sector[16];
-} apple_stats_t;
+    /* schema 2 (appended, 124 bytes): timing bits, prologue variants, sector positions */
+    struct {
+        uint16_t trail1, trail2, trail3;    /* FF nibbles followed by 1, 2, >= 3 zero cells (>= 3 = timing bits) */
+    } sync[APPLE_STATS_REVS];
+    struct {
+        uint8_t third;              /* third nibble after D5 AA that is neither configured prologue */
+        uint8_t reserved;
+        uint16_t count;
+    } variant[4];                   /* the four most frequent, 0 count = unused */
+    uint16_t position[16];          /* cells from revolution start to the address prologue of the last header (cap 65535) */
+} apple_stats_t;                    /* 274 bytes, every field at its natural alignment */
 void mfm_apple_stats_reset(void);
 void mfm_apple_stats_revolution(uint8_t rev);
 const apple_stats_t* mfm_apple_stats(void);
@@ -133,7 +144,12 @@ typedef struct __attribute__((packed)) {
 #define APPLE_GCR_ANY_TRACK               0x0004u  /* no track < 40 / sector < 16 limit (sector < 64) */
 #define APPLE_GCR_DATA_WITHOUT_CHECKSUM   0x0008u  /* a wrong checksum nibble does not clear crc_ok */
 #define APPLE_GCR_DATA_WITHOUT_HEADER     0x0010u  /* accept a data field without a preceding valid header */
-#define APPLE_GCR_FLAG_MASK               0x001Fu
+#define APPLE_GCR_FIVE_AND_THREE          0x0020u  /* 13-sector DOS 3.2 data fields: 410 5-and-3 nibbles (address prologue usually D5 AA B5) */
+#define APPLE_GCR_FLAG_MASK               0x003Fu
+/* loadable 6-and-2 symbol table (op 36): 64 symbols, each >= 0x80 and distinct; NULL = standard */
+bool mfm_apple_table_valid(const uint8_t table[64]);
+void mfm_apple_set_table(const uint8_t table[64]);
+const uint8_t* mfm_apple_get_table(void);
 /* per-sector diagnostic bits in mfm_decoder_t.sector_flags (OR-ed into the quality report);
  * same values as MFM_SF_* so every format reports its findings in the same bits */
 #define APPLE_GCR_SF_ADDR_CHECKSUM  0x20u   /* header checksum failed (sector kept by flag) */

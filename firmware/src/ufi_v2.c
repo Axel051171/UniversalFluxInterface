@@ -587,7 +587,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
     const bool readonly = cmd == V2_PING || cmd == V2_INFO || cmd == V2_STATUS ||
         cmd == V2_DESCRIBE || cmd == V2_FEATURES || cmd == V2_DIAGNOSTICS || cmd == V2_WRITE_LIMITS || cmd == V2_EVENTS ||
         cmd == V2_DUMP_STATUS || cmd == V2_RESOURCE || cmd == V2_QUALITY || (cmd == V2_JOB && !len) ||
-        (cmd == V2_ANALYSIS_JOB && len && p[0]!=1 && p[0]!=24 && p[0]!=26 && p[0]!=27 && p[0]!=29 && !((p[0]==30 || p[0]==31) && len>1) && p[0]!=4 && p[0]!=5 && p[0]!=16 && !((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18 || p[0]==33 || p[0]==34) && len>1));
+        (cmd == V2_ANALYSIS_JOB && len && p[0]!=1 && p[0]!=24 && p[0]!=26 && p[0]!=27 && p[0]!=29 && !((p[0]==30 || p[0]==31) && len>1) && p[0]!=4 && p[0]!=5 && p[0]!=16 && !((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18 || p[0]==33 || p[0]==34 || p[0]==36) && len>1));
     if (ufi_usb_get_mode() == UFI_USB_COMPOSITE && !readonly &&
         !ufi_resources_acquire(UFI_OWNER_NATIVE)) {
         send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_BUSY), NULL, 0);

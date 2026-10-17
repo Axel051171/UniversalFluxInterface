@@ -853,3 +853,21 @@ reserved), sector identities stay the track numbers read from the disk. New
 `ufi_capture_start_q()` from the job. Tests: option parsing in `test_quality.c`, the job
 harness stubs the Apple query and the quarter-aware capture start; host `analyze(...,
 quarter=)` and `ufi analyze -q`, FakeV2 validates the side byte.
+
+## 13-sector 5-and-3, loadable 6-and-2 table, nibble statistics schema 2 — 2026-10-17
+
+Format 7 reads DOS 3.2 13-sector data fields with op 33 flag 0x20 (410 nibbles from the
+fixed 32-symbol alphabet, low-bit block of 154 then high-bit block of 256, byte 255 split,
+XOR chain and checksum nibble as in 6-and-2; layout taken from the documented format and
+checked against an independent encoder in the test fixture). Op 36 reads or loads the
+6-and-2 symbol table (64 distinct symbols with bit 7, standard table restores; reverse
+lookup table rebuilt on load, Macintosh decoder untouched). The nibble statistics report
+grew to schema 2 (274 bytes, first 178 unchanged): per revolution the trailing-zero
+histogram of self-sync nibbles (1, 2, 3 or more zero cells, the latter being timing bits),
+the four most frequent D5 AA xx third nibbles that are neither configured prologue
+(finds foreign marks without guessing), and per sector the cell position of the address
+prologue since the revolution start. Native tests: 13-sector track with a data checksum
+fault, rotated alphabet breaking the standard track, positions, trailing histogram and
+variant counts; op 36 and the 274-byte op 35 in `test_analysis_job.py`. Host:
+`apple_gcr_table()`, `ufi apple-table`, flag name `five_and_three`, schema 2 fields in
+`apple_gcr_stats()` and `ufi apple-stats`; FakeV2 ops 35/36. Protocol doc 5.7 and op table.
