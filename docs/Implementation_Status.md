@@ -1047,3 +1047,15 @@ check, `WriteResult.start_offset_applied`, `ufi write --start-offset`; FakeV2 pa
 field and echoes it plus 7 ticks. Protocol doc rows 0x08/0x22, 3.3 bullet, 4.5 END sizes,
 4.7/4.8 tables; acceptance plan rows (gate edge against the index on the analyser, long
 wait, abort).
+
+## Extended analysis flags without DETAIL — decided against, 2026-10-17
+
+Seventh item of UFT's list, checked and left as it is. ANALYZE runs the quality pass only
+with a nonzero flag byte, and the TIMING/GAPS/GLITCHES/POSITIONS/SYNC/WINDOWS counters are
+computed inside that pass, interleaved with the sector decoder DETAIL stands for. A
+"without DETAIL" variant would not be cheaper by dropping a flag; it would be a second pass
+mode with the decoder switched off that reports only the QX block, saving the sector decode
+and the 1824-byte QD report, not the capture. Kept as a possible later feature ("light
+extended pass"), to be specified separately if UFT wants it. Open from the same list, both
+pending the owner's word: bit 6 (source index period) on a WRITE without firmware verify,
+and the light extended pass.
