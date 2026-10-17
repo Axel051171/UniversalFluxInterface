@@ -618,6 +618,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-r", "--revs", type=int, default=3)
     p.add_argument("--drive", default="a", choices=list(P.DRIVES))
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
+    p = sub.add_parser("read-dsk", help="Apple II 5.25-inch disk -> .dsk (DOS 3.3 order) or .po (ProDOS order): flux is read with READ and decoded on the host (6-and-2 GCR, same marks/flags as firmware format 7)")
+    p.add_argument("-o", "--output", required=True, help="disk.dsk or disk.po")
+    p.add_argument("--order", choices=("dos33", "prodos", "physical"), help="sector order in the file; default from the extension (.po = prodos, else dos33)")
+    p.add_argument("--tracks", type=int, default=35)
+    p.add_argument("-r", "--revs", type=int, default=2)
+    p.add_argument("--drive", default="apple", choices=list(P.DRIVES))
+    p.add_argument("--addr-prologue", default="d5aa96", metavar="HEX")
+    p.add_argument("--data-prologue", default="d5aaad", metavar="HEX")
+    p.add_argument("--addr-epilogue", default="deaa", metavar="HEX")
+    p.add_argument("--data-epilogue", default="deaa", metavar="HEX")
+    p.add_argument("--flags", default="", help="keep_bad_addr_checksum+ignore_epilogues+any_track+data_without_checksum+data_without_header")
     p = sub.add_parser("write")
     p.add_argument("image")
     p.add_argument("track", type=int)
@@ -886,6 +897,26 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
         elif a.cmd == "read-disk":
             cmd_read_disk(dev, a)
+        elif a.cmd == "read-dsk":
+            from . import apple
+            opts = apple.Options(bytes.fromhex(a.addr_prologue), bytes.fromhex(a.data_prologue),
+                                 bytes.fromhex(a.addr_epilogue), bytes.fromhex(a.data_epilogue),
+                                 sum(P2.APPLE_GCR_FLAGS[n.strip()] for n in a.flags.split("+") if n.strip())).check()
+            image = apple.DiskImage(a.tracks, apple.order_for_name(a.output, a.order))
+            _prepare(dev, a.drive)
+            for track in range(a.tracks):
+                cap = dev.read_track(track, 0, a.revs)
+                dec = apple.decode_capture(cap, opts)
+                good = image.add_track(track, dec)
+                print(f"track {track:2d}: {good:2d}/16 sectors, {dec.header_errors} header, {dec.data_errors} data, "
+                      f"{dec.code_errors} coding errors, {dec.nibbles} nibbles")
+            image.write(a.output)
+            print(f"{a.output}: {a.tracks} tracks, order {a.order or apple.order_for_name(a.output, None)}, "
+                  f"volume(s) {sorted(image.volumes) or '-'}, missing {len(image.missing)}, weak {len(image.weak)}")
+            for t, s in image.missing[:40]:
+                print(f"  missing t{t} s{s}")
+            for t, s in image.weak[:40]:
+                print(f"  checksum/epilogue fault kept t{t} s{s}")
         elif a.cmd == "write" and a.image.lower().endswith(".hfe"):
             img = read_hfe(a.image)
             if (a.track, a.side) not in img.tracks:

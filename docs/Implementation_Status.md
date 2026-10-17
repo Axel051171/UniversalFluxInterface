@@ -738,6 +738,13 @@ Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
   counting under tolerant flags. Host `ufi apple-gcr` / `apple_gcr_options()`. Native
   test covers protection marks (`D4 AA 96` / `D5 AA B5` / `DE AB`), each flag and the
   validation; pytest covers the wrapper.
+- Host `ufi read-dsk` (`ufi_host/apple.py`): reads each track with READ, decodes the
+  flux on the host with the same 6-and-2 rules, marks and flags as format 7 (nibble
+  latch on the first 1 bit, 4 us cells through the shared PLL), merges revolutions
+  (checksum-clean sector wins) and writes `.dsk` (DOS 3.3 order) or `.po` (ProDOS
+  order, chosen by extension or `--order`); missing and fault-tolerated sectors are
+  listed. Tests: synthetic tracks, both orders, faults, tolerance flags, protection
+  marks, 6 % speed error, revolution merge.
 - Host: all `zip()` calls carry an explicit `strict=` (ruff B905), the two deliberately
   truncating pairings in `hfe.py` say so; one unused loop variable and one late-binding
   lambda in `cli.py` fixed; ruff `--select F,B` is clean for the package.

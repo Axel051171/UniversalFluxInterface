@@ -48,6 +48,7 @@ ufi read 17 0 --steps 50:17.1,100:17.2    # Firmware ≥ 1.14: Kopfschritte nach
 ufi write-limits                          # Firmware ≥ 1.15: was der Schreibpfad annimmt (Takt, max. Intervalle, 1,6–238 µs); ufi write prüft damit vor dem Senden
 ufi timing tg43=1                         # Firmware ≥ 1.16: 8-Zoll-Laufwerke, Pin 2 = TG43 (reduzierter Schreibstrom ab Spur 43); auch UFI.CFG tg43=1
 ufi apple-gcr addr_prologue=d4aa96 flags=keep_bad_addr_checksum+any_track   # Firmware ≥ 1.18: Apple-II-5,25-Zoll-GCR-Decoder (Format 7) für Kopierschutz-Varianten; 'apple-gcr reset'
+ufi read-dsk -o game.dsk [--order prodos] [--tracks 35] [-r 2] [--flags …]  # Apple II 5,25 Zoll: Fluss lesen, auf dem Host 6-and-2 decodieren, .dsk (DOS-3.3-Reihenfolge) oder .po (ProDOS) schreiben; fehlende/schwache Sektoren werden gelistet
 ufi extra density_us=1500                 # Firmware ≥ 1.18: zusätzliche Laufwerkszeiten (Umschaltwartezeit, Motorstart→Schritt, Schreibberuhigung, WGATE-Vor-/Nachlauf)
 ufi profile [standard|konservativ|save]   # Firmware ≥ 1.18: wirksame Einstellungen des gewählten Laufwerks; Zeitsatz anwenden (konservativ = KryoFlux-Werte: Schritt 8 ms, Beruhigung 40 ms, Umkehr 38 ms); save merkt sie sich je Laufwerk in UFIPROF.BIN auf der SD (ufi rm UFIPROF.BIN vergisst alle)
 ufi selftest                              # Firmware ≥ 1.14: Platinen-Selbsttest (Takt, PSRAM, SD, Versorgungen, USB-C, Laufwerksleitungen, IEC-Rückschleife, Index-Schleife), schreibt SELFTEST.LOG
