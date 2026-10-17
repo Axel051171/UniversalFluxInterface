@@ -95,7 +95,8 @@ class FakeV2:
         self.caps = self.CAPS_1_18 if caps is None else caps
         self.dos_errors: dict[tuple[int, int], int] = {}
         self.soft_locked = False        # session write lock (op 37): engage-only, status 22 on disk/drive writes
-        self.config_gen = 7             # generation block in READ/WRITE END (4.5): configuration generation
+        self.drive = 1                  # selected drive id (op 22 byte 20); SELECT replaces it
+        self.config_gen = 7             # generation block in READ/WRITE END (4.5): configuration generation; SELECT and accepted op 10/18 settings bump it
         self.media_gen = 42             # ... media generation (start and end are equal unless bumped mid-run)
         self.capture_id = 0x1234        # ... capture id reported by READ END (0 for WRITE)
         self.refusal = (0, 0, 0, 0, 0)  # op 39 (4.8): cmd, seq, status, field, detail of the last 16/21 refusal
@@ -150,6 +151,18 @@ class FakeV2:
     def _gen_block(self, capture_id):
         """Generation block firmware 1.18 appends to READ/WRITE END (4.5): schema 1, config, media start, media end, capture id."""
         return P2.GEN_BLOCK.pack(1, self.config_gen, self.media_gen, self.media_gen, capture_id)
+
+    def _capability_matrix(self) -> bytes:
+        """Op 22 as ufi_capability_matrix() builds it on a v0.7 board with a flux drive selected (4.3):
+        head 1, 6, 32, 32; generation; flags 3 (CAPABILITY_UNCONFIRMED | WRITE_MODE_UNQUALIFIED);
+        mask 63; 275 MHz; drive id and the op numbers 23..32; six rows (formats 1-6) with
+        implemented/eligible 15, offline_tested 10, hardware_qualified 0, both raw backends,
+        prerequisites 7, the format's rate mask and the classic/extended interval limits."""
+        head = bytes([1, 6, 32, 32]) + struct.pack("<4I", self.config_gen, 3, 63, 275_000_000)
+        head += bytes([self.drive, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 0])
+        rows = b"".join(bytes([f, 15, 15, 10, 0, 3, 3, 7]) + struct.pack("<6I", rate, 440, 65536, 220, 0xFFFFFFFF, 3)
+                        for f, rate in enumerate((0x0F, 0x0F, 0x37, 0x04, 0x1C1, 0x3E04), 1))
+        return head + rows
 
     @staticmethod
     def _locked_write(cmd, a):
@@ -235,6 +248,15 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             r(0, struct.pack("<BHII", 1, self.speed_tolerance, *self.speed_last))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 22:          # capability matrix (4.3), 224 bytes
+            r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else self._capability_matrix())
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 23:          # configuration report (4.3): [23] or [23, expected u32]
+            if len(a) not in (1, 5):
+                r(P2.BAD_ARGS)
+                return
+            expected = struct.unpack_from("<I", a, 1)[0] if len(a) == 5 else 0
+            changed = 4 if len(a) == 5 and expected != self.config_gen else 0        # PROFILE_CHANGED
+            r(0, bytes([1, 24, 1, 0]) + struct.pack("<5I", self.config_gen, expected, changed, self.media_gen, 4))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 40:          # per-sector verify report (4.9)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else self.verify_report)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 39:          # last refusal (4.8)
@@ -259,6 +281,7 @@ class FakeV2:
                     r(P2.BAD_ARGS)
                     return
                 self.extra = a[2:14]
+                self.config_gen += 1                          # accepted settings change the configuration generation (4.3)
             r(0, bytes([1]) + self.extra)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 33:          # Apple II GCR options (5.7)
             if len(a) == 14:
@@ -315,6 +338,8 @@ class FakeV2:
                     r(P2.BAD_ARGS)
                     return
                 self.timing, self.extra, self.profile_stored = a[2:24], a[24:36], True
+            if len(a) > 1:
+                self.config_gen += 1                          # accepted settings change the configuration generation (4.3)
             r(0, P2.PROFILE_FMT.pack(1, self.timing, self.extra, 0, 1, 0, int(self.profile_stored)))
         elif cmd == P2.IEC_MEM:                              # op, addr u16, data / n
             self._iec_mem(a, r)
@@ -364,7 +389,7 @@ class FakeV2:
             r(P2.BAD_ARGS if a else 0, b"" if a else P2.DESCRIBE_FMT.pack(1, 3, 3, 65536, 275_000_000, 68_750_000,
                                                                           1 << 21, 1024, 200, 0x3fffffff, 110, 100000))
         elif cmd == P2.WRITE_LIMITS:
-            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 31 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 63 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -423,6 +448,10 @@ class FakeV2:
             self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id))
         elif cmd == P2.WRITE:
             flags = a[2]                    # optional fields in flag order, then an optional flags2 byte (1.18)
+            if flags & 0x40 and not flags & 0x20:                 # bit6 needs extended timing (0x60; 0x61 before 1.18-dev)
+                self.refusal = (cmd, seq, P2.BAD_ARGS, 8, 1)
+                r(P2.BAD_ARGS)
+                return
             want = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0) + (4 if flags & 0x40 else 0) + (12 if flags & 0x80 else 0)
             flags2 = a[want] if len(a) > want else 0
             start_offset = struct.unpack_from("<I", a, want + 1)[0] if flags2 & 2 and len(a) >= want + 5 else 0
@@ -473,7 +502,11 @@ class FakeV2:
             r()
         elif cmd == P2.DUMP_STATUS:
             r(0, P2.DUMP.pack(3, 0, 12, 1, 7, 0, 1))
-        elif cmd in (P2.SELECT, P2.MOTOR, P2.SEEK, P2.RECAL, P2.SIDE, P2.ABORT, P2.IEC_RESET,
+        elif cmd == P2.SELECT:                                # selection changes the configuration generation (4.3)
+            self.drive = a[0] if a else 0
+            self.config_gen += 1
+            r()
+        elif cmd in (P2.MOTOR, P2.SEEK, P2.RECAL, P2.SIDE, P2.ABORT, P2.IEC_RESET,
                      P2.IEC_SEND, P2.USB_MODE, P2.DUMP_START, P2.DUMP_ABORT, P2.COPY_START,
                      P2.WRITE_START):
             r()
@@ -950,7 +983,7 @@ def test_write_limits_and_preflight():
     dev = P2.Device2(fake)
     lim = dev.write_limits()
     assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
-        (1, 31, 275_000_000, 1 << 21, 440, 65536)
+        (1, 63, 275_000_000, 1 << 21, 440, 65536)
     n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
     with pytest.raises(ValueError):
         dev.write_track(1, 0, [1000, 439, 1000])
@@ -1110,6 +1143,15 @@ def test_speed_check(monkeypatch, capsys):
     sc = dev.speed_check()
     assert (sc["measured_ticks"], sc["source_ticks"]) == (55_000_000, 57_000_000) and sc["measured_rpm"] == 300.0
     assert dev.write_track(3, 1, deltas, extended=True).verify_level == 1          # no bit6: no check
+    assert dev.write_track(3, 1, deltas, extended=True, index_ticks=55_400_000).verify_level == 1   # 1.18-dev: bit6 without verify (0x60)
+    with pytest.raises(P2.DeviceError) as e:                                        # ... checks too
+        dev.write_track(3, 1, deltas, extended=True, index_ticks=57_000_000)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert e.value.status == P2.SPEED_MISMATCH and req[2] == 0x60 and req[11:15] == struct.pack("<I", 57_000_000)
+    fake.firmware = (1, 17)                                                          # no WRITE_LIMITS bit 5: the host drops the period
+    r = dev.write_track(3, 1, deltas, extended=True, index_ticks=57_000_000)
+    assert r.verify_level == 1 and [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload[2] == 0x20
+    fake.firmware = (1, 18)
     assert dev.speed_check(0)["tolerance_permille"] == 0
     assert dev.write_track(3, 1, deltas, extended=True, firmware_verify=True, index_ticks=57_000_000).verify_level == 3
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
@@ -1391,3 +1433,39 @@ def test_sd_write_start():
     assert fake.requests[-1].cmd == P2.WRITE_START and fake.requests[-1].payload == b"GAME.ADF"
     dev.sd_write_start()
     assert fake.requests[-1].payload == b""
+
+
+def test_capability_matrix_and_configuration_against_fake():
+    """Ops 22/23 on FakeV2 (4.3): the matrix decodes like a v0.7 board (flags 3, mask 63, six rows with
+    hardware_qualified 0), the configuration report carries the generation, PROFILE_CHANGED (4) only against
+    a stale expectation, and SELECT / accepted op 10 / op 18 settings move the generation."""
+    import pytest
+    from ufi_host.capabilities import decode_capabilities, decode_configuration
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    m = dev.capability_matrix()
+    assert (m["generation"], m["flags"], m["supported_flags"], m["timer_hz"], m["drive"]) == (7, 3, 63, 275_000_000, 1)
+    assert (m["write_guard_discovery"], m["media_guarded_analysis"], m["multitrack_create"]) == (25, 26, 27)
+    assert [r["format"] for r in m["rows"]] == [1, 2, 3, 4, 5, 6]
+    assert all(r["hardware_qualified"] == 0 and r["implemented"] == 15 and r["backends"] == 3 and r["flags"] == 3
+               and r["classic_limits"] == (440, 65536) and r["extended_limits"] == (220, 0xFFFFFFFF) for r in m["rows"])
+    assert m["rows"][0]["rate_mask"] == 0x0F and m["rows"][5]["rate_mask"] == 0x3E04
+    assert len(fake.requests[-1].payload) == 1 and decode_capabilities(dev.request(0x0F, bytes([22]))) == m
+    c = dev.configuration()
+    assert c == {"generation": 7, "expected": 0, "flags": 0, "media_generation": 42, "supported_flags": 4}
+    assert dev.configuration(7)["flags"] == 0 and dev.configuration(6) == {
+        "generation": 7, "expected": 6, "flags": 4, "media_generation": 42, "supported_flags": 4}
+    assert decode_configuration(dev.request(0x0F, bytes([23, 7, 0, 0, 0])))["flags"] == 0
+    dev.select(2)                                            # selection bumps the generation
+    assert dev.configuration(7)["flags"] == 4 and dev.configuration()["generation"] == 8 and dev.capability_matrix()["drive"] == 2
+    dev.request(0x0F, bytes([10, 1]) + bytes(12))            # accepted extra times
+    assert dev.configuration()["generation"] == 9
+    dev.request(0x0F, bytes([10]))                           # a plain read leaves it alone
+    assert dev.configuration()["generation"] == 9
+    dev.request(0x0F, bytes([18, 1]))                        # preset accepted
+    assert dev.configuration()["generation"] == 10 and dev.configuration(9)["flags"] == 4
+    assert dev.capability_matrix()["generation"] == 10
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([22, 0]))
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([23, 1, 2]))

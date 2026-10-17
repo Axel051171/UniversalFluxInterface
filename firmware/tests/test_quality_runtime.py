@@ -264,7 +264,9 @@ int main(void) {
     p[2]=0x61;assert(cmd_write(8,p,15)==0 && source_ticks==55000000);
     uint32_t before=prepare_calls;
     assert(cmd_write(8,p,14)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_LENGTH && note_d==15);
-    p[2]=0x60;assert(cmd_write(8,p,15)==UFI_ERR_BAD_ARGS && note_f==REFUSE_INDEX_TICKS && note_d==1);
+    source_ticks=0;p[2]=0x60;assert(cmd_write(8,p,15)==0 && source_ticks==55000000 && !verified && extended);   /* 1.18-dev: period without verify (speed check) */
+    before=prepare_calls;
+    p[2]=0x41;assert(cmd_write(8,p,15)==UFI_ERR_BAD_ARGS && note_f==REFUSE_INDEX_TICKS && note_d==1);         /* still needs extended timing */
     p[2]=0x31;assert(cmd_write(8,p,11)==UFI_ERR_NOT_IMPL);
     p[2]=0x80;assert(cmd_write(8,p,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_EXPECTED && note_d==1);
     assert(prepare_calls==before);

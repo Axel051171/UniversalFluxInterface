@@ -568,7 +568,9 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     }
     uint32_t source_index=0;
     if (p[2]&0x40u) {
-        if ((p[2]&0x21u)!=0x21u) { refuse(REFUSE_INDEX_TICKS, 1); return UFI_ERR_BAD_ARGS; }
+        /* 1.18-dev: extended timing suffices (0x60); verify (0x61) adds reference decoding,
+         * the speed check (op 41) uses the period on its own. */
+        if (!(p[2]&0x20u)) { refuse(REFUSE_INDEX_TICKS, 1); return UFI_ERR_BAD_ARGS; }
         if (len<at+4u) { refuse(REFUSE_LENGTH, (uint8_t)(at + 4u)); return UFI_ERR_BAD_ARGS; }
         source_index=get32(p+at);at+=4u;
         if (!source_index) { refuse(REFUSE_INDEX_TICKS, 2); return UFI_ERR_BAD_ARGS; }
@@ -817,7 +819,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             uint32_t words = 0;
             ufi_flux_store(&words);
             out[0] = 1;                     /* schema */
-            out[1] = 0x1F;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2 erase remainder, bit4 start offset (1.18) */
+            out[1] = 0x3F;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2 erase remainder, bit4 start offset, bit5 source period without verify (1.18) */
             put32(&out[2], FLUX_TIMER_FREQ);
             put32(&out[6], words);          /* max flux_count */
             put32(&out[10], WRITE_MIN_DELTA);

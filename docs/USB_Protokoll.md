@@ -424,7 +424,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |
 | 0x05 | USB_MODE | `mode` u8 (0 Flux, 1 SD-Laufwerk, 2 USB-Floppy, 3 Greaseweazle, 4 Composite) | Antwort, danach Neuanmeldung |
 | 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80) | – |
-| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
+| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
 | 0x09 | DESCRIBE (1.18) | – | 36 Byte, Schema 1; siehe unten |
 | 0x0A | RESOURCE (1.18) | leer, 0 freigeben oder 1 beanspruchen | Besitzer u8; Abschnitt 1.4 |
 | 0x0B | JOB (1.18) | Status / Öffnen / Commit | 24 Byte; Abschnitt 2.6 |
@@ -457,7 +457,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer für Firmware-Prüflesen, Bit7 erwartete Sektormenge EXPECT_SET), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt; andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt; andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -1308,7 +1308,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 
 Reine Abfrage: auch während Dump, Jobs oder gehaltener Ressource beantwortet, nie BUSY;
 jede Nutzlast nach dem Op-Byte → BAD_ARGS. Eine Maske sagt nur, welche Bits der Parser
-kennt; Kombinationsregeln (DETAIL-Pflicht, Bit 6/7 nur mit 0x21, Apple-Bedingungen) stehen
+kennt; Kombinationsregeln (DETAIL-Pflicht, Bit 6 nur mit 0x20, Bit 7 nur mit 0x21, Apple-Bedingungen) stehen
 bei den Kommandos. Host: `flag_masks()`, `ufi masks`.
 
 ### 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
@@ -1344,7 +1344,7 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 | 5 | Umdrehungen/Periode | 1 = Periode > 2000 ms |
 | 6 | Sektoren | der übergebene Wert (< 2) |
 | 7 | Zeitskala | 1 = außerhalb 500–2000 |
-| 8 | `index_ticks` | 1 = verlangt Flags 0x21, 2 = Null |
+| 8 | `index_ticks` | 1 = verlangt Bit 5 (erweiterter Pfad, 0x60; bis 1.18-dev-Vorstufen 0x21), 2 = Null |
 | 9 | Sektormenge (EXPECT_SET) | 1 = verlangt 0x21, 2 = leere Menge, 3 = Größencode > 3, 4 = Reservebyte ≠ 0 |
 | 10 | `flags2` | die unbekannten Bits |
 | 11 | Konfigurationsgeneration | 1 = Null oder veraltet |
@@ -1392,7 +1392,8 @@ und weist zu große Abweichungen ab:
   Voreinstellung; 1–500; während eines laufenden Vorgangs BUSY). Antwort 11 Bytes:
   Schema 1, `toleranz_promille` u16, `gemessene_indexdauer` u32, `quell_indexdauer` u32
   (Takte 275 MHz; beide 0, bis eine Prüfung lief). Die Einstellung ist flüchtig.
-- Mit Toleranz ≠ 0 misst jeder native WRITE/GUARDED_WRITE mit Bit 6 nach dem Empfang der
+- Mit Toleranz ≠ 0 misst jeder native WRITE/GUARDED_WRITE mit Bit 6 (erweiterter Pfad
+  `0x60`, mit Prüflesen `0x61`) nach dem Empfang der
   Daten und **vor** Kopfbewegung und Schreibtor zwei aufeinanderfolgende Indexabstände
   (dieselbe Messung wie FORMAT, höchstens etwa 600 ms). Ist
   |gemessen − Quelle| > Quelle · Toleranz / 1000, endet der Auftrag mit Ende-Status 23
@@ -1908,11 +1909,14 @@ je nachdem welcher Wert größer ist. Quellprüfung und Auswertung haben jeweils
 ein eigenes 10-s-Limit; Timeout oder Abbruch ergeben keinen Prüferfolg.
 
 Neues optionales **WRITE-Bit6 (`0x40`, SOURCE_INDEX)** hängt nach den bestehenden
-optionalen Feldern ein `u32 index_ticks` an. Es ist nur zusammen mit Extended
-und VERIFY zulässig (`0x61`, zuzüglich etwaiger Hard-Sector-Flags). Das Feld ist
-die Quell-Umdrehungsdauer in 275-MHz-Ticks, nicht ein weiterer Schreibimpuls.
-Es erlaubt das Dekodieren eines am Index geteilten Quellsektors. Ohne dieses
-Feld muss die Quelle alle zu prüfenden Sektoren vollständig enthalten.
+optionalen Feldern ein `u32 index_ticks` an. Es verlangt den erweiterten Pfad
+(Bit 5): mit VERIFY `0x61`, seit 1.18-dev auch ohne VERIFY `0x60` (WRITE_LIMITS
+Bit 5 kündigt das an; davor BAD_ARGS, Op 39 Feld 8 Grund 1), jeweils zuzüglich
+etwaiger Hard-Sector-Flags. Das Feld ist die Quell-Umdrehungsdauer in 275-MHz-Ticks,
+nicht ein weiterer Schreibimpuls. Mit VERIFY erlaubt es das Dekodieren eines am
+Index geteilten Quellsektors; ohne dieses Feld muss die Quelle alle zu prüfenden
+Sektoren vollständig enthalten. Ohne VERIFY dient es allein der Drehzahlprüfung
+(4.10); ohne eingestellte Toleranz wird es angenommen und ignoriert.
 
 Unbekannte, widersprüchliche oder nicht prüfbare Quellen werden beim erweiterten
 Prüfschreiben vor WGATE abgewiesen. Amiga verlangt 11/22 eindeutige Sektoren mit

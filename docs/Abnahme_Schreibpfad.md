@@ -35,6 +35,7 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | Spurrest löschen, Apple (1.18) | `flags2` Bit0 bei angewähltem Disk-II-Laufwerk | Status 11 bei der Annahme, /WRREQ bleibt inaktiv |
 | **Startversatz (1.18)** | `ufi write … --start-offset 2750000` (10 ms), Index-Simulation 200 ms; Gegenprobe ohne Option | WGATE steigt 10 ms ± 0,5 µs nach der Indexflanke, der erste Impuls folgt mit dem ersten Intervall ab dort; `start_offset_applied` im Ende-Rahmen = gemessener Abstand (erwartet 2 750 000 plus wenige Takte Latenz); ohne Option steigt WGATE an der Indexflanke und das Feld ist 0. Mit `--erase-rest` zusätzlich: Tor bleibt bis zum nächsten Index offen; Spur länger als Rest der Umdrehung → Status 19 |
 | Startversatz, Wartezeit (1.18) | Versatz 250 ms bei 200 ms Index-Simulation; ABORT während der Wartezeit | der zweite Index wird ignoriert, Tor öffnet 50 ms nach dem zweiten Index; nach ABORT öffnet das Tor nie, Ende-Status 4 |
+| Drehzahlprüfung (1.18, Op 41) | `ufi speed-check 20`, dann erweiterter WRITE mit Quell-Indexdauer ohne Prüflesen (Flags `0x60`, HFEv3-Spur per `ufi write` ohne `--verify`) bei 300 U/min und bei 360 U/min (`ufi rpm-select 360`, Kontrolle `ufi rpm`); Gegenprobe `ufi speed-check off` | bei passender Drehzahl wird geschrieben; bei 360 U/min endet der Auftrag mit Status 23, WGATE bleibt aus, kein Schritt, `ufi speed-check` nennt beide Dauern; mit Toleranz 0 wird trotz Abweichung geschrieben |
 
 ## 2 Fehlerfälle und Schutz
 

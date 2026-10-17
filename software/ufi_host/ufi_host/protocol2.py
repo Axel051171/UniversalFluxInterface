@@ -336,7 +336,7 @@ class DeviceInfo:
 class WriteLimits:
     """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
     schema: int
-    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset (1.18)
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset, bit5 index_ticks without verify (1.18)
     sample_hz: int
     max_flux: int               # flux_count limit (flux store)
     min_ticks: int
@@ -1317,8 +1317,11 @@ class Device2:
         rpm_source / rpm_target when writing a 360 rpm image on a 300 rpm drive.
         clamp: tolerate intervals outside 1.6-238 us (firmware 1.15 refuses them with
         status 18 otherwise); the result counts the clamped ones.
-        firmware_verify selects native extended readback instead of host verify;
-        index_ticks then supplies the source revolution period for reference decoding."""
+        firmware_verify selects native extended readback instead of host verify.
+        index_ticks (source revolution period, WRITE flags bit 6) goes with every extended
+        write (firmware 1.18-dev; before that only with firmware_verify): the firmware uses it
+        for reference decoding when verifying and for the speed check of op 41 either way.
+        Classic writes ignore it (the firmware refuses bit 6 without extended timing)."""
         extended = self.extended if extended is None else extended
         guarded = expected_config is not None or expected_media is not None
         if guarded and (expected_config is None or expected_media is None or
@@ -1327,8 +1330,10 @@ class Device2:
         expected = None
         if firmware_verify and (not extended or verify):
             raise ValueError("firmware_verify requires extended writing and excludes host verify")
-        if firmware_verify and index_ticks is not None and not 1 <= index_ticks <= 0xffffffff:
+        if extended and index_ticks is not None and not 1 <= index_ticks <= 0xffffffff:
             raise ValueError("source index period outside u32 range")
+        if extended and index_ticks is not None and not firmware_verify and not self.write_limits().flags & 32:
+            index_ticks = None              # older firmware refuses bit 6 without verify: send the plain write
         if extended:
             if clamp or scale != 1 or quarter:
                 raise ValueError("extended writes require host timing and separate readback verification")
@@ -1364,8 +1369,8 @@ class Device2:
             extra += struct.pack("<H", per_mille)
         if clamp:
             flags |= WRITE_CLAMP
-        if firmware_verify and index_ticks is not None:
-            flags |= 0x40
+        if extended and index_ticks is not None:
+            flags |= 0x40                   # bit6: source index period (verify reference, speed check)
             extra += struct.pack("<I", index_ticks)
         if erase_rest or start_offset is not None:
             limit_flags = self.write_limits().flags

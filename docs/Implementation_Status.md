@@ -1059,3 +1059,29 @@ and the 1824-byte QD report, not the capture. Kept as a possible later feature (
 extended pass"), to be specified separately if UFT wants it. Open from the same list, both
 pending the owner's word: bit 6 (source index period) on a WRITE without firmware verify,
 and the light extended pass.
+
+## Source index period without firmware verify, FakeV2 ops 22/23 — 2026-10-17
+
+Eighth item of UFT's list, approved by the owner together with a FakeV2 request. WRITE
+flags bit 6 (`index_ticks`) now needs only the extended path (bit 5, `0x60`); before it
+needed verify as well (`0x21`). Nothing else moved: with verify the period still feeds the
+reference decoder, without verify it serves the speed check of op 41 alone, and with
+tolerance 0 it is accepted and ignored. Bit 7 (EXPECT_SET) keeps its `0x21` rule. The parser
+refuses bit 6 without bit 5 as before (status 16, op 39 field 8 reason 1). WRITE_LIMITS
+flags gained bit 5 (`0x3F`) so a host can tell the relaxed parser from the earlier
+1.18-dev builds; `write_track()` sends `index_ticks` with every extended write when bit 5 is
+announced and drops it silently on older firmware when no firmware verify was asked for.
+Native write-flags harness: `0x60` accepted with the period and without verify, `0x41`
+refused. Host: `test_speed_check` covers `0x60` both inside and outside the tolerance and the
+fallback without bit 5.
+
+FakeV2 (`software/ufi_host/tests/test_protocol2.py`) answers ANALYSIS_JOB op 22 with the
+224-byte capability matrix a v0.7 board with a flux drive reports (head 1, 6, 32, 32, the
+generation, flags 3, mask 63, 275 MHz, drive id, op numbers 23..32, six rows with
+hardware_qualified 0) and op 23 / op 23 + expected generation with the 24-byte configuration
+report, PROFILE_CHANGED (4) only against a stale expectation. Its configuration generation
+moves on SELECT and on accepted op 10 / op 18 settings, as the firmware's does, so UFT can
+provoke PROFILE_CHANGED and the generation block against the fake. Both reports decode with
+`capabilities.decode_capabilities/decode_configuration`; test
+`test_capability_matrix_and_configuration_against_fake`. Host-side only, no protocol change.
+UFT's list is closed with this; nothing is parked.
