@@ -17,13 +17,19 @@ static void apl_byte(uint8_t v){for(int b=7;b>=0;b--)apl_bit((v>>b)&1u);}
 static void apl_sync(unsigned n){for(unsigned i=0;i<n;i++){apl_byte(0xff);apl_bit(0);apl_bit(0);}}
 static void apl_44(uint8_t v){apl_byte((uint8_t)((v>>1)|0xaa));apl_byte((uint8_t)(v|0xaa));}
 static void apl_reset(void){apl_count=0;apl_pos=0;apl_last=0;}
+/* marks (copy protections change them): address/data prologue, address/data epilogue */
+static uint8_t apl_ap[3]={0xd5,0xaa,0x96},apl_dp[3]={0xd5,0xaa,0xad},apl_ae[2]={0xde,0xaa},apl_de[2]={0xde,0xaa};
+static void apl_marks(uint8_t a0,uint8_t a1,uint8_t a2,uint8_t d0,uint8_t d1,uint8_t d2,uint8_t ae0,uint8_t ae1,uint8_t de0,uint8_t de1){
+    apl_ap[0]=a0;apl_ap[1]=a1;apl_ap[2]=a2;apl_dp[0]=d0;apl_dp[1]=d1;apl_dp[2]=d2;
+    apl_ae[0]=ae0;apl_ae[1]=ae1;apl_de[0]=de0;apl_de[1]=de1;
+}
 /* faults: 1 bad address checksum, 2 bad data checksum, 4 bad data epilogue */
 static void apl_sector(unsigned volume,unsigned track,unsigned sector,const uint8_t data[256],unsigned faults){
-    apl_sync(10);apl_byte(0xd5);apl_byte(0xaa);apl_byte(0x96);
+    apl_sync(10);apl_byte(apl_ap[0]);apl_byte(apl_ap[1]);apl_byte(apl_ap[2]);
     apl_44((uint8_t)volume);apl_44((uint8_t)track);apl_44((uint8_t)sector);
     apl_44((uint8_t)(volume^track^sector^((faults&1)?1:0)));
-    apl_byte(0xde);apl_byte(0xaa);apl_byte(0xeb);
-    apl_sync(6);apl_byte(0xd5);apl_byte(0xaa);apl_byte(0xad);
+    apl_byte(apl_ae[0]);apl_byte(apl_ae[1]);apl_byte(0xeb);
+    apl_sync(6);apl_byte(apl_dp[0]);apl_byte(apl_dp[1]);apl_byte(apl_dp[2]);
     uint8_t x[343];
     for(unsigned i=0;i<86;i++){
         unsigned a=data[i]&3u,b=i+86<256?data[i+86]&3u:0,c=i+172<256?data[i+172]&3u:0;
@@ -34,6 +40,6 @@ static void apl_sector(unsigned volume,unsigned track,unsigned sector,const uint
     uint8_t prev=0;
     for(unsigned i=0;i<342;i++){apl_byte(apl_codes[x[i]^prev]);prev=x[i];}
     apl_byte(apl_codes[(prev^((faults&2)?1:0))&63]);
-    apl_byte(0xde);apl_byte((faults&4)?0xab:0xaa);apl_byte(0xeb);
+    apl_byte(apl_de[0]);apl_byte((faults&4)?(uint8_t)(apl_de[1]^1u):apl_de[1]);apl_byte(0xeb);
     apl_sync(4);
 }

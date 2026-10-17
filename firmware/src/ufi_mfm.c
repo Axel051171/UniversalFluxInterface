@@ -423,16 +423,34 @@ static void apple_payload(mfm_decoder_t* d, uint8_t out[256])
     }
 }
 
+static const apple_gcr_options_t apple_defaults={{0xd5,0xaa,0x96},{0xd5,0xaa,0xad},{0xde,0xaa},{0xde,0xaa},0};
+static apple_gcr_options_t apple_opt={{0xd5,0xaa,0x96},{0xd5,0xaa,0xad},{0xde,0xaa},{0xde,0xaa},0};
+
+bool mfm_apple_options_valid(const apple_gcr_options_t* o)
+{
+    if(!o || (o->flags&~APPLE_GCR_FLAG_MASK))return false;
+    const uint8_t* b=(const uint8_t*)o;
+    for(unsigned i=0;i<10;i++)if(!(b[i]&0x80u))return false;    /* GCR bytes always carry the top bit */
+    return memcmp(o->addr_prologue,o->data_prologue,3)!=0;
+}
+void mfm_apple_set_options(const apple_gcr_options_t* o){apple_opt=o?*o:apple_defaults;}
+apple_gcr_options_t mfm_apple_get_options(void){return apple_opt;}
+static uint32_t apple_mark(const uint8_t m[3]){return ((uint32_t)m[0]<<16)|((uint32_t)m[1]<<8)|m[2];}
+
 static void apple_cell(mfm_decoder_t* d)
 {
+    const apple_gcr_options_t* o=&apple_opt;
     if(d->id_age<UINT32_MAX)d->id_age++;
     if(d->state==S_SEARCH){
-        uint32_t sync=(uint32_t)d->sr&0xffffffu;
-        if(sync==0xd5aa96u || (sync==0xd5aaadu && d->id_ok && d->id_age<4000)){
-            d->mark=d->last_mark=(uint8_t)sync;d->marks++;
-            d->want=d->mark==0x96?10:345;d->got=d->cells=0;
+        const uint32_t sync=(uint32_t)d->sr&0xffffffu;
+        const bool addr=sync==apple_mark(o->addr_prologue);
+        const bool data=!addr && sync==apple_mark(o->data_prologue) &&
+            ((d->id_ok && d->id_age<4000) || (o->flags&APPLE_GCR_DATA_WITHOUT_HEADER));
+        if(addr || data){
+            d->mark=d->last_mark=addr?0x96:0xad;d->marks++;
+            d->want=addr?10:345;d->got=d->cells=0;
             d->field_bad=false;d->sector_flags=0;d->state=S_FIELD;
-            if(d->mark==0x96)d->id_ok=false;
+            if(addr)d->id_ok=false;
         }
         return;
     }
@@ -447,23 +465,33 @@ static void apple_cell(mfm_decoder_t* d)
         d->got++;
     }else d->buf[d->got++]=byte;
     if(d->got<d->want)return;
-    const bool ending=d->buf[d->want-2]==0xde && d->buf[d->want-1]==0xaa;
+    const uint8_t* ep=d->mark==0x96?o->addr_epilogue:o->data_epilogue;
+    const bool ending=d->buf[d->want-2]==ep[0] && d->buf[d->want-1]==ep[1];
+    if(!ending)d->sector_flags|=APPLE_GCR_SF_EPILOGUE;
+    const bool end_ok=ending || (o->flags&APPLE_GCR_IGNORE_EPILOGUES);
     if(d->mark==0x96){
         uint8_t v[4];
         for(unsigned i=0;i<4;i++)v[i]=(uint8_t)(((d->buf[2*i]<<1)|1u)&d->buf[2*i+1]);
-        d->id_ok=ending && v[3]==(uint8_t)(v[0]^v[1]^v[2]) && v[1]<40 && v[2]<16;
+        const bool sum_ok=v[3]==(uint8_t)(v[0]^v[1]^v[2]);
+        if(!sum_ok)d->sector_flags|=APPLE_GCR_SF_ADDR_CHECKSUM;
+        const bool limits=(o->flags&APPLE_GCR_ANY_TRACK)?v[2]<64:(v[1]<40 && v[2]<16);
+        d->id_ok=end_ok && limits && (sum_ok || (o->flags&APPLE_GCR_KEEP_BAD_ADDR_CHECKSUM));
         if(d->id_ok){
             d->id=(mfm_id_t){v[1],0,v[2],1};
-            d->disk_id=v[0];d->id_age=0;d->ids_seen++;
-        }else d->header_errors++;
+            d->disk_id=v[0];d->id_age=0;d->ids_seen++;d->id_flags=d->sector_flags;
+        }
+        if(!sum_ok || !ending)d->header_errors++;
     }else{
         /* buf[342] holds the decoded checksum nibble: it must equal buf[341] after the XOR chain */
         const bool checksum=d->buf[342]==0;
+        if(!checksum)d->sector_flags|=APPLE_GCR_SF_DATA_CHECKSUM;
+        d->sector_flags|=d->id_flags;               /* header findings travel with the sector */
         uint8_t out[256];apple_payload(d,out);memcpy(d->buf,out,256);
-        const bool ok=ending && checksum;
-        if(!ok)d->data_errors++;
+        const bool ok=end_ok && (checksum || (o->flags&APPLE_GCR_DATA_WITHOUT_CHECKSUM));
+        if(!checksum || !ending)d->data_errors++;
+        if(!d->id_ok)d->id=(mfm_id_t){255,0,255,1};  /* data field without header (flag 0x10) */
         if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
-        d->id_ok=false;
+        d->id_ok=false;d->id_flags=0;
     }
     d->state=S_SEARCH;
 }

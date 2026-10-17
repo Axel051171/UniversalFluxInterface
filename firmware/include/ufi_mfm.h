@@ -69,6 +69,29 @@ typedef struct {
     uint32_t header_errors, data_errors;
 } mfm_decoder_t;
 
+/* Apple II 5.25-inch GCR (format 7) decoder options, 1.18: marks and tolerance flags
+ * for copy-protected or damaged disks.  Wire format = memory layout (12 bytes). */
+typedef struct __attribute__((packed)) {
+    uint8_t addr_prologue[3];   /* default D5 AA 96 */
+    uint8_t data_prologue[3];   /* default D5 AA AD */
+    uint8_t addr_epilogue[2];   /* default DE AA */
+    uint8_t data_epilogue[2];   /* default DE AA */
+    uint16_t flags;             /* APPLE_GCR_* */
+} apple_gcr_options_t;
+#define APPLE_GCR_KEEP_BAD_ADDR_CHECKSUM  0x0001u  /* report the sector although the 4-and-4 checksum fails */
+#define APPLE_GCR_IGNORE_EPILOGUES        0x0002u  /* do not require the epilogue bytes */
+#define APPLE_GCR_ANY_TRACK               0x0004u  /* no track < 40 / sector < 16 limit (sector < 64) */
+#define APPLE_GCR_DATA_WITHOUT_CHECKSUM   0x0008u  /* a wrong checksum nibble does not clear crc_ok */
+#define APPLE_GCR_DATA_WITHOUT_HEADER     0x0010u  /* accept a data field without a preceding valid header */
+#define APPLE_GCR_FLAG_MASK               0x001Fu
+/* per-sector diagnostic bits in mfm_decoder_t.sector_flags (OR-ed into the quality report) */
+#define APPLE_GCR_SF_ADDR_CHECKSUM  0x20u   /* header checksum failed (sector kept by flag) */
+#define APPLE_GCR_SF_DATA_CHECKSUM  0x40u   /* data checksum nibble failed */
+#define APPLE_GCR_SF_EPILOGUE       0x80u   /* an epilogue did not match */
+void mfm_apple_set_options(const apple_gcr_options_t* o);   /* NULL = defaults */
+apple_gcr_options_t mfm_apple_get_options(void);
+bool mfm_apple_options_valid(const apple_gcr_options_t* o);
+
 uint16_t mfm_crc16(uint16_t crc, const uint8_t* p, uint32_t n);
 
 /* rate_bps: 250000 (DD), 300000 (DD in a 360 rpm drive), 500000 (HD), 1000000 (ED) */

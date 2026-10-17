@@ -2157,9 +2157,32 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
   Op-0-Fähigkeiten unverändert bleiben. Qualitätsbericht, Prüflesen und Vergleich
   arbeiten mit 256-Byte-Sektoren wie bei IBM `N=1`; die Mac-spezifischen Zonenfelder
   bleiben bei Format 7 leer (255). Zwischen Halbspuren wird nicht unterschieden.
-- **Nicht enthalten:** 13-Sektor-Disketten (5-and-3), Schreiben im Format 7,
-  Kopierschutz-Abweichungen (geänderte Prologe/Epiloge) – dafür bleibt der Flusspfad
-  (READ, NIB über den Host) zuständig.
+- **Decoder-Optionen (Op 33):** `[33]` liest, `[33, Schema 1, 12 Bytes]` setzt (exakt
+  14 Bytes); Antwort `[1, 12 Bytes]`. Die 12 Bytes: Adressprolog (3, Standard
+  `D5 AA 96`), Datenprolog (3, `D5 AA AD`), Adressepilog (2, `DE AA`), Datenepilog (2,
+  `DE AA`), Flags u16. Alle Markenbytes müssen Bit 7 gesetzt haben, Adress- und
+  Datenprolog dürfen nicht gleich sein, unbekannte Flagbits ergeben BAD_ARGS; Setzen bei
+  aktiver Operation oder Integritätsjob BUSY. Die Optionen gelten global bis zum
+  nächsten Setzen oder Neustart und wirken auf jeden Format-7-Decoder (ANALYZE,
+  Analysejobs, Prüflesen).
+
+| Flag | Bedeutung |
+|---:|---|
+| 0x0001 | Kopf mit falscher 4-and-4-Prüfsumme trotzdem verwenden (Sektor wird gemeldet) |
+| 0x0002 | Epiloge nicht verlangen |
+| 0x0004 | keine Grenze Spur < 40 / Sektor < 16 (Sektor < 64 bleibt; Spiral-/Halbspurschutz) |
+| 0x0008 | falsches Prüfnibble des Datenfelds setzt `crc_ok` nicht zurück (geänderte Prüfsummenregel) |
+| 0x0010 | Datenfeld auch ohne vorausgehenden gültigen Kopf annehmen; Kennung dann `c = r = 255` |
+
+- **Befunde je Sektor:** Zusätzlich zu `crc_ok` setzt der Decoder Sektorflags, die der
+  Qualitätsbericht in das Flagbyte des Sektoreintrags übernimmt: 0x20 Kopfprüfsumme
+  falsch, 0x40 Datenprüfnibble falsch, 0x80 ein Epilog weicht ab. Die Zähler
+  `header_errors`, `data_errors` und `code_errors` (Nibble außerhalb des Alphabets oder
+  ohne Bit 7) zählen unabhängig von den Toleranzflags weiter, so dass eine „tolerante"
+  Analyse die Abweichungen trotzdem ausweist.
+- **Nicht enthalten:** 13-Sektor-Disketten (5-and-3) und Schreiben im Format 7; für
+  Schutzverfahren jenseits geänderter Marken (Zeitbits, Nibble-Zählungen, Synchronlücken)
+  bleibt der Flusspfad (READ, NIB über den Host) zuständig.
 
 ## 6 Analysejobs
 
@@ -2186,9 +2209,10 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 11 | 1 / 12 | Vergleichsberichte und Wiederholungsstrategie lesen / setzen (5.3) |
 | 12 | 1 | Fähigkeiten der Vergleichs-/Wiederholungserweiterung (5.3), 32 Bytes |
 | 13 | 1 | Laufwerks-/Medienstatus, 40 Bytes (4.2) |
-| 17 | 1 | Portbelegung, Leitungskonflikte und Schreibgrenzen, 24 Bytes (4.15; INFO Bit28) |
+| 17 | 1 | Portbelegung, Leitungskonflikte und Schreibgrenzen, 24 Bytes (4.4; INFO Bit28) |
 | 18 | 1 / 2 / 41 | Wirksame Betriebseinstellungen lesen / Zeit-Voreinstellung anwenden (1.18) / pro Laufwerk speichern und anwenden, 40 Bytes Antwort (4.4) |
-| 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (4.16; INFO Bit29) |
+| 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
+| 33 | 1 / 14 | Apple-II-GCR-Decoderoptionen lesen / setzen, 13 Bytes Antwort (5.7, Format 7) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

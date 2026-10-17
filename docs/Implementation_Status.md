@@ -730,6 +730,14 @@ Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
   Native test `test_apple_gcr.py` with a synthetic track generator (`apple_fixture.h`):
   16 sectors with data compare, header/data/epilogue faults, 6 % speed error.
   Prompted by the Floppy Emu Apple II teardown; nothing was taken from the binary.
+- Format 7 decoder options (ANALYSIS_JOB op 33, 12 bytes: address/data prologue,
+  address/data epilogue, flags): keep headers with a bad 4-and-4 checksum, ignore
+  epilogues, no track/sector limit, accept data with a wrong checksum nibble, accept data
+  fields without a header. Per-sector diagnostic bits 0x20/0x40/0x80 (header checksum,
+  data checksum, epilogue) travel into the quality report; the error counters keep
+  counting under tolerant flags. Host `ufi apple-gcr` / `apple_gcr_options()`. Native
+  test covers protection marks (`D4 AA 96` / `D5 AA B5` / `DE AB`), each flag and the
+  validation; pytest covers the wrapper.
 - Host: all `zip()` calls carry an explicit `strict=` (ruff B905), the two deliberately
   truncating pairings in `hfe.py` say so; one unused loop variable and one late-binding
   lambda in `cli.py` fixed; ruff `--select F,B` is clean for the package.

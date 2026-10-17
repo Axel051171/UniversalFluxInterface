@@ -439,6 +439,16 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         wr(out+4,QUALITY_LOCAL_SIZE);wr(out+8,0x84);wr(out+12,255);
         wr(out+16,64);wr(out+20,30);*size=24;return UFI_OK;
     }
+    if(p[0]==33 && (n==1 || n==14)){
+        /* Apple II GCR decoder options (format 7): [33] reads, [33, schema 1, 12 bytes] sets */
+        if(n==14){
+            apple_gcr_options_t o;memcpy(&o,p+2,sizeof o);
+            if(p[1]!=1 || !mfm_apple_options_valid(&o))return UFI_ERR_BAD_ARGS;
+            if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
+            mfm_apple_set_options(&o);
+        }
+        const apple_gcr_options_t o=mfm_apple_get_options();out[0]=1;memcpy(out+1,&o,sizeof o);*size=13;return UFI_OK;
+    }
     if(p[0]==19 && n==1){
         static const uint32_t rates[]={500000,380228,346021,312500,280112,251256};
         memset(out,0,48);out[0]=1;out[1]=6;out[2]=18;out[3]=6;

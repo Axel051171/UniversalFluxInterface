@@ -330,6 +330,14 @@ int main(void){
     preset[1]=3;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS && preset_applied==1);
     preset[1]=0;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS);
     preset[1]=2;assert(ufi_analysis_command(preset,3,out,&size)==UFI_ERR_BAD_ARGS);
+    /* Op 33: Apple II GCR options (format 7) - read defaults, reject bad schema/flags/marks, set and read back */
+    uint8_t ao[14]={33};assert(!ufi_analysis_command(ao,1,out,&size) && size==13 && out[0]==1 && out[3]==0x96 && out[6]==0xad && !out[11] && !out[12]);
+    memcpy(ao+1,out,13);ao[1]=2;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
+    ao[1]=1;ao[12]=0x20;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
+    ao[12]=0x03;ao[2]=0xd4;ao[7]=0xb5;assert(!ufi_analysis_command(ao,14,out,&size) && size==13 && out[1]==0xd4 && out[6]==0xb5 && out[11]==0x03);
+    ao[2]=0x54;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
+    assert(!ufi_analysis_command(ao,1,out,&size) && out[1]==0xd4 && out[11]==0x03);
+    ao[2]=0xd5;ao[7]=0xad;ao[12]=0;assert(!ufi_analysis_command(ao,14,out,&size) && !out[11]);
     /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
     uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
     assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);
