@@ -347,6 +347,9 @@ int main(void){
     assert(ufi_analysis_command(to,3,out,&size)==UFI_ERR_BAD_ARGS);
     assert(!ufi_analysis_command(to,1,out,&size) && out[1]==0x1f);
     to[2]=0;assert(!ufi_analysis_command(to,4,out,&size) && !out[1] && !mfm_get_tolerance());
+    /* Op 35: Apple II nibble statistics - 178 bytes, schema 1, no revolutions before a format 7 analysis */
+    uint8_t ns[2]={35,0};assert(!ufi_analysis_command(ns,1,out,&size) && size==178 && out[0]==1 && out[1]==0);
+    assert(ufi_analysis_command(ns,2,out,&size)==UFI_ERR_BAD_ARGS);
     /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
     uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
     assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);

@@ -425,7 +425,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–34), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–35), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -2176,6 +2176,21 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
 | 0x0008 | falsches Prüfnibble des Datenfelds setzt `crc_ok` nicht zurück (geänderte Prüfsummenregel) |
 | 0x0010 | Datenfeld auch ohne vorausgehenden gültigen Kopf annehmen; Kennung dann `c = r = 255` |
 
+- **Nibble-Statistik (Op 35, 1.18-dev):** `[35]` liefert 178 Bytes über die letzte
+  Format-7-Analyse (Rücksetzen bei jedem Analysestart mit Formathinweis 7, gezählt nur vom
+  Standard-PLL-Profil, Umdrehung aus dem Qualitätsablauf). Aufbau: `schema` u8 = 1,
+  `revs` u8 (0 = noch keine Analyse), dann 8 × je Umdrehung fünf u16: `nibbles` (gerahmte
+  Nibbles, Felder und Syncs), `sync_nibbles` (FF mit nachlaufenden Nullzellen, also
+  10-Bit-Selbstsync; der letzte FF des Stroms bleibt ohne Folgenibble ungezählt),
+  `address_fields` (Adressprologe), `data_fields` (angenommene Datenprologe),
+  `orphan_headers` (gültiger Kopf ohne Datenfeld bis zum nächsten Kopf oder 4000 Zellen);
+  danach 16 × je physischem Sektor sechs u8: `volume` des letzten Kopfs,
+  `sync_before_addr` (zusammenhängende Sync-Nibbles vor dem Adressprolog, Kappung 255),
+  `header_to_data` (Zellen/8 vom Kopfende bis zum Ende des Datenprologs),
+  `sync_before_data`, `flags` (Sektorbefunde 0x08/0x20/0x40/0x80 des letzten Datenfelds),
+  `seen` (Umdrehungsmaske der Datenfelder). Damit lassen sich Nibble-Zählschutz,
+  veränderte Sync-Längen, Volume-Wechsel je Sektor und Köpfe ohne Daten ohne Hostdecodierung
+  erkennen. Host: `Device2.apple_gcr_stats()`, `ufi apple-stats`.
 - **Befunde je Sektor:** Zusätzlich zu `crc_ok` setzt der Decoder Sektorflags, die der
   Qualitätsbericht in das Flagbyte des Sektoreintrags übernimmt: 0x08 Datenfeld ohne
   gültigen Kopf (Flag 0x0010), 0x20 Kopfprüfsumme falsch, 0x40 Datenprüfnibble falsch,
@@ -2255,6 +2270,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
 | 33 | 1 / 14 | Apple-II-GCR-Decoderoptionen lesen / setzen, 13 Bytes Antwort (5.7, Format 7) |
 | 34 | 1 / 4 | Toleranzflags der Decoder für Format 1–6 lesen / setzen, 3 Bytes Antwort (5.8) |
+| 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 178 Bytes (5.7) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

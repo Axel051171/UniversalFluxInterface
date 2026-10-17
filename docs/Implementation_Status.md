@@ -825,3 +825,18 @@ own filler bytes (4 bytes per plaintext byte, accumulator 0x55), the plaintext i
 Timer 3 overflow interrupt), index by change notification with a 32-bit timer, flux
 write by Output Compare 8 with a 750 ns minimum cell and 150 µs chunking, external byte
 SRAM on GPIO. Nothing was copied; the document compares the method with UFI's DMA path.
+
+## Apple II nibble statistics — 2026-10-17
+
+The format 7 decoder now frames nibbles in its search state (a nibble starts with its
+first 1 bit, an FF followed by trailing zero cells is a 10-bit self-sync nibble) and
+keeps `apple_stats_t` (178 bytes, ANALYSIS_JOB op 35): per revolution the number of
+nibbles, self-sync nibbles, address prologues, accepted data prologues and orphan
+headers (valid header without a data field before the next header or 4000 cells); per
+physical sector the volume, the sync run before the address prologue, the header-to-data
+distance, the sync run before the data prologue, the finding flags of the last data field
+and the revolution mask. Counted only by the profile-0 decoder, reset by `quality_init`
+with format 7, revolution set by `quality_revolution`. Native test with the synthetic
+track (383 nibbles and 20 syncs per sector, orphan header fixture `apl_header_only`),
+op 35 in `test_analysis_job.py`; host `apple_gcr_stats()`, `ufi apple-stats`, FakeV2 op
+35 with a settable report; protocol doc 5.7 and op table.

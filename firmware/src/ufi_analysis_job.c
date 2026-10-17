@@ -459,6 +459,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         }
         const uint16_t t=mfm_get_tolerance();out[0]=1;out[1]=(uint8_t)t;out[2]=(uint8_t)(t>>8);*size=3;return UFI_OK;
     }
+    if(p[0]==35 && n==1){
+        /* Apple II nibble statistics of the last format 7 analysis: 178 bytes, revs 0 = none yet */
+        memcpy(out,mfm_apple_stats(),sizeof(apple_stats_t));*size=sizeof(apple_stats_t);return UFI_OK;
+    }
     if(p[0]==19 && n==1){
         static const uint32_t rates[]={500000,380228,346021,312500,280112,251256};
         memset(out,0,48);out[0]=1;out[1]=6;out[2]=18;out[3]=6;

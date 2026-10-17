@@ -69,7 +69,37 @@ typedef struct {
     uint32_t header_errors, data_errors;
     uint16_t tolerance;         /* MFM_TOL_* for formats 1-6; 0 after init (analysis sets it) */
     bool id_seen;               /* an ID field completed (valid or not): its size code is known */
+    uint8_t profile;            /* PLL profile from mfm_dec_profile(); Apple statistics count profile 0 only */
+    uint16_t nib_bits, nib_trail, sync_run, last_sync; /* format 7 nibble framing in the search state */
+    bool last_ff;               /* the nibble just framed was FF (sync candidate) */
 } mfm_decoder_t;
+
+/* Apple II (format 7) nibble statistics of the last analysis, ANALYSIS_JOB op 35 (1.18).
+ * Wire format = memory layout, 178 bytes.  Counted by the profile-0 decoder only; a
+ * revolution is selected by mfm_apple_stats_revolution() (quality_revolution). */
+#define APPLE_STATS_REVS 8u
+typedef struct {
+    uint8_t schema;                 /* 1 */
+    uint8_t revs;                   /* revolutions with counts, 0 = no format 7 analysis yet */
+    struct {
+        uint16_t nibbles;           /* nibbles framed in this revolution (fields and syncs) */
+        uint16_t sync_nibbles;      /* 10-bit self-sync FF nibbles */
+        uint16_t address_fields;    /* address prologues seen */
+        uint16_t data_fields;       /* data prologues accepted */
+        uint16_t orphan_headers;    /* valid headers without a data field before the next header or 4000 cells */
+    } rev[APPLE_STATS_REVS];
+    struct {
+        uint8_t volume;             /* from the last header of this physical sector */
+        uint8_t sync_before_addr;   /* consecutive sync nibbles in front of the address prologue (cap 255) */
+        uint8_t header_to_data;     /* cells / 8 from header end to data prologue end (cap 255) */
+        uint8_t sync_before_data;   /* consecutive sync nibbles in front of the data prologue */
+        uint8_t flags;              /* sector_flags of the last data field (0x08/0x20/0x40/0x80) */
+        uint8_t seen;               /* revolution mask of data fields for this sector */
+    } sector[16];
+} apple_stats_t;
+void mfm_apple_stats_reset(void);
+void mfm_apple_stats_revolution(uint8_t rev);
+const apple_stats_t* mfm_apple_stats(void);
 
 /* Tolerance flags for the IBM MFM, Amiga, FM, HP MMFM, Commodore and Macintosh decoders
  * (1.18, ANALYSIS_JOB op 34).  Same bit values and meaning as the Apple II options; the

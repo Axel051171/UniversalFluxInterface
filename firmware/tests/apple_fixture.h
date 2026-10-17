@@ -24,6 +24,12 @@ static void apl_marks(uint8_t a0,uint8_t a1,uint8_t a2,uint8_t d0,uint8_t d1,uin
     apl_ae[0]=ae0;apl_ae[1]=ae1;apl_de[0]=de0;apl_de[1]=de1;
 }
 /* faults: 1 bad address checksum, 2 bad data checksum, 4 bad data epilogue */
+/* address field only (valid), no data field: an orphan header */
+static void apl_header_only(unsigned volume,unsigned track,unsigned sector){
+    apl_sync(10);apl_byte(apl_ap[0]);apl_byte(apl_ap[1]);apl_byte(apl_ap[2]);
+    apl_44((uint8_t)volume);apl_44((uint8_t)track);apl_44((uint8_t)sector);apl_44((uint8_t)(volume^track^sector));
+    apl_byte(apl_ae[0]);apl_byte(apl_ae[1]);apl_byte(0xeb);apl_sync(4);
+}
 static void apl_sector(unsigned volume,unsigned track,unsigned sector,const uint8_t data[256],unsigned faults){
     apl_sync(10);apl_byte(apl_ap[0]);apl_byte(apl_ap[1]);apl_byte(apl_ap[2]);
     apl_44((uint8_t)volume);apl_44((uint8_t)track);apl_44((uint8_t)sector);

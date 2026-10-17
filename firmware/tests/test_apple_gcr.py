@@ -79,6 +79,34 @@ int main(void){
     assert(nfound==1 && found[0].ok && found[0].id.c==255 && found[0].id.r==255 && !memcmp(found[0].data,data[0],256));
     assert(d.sector_flags&MFM_SF_NO_HEADER);          /* same finding bit as the other decoders (5.8) */
     mfm_apple_set_options(NULL);
+    /* nibble statistics (op 35): clean 16-sector track, one revolution, profile 0 */
+    mfm_apple_stats_reset();assert(mfm_apple_stats()->schema==1 && mfm_apple_stats()->revs==0);
+    apl_reset();for(unsigned s=0;s<16;s++)apl_sector(254,17,s,data[s],0);
+    mfm_apple_stats_revolution(0);nfound=0;mfm_dec_init_format(&d,7,250000u,cb,NULL);feed(&d);
+    const apple_stats_t* st=mfm_apple_stats();
+    assert(nfound==16 && st->revs==1 && sizeof(apple_stats_t)==178);
+    /* fixture: 10 syncs, 3+8+2+1 header nibbles, 6 syncs, 3+343+2+1 data nibbles, 4 syncs = 383 nibbles, 20 syncs per sector */
+    /* the very last FF of the stream has no following nibble, so it stays undecided: 319 */
+    assert(st->rev[0].nibbles==16*383 && st->rev[0].sync_nibbles==16*20-1);
+    assert(st->rev[0].address_fields==16 && st->rev[0].data_fields==16 && st->rev[0].orphan_headers==0);
+    for(unsigned s=0;s<16;s++){
+        assert(st->sector[s].volume==254 && st->sector[s].sync_before_addr==(s?14:10) && st->sector[s].sync_before_data==6);
+        assert(st->sector[s].header_to_data==11 && st->sector[s].flags==0 && st->sector[s].seen==1);
+    }
+    /* profile 1 and 2 decoders do not count; a second revolution adds its own row */
+    mfm_dec_init_format(&d,7,250000u,cb,NULL);mfm_dec_profile(&d,1);feed(&d);
+    assert(st->rev[0].nibbles==16*383 && st->rev[1].nibbles==0);
+    mfm_apple_stats_revolution(1);nfound=0;mfm_dec_init_format(&d,7,250000u,cb,NULL);feed(&d);
+    assert(st->revs==2 && st->rev[1].address_fields==16 && st->sector[5].seen==3);
+    /* an orphan header between sectors, and a data field with a bad checksum carries its flag */
+    mfm_apple_stats_reset();apl_reset();
+    apl_sector(254,3,0,data[0],0);apl_header_only(254,3,9);apl_sector(254,3,1,data[1],2);apl_sector(254,3,2,data[2],0);
+    mfm_apple_stats_revolution(0);nfound=0;mfm_dec_init_format(&d,7,250000u,cb,NULL);feed(&d);
+    assert(st->rev[0].address_fields==4 && st->rev[0].data_fields==3 && st->rev[0].orphan_headers==1);
+    assert(st->sector[9].volume==254 && st->sector[9].seen==0 && st->sector[9].sync_before_addr==14);
+    assert((st->sector[1].flags&APPLE_GCR_SF_DATA_CHECKSUM) && st->sector[1].seen==1 && st->sector[2].flags==0);
+    uint8_t wire[178];memcpy(wire,st,178);          /* 3 sectors of 383 nibbles plus the 28-nibble orphan header */
+    assert(wire[0]==1 && wire[1]==1 && wire[2]==(uint8_t)(3*383+28) && wire[3]==(uint8_t)((3*383+28)>>8));
     puts("apple gcr: 16 sectors in physical order, 4-and-4 header, 6-and-2 checksum, faults, speed tolerance, options and protection marks passed");
     return 0;
 }

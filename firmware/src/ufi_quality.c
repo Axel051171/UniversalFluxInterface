@@ -123,6 +123,7 @@ void quality_init(quality_t* q, uint8_t format, uint32_t rate, uint8_t revs)
     memset(q, 0, sizeof(*q));
     q->format = format;
     q->rate = rate;
+    if (format == 7) mfm_apple_stats_reset();      /* nibble statistics (op 35) follow the analysis */
     q->revs = revs > QUALITY_REVS ? QUALITY_REVS : revs;
     q->profiles = 1;
 }
@@ -175,6 +176,7 @@ void quality_begin(quality_t* q, mfm_decoder_t* dec, uint8_t profile, verify_mat
 void quality_revolution(quality_t* q, uint8_t rev)
 {
     q->revolution=rev<QUALITY_REVS?rev:QUALITY_REVS-1u;
+    if(q->format==7)mfm_apple_stats_revolution(q->revolution);
     q->dec->header_errors=q->dec->data_errors=0;
     q->dec->code_errors=q->dec->marks=q->dec->margin_errors=0;
     q->extra.position=0;q->extra.index=0;

@@ -57,6 +57,7 @@ void mfm_dec_init(mfm_decoder_t* d, uint32_t rate_bps, mfm_sector_cb cb, void* c
 
 void mfm_dec_profile(mfm_decoder_t* d, uint8_t profile)
 {
+    d->profile = profile;
     d->period_divisor = profile == 1 ? 8 : profile == 2 ? 32 : 16;
     d->phase_divisor = profile == 2 ? 4 : 2;
     d->period = (uint32_t)((uint64_t)d->nominal * (profile == 1 ? 960 : profile == 2 ? 1040 : 1000) / 1000);
@@ -468,11 +469,48 @@ void mfm_apple_set_options(const apple_gcr_options_t* o){apple_opt=o?*o:apple_de
 apple_gcr_options_t mfm_apple_get_options(void){return apple_opt;}
 static uint32_t apple_mark(const uint8_t m[3]){return ((uint32_t)m[0]<<16)|((uint32_t)m[1]<<8)|m[2];}
 
+/* Nibble statistics of the format 7 analysis (op 35): counted by the profile-0 decoder. */
+static apple_stats_t apple_stats={1,0,{{0}},{{0}}};
+static struct { uint8_t rev; bool pending; uint8_t pending_sector; } apple_st;
+void mfm_apple_stats_reset(void){memset(&apple_stats,0,sizeof apple_stats);apple_stats.schema=1;memset(&apple_st,0,sizeof apple_st);}
+void mfm_apple_stats_revolution(uint8_t rev)
+{
+    apple_st.rev=rev<APPLE_STATS_REVS?rev:APPLE_STATS_REVS-1u;apple_st.pending=false;
+    if(apple_stats.revs<apple_st.rev+1u)apple_stats.revs=(uint8_t)(apple_st.rev+1u);
+}
+const apple_stats_t* mfm_apple_stats(void){return &apple_stats;}
+static inline void st_inc16(uint16_t* c){if(*c<UINT16_MAX)(*c)++;}
+static inline uint8_t st_cap8(uint32_t v){return v>255u?255u:(uint8_t)v;}
+static void apple_orphan(mfm_decoder_t* d)
+{
+    if(d->profile==0 && apple_st.pending){st_inc16(&apple_stats.rev[apple_st.rev].orphan_headers);apple_st.pending=false;}
+}
+
 static void apple_cell(mfm_decoder_t* d)
 {
     const apple_gcr_options_t* o=&apple_opt;
+    const bool st=d->profile==0;
     if(d->id_age<UINT32_MAX)d->id_age++;
     if(d->state==S_SEARCH){
+        /* nibble framing: a nibble starts with its first 1 bit and spans 8 cells, trailing
+         * zero cells after an FF make it a 10-bit self-sync nibble */
+        const unsigned bit=(unsigned)(d->sr&1u);
+        if(d->nib_bits==0){
+            if(bit){
+                /* a new nibble starts: the previous FF was a self-sync nibble if zero cells trailed it */
+                if(d->last_ff){
+                    if(d->nib_trail){d->sync_run++;if(st)st_inc16(&apple_stats.rev[apple_st.rev].sync_nibbles);}
+                    else d->sync_run=0;
+                }
+                d->nib_bits=1;d->nib_trail=0;
+            }else if(d->nib_trail<UINT16_MAX)d->nib_trail++;
+        }else if(++d->nib_bits==8){
+            d->nib_bits=0;
+            if(st)st_inc16(&apple_stats.rev[apple_st.rev].nibbles);
+            d->last_ff=((uint8_t)d->sr)==0xffu;
+            if(!d->last_ff){if(d->sync_run){d->last_sync=d->sync_run;}d->sync_run=0;}
+        }
+        if(apple_st.pending && d->id_age==4000)apple_orphan(d);
         const uint32_t sync=(uint32_t)d->sr&0xffffffu;
         const bool addr=sync==apple_mark(o->addr_prologue);
         const bool data=!addr && sync==apple_mark(o->data_prologue) &&
@@ -481,12 +519,26 @@ static void apple_cell(mfm_decoder_t* d)
             d->mark=d->last_mark=addr?0x96:0xad;d->marks++;
             d->want=addr?10:345;d->got=d->cells=0;
             d->field_bad=false;d->sector_flags=0;d->state=S_FIELD;
+            if(st){
+                /* last_sync = sync run that ended right before the prologue's first nibble */
+                if(addr){apple_orphan(d);st_inc16(&apple_stats.rev[apple_st.rev].address_fields);}
+                else{
+                    st_inc16(&apple_stats.rev[apple_st.rev].data_fields);
+                    if(d->id_ok && d->id.r<16){
+                        apple_stats.sector[d->id.r].header_to_data=st_cap8(d->id_age/8u);
+                        apple_stats.sector[d->id.r].sync_before_data=st_cap8(d->last_sync);
+                    }
+                    apple_st.pending=false;
+                }
+            }
+            d->nib_bits=0;d->nib_trail=0;d->sync_run=0;d->last_ff=false;
             if(addr)d->id_ok=false;
         }
         return;
     }
     if(++d->cells<8)return;
     d->cells=0;const uint8_t byte=(uint8_t)d->sr;
+    if(st)st_inc16(&apple_stats.rev[apple_st.rev].nibbles);
     if(!(byte&0x80u)){d->code_errors++;d->field_bad=true;d->id_ok=false;d->state=S_SEARCH;return;}
     if(d->mark==0xad && d->got<d->want-2){
         int symbol=mac_symbol(byte);
@@ -510,6 +562,10 @@ static void apple_cell(mfm_decoder_t* d)
         if(d->id_ok){
             d->id=(mfm_id_t){v[1],0,v[2],1};
             d->disk_id=v[0];d->id_age=0;d->ids_seen++;d->id_flags=d->sector_flags;
+            if(st){
+                apple_st.pending=true;apple_st.pending_sector=v[2];
+                if(v[2]<16){apple_stats.sector[v[2]].volume=v[0];apple_stats.sector[v[2]].sync_before_addr=st_cap8(d->last_sync);}
+            }
         }
         if(!sum_ok || !ending)d->header_errors++;
     }else{
@@ -521,6 +577,7 @@ static void apple_cell(mfm_decoder_t* d)
         const bool ok=end_ok && (checksum || (o->flags&APPLE_GCR_DATA_WITHOUT_CHECKSUM));
         if(!checksum || !ending)d->data_errors++;
         if(!d->id_ok){d->id=(mfm_id_t){255,0,255,1};d->sector_flags|=MFM_SF_NO_HEADER;}  /* data field without header (flag 0x10) */
+        if(st && d->id.r<16){apple_stats.sector[d->id.r].flags=d->sector_flags;apple_stats.sector[d->id.r].seen|=(uint8_t)(1u<<apple_st.rev);}
         if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
         d->id_ok=false;d->id_flags=0;
     }

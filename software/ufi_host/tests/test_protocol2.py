@@ -191,6 +191,15 @@ class FakeV2:
                     return
                 self.apple = bytes(a[2:14])
             r(0, bytes([1]) + getattr(self, "apple", bytes.fromhex("d5aa96d5aaaddeaadeaa0000")))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 35:          # Apple II nibble statistics (5.7)
+            if len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            st = getattr(self, "apple_stats", None)
+            if st is None:                                    # no format 7 analysis yet
+                r(0, bytes([1, 0]) + bytes(176))
+            else:
+                r(0, st)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 34:          # decoder tolerance flags, formats 1-6 (5.8)
             if len(a) == 4:
                 if a[1] != 1 or (a[2] | a[3] << 8) & ~0x1F:
@@ -831,6 +840,26 @@ def test_decoder_tolerance(monkeypatch, capsys):
     assert cli.main(["tolerance", "any_track"]) == 0 and "0x04 any_track" in capsys.readouterr().out
     assert cli.main(["tolerance"]) == 0 and "0x04 any_track" in capsys.readouterr().out
     assert cli.main(["tolerance", "reset"]) == 0 and "strict" in capsys.readouterr().out
+
+
+def test_apple_gcr_stats(monkeypatch, capsys):
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.apple_gcr_stats() == {"revs": [], "sectors": [dict(volume=0, sync_before_addr=0, header_to_data=0, sync_before_data=0,
+                                                                   flags=0, seen=0, flag_names=[])] * 16}
+    assert fake.requests[-1].payload == bytes([35])
+    rev0 = struct.pack("<5H", 6128, 319, 17, 16, 1)
+    sec = bytearray(96)
+    sec[0:6] = bytes([254, 10, 11, 6, 0, 1])
+    sec[54:60] = bytes([254, 14, 11, 6, 0x40, 3])
+    fake.apple_stats = bytes([1, 1]) + rev0 + bytes(70) + bytes(sec)
+    st = dev.apple_gcr_stats()
+    assert st["revs"] == [dict(nibbles=6128, sync_nibbles=319, address_fields=17, data_fields=16, orphan_headers=1)]
+    assert st["sectors"][0]["volume"] == 254 and st["sectors"][9]["flag_names"] == ["data checksum"] and st["sectors"][9]["seen"] == 3
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["apple-stats"]) == 0
+    out = capsys.readouterr().out
+    assert "orphan headers 1" in out and "  9 254         14        11          6  0011  data checksum" in out
 
 
 def test_apple_gcr_options():

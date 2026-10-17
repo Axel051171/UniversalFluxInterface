@@ -834,6 +834,26 @@ class Device2:
             cur = _apple_unpack(self.analysis_op(33, body))
         return cur
 
+    def apple_gcr_stats(self) -> dict:
+        """Apple II nibble statistics of the last format 7 analysis (op 35, firmware 1.18):
+        {'revs': [{nibbles, sync_nibbles, address_fields, data_fields, orphan_headers}, ...],
+         'sectors': [{volume, sync_before_addr, header_to_data, sync_before_data, flags, flag_names, seen}] x 16}.
+        An empty 'revs' list means no format 7 analysis ran since the last reset."""
+        b = self.analysis_op(35)
+        if len(b) < 178 or b[0] != 1:
+            raise DeviceError("Apple GCR statistics: unexpected reply")
+        revs = []
+        for r in range(b[1]):
+            v = struct.unpack_from("<5H", b, 2 + 10 * r)
+            revs.append(dict(zip(("nibbles", "sync_nibbles", "address_fields", "data_fields", "orphan_headers"), v, strict=True)))
+        sectors = []
+        for s in range(16):
+            v = struct.unpack_from("<6B", b, 82 + 6 * s)
+            d = dict(zip(("volume", "sync_before_addr", "header_to_data", "sync_before_data", "flags", "seen"), v, strict=True))
+            d["flag_names"] = flag_names(d["flags"], SECTOR_FLAGS)
+            sectors.append(d)
+        return {"revs": revs, "sectors": sectors}
+
     def decoder_tolerance(self, flags=None) -> dict:
         """Tolerance flags of the analysis decoders for formats 1-6 (op 34, firmware 1.18).
         flags: None reads, else an int or TOLERANCE_FLAGS names joined with '+'.  Returns

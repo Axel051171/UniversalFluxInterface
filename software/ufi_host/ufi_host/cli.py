@@ -484,7 +484,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -572,6 +572,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("apple-gcr", help="Apple II 5.25-inch GCR decoder options (format 7, firmware 1.18): addr_prologue=d4aa96 data_prologue=d5aab5 "
                    "addr_epilogue=deab data_epilogue=deaa flags=keep_bad_addr_checksum+ignore_epilogues+any_track+data_without_checksum+data_without_header; "
                    "'apple-gcr reset' restores the defaults").add_argument("set", nargs="*", metavar="FIELD=VALUE")
+    sub.add_parser("apple-stats", help="Apple II nibble statistics of the last format 7 analysis (firmware 1.18, op 35): nibbles, self-sync nibbles, "
+                   "address/data fields and orphan headers per revolution; per sector volume, sync run lengths, header-to-data distance, findings")
     sub.add_parser("tolerance", help="tolerance flags of the analysis decoders for IBM MFM/FM, HP, Amiga, Commodore and Macintosh (firmware 1.18, op 34): "
                    "keep_bad_header+ignore_epilogues+any_track+data_without_checksum+data_without_header, a number, or 'reset'; "
                    "no argument shows the current flags").add_argument("flags", nargs="?")
@@ -859,6 +861,18 @@ def main(argv: list[str] | None = None) -> int:
             for k in P2.APPLE_GCR_FIELDS[:4]:
                 print(f"{k:18} {opts[k]}")
             print(f"{'flags':18} 0x{opts['flags']:02x} {'+'.join(opts['flag_names']) or '-'}")
+        elif a.cmd == "apple-stats":
+            st = dev.apple_gcr_stats()
+            if not st["revs"]:
+                print("no format 7 analysis since the last reset")
+            for i, r in enumerate(st["revs"]):
+                print(f"rev {i}: nibbles {r['nibbles']}  sync {r['sync_nibbles']}  address fields {r['address_fields']}  "
+                      f"data fields {r['data_fields']}  orphan headers {r['orphan_headers']}")
+            print("sec vol  sync>addr  hdr>data  sync>data  seen  findings")
+            for i, s in enumerate(st["sectors"]):
+                if s["seen"] or s["volume"] or s["sync_before_addr"]:
+                    print(f"{i:3} {s['volume']:3}  {s['sync_before_addr']:9}  {s['header_to_data']:8}  {s['sync_before_data']:9}  "
+                          f"{s['seen']:04b}  {'+'.join(s['flag_names']) or '-'}")
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
