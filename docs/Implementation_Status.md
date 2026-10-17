@@ -999,3 +999,19 @@ missing in the verify unit test, header and the single changed sector in the qua
 runtime, op 40 and the header in the analysis job harness, the begin call in the write
 flags harness. Host `verify_report()` with names, `ufi verify-report` (lists state != ok as
 CHRN + reason); FakeV2 derives the report from its 0x21 model. Protocol doc 4.9, op table.
+
+## Speed check before writing — 2026-10-17
+
+Fourth item of UFT's list. ANALYSIS_JOB op 41 reads or sets a tolerance in per mille of
+the source index period (0 = off, max 500, BUSY while an operation runs) and reports the
+last measurement (measured and source index ticks). With a tolerance, every native WRITE
+that carries the source period (flags bit 6, which requires the 0x21 path) measures the
+drive's own index period with the FORMAT measurement (`ufi_diag_rpm`, two revolutions)
+after the data arrived and before seek and WGATE; outside the tolerance the write ends
+with new status 23 `SPEED_MISMATCH` and nothing is written. No bit 6, GW mode, Apple
+drives without sync sensor or a failed measurement skip the check. Native tests: no
+measurement without tolerance or source, within/outside tolerance both directions through
+the service path, failed measurement proceeds, GW path never measures (write regression);
+op 41 range, busy and reply layout (analysis job harness). Host `speed_check()`,
+`ufi speed-check [PERMILLE|off]`, status text 23; FakeV2 op 41 with its own `index_ticks`
+and status 23. Protocol doc 4.10, status and op tables.

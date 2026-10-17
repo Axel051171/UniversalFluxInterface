@@ -46,6 +46,7 @@ typedef enum {
     UFI_ERR_CANCELLED   = -20,
     UFI_ERR_MEDIA_CHANGED = -21,
     UFI_ERR_SOFT_LOCK   = -22,  /* session write lock engaged (ANALYSIS_JOB op 37), until MCU reset */
+    UFI_ERR_SPEED_MISMATCH = -23, /* write: drive speed outside the tolerance around the source index period (op 41) */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

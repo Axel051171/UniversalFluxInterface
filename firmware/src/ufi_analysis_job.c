@@ -482,6 +482,18 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[0]=1;out[1]=(uint8_t)((ufi_board_soft_locked()?1u:0u)|(ufi_board_jumper_locked()?2u:0u));
         *size=2;return UFI_OK;
     }
+    if(p[0]==41 && (n==1 || n==4)){
+        /* Speed check before writing (4.10): [41] reads, [41, 1, tolerance_permille u16] sets (0 = off) */
+        if(n==4){
+            const uint16_t t=(uint16_t)(p[2]|(uint16_t)p[3]<<8);
+            if(p[1]!=1 || t>500)return UFI_ERR_BAD_ARGS;
+            if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
+            ufi_write_set_speed_check(t);
+        }
+        uint16_t tol;uint32_t measured,source;ufi_write_speed_state(&tol,&measured,&source);
+        out[0]=1;out[1]=(uint8_t)tol;out[2]=(uint8_t)(tol>>8);wr(out+3,measured);wr(out+7,source);
+        *size=11;return UFI_OK;
+    }
     if(p[0]==40 && n==1){
         /* Per-sector outcome of the last verified WRITE (4.9): 4 + 5 * count bytes */
         *size=ufi_quality_verify_report(out);return UFI_OK;

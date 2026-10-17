@@ -15,6 +15,9 @@ uint8_t ufi_resources_owner(void){return resource_owner;}
 static uint32_t media_token=1;
 static bool soft_lock,jumper_lock;
 static uint8_t refusal_stub[6]={1,0x22,9,16,2,0x40};
+static uint16_t speed_tol;static uint32_t speed_meas=55500000u,speed_src=55000000u;
+void ufi_write_set_speed_check(uint16_t p){speed_tol=p;}
+void ufi_write_speed_state(uint16_t* p,uint32_t* m,uint32_t* s){*p=speed_tol;*m=speed_meas;*s=speed_src;}
 void ufi_v2_last_refusal(uint8_t out[6]){memcpy(out,refusal_stub,6);}
 void ufi_board_soft_lock(void){soft_lock=true;}
 bool ufi_board_soft_locked(void){return soft_lock;}
@@ -367,6 +370,16 @@ int main(void){
     lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && soft_lock);
     jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==3);jumper_lock=false;
     soft_lock=false;
+    /* Op 41: speed check before writing - read/set tolerance, range and busy checked, last measurement reported */
+    uint8_t sp[4]={41};assert(!ufi_analysis_command(sp,1,out,&size) && size==11 && out[0]==1 && !out[1] && !out[2] && rd(out+3)==55500000u && rd(out+7)==55000000u);
+    sp[1]=1;sp[2]=20;assert(!ufi_analysis_command(sp,4,out,&size) && size==11 && out[1]==20 && speed_tol==20);
+    sp[2]=0xf5;sp[3]=1;assert(ufi_analysis_command(sp,4,out,&size)==UFI_ERR_BAD_ARGS && speed_tol==20);   /* 501 */
+    sp[2]=0xf4;assert(!ufi_analysis_command(sp,4,out,&size) && speed_tol==500);                           /* 500 ok */
+    sp[1]=2;sp[2]=1;sp[3]=0;assert(ufi_analysis_command(sp,4,out,&size)==UFI_ERR_BAD_ARGS);
+    sp[1]=1;busy=true;assert(ufi_analysis_command(sp,4,out,&size)==UFI_ERR_BUSY && speed_tol==500);
+    assert(!ufi_analysis_command(sp,1,out,&size) && out[1]==0xf4 && out[2]==1);busy=false;
+    sp[2]=0;assert(!ufi_analysis_command(sp,4,out,&size) && !speed_tol);
+    assert(ufi_analysis_command(sp,3,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 40: per-sector verify report - header only until a verified WRITE ran, read-only */
     uint8_t vr2[2]={40};assert(!ufi_analysis_command(vr2,1,out,&size) && size==6 && out[0]==1 && !out[1] && !out[2] && !out[3]);
     ufi_quality_verify_begin(0x4a,1);

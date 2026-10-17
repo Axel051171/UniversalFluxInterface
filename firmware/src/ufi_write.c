@@ -78,6 +78,11 @@ static bool index_cut;              /* the index ended an active write: track to
 static bool erase_pending;          /* flags2 bit0: data is out, gate stays on until the index */
 static uint32_t erase_start;        /* flux-timer time the erase tail began */
 static uint32_t erased_ticks;       /* END payload: length of the erased tail, 0 = none */
+/* Speed check before writing (op 41, 1.18): with a nonzero tolerance a native WRITE that
+ * carries the source index period (flags bit6) measures the drive's own index period
+ * before seek and WGATE and refuses with UFI_ERR_SPEED_MISMATCH outside the tolerance. */
+static uint16_t speed_tolerance_permille;
+static uint32_t speed_measured, speed_source;
 static volatile bool receive_failed; /* IRQ -> main loop; never send USB from the IRQ */
 
 static write_context_t g_write;
@@ -346,6 +351,17 @@ uint32_t ufi_write_erased_ticks(void) {
     return erased_ticks;
 }
 
+/* op 41: tolerance in 1/1000 of the source index period (0 = check off), last measurement */
+void ufi_write_set_speed_check(uint16_t permille) {
+    speed_tolerance_permille = permille;
+}
+
+void ufi_write_speed_state(uint16_t* permille, uint32_t* measured, uint32_t* source) {
+    *permille = speed_tolerance_permille;
+    *measured = speed_measured;
+    *source = speed_source;
+}
+
 /* WRITE_TRACK_C: byte_count bytes in the READ_TRACK stream code (ufi_stream.c; index
  * markers are not allowed), decoded on arrival into the same u32 delta buffer */
 int ufi_write_prepare_compact(uint8_t track, uint8_t side, uint32_t flux_count,
@@ -463,6 +479,22 @@ int ufi_write_start(void) {
     if (ufi_drive_write_protected()) {
         g_write.state = WRITE_ERROR;
         return UFI_ERR_WRITE_PROT;
+    }
+    if (speed_tolerance_permille && source_index_ticks && !g_write.gw_mode &&
+        !(g_write.apple && !ufi_config_apple_sync())) {
+        /* op 41: the drive's own index period against the source revolution, before any seek */
+        diag_rpm_t r;
+        if (ufi_diag_rpm(2, &r) == UFI_OK) {
+            speed_measured = r.period_avg;
+            speed_source = source_index_ticks;
+            const uint64_t allowed = (uint64_t)source_index_ticks * speed_tolerance_permille / 1000u;
+            const uint32_t diff = r.period_avg > source_index_ticks ? r.period_avg - source_index_ticks
+                                                                     : source_index_ticks - r.period_avg;
+            if (diff > allowed) {
+                g_write.state = WRITE_ERROR;
+                return UFI_ERR_SPEED_MISMATCH;
+            }
+        }
     }
     const int sret = ufi_drive_seek_q(g_write.track, g_write.quarter);
     if (sret != 0) {

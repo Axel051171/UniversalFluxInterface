@@ -112,6 +112,7 @@ IEC_NO_DEVICE, IEC_NO_ACK, OVERFLOW, UNSUPPORTED, WRITE_PROTECTED, STORAGE = ran
 FRAME_ERROR, UNKNOWN_COMMAND, BAD_ARGS, NOT_FOUND = range(14, 18)
 NOT_REPRESENTABLE, TRACK_LONG, CANCELLED, MEDIA_CHANGED = range(18, 22)   # 1.15 / 1.15 / 1.18 / 1.18
 SOFT_WRITE_LOCK = 22                                                        # 1.18: session write lock (op 37)
+SPEED_MISMATCH = 23                                                         # 1.18: drive speed vs source index period (op 41)
 STATUS_TEXT = {
     1: "busy (dump running / operation active)", 2: "no drive selected / drive missing",
     3: "seek failed (track 0)", 4: "no index pulse / aborted", 5: "timeout",
@@ -124,6 +125,7 @@ STATUS_TEXT = {
     20: "operation cancelled",
     21: "media changed; prepare the operation again",
     22: "session write lock engaged (op 37); only an MCU reset clears it",
+    23: "drive speed outside the tolerance around the source index period (op 41); nothing written",
 }
 
 # INFO caps bits
@@ -950,6 +952,25 @@ class Device2:
         if reply[0] == 2:
             info["read_start"], info["read_data"] = reply[16], reply[17]
         return info
+
+    def speed_check(self, tolerance_permille: int | None = None) -> dict:
+        """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
+        0 switches the check off, 1..500 sets the allowed deviation of the drive's index period
+        from the source index period (WRITE flags bit6 index_ticks); outside it the write ends
+        with status 23 before seek and WGATE.  Returns {'tolerance_permille', 'measured_ticks',
+        'source_ticks', 'measured_rpm', 'source_rpm'} (ticks 0 until a check ran)."""
+        if tolerance_permille is None:
+            reply = self.analysis_op(41)
+        else:
+            if not 0 <= tolerance_permille <= 500:
+                raise ValueError("speed tolerance: 0 (off) to 500 per mille")
+            reply = self.analysis_op(41, struct.pack("<BH", 1, tolerance_permille))
+        if len(reply) < 11 or reply[0] != 1:
+            raise DeviceError("speed check: unexpected reply")
+        tol, measured, source = struct.unpack_from("<HII", reply, 1)
+        rpm = lambda t: round(60 * P.FLUX_CLOCK_HZ / t, 2) if t else 0.0
+        return {"tolerance_permille": tol, "measured_ticks": measured, "source_ticks": source,
+                "measured_rpm": rpm(measured), "source_rpm": rpm(source)}
 
     def verify_report(self) -> dict:
         """Op 40 (firmware 1.18, 4.9): per-sector outcome of the last verified WRITE.  Returns

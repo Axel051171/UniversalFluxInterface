@@ -101,6 +101,9 @@ class FakeV2:
         self.refusal = (0, 0, 0, 0, 0)  # op 39 (4.8): cmd, seq, status, field, detail of the last 16/21 refusal
         self.verify_report = bytes([1, 0, 0, 0, 0, 0])   # op 40 (4.9): header until a verified WRITE ran
         self.verify_sectors = 9         # reference sectors the 0x21 model reports (c = track, h = side, r = 1.., n = 2)
+        self.speed_tolerance = 0        # op 41 (4.10): per mille, 0 = off
+        self.index_ticks = 55_000_000   # the fake drive's own index period (300 rpm)
+        self.speed_last = (0, 0)        # last check: measured, source
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -185,9 +188,16 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
-                _seq, count, _size, flags, flags2, track, side = self.write_req
+                _seq, count, _size, flags, flags2, track, side, source = self.write_req
                 erased = 0x1234567 if flags2 & 1 else 0            # flags2 bit0: an erased tail up to the index
                 status, level = 0, 2 if flags & 1 else 1
+                if self.speed_tolerance and source:                # op 41: drive period against the source period
+                    self.speed_last = (self.index_ticks, source)
+                    if abs(self.index_ticks - source) > source * self.speed_tolerance // 1000:
+                        self._frame(P2.T_END, P2.WRITE, f.seq, P2.SPEED_MISMATCH,
+                                    struct.pack("<BI", 0, 0) + self._gen_block(0) + struct.pack("<I", 0))
+                        self.write_req = None
+                        return
                 if flags & 1:                                      # op 40: a verified WRITE opens a new report
                     self.verify_report = bytes([1, 0, 0, 8, track, side])
                 if flags & 0x21 == 0x21:
@@ -216,6 +226,13 @@ class FakeV2:
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 41:          # speed check before writing (4.10)
+            if len(a) == 4 and a[1] == 1 and struct.unpack_from("<H", a, 2)[0] <= 500:
+                self.speed_tolerance = struct.unpack_from("<H", a, 2)[0]
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            r(0, struct.pack("<BHII", 1, self.speed_tolerance, *self.speed_last))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 40:          # per-sector verify report (4.9)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else self.verify_report)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 39:          # last refusal (4.8)
@@ -400,7 +417,9 @@ class FakeV2:
                 self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x01) if len(a) == want + 1 else (1, want))
                 r(P2.BAD_ARGS)
                 return
-            self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2, a[0], a[1])
+            at = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0)
+            source = struct.unpack_from("<I", a, at)[0] if flags & 0x40 else 0   # bit6: source index period
+            self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2, a[0], a[1], source)
             self.write_code = bytearray()
             r()
         elif cmd == P2.ERASE:
@@ -1009,6 +1028,32 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_speed_check(monkeypatch, capsys):
+    """Op 41: tolerance read/set, writes with a source index period end with 23 outside it, nothing without bit6."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.speed_check() == {"tolerance_permille": 0, "measured_ticks": 0, "source_ticks": 0, "measured_rpm": 0.0, "source_rpm": 0.0}
+    assert dev.speed_check(20)["tolerance_permille"] == 20 and fake.requests[-1].payload == bytes([41, 1, 20, 0])
+    with pytest.raises(ValueError):
+        dev.speed_check(501)
+    deltas = [1100] * 2000
+    r = dev.write_track(3, 1, deltas, extended=True, firmware_verify=True, index_ticks=55_400_000)   # +0.7 %
+    assert r.verify_level == 3
+    with pytest.raises(P2.DeviceError) as e:
+        dev.write_track(3, 1, deltas, extended=True, firmware_verify=True, index_ticks=57_000_000)   # -3.5 %
+    assert e.value.status == P2.SPEED_MISMATCH and "speed" in str(e.value)
+    sc = dev.speed_check()
+    assert (sc["measured_ticks"], sc["source_ticks"]) == (55_000_000, 57_000_000) and sc["measured_rpm"] == 300.0
+    assert dev.write_track(3, 1, deltas, extended=True).verify_level == 1          # no bit6: no check
+    assert dev.speed_check(0)["tolerance_permille"] == 0
+    assert dev.write_track(3, 1, deltas, extended=True, firmware_verify=True, index_ticks=57_000_000).verify_level == 3
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["speed-check", "25"]) == 0 and "+/-2.5 %" in capsys.readouterr().out
+    assert cli.main(["speed-check"]) == 0 and "300.00 rpm vs source 289.47 rpm" in capsys.readouterr().out
+    assert cli.main(["speed-check", "off"]) == 0 and "speed check off" in capsys.readouterr().out
 
 
 def test_verify_report(monkeypatch, capsys):

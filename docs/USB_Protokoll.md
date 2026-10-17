@@ -37,6 +37,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.7 Flagmasken-Abfrage (Op 38, 1.18-dev)
   - 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
   - 4.9 Prüflesebericht je Sektor (Op 40, 1.18-dev)
+  - 4.10 Drehzahlprüfung vor dem Schreiben (Op 41, Status 23, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -429,7 +430,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–40), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–41), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -544,6 +545,7 @@ fehl, endet WRITE mit Status 3.
 | 20 | über den Cancel-Pfad abgebrochen (1.18, Abschnitt 2.5) |
 | 21 | Mediengeneration oder angewähltes Laufwerk hat sich während einer geschützten nativen Operation geändert, `MEDIA_CHANGED` (INFO Bit27, Abschnitt 4.2) |
 | 22 | Sitzungs-Schreibsperre aktiv, `SOFT_WRITE_LOCK` (Op 37, Abschnitt 4.6): das Schreiben wurde von der Sperre dieser Sitzung abgewiesen, nicht vom Schreibschutz der Diskette oder dem Jumper (1.18) |
+| 23 | Drehzahl außerhalb der Toleranz um die Quell-Indexdauer, `SPEED_MISMATCH` (Op 41, Abschnitt 4.10): vor Kopfbewegung und Schreibtor abgewiesen, nichts geschrieben (1.18) |
 
 ### 3.3 Festlegungen im Detail
 
@@ -1375,6 +1377,33 @@ vor CRC-Fehler vor fehlend). Ein WRITE ohne Prüfbit lässt den Bericht unverän
 vergleicht das Werkzeug Spur und Seite mit seinem Auftrag. Reine Abfrage, nie BUSY;
 Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `verify_report()`, `ufi verify-report`
 (listet Einträge mit Zustand ≠ 1 als CHRN mit Grund).
+
+### 4.10 Drehzahlprüfung vor dem Schreiben (Op 41, Status 23, 1.18-dev)
+
+Wird eine Spur mit ihrer Quell-Indexdauer zurückgeschrieben (WRITE Flags Bit 6
+`index_ticks`), läuft die Zieldrehzahl sonst stillschweigend in die Zelllängen ein. Mit
+einer Toleranz misst die Firmware vor dem Schreiben die eigene Indexdauer des Laufwerks
+und weist zu große Abweichungen ab:
+
+- `0x0F [41]` liest, `0x0F [41, 1, toleranz_promille:u16]` setzt (0 = Prüfung aus,
+  Voreinstellung; 1–500; während eines laufenden Vorgangs BUSY). Antwort 11 Bytes:
+  Schema 1, `toleranz_promille` u16, `gemessene_indexdauer` u32, `quell_indexdauer` u32
+  (Takte 275 MHz; beide 0, bis eine Prüfung lief). Die Einstellung ist flüchtig.
+- Mit Toleranz ≠ 0 misst jeder native WRITE/GUARDED_WRITE mit Bit 6 nach dem Empfang der
+  Daten und **vor** Kopfbewegung und Schreibtor zwei aufeinanderfolgende Indexabstände
+  (dieselbe Messung wie FORMAT, höchstens etwa 600 ms). Ist
+  |gemessen − Quelle| > Quelle · Toleranz / 1000, endet der Auftrag mit Ende-Status 23
+  `SPEED_MISMATCH` (Ende-Nutzdaten vorhanden, `verify_level` 0); nichts wird geschrieben.
+  Die Messwerte bleiben in Op 41 lesbar, damit das Werkzeug dem Benutzer beide
+  Drehzahlen nennen kann.
+- Ohne Bit 6 gibt es keine Quelldauer, die Prüfung entfällt. Greaseweazle-Schreibbefehle
+  prüfen nicht. Apple-Disk-II-Laufwerke ohne Sync-Sensor haben keinen Index: Prüfung
+  entfällt. Misslingt die Messung (kein Index), fällt kein Urteil; der normale Ablauf
+  meldet den fehlenden Index später wie bisher.
+
+Die Prüfung ersetzt keine Zeitskala: Wer ein 360-U/min-Abbild auf 300 U/min schreiben
+will, setzt `scale` (Bit 3) und schickt kein Bit 6 oder eine passend umgerechnete Quelle.
+Host: `speed_check(tolerance_permille=None)`, `ufi speed-check [PROMILLE|off]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2485,6 +2514,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 38 | 1 | Flagmasken, die die Anfrageparser annehmen, 16 Bytes (4.7); reine Abfrage, nie BUSY |
 | 39 | 1 | Letzte Abweisung mit Status 16/21: Kommando, Sequenz, Status, Feld, Detail, 6 Bytes (4.8); reine Abfrage, nie BUSY |
 | 40 | 1 | Prüflesebericht je Sektor des letzten geprüften WRITE: Kopf 6 Bytes + 5 Bytes je Referenzsektor, höchstens 326 (4.9); reine Abfrage, nie BUSY |
+| 41 | 1 / 4 | Drehzahlprüfung vor dem Schreiben lesen / Toleranz setzen (`[41, 1, promille u16]`, 0 = aus), 11 Bytes Antwort mit letzter Messung (4.10) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

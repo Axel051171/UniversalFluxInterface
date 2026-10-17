@@ -220,6 +220,14 @@ static uint32_t cfg_pre_ticks,cfg_post_ticks,active_pre_ticks,active_post_ticks,
 static bool post_pending, index_cut, receive_failed, locked,local_reference_ready;
 static bool erase_pending;
 static uint32_t erase_start, erased_ticks;
+/* op 41 speed check: tolerance, last measurement, and a settable drive period for ufi_diag_rpm */
+static uint16_t speed_tolerance_permille;
+static uint32_t speed_measured, speed_source;
+typedef struct { uint32_t period_min, period_avg, period_max, pulse_avg; uint16_t rpm_x100; uint8_t revs; } diag_rpm_t;
+static uint32_t drive_period = 55000000u;
+static unsigned rpm_measurements;
+static int rpm_error;
+static int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r) { (void)revs; rpm_measurements++; memset(r, 0, sizeof *r); r->period_avg = drive_period; return rpm_error; }
 #include "ufi_raw_verify.h"
 static uint8_t raw_flags;
 static raw_profile_t raw_source;
@@ -319,6 +327,23 @@ int main(void) {
     ufi_write_index_handler(100);           /* index before the data ended: still the cut-track error */
     assert(g_write.state == WRITE_ERROR && !gate && !erase_pending && !erased_ticks);
     ufi_write_service(); assert(last_result == UFI_ERR_TRACK_LONG);
+    /* op 41 speed check: only with a tolerance and a source index period, before seek and gate */
+    prepare(); source_index_ticks = 55000000u; assert(ufi_write_start() == 0 && !rpm_measurements); ufi_write_abort();
+    speed_tolerance_permille = 20;
+    prepare(); source_index_ticks = 0; assert(ufi_write_start() == 0 && !rpm_measurements); ufi_write_abort();
+    prepare(); source_index_ticks = 55000000u; drive_period = 55500000u;      /* +0.9 %: within 2 % */
+    assert(ufi_write_start() == 0 && rpm_measurements == 1 && speed_measured == 55500000u && speed_source == 55000000u);
+    ufi_write_abort();
+    prepare(); drive_period = 57000000u;                                     /* +3.6 %: refused, nothing written */
+    ufi_write_service();                    /* the service starts the write and reports the start error */
+    assert(last_result == UFI_ERR_SPEED_MISMATCH && !gate && g_write.state == WRITE_IDLE && rpm_measurements == 2);
+    prepare(); drive_period = 53000000u;                                     /* -3.6 %: refused as well */
+    assert(ufi_write_start() == UFI_ERR_SPEED_MISMATCH && !gate && g_write.state == WRITE_ERROR); ufi_write_abort();
+    prepare(); rpm_error = UFI_ERR_NO_INDEX;                                 /* no measurement: no verdict, write proceeds */
+    assert(ufi_write_start() == 0 && rpm_measurements == 4); ufi_write_abort(); rpm_error = 0;
+    prepare(); g_write.gw_mode = g_write.wave_mode = true; drive_period = 60000000u;   /* GW path never checks */
+    assert(ufi_write_start() == 0 && rpm_measurements == 4); ufi_write_abort();
+    speed_tolerance_permille = 0; source_index_ticks = 0; drive_period = 55000000u;
     prepare(); unsigned before = events; ufi_write_receive_failed();
     assert(events == before && receive_failed && g_write.state == WRITE_ERROR);
     ufi_write_service(); assert(events == before+1 && last_result == UFI_ERR_BUFFER_FULL);
