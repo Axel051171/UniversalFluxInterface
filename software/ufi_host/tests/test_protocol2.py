@@ -156,6 +156,13 @@ class FakeV2:
                     return
                 self.extra = a[2:14]
             r(0, bytes([1]) + self.extra)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 33:          # Apple II GCR options (5.7)
+            if len(a) == 14:
+                if a[1] != 1 or (a[12] | a[13] << 8) & ~0x1F or any(b < 0x80 for b in a[2:12]):
+                    r(P2.BAD_ARGS)
+                    return
+                self.apple = bytes(a[2:14])
+            r(0, bytes([1]) + getattr(self, "apple", bytes.fromhex("d5aa96d5aaaddeaadeaa0000")))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.4)
             if len(a) == 2:                                   # [18, id]: movement/settle times only
                 presets = {1: ((3000, 15000, 15000, 200, 500, 10000), (0, 0)),
@@ -706,6 +713,24 @@ def test_extra_timing_profile_and_presets():
     assert fake.requests[-1].payload[40] == 0 and stored.timing["dir_change_us"] == 38000
     back = dev.timing_preset("standard")
     assert back.timing["dir_change_us"] == 15000 and back.stored
+
+
+def test_apple_gcr_options():
+    import pytest
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    o = dev.apple_gcr_options()
+    assert o["addr_prologue"] == "d5aa96" and o["data_epilogue"] == "deaa" and o["flags"] == 0 and o["flag_names"] == []
+    o = dev.apple_gcr_options(addr_prologue="d4aa96", flags="keep_bad_addr_checksum+any_track")
+    assert o["addr_prologue"] == "d4aa96" and o["flags"] == 0x05 and o["flag_names"] == ["keep_bad_addr_checksum", "any_track"]
+    assert fake.requests[-1].payload == bytes([33, 1]) + bytes.fromhex("d4aa96d5aaaddeaadeaa0500")
+    with pytest.raises(ValueError):
+        dev.apple_gcr_options(bogus=1)
+    with pytest.raises(ValueError):
+        dev.apple_gcr_options(addr_epilogue="de")
+    with pytest.raises(P2.DeviceError):
+        dev.apple_gcr_options(flags=0x40)
+    assert dev.apple_gcr_options(flags=0)["flags"] == 0
 
 
 def test_dump_start_format():

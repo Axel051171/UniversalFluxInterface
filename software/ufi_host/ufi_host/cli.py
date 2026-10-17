@@ -484,7 +484,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -569,6 +569,9 @@ def main(argv: list[str] | None = None) -> int:
         "set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("extra", help="show/set the additional drive times (firmware 1.18): density_us motor_step_ms write_settle_us gate_lead_us gate_tail_us").add_argument(
         "set", nargs="*", metavar="FIELD=VALUE")
+    sub.add_parser("apple-gcr", help="Apple II 5.25-inch GCR decoder options (format 7, firmware 1.18): addr_prologue=d4aa96 data_prologue=d5aab5 "
+                   "addr_epilogue=deab data_epilogue=deaa flags=keep_bad_addr_checksum+ignore_epilogues+any_track+data_without_checksum+data_without_header; "
+                   "'apple-gcr reset' restores the defaults").add_argument("set", nargs="*", metavar="FIELD=VALUE")
     sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
                    "'profile save' stores the effective settings so SELECT restores them (firmware 1.18)").add_argument(
         "action", nargs="?", choices=("standard", "konservativ", "save"))
@@ -832,6 +835,16 @@ def main(argv: list[str] | None = None) -> int:
             for k, v in dev.extra_timing(**changes).items():
                 if k != "reserved":
                     print(f"{k:18} {v}")
+        elif a.cmd == "apple-gcr":
+            if a.set == ["reset"]:
+                changes = {"addr_prologue": "d5aa96", "data_prologue": "d5aaad", "addr_epilogue": "deaa",
+                           "data_epilogue": "deaa", "flags": 0}
+            else:
+                changes = {k: (int(v, 0) if k == "flags" and v.isdigit() else v) for k, v in (s.split("=", 1) for s in a.set)}
+            opts = dev.apple_gcr_options(**changes)
+            for k in P2.APPLE_GCR_FIELDS[:4]:
+                print(f"{k:18} {opts[k]}")
+            print(f"{'flags':18} 0x{opts['flags']:02x} {'+'.join(opts['flag_names']) or '-'}")
         elif a.cmd == "profile":
             if a.action == "save":
                 prof = dev.operating_profile_store()

@@ -342,6 +342,31 @@ EXTRA = struct.Struct("<6H")
 PROFILE_FMT = struct.Struct("<B22s12sBBHB")     # schema, timing, extra, rpm_line, rpm_360_low, rpm, stored
 TIMING_PRESETS = {"standard": 1, "konservativ": 2}     # op 18 with [18, id] (firmware 1.18)
 
+# ANALYSIS_JOB op 33: Apple II 5.25-inch GCR decoder options (format 7, 5.7)
+APPLE_GCR_FIELDS = ("addr_prologue", "data_prologue", "addr_epilogue", "data_epilogue", "flags")
+APPLE_GCR_FLAGS = {"keep_bad_addr_checksum": 0x01, "ignore_epilogues": 0x02, "any_track": 0x04,
+                   "data_without_checksum": 0x08, "data_without_header": 0x10}
+APPLE_GCR_SECTOR_FLAGS = {0x20: "addr checksum", 0x40: "data checksum", 0x80: "epilogue"}
+
+
+def _apple_unpack(b: bytes) -> dict:
+    if len(b) < 13 or b[0] != 1:
+        raise DeviceError("Apple GCR options: unexpected reply")
+    flags = b[11] | b[12] << 8
+    return {"addr_prologue": b[1:4].hex(), "data_prologue": b[4:7].hex(), "addr_epilogue": b[7:9].hex(),
+            "data_epilogue": b[9:11].hex(), "flags": flags,
+            "flag_names": [n for n, v in APPLE_GCR_FLAGS.items() if flags & v]}
+
+
+def _apple_pack(cur: dict) -> bytes:
+    flags = cur["flags"]
+    if isinstance(flags, str):
+        flags = sum(APPLE_GCR_FLAGS[n.strip()] for n in flags.split("+") if n.strip()) if flags else 0
+    marks = b"".join(bytes.fromhex(cur[f]) for f in APPLE_GCR_FIELDS[:4])
+    if len(marks) != 10:
+        raise ValueError("Apple GCR marks: prologues are 3 bytes, epilogues 2 bytes (hex)")
+    return marks + struct.pack("<H", int(flags))
+
 
 @dataclass
 class OperatingProfile:
@@ -759,6 +784,20 @@ class Device2:
         an argument the effective settings are stored so a later SELECT restores them."""
         body = (profile or self.operating_profile()).pack()
         return OperatingProfile.unpack(self.analysis_op(18, body))
+
+    def apple_gcr_options(self, **changes) -> dict:
+        """Apple II 5.25-inch GCR decoder options (format 7, op 33): marks as hex strings
+        (addr_prologue, data_prologue, addr_epilogue, data_epilogue) and `flags`
+        (APPLE_GCR_FLAGS names or an int).  Keyword arguments change them."""
+        cur = _apple_unpack(self.analysis_op(33))
+        if changes:
+            unknown = set(changes) - set(APPLE_GCR_FIELDS)
+            if unknown:
+                raise ValueError(f"unknown Apple GCR option(s): {', '.join(sorted(unknown))}")
+            cur.update(changes)
+            body = bytes([1]) + _apple_pack(cur)
+            cur = _apple_unpack(self.analysis_op(33, body))
+        return cur
 
     def timing_preset(self, preset: int | str) -> OperatingProfile:
         """Apply a named timing set (op 18 with [18, id]): 'standard' or 'konservativ'.  Only the
