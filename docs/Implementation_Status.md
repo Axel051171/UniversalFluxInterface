@@ -787,3 +787,27 @@ refused; a sector buffer too small for size code 3) and were corrected in the ha
 the firmware is unchanged. `check_static.py` now covers `ufi_dump.c` as well (34
 modules). Not reached yet: the double-step probe and track search (need a recognised
 format on track 0 plus a weak later track).
+
+## Decoder tolerance flags for every format — 2026-10-17
+
+The Apple II tolerance flags (op 33) now exist for the IBM MFM, FM, HP MMFM, Amiga,
+Commodore and Macintosh decoders as `mfm_decoder_t.tolerance`, set through
+ANALYSIS_JOB op 34 (`[34]` reads, `[34, 1, flags u16]` sets, same bit values: keep bad
+header, ignore epilogues, any track, data without checksum, data without header). Only
+the analysis decoders take the flags (`quality_begin`); dump, write verify and format
+detection stay strict. Every decoder now sets the same per-sector finding bits in the
+quality report flag byte: 0x08 data field accepted without a valid header (id 255/255),
+0x20 header CRC/checksum failed, 0x40 data CRC/checksum failed, 0x80 epilogue mismatch
+(Macintosh and Apple). The error counters keep counting under tolerance, and the quality
+block carries the op 34 and op 33 flags that were in effect at offsets 60 and 62, so a
+report can later be classified as strict or tolerant. Headerless data fields take the
+size code of the last ID field seen (valid or not), 512 bytes otherwise. New native test
+`test_tolerance.py` builds one faulty track per format with its own generators (IBM MFM
+and Amiga written for the test, Commodore from the GCR tables, FM/HP and Macintosh from
+the existing fixtures) and checks every flag, the finding bits and the counters; op 34 is
+covered in `test_analysis_job.py`, the report fields in `test_quality.c`. Host:
+`Device2.decoder_tolerance()`, `ufi tolerance [FLAGS|reset]`, `SECTOR_FLAGS` names for the
+report flag byte, FakeV2 answers op 34. Protocol doc 5.8, op table, sector entry and
+quality header rows. Requested by the UFT integration session: active flags in every
+report (done, offsets 60/62) and a "tolerance changed the outcome" marker (derivable:
+sector in `seen` with one of bits 3/5/6/7, documented as the provenance rule in 5.8).

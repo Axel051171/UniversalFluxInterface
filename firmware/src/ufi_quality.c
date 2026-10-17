@@ -166,6 +166,7 @@ void quality_begin(quality_t* q, mfm_decoder_t* dec, uint8_t profile, verify_mat
     q->dec=dec;q->profile=profile<3u?profile:0;q->match=match;q->revolution=0;
     if (q->profiles<q->profile+1u) q->profiles=q->profile+1u;
     mfm_dec_init_format(dec,q->format?q->format:1,q->rate?q->rate:250000u,sector,q);
+    dec->tolerance=mfm_get_tolerance();          /* op 34 flags apply to the analysis decoders only */
     if(q->extra.options.features&QUALITY_FEATURE_CODING)dec->check_encoding=true;
     if(q->extra.options.features&QUALITY_FEATURE_MARGIN)dec->margin_permille=q->extra.options.margin_permille;
     mfm_dec_profile(dec,q->profile);
@@ -339,6 +340,8 @@ uint16_t quality_pack(const quality_t* q,uint8_t* out,uint16_t capacity)
     out[17]=q->track;out[18]=q->side;
     for (unsigned i=0;i<8;i++) {out[20+2*i]=(uint8_t)q->candidates[i];out[21+2*i]=(uint8_t)(q->candidates[i]>>8);}
     put32(out+36,q->generation);put32(out+40,MFM_TICK_HZ);put32(out+44,q->elapsed_ms);
+    const uint16_t tol=q->dec?q->dec->tolerance:0,apple=mfm_apple_get_options().flags;   /* flags in effect for this decode */
+    out[60]=(uint8_t)tol;out[61]=(uint8_t)(tol>>8);out[62]=(uint8_t)apple;out[63]=(uint8_t)(apple>>8);
     for(unsigned i=8;i<14;i++){out[48+2*(i-8)]=(uint8_t)q->candidates[i];out[49+2*(i-8)]=(uint8_t)(q->candidates[i]>>8);}
     /* 64 fixed sector slots, then 8 x 3 attempts, then interval histogram. */
     for (unsigned i=0;i<QUALITY_SECTORS;i++) {

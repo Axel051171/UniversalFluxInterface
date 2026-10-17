@@ -41,6 +41,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 5.5 Lokale Zeitfenster, HFEv3 und getrennte Schwachstellenbefunde
   - 5.6 Erkennungszustände, Positionsbefunde und Wiederholungsursachen
   - 5.7 Apple-II-5,25-Zoll-GCR (Format 7)
+  - 5.8 Toleranzflags und Sektorbefunde aller Decoder (Op 34)
 - 6 Analysejobs
   - 6.1 Analysejobs, Discovery und Prüfabdeckung (INFO Bit24, 2026-10-14)
   - 6.2 Mehrspur-Analyse mit bestätigter Fortsetzung (0x0F, Op27–29)
@@ -424,7 +425,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–32), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–34), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1345,7 +1346,8 @@ also auf Antwortoffset 40. Reservierte Bytes werden mit 0 übertragen.
 | 40 | 4 | Zeitstempeltakt = 275000000 Hz |
 | 44 | 4 | Dauer der Detailauswertung in ms, ohne Aufnahmezeit |
 | 48 | 12 | Sechs weitere Kandidatenzähler u16: FM 125/150/250/300/500 kbit/s, HP-MMFM 500 kbit/s (INFO Bit23) |
-| 60 | 4 | Reserviert |
+| 60 | 2 | Toleranzflags (Op 34) dieses Decodierlaufs, u16; 0 = strikt |
+| 62 | 2 | Apple-II-Flags (Op 33) dieses Decodierlaufs, u16 |
 | 64 | 768 | 64 Sektoreinträge zu je 12 Bytes |
 | 832 | 384 | 8 Umdrehungen × 3 Profile × 16 Bytes |
 | 1216 | 512 | 128 Histogrammzähler u32; letztes Bin enthält auch längere Intervalle |
@@ -1360,7 +1362,7 @@ Sektoreintrag, relativ zu `64 + 12*i`:
 | 8 | 1 | Umdrehungsmaske gültiger Beobachtungen |
 | 9 | 1 | Davon im Standard-PLL-Profil gefunden |
 | 10 | 1 | Umdrehungsmaske beobachteter Datenprüfsummenfehler |
-| 11 | 1 | Sticky-Befunde: Bit0 abweichende CRC32-Variante, Bit1 gelöschte IBM-Datenmarke, Bit2 HP-Defektspurmarke, Bit4 Kodierungsfehler im Datenfeld; übrige Bits reserviert |
+| 11 | 1 | Sticky-Befunde: Bit0 abweichende CRC32-Variante, Bit1 gelöschte IBM-Datenmarke, Bit2 HP-Defektspurmarke, Bit3 Datenfeld ohne gültigen Kopf angenommen (Kennung 255/255), Bit4 Kodierungsfehler im Datenfeld, Bit5 Kopf-CRC/-Prüfsumme falsch, Bit6 Daten-CRC/-Prüfsumme falsch, Bit7 Epilog/Nachspann weicht ab (GCR). Bits 3 und 5–7 setzen alle Decoder (5.8); ein Sektor in `seen` mit einem dieser Bits wurde nur durch Toleranzflags angenommen |
 
 Beobachtungsmasken: Bit0 ist Umdrehung 0. Sektoren über einer Indexgrenze werden
 der Umdrehung ihrer **Dekodierfertigstellung** zugeordnet. CRC32 ist eine kompakte
@@ -2175,14 +2177,53 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
 | 0x0010 | Datenfeld auch ohne vorausgehenden gültigen Kopf annehmen; Kennung dann `c = r = 255` |
 
 - **Befunde je Sektor:** Zusätzlich zu `crc_ok` setzt der Decoder Sektorflags, die der
-  Qualitätsbericht in das Flagbyte des Sektoreintrags übernimmt: 0x20 Kopfprüfsumme
-  falsch, 0x40 Datenprüfnibble falsch, 0x80 ein Epilog weicht ab. Die Zähler
+  Qualitätsbericht in das Flagbyte des Sektoreintrags übernimmt: 0x08 Datenfeld ohne
+  gültigen Kopf (Flag 0x0010), 0x20 Kopfprüfsumme falsch, 0x40 Datenprüfnibble falsch,
+  0x80 ein Epilog weicht ab (dieselben Bits wie bei allen anderen Decodern, 5.8). Die Zähler
   `header_errors`, `data_errors` und `code_errors` (Nibble außerhalb des Alphabets oder
   ohne Bit 7) zählen unabhängig von den Toleranzflags weiter, so dass eine „tolerante"
   Analyse die Abweichungen trotzdem ausweist.
 - **Nicht enthalten:** 13-Sektor-Disketten (5-and-3) und Schreiben im Format 7; für
   Schutzverfahren jenseits geänderter Marken (Zeitbits, Nibble-Zählungen, Synchronlücken)
   bleibt der Flusspfad (READ, NIB über den Host) zuständig.
+
+### 5.8 Toleranzflags und Sektorbefunde aller Decoder (Op 34)
+
+Die Toleranzflags aus 5.7 gibt es ab 1.18-dev auch für die Decoder der Formate 1–6
+(IBM-MFM, Amiga, IBM-FM, HP-MMFM, Commodore-GCR, Macintosh-GCR), mit denselben Bitwerten.
+Sie wirken **nur auf die Analyse-Decoder** (ANALYZE, Analysejobs, QUALITY); Dump nach IMG/
+ADF/D64, Prüflesen nach WRITE und die Formaterkennung bleiben strikt. Fehlerzähler
+(`header_errors`, `data_errors`, `code_errors`) zählen unter Toleranz weiter.
+
+- **Op 34:** `[34]` liest, `[34, Schema 1, Flags u16 LE]` setzt (exakt 4 Bytes); Antwort
+  `[1, Flags u16]`. Unbekannte Bits oder falsches Schema → BAD_ARGS, Setzen bei aktiver
+  Operation oder Integritätsjob → BUSY. Die Flags gelten bis zum nächsten Setzen oder
+  Neustart; Op 34 ist während eines laufenden Jobs nur lesend erlaubt. Host:
+  `Device2.decoder_tolerance()` / `ufi tolerance`.
+
+| Flag | IBM-MFM / FM | HP-MMFM | Amiga | Commodore | Macintosh |
+|---:|---|---|---|---|---|
+| 0x0001 Kopf behalten | ID-Feld mit falscher CRC wird verwendet | wie MFM | Kopfprüfsumme falsch, Sektor trotzdem gemeldet | Kopfblock-Prüfsumme falsch, trotzdem verwendet | 4-and-4-Kopfprüfsumme falsch, trotzdem verwendet |
+| 0x0002 Epiloge nicht verlangen | ohne Wirkung | ohne Wirkung | ohne Wirkung | ohne Wirkung | `DE AA` hinter Kopf und Daten nicht verlangt |
+| 0x0004 keine Geometriegrenze | ohne Wirkung (N ≤ 3 bleibt Puffergrenze) | Zylinder > 76 / Sektor ≥ 30 zugelassen | Formatbyte ≠ 0xFF und Sektor ≥ 22 zugelassen | Spur außerhalb 1–84 / Sektor ≥ 21 zugelassen | Zylinder ≥ 80 und gesetzte Reservebits zugelassen |
+| 0x0008 Daten ohne Prüfsumme | Daten-CRC falsch setzt `crc_ok` nicht zurück | wie MFM | Datenprüfsumme falsch, Sektor gilt als gelesen | Datenblock-Prüfsumme falsch, gilt als gelesen | Prüfnibbles falsch, gilt als gelesen |
+| 0x0010 Daten ohne Kopf | Datenfeld ohne gültiges ID-Feld; Größe aus dem zuletzt gesehenen ID-Feld (auch mit falscher CRC), sonst 512 Byte | wie MFM, 256 Byte | ohne Wirkung (Kopf und Daten sind ein Block) | Datenblock ohne Kopfblock | Datenfeld ohne Adressfeld, Sektornummer nicht prüfbar |
+
+Kopflose Datenfelder tragen die Kennung `c = r = 255` (`h = 0`, `n` wie oben). Bei
+Commodore liegt die Disk-ID weiterhin in Byte 256/257, bei Macintosh das Formatbyte
+in Byte 524.
+
+**Sektorbefunde** (Flagbyte des Sektoreintrags, 5.2, Offset 11), für alle Formate
+einschließlich Format 7: Bit3 (0x08) Datenfeld ohne gültigen Kopf angenommen, Bit5 (0x20)
+Kopf-CRC/-Prüfsumme falsch, Bit6 (0x40) Daten-CRC/-Prüfsumme falsch, Bit7 (0x80) Epilog
+weicht ab. Die Bits werden auch ohne Toleranzflags gesetzt, soweit der Sektor überhaupt
+gemeldet wird (Bit6 etwa bei einem normalen CRC-Fehler). **Herkunftsregel:** Ein Sektor,
+der in der Umdrehungsmaske `seen` steht und eines der Bits 3, 5, 6 oder 7 trägt, wurde nur
+durch ein Toleranzflag als gelesen gewertet; ohne Toleranz stünde er in `bad` oder gar
+nicht im Bericht. Ein Sektor jenseits der Geometriegrenzen (0x0004) ist an seiner
+Kennung erkennbar. Der Qualitätsblock trägt an Offset 60 die Op-34-Flags und an Offset 62
+die Op-33-Flags, die bei diesem Decodierlauf wirksam waren, damit ein Bericht später
+eindeutig als strikt oder tolerant decodiert eingeordnet werden kann.
 
 ## 6 Analysejobs
 
@@ -2213,6 +2254,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 18 | 1 / 2 / 41 | Wirksame Betriebseinstellungen lesen / Zeit-Voreinstellung anwenden (1.18) / pro Laufwerk speichern und anwenden, 40 Bytes Antwort (4.4) |
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
 | 33 | 1 / 14 | Apple-II-GCR-Decoderoptionen lesen / setzen, 13 Bytes Antwort (5.7, Format 7) |
+| 34 | 1 / 4 | Toleranzflags der Decoder für Format 1–6 lesen / setzen, 3 Bytes Antwort (5.8) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

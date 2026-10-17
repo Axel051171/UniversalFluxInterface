@@ -85,6 +85,17 @@ static uint8_t raw_to_byte(uint32_t raw)
     return b;
 }
 
+static uint16_t tolerance_default;
+void mfm_set_tolerance(uint16_t flags){tolerance_default=flags&MFM_TOL_MASK;}
+uint16_t mfm_get_tolerance(void){return tolerance_default;}
+
+/* Data field without a usable ID (MFM_TOL_DATA_WITHOUT_HEADER): the size code of the
+ * last ID field seen is kept, 512 bytes without one; the sector is named c = r = 255. */
+static void headerless_id(mfm_decoder_t* d,uint8_t n)
+{
+    d->id=(mfm_id_t){255,0,255,n};d->id_flags=0;d->sector_flags|=MFM_SF_NO_HEADER;
+}
+
 static void field_byte(mfm_decoder_t* d, uint8_t b)
 {
     d->crc = mfm_crc16(d->crc, &b, 1);
@@ -93,9 +104,12 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
         d->sector_flags=b==0xf8?2:0;
         d->got = 0;
         if (b == 0xFE) {
-            d->want = 6;
+            d->want = 6;d->id_flags=0;
         } else if ((b == 0xFB || b == 0xF8) && d->id_ok && d->id_age < ID_DATA_CELLS &&
                    d->id.n <= 3) {
+            d->want = (uint16_t)((128u << d->id.n) + 2u);d->sector_flags|=d->id_flags;
+        } else if ((b == 0xFB || b == 0xF8) && (d->tolerance&MFM_TOL_DATA_WITHOUT_HEADER)) {
+            headerless_id(d,d->id_seen && d->id.n<=3?d->id.n:2);
             d->want = (uint16_t)((128u << d->id.n) + 2u);
         } else {
             d->state = S_SEARCH;
@@ -110,8 +124,11 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
     }
     if (d->mark == 0xFE) {
         d->id_ok = (d->crc == 0);
-        if (!d->id_ok) d->header_errors++;
+        if (!d->id_ok) {d->header_errors++;d->id_flags=MFM_SF_HEADER_CHECKSUM;}
+        if(!d->id_ok && (d->tolerance&MFM_TOL_KEEP_BAD_HEADER))d->id_ok=true;
         if(d->field_bad)d->id_ok=false;
+        d->id_seen=true;
+        if(!d->id_ok)d->id.n=d->buf[3];          /* size code for a later headerless data field */
         if (d->id_ok) {
             d->id = (mfm_id_t){d->buf[0], d->buf[1], d->buf[2], d->buf[3]};
             d->id_age = 0;
@@ -121,9 +138,9 @@ static void field_byte(mfm_decoder_t* d, uint8_t b)
             }
         }
     } else {
-        if (d->crc != 0) d->data_errors++;
+        if (d->crc != 0) {d->data_errors++;d->sector_flags|=MFM_SF_DATA_CHECKSUM;}
         if (d->cb) {
-            d->cb(d->ctx, &d->id, d->buf, d->crc == 0);
+            d->cb(d->ctx, &d->id, d->buf, d->crc == 0 || (d->tolerance&MFM_TOL_DATA_WITHOUT_CHECKSUM));
         }
         d->id_ok = false;
     }
@@ -140,8 +157,8 @@ static void amiga_sector(mfm_decoder_t* d)
     const uint32_t* r = d->raw;
     const uint32_t info = odd_even(r[0], r[1]);
     const uint8_t track = (uint8_t)(info >> 16), sector = (uint8_t)(info >> 8);
-    if ((info >> 24) != 0xFFu || sector >= AMIGA_SECTORS_HD) {   /* DD 11 or HD 22 */
-        return;
+    if (((info >> 24) != 0xFFu || sector >= AMIGA_SECTORS_HD) && !(d->tolerance&MFM_TOL_ANY_TRACK)) {
+        return;                                                   /* DD 11 or HD 22 */
     }
     uint32_t hsum = 0, dsum = 0;
     for (int i = 0; i < 10; i++) {
@@ -153,10 +170,10 @@ static void amiga_sector(mfm_decoder_t* d)
     const bool hdr_ok = (hsum & M55) == odd_even(r[10], r[11]);
     const bool data_ok = (dsum & M55) == odd_even(r[12], r[13]);
     if (!hdr_ok) {
-        d->header_errors++;
-        return;
+        d->header_errors++;d->sector_flags|=MFM_SF_HEADER_CHECKSUM;
+        if (!(d->tolerance&MFM_TOL_KEEP_BAD_HEADER)) return;
     }
-    if (!data_ok) d->data_errors++;
+    if (!data_ok) {d->data_errors++;d->sector_flags|=MFM_SF_DATA_CHECKSUM;}
     d->ids_seen++;
     for (int i = 0; i < 128; i++) {
         const uint32_t v = odd_even(r[14 + i], r[14 + 128 + i]);
@@ -175,7 +192,7 @@ static void amiga_sector(mfm_decoder_t* d)
     const mfm_id_t id = {(uint8_t)(track >> 1), (uint8_t)(track & 1u), (uint8_t)(sector + 1u), 2};
     d->buf[528] = (uint8_t)info; /* sectors until gap, for the quality report */
     if (d->cb) {
-        d->cb(d->ctx, &id, d->buf, data_ok);
+        d->cb(d->ctx, &id, d->buf, data_ok || (d->tolerance&MFM_TOL_DATA_WITHOUT_CHECKSUM));
     }
 }
 
@@ -217,12 +234,15 @@ static void legacy_cell(mfm_decoder_t* d) {
         if(header)d->id_ok=false;
         /* ECC-marked HP data is recognised but its layout is not guessed. */
         if(mark==0xd0 || mark==0xfc){d->id_ok=false;return;}
-        if(!header && (!d->id_ok || d->id_age>=ID_DATA_CELLS))return;
+        const bool headerless=!header && (!d->id_ok || d->id_age>=ID_DATA_CELLS);
+        if(headerless && !(d->tolerance&MFM_TOL_DATA_WITHOUT_HEADER))return;
         d->state=S_FIELD;d->cells=0;d->got=0;d->field_bad=false;
         d->previous_transition=(raw&3)!=0;
         d->crc=hp?0xffff:mfm_crc16(0xffff,&mark,1);
+        d->sector_flags=(mark==0xf8?2:0);
+        if(headerless)headerless_id(d,hp?1:(d->id_seen && d->id.n<=3?d->id.n:2));
+        else if(!header)d->sector_flags|=d->id_flags;
         d->want=header?(hp?4:6):(uint16_t)((128u<<d->id.n)+2u);
-        d->sector_flags=hp?d->id_flags:(mark==0xf8?2:0);
         if(header)d->id_flags=mark==0xf0?4:0;
         return;
     }
@@ -235,20 +255,20 @@ static void legacy_cell(mfm_decoder_t* d) {
     if(d->got<d->want)return;
     bool header=hp?(d->mark==0x70 || d->mark==0xf0):d->mark==0xfe;
     if(header) {
-        if(d->crc)d->header_errors++;
-        d->id_ok=!d->crc && !d->field_bad;
+        d->id_seen=true;if(d->crc){d->header_errors++;d->id_flags|=MFM_SF_HEADER_CHECKSUM;}
+        d->id_ok=(!d->crc || (d->tolerance&MFM_TOL_KEEP_BAD_HEADER)) && !d->field_bad;
         if(hp) {
-            if(d->buf[0]>76 || (d->buf[1]&0x7f)>=30)d->id_ok=false;
+            if((d->buf[0]>76 || (d->buf[1]&0x7f)>=30) && !(d->tolerance&MFM_TOL_ANY_TRACK))d->id_ok=false;
             d->id=(mfm_id_t){d->buf[0],(uint8_t)(d->buf[1]>>7),(uint8_t)(d->buf[1]&0x7f),1};
         } else {
             d->id=(mfm_id_t){d->buf[0],d->buf[1],d->buf[2],d->buf[3]};
-            if(d->id.n>3)d->id_ok=false;
+            if(d->id.n>3)d->id_ok=false;         /* buffer limit, not a geometry limit */
         }
         if(d->id_ok){d->ids_seen++;d->id_age=0;}
     } else {
-        if(d->crc)d->data_errors++;
+        if(d->crc){d->data_errors++;d->sector_flags|=MFM_SF_DATA_CHECKSUM;}
         if(d->field_bad)d->sector_flags|=16;
-        if(d->cb)d->cb(d->ctx,&d->id,d->buf,d->crc==0);
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,d->crc==0 || (d->tolerance&MFM_TOL_DATA_WITHOUT_CHECKSUM));
         d->id_ok=false;
     }
     d->state=S_SEARCH;
@@ -280,7 +300,7 @@ static void amiga_cell(mfm_decoder_t* d)
     if (++d->cells == 32u) {
         d->cells = 0;
         d->raw[d->got++] = (uint32_t)d->sr;
-        if (d->got == 2u && (odd_even(d->raw[0], d->raw[1]) >> 24) != 0xFFu) {
+        if (d->got == 2u && (odd_even(d->raw[0], d->raw[1]) >> 24) != 0xFFu && !(d->tolerance&MFM_TOL_ANY_TRACK)) {
             d->state = S_SEARCH;            /* not a sector header */
         } else if (d->got == AMIGA_RAW_LONGS) {
             amiga_sector(d);
@@ -308,22 +328,24 @@ static void gcr_cell(mfm_decoder_t* d,uint32_t bit) {
     d->gcr_half=0;uint8_t b=(uint8_t)(d->gcr_value|nibble);d->buf[d->got++]=b;
     if(d->got==1) {
         d->mark=d->last_mark=b;d->marks++;
-        if(b==8){d->id_ok=false;d->want=8;}
-        else if(b==7 && d->id_ok && d->id_age<1000)d->want=260;
+        if(b==8){d->id_ok=false;d->id_flags=0;d->want=8;}
+        else if(b==7 && d->id_ok && d->id_age<1000){d->want=260;d->sector_flags|=d->id_flags;}
+        else if(b==7 && (d->tolerance&MFM_TOL_DATA_WITHOUT_HEADER)){d->want=260;headerless_id(d,1);}
         else {d->state=S_SEARCH;return;}
     }
     if(d->got<d->want)return;
     if(d->mark==8) {
         uint8_t sum=0;for(unsigned i=1;i<6;i++)sum^=d->buf[i];
-        if(sum)d->header_errors++;
+        if(sum){d->header_errors++;d->id_flags|=MFM_SF_HEADER_CHECKSUM;}
         uint8_t track=d->buf[3],sector=d->buf[2];
-        d->id_ok=!sum && track>=1 && track<=84 && sector<21;
+        const bool limits=(track>=1 && track<=84 && sector<21) || (d->tolerance&MFM_TOL_ANY_TRACK);
+        d->id_ok=(!sum || (d->tolerance&MFM_TOL_KEEP_BAD_HEADER)) && limits;
         if(d->id_ok){d->id=(mfm_id_t){track,0,sector,1};d->disk_id=(uint16_t)(d->buf[4]|(uint16_t)d->buf[5]<<8);d->id_age=0;d->ids_seen++;}
     } else {
         uint8_t sum=0;for(unsigned i=1;i<258;i++)sum^=d->buf[i];
-        if(sum)d->data_errors++;
+        if(sum){d->data_errors++;d->sector_flags|=MFM_SF_DATA_CHECKSUM;}
         memmove(d->buf,d->buf+1,256);d->buf[256]=(uint8_t)d->disk_id;d->buf[257]=(uint8_t)(d->disk_id>>8);
-        if(d->cb)d->cb(d->ctx,&d->id,d->buf,sum==0);
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,sum==0 || (d->tolerance&MFM_TOL_DATA_WITHOUT_CHECKSUM));
         d->id_ok=false;
     }
     d->state=S_SEARCH;
@@ -372,11 +394,14 @@ static void mac_cell(mfm_decoder_t* d)
     if(d->id_age<UINT32_MAX)d->id_age++;
     if(d->state==S_SEARCH){
         uint32_t sync=(uint32_t)d->sr&0xffffffu;
-        if(sync==0xd5aa96u || (sync==0xd5aaadu && d->id_ok && d->id_age<2000)){
+        const bool with_header=d->id_ok && d->id_age<2000;
+        if(sync==0xd5aa96u || (sync==0xd5aaadu && (with_header || (d->tolerance&MFM_TOL_DATA_WITHOUT_HEADER)))){
             d->mark=d->last_mark=(uint8_t)sync;d->marks++;
             d->want=d->mark==0x96?7:706;d->got=d->cells=0;
             d->field_bad=false;d->sector_flags=0;d->state=S_FIELD;
-            if(d->mark==0x96)d->id_ok=false;
+            if(d->mark==0x96){d->id_ok=false;d->id_flags=0;}
+            else if(with_header)d->sector_flags|=d->id_flags;
+            else headerless_id(d,2);
         }
         return;
     }
@@ -390,19 +415,25 @@ static void mac_cell(mfm_decoder_t* d)
     d->buf[d->got++]=byte;
     if(d->got<d->want)return;
     bool ending=d->buf[d->want-2]==0xde && d->buf[d->want-1]==0xaa;
+    if(!ending)d->sector_flags|=MFM_SF_EPILOGUE;
+    const bool end_ok=ending || (d->tolerance&MFM_TOL_IGNORE_EPILOGUES);
     if(d->mark==0x96){
         uint8_t sum=0;for(unsigned i=0;i<5;i++)sum^=d->buf[i];
         uint8_t cyl=(uint8_t)(d->buf[0]|((d->buf[2]&1)<<6));
-        d->id_ok=ending && !sum && cyl<80 && !(d->buf[2]&0x1e);
+        if(sum)d->sector_flags|=MFM_SF_HEADER_CHECKSUM;
+        const bool limits=(cyl<80 && !(d->buf[2]&0x1e)) || (d->tolerance&MFM_TOL_ANY_TRACK);
+        d->id_ok=end_ok && (!sum || (d->tolerance&MFM_TOL_KEEP_BAD_HEADER)) && limits;
         if(d->id_ok){
             d->id=(mfm_id_t){cyl,(uint8_t)(d->buf[2]>>5),d->buf[1],2};
-            d->disk_id=d->buf[3];d->id_age=0;d->ids_seen++;
-        }else d->header_errors++;
+            d->disk_id=d->buf[3];d->id_age=0;d->ids_seen++;d->id_flags=d->sector_flags;
+        }
+        if(!ending || sum || !limits)d->header_errors++;
     }else{
-        bool sector_match=d->buf[0]==d->id.r;
+        bool sector_match=d->id.r==255 || d->buf[0]==d->id.r;   /* no header: nothing to match */
         bool checksum=mac_payload(d);
-        bool ok=ending && sector_match && checksum;
-        if(!ok)d->data_errors++;
+        if(!checksum)d->sector_flags|=MFM_SF_DATA_CHECKSUM;
+        bool ok=end_ok && sector_match && (checksum || (d->tolerance&MFM_TOL_DATA_WITHOUT_CHECKSUM));
+        if(!ending || !sector_match || !checksum)d->data_errors++;
         if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
         d->id_ok=false;
     }
@@ -489,7 +520,7 @@ static void apple_cell(mfm_decoder_t* d)
         uint8_t out[256];apple_payload(d,out);memcpy(d->buf,out,256);
         const bool ok=end_ok && (checksum || (o->flags&APPLE_GCR_DATA_WITHOUT_CHECKSUM));
         if(!checksum || !ending)d->data_errors++;
-        if(!d->id_ok)d->id=(mfm_id_t){255,0,255,1};  /* data field without header (flag 0x10) */
+        if(!d->id_ok){d->id=(mfm_id_t){255,0,255,1};d->sector_flags|=MFM_SF_NO_HEADER;}  /* data field without header (flag 0x10) */
         if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
         d->id_ok=false;d->id_flags=0;
     }

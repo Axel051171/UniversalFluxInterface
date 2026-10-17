@@ -40,6 +40,10 @@ int main(void) {
     CHECK(quality_pack(&q,wire,QUALITY_WIRE_SIZE)==QUALITY_WIRE_SIZE && wire[QUALITY_WIRE_SIZE]==0xa5,"wire bounds");
     CHECK(wire[0]==1 && wire[1]==2 && wire[2]==2 && wire[3]==11 && wire[5]==3,"wire header");
     CHECK(wire[64+8]==3 && wire[64+11]==1,"wire sector masks and conflict");
+    CHECK(!wire[60] && !wire[61] && !wire[62] && !wire[63],"strict decode reports zero tolerance flags");
+    mfm_set_tolerance(MFM_TOL_KEEP_BAD_HEADER|MFM_TOL_ANY_TRACK);quality_begin(&q,&dec,0,NULL);
+    CHECK(dec.tolerance==5 && quality_pack(&q,wire,QUALITY_WIRE_SIZE) && wire[60]==5 && !wire[61],"analysis decoder takes the op 34 flags, report carries them");
+    mfm_set_tolerance(0);mfm_dec_init_amiga(&dec,250000,NULL,NULL);CHECK(!dec.tolerance,"dump/verify decoders stay strict");
     verify_ref_t ref;
     CHECK(verify_ref_build_u32(&ref,&dec,flux,n,55000000,NULL) && ref.amiga && ref.n==11,"u32 source reference");
     CHECK(!verify_ref_build_u32(&ref,&dec,flux,n,1,NULL),"invalid source duration refused");

@@ -348,6 +348,40 @@ APPLE_GCR_FIELDS = ("addr_prologue", "data_prologue", "addr_epilogue", "data_epi
 APPLE_GCR_FLAGS = {"keep_bad_addr_checksum": 0x01, "ignore_epilogues": 0x02, "any_track": 0x04,
                    "data_without_checksum": 0x08, "data_without_header": 0x10}
 APPLE_GCR_SECTOR_FLAGS = {0x20: "addr checksum", 0x40: "data checksum", 0x80: "epilogue"}
+# ANALYSIS_JOB op 34: tolerance flags of the IBM MFM/FM, HP, Amiga, Commodore and Macintosh analysis
+# decoders (5.8); same bit values as the Apple flags.  SECTOR_FLAGS names the quality report's
+# per-sector flag byte for every format.
+TOLERANCE_FLAGS = {"keep_bad_header": 0x01, "ignore_epilogues": 0x02, "any_track": 0x04,
+                   "data_without_checksum": 0x08, "data_without_header": 0x10}
+SECTOR_FLAGS = {0x01: "conflicting content", 0x02: "deleted data mark", 0x04: "HP defect mark",
+                0x08: "no header", 0x10: "coding error", 0x20: "header checksum", 0x40: "data checksum",
+                0x80: "epilogue"}
+TOLERATED_BITS = 0xE8          # a sector counted as read with one of these was accepted by tolerance only
+
+
+def flag_names(value: int, table: dict) -> list[str]:
+    """Names of the set bits; `table` maps name -> bit (TOLERANCE_FLAGS) or bit -> name (SECTOR_FLAGS)."""
+    if table and isinstance(next(iter(table)), int):
+        return [n for v, n in table.items() if value & v]
+    return [n for n, v in table.items() if value & v]
+
+
+def parse_flags(spec, table: dict) -> int:
+    """'a+b' names, an int, or a numeric string -> flag value; unknown names raise ValueError."""
+    if isinstance(spec, int):
+        return spec
+    spec = spec.strip()
+    if not spec or spec in ("0", "-", "none"):
+        return 0
+    try:
+        return int(spec, 0)
+    except ValueError:
+        pass
+    names = [n.strip() for n in spec.split("+") if n.strip()]
+    unknown = [n for n in names if n not in table]
+    if unknown:
+        raise ValueError(f"unknown flag(s): {', '.join(unknown)}; known: {', '.join(table)}")
+    return sum(table[n] for n in names)
 
 
 def _apple_unpack(b: bytes) -> dict:
@@ -799,6 +833,22 @@ class Device2:
             body = bytes([1]) + _apple_pack(cur)
             cur = _apple_unpack(self.analysis_op(33, body))
         return cur
+
+    def decoder_tolerance(self, flags=None) -> dict:
+        """Tolerance flags of the analysis decoders for formats 1-6 (op 34, firmware 1.18).
+        flags: None reads, else an int or TOLERANCE_FLAGS names joined with '+'.  Returns
+        {'flags': int, 'flag_names': [...]}.  The flags stay set until changed or reboot."""
+        if flags is not None:
+            value = parse_flags(flags, TOLERANCE_FLAGS)
+            if value & ~0x1F:
+                raise ValueError("tolerance flags: bits 0-4 only")
+            reply = self.analysis_op(34, bytes([1, value & 0xFF, value >> 8]))
+        else:
+            reply = self.analysis_op(34)
+        if len(reply) < 3 or reply[0] != 1:
+            raise DeviceError("decoder tolerance: unexpected reply")
+        value = reply[1] | reply[2] << 8
+        return {"flags": value, "flag_names": flag_names(value, TOLERANCE_FLAGS)}
 
     def timing_preset(self, preset: int | str) -> OperatingProfile:
         """Apply a named timing set (op 18 with [18, id]): 'standard' or 'konservativ'.  Only the

@@ -77,6 +77,7 @@ int main(void){
     p=apple_defaults;p.flags=APPLE_GCR_DATA_WITHOUT_HEADER;mfm_apple_set_options(&p);
     nfound=0;mfm_dec_init_format(&d,7,250000u,cb,NULL);feed(&d);
     assert(nfound==1 && found[0].ok && found[0].id.c==255 && found[0].id.r==255 && !memcmp(found[0].data,data[0],256));
+    assert(d.sector_flags&MFM_SF_NO_HEADER);          /* same finding bit as the other decoders (5.8) */
     mfm_apple_set_options(NULL);
     puts("apple gcr: 16 sectors in physical order, 4-and-4 header, 6-and-2 checksum, faults, speed tolerance, options and protection marks passed");
     return 0;

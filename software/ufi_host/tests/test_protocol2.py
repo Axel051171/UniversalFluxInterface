@@ -191,6 +191,17 @@ class FakeV2:
                     return
                 self.apple = bytes(a[2:14])
             r(0, bytes([1]) + getattr(self, "apple", bytes.fromhex("d5aa96d5aaaddeaadeaa0000")))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 34:          # decoder tolerance flags, formats 1-6 (5.8)
+            if len(a) == 4:
+                if a[1] != 1 or (a[2] | a[3] << 8) & ~0x1F:
+                    r(P2.BAD_ARGS)
+                    return
+                self.tolerance = a[2] | a[3] << 8
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            t = getattr(self, "tolerance", 0)
+            r(0, bytes([1, t & 0xFF, t >> 8]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.4)
             if len(a) == 2:                                   # [18, id]: movement/settle times only
                 presets = {1: ((3000, 15000, 15000, 200, 500, 10000), (0, 0)),
@@ -799,6 +810,27 @@ def test_extra_timing_profile_and_presets():
     assert fake.requests[-1].payload[40] == 0 and stored.timing["dir_change_us"] == 38000
     back = dev.timing_preset("standard")
     assert back.timing["dir_change_us"] == 15000 and back.stored
+
+
+def test_decoder_tolerance(monkeypatch, capsys):
+    import pytest
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.decoder_tolerance() == {"flags": 0, "flag_names": []}
+    assert fake.requests[-1].payload == bytes([34])
+    t = dev.decoder_tolerance("keep_bad_header+data_without_header")
+    assert t["flags"] == 0x11 and t["flag_names"] == ["keep_bad_header", "data_without_header"]
+    assert fake.requests[-1].payload == bytes([34, 1, 0x11, 0])
+    assert dev.decoder_tolerance("0x1f")["flags"] == 0x1F and dev.decoder_tolerance(0)["flags"] == 0
+    with pytest.raises(ValueError):
+        dev.decoder_tolerance("keep_bad_header+bogus")
+    with pytest.raises(ValueError):
+        dev.decoder_tolerance(0x20)
+    assert P2.flag_names(0xE8, P2.SECTOR_FLAGS) == ["no header", "header checksum", "data checksum", "epilogue"]
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["tolerance", "any_track"]) == 0 and "0x04 any_track" in capsys.readouterr().out
+    assert cli.main(["tolerance"]) == 0 and "0x04 any_track" in capsys.readouterr().out
+    assert cli.main(["tolerance", "reset"]) == 0 and "strict" in capsys.readouterr().out
 
 
 def test_apple_gcr_options():

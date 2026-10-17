@@ -67,7 +67,27 @@ typedef struct {
     uint8_t head_ids;           /* IBM: bit h set for every head number seen in IDs */
     uint8_t period_divisor, phase_divisor;
     uint32_t header_errors, data_errors;
+    uint16_t tolerance;         /* MFM_TOL_* for formats 1-6; 0 after init (analysis sets it) */
+    bool id_seen;               /* an ID field completed (valid or not): its size code is known */
 } mfm_decoder_t;
+
+/* Tolerance flags for the IBM MFM, Amiga, FM, HP MMFM, Commodore and Macintosh decoders
+ * (1.18, ANALYSIS_JOB op 34).  Same bit values and meaning as the Apple II options; the
+ * error counters keep counting, the per-sector MFM_SF_* bits name what was tolerated. */
+#define MFM_TOL_KEEP_BAD_HEADER       0x0001u  /* ID/header with failed CRC or checksum is still used */
+#define MFM_TOL_IGNORE_EPILOGUES      0x0002u  /* Macintosh: DE AA trailers not required */
+#define MFM_TOL_ANY_TRACK             0x0004u  /* no geometry limits (track/sector ranges, Amiga format byte) */
+#define MFM_TOL_DATA_WITHOUT_CHECKSUM 0x0008u  /* a failed data CRC/checksum does not clear crc_ok */
+#define MFM_TOL_DATA_WITHOUT_HEADER   0x0010u  /* data field without a preceding valid ID: id c = r = 255 */
+#define MFM_TOL_MASK                  0x001Fu
+/* per-sector findings in mfm_decoder_t.sector_flags, every format (quality report flag byte);
+ * bits 1 (deleted data mark), 2 (HP defect mark) and 4 (coding error) are older */
+#define MFM_SF_NO_HEADER        0x08u   /* data field accepted without a valid ID field */
+#define MFM_SF_HEADER_CHECKSUM  0x20u   /* ID/header CRC or checksum failed (sector kept by flag) */
+#define MFM_SF_DATA_CHECKSUM    0x40u   /* data CRC/checksum failed */
+#define MFM_SF_EPILOGUE         0x80u   /* a trailer/epilogue did not match (GCR formats) */
+void mfm_set_tolerance(uint16_t flags);      /* value analysis decoders start with */
+uint16_t mfm_get_tolerance(void);
 
 /* Apple II 5.25-inch GCR (format 7) decoder options, 1.18: marks and tolerance flags
  * for copy-protected or damaged disks.  Wire format = memory layout (12 bytes). */
@@ -84,7 +104,8 @@ typedef struct __attribute__((packed)) {
 #define APPLE_GCR_DATA_WITHOUT_CHECKSUM   0x0008u  /* a wrong checksum nibble does not clear crc_ok */
 #define APPLE_GCR_DATA_WITHOUT_HEADER     0x0010u  /* accept a data field without a preceding valid header */
 #define APPLE_GCR_FLAG_MASK               0x001Fu
-/* per-sector diagnostic bits in mfm_decoder_t.sector_flags (OR-ed into the quality report) */
+/* per-sector diagnostic bits in mfm_decoder_t.sector_flags (OR-ed into the quality report);
+ * same values as MFM_SF_* so every format reports its findings in the same bits */
 #define APPLE_GCR_SF_ADDR_CHECKSUM  0x20u   /* header checksum failed (sector kept by flag) */
 #define APPLE_GCR_SF_DATA_CHECKSUM  0x40u   /* data checksum nibble failed */
 #define APPLE_GCR_SF_EPILOGUE       0x80u   /* an epilogue did not match */

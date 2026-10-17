@@ -338,6 +338,15 @@ int main(void){
     ao[2]=0x54;assert(ufi_analysis_command(ao,14,out,&size)==UFI_ERR_BAD_ARGS);
     assert(!ufi_analysis_command(ao,1,out,&size) && out[1]==0xd4 && out[11]==0x03);
     ao[2]=0xd5;ao[7]=0xad;ao[12]=0;assert(!ufi_analysis_command(ao,14,out,&size) && !out[11]);
+    /* Op 34: decoder tolerance flags for formats 1-6 - strict by default, schema and mask checked, busy refused */
+    uint8_t to[4]={34};assert(!ufi_analysis_command(to,1,out,&size) && size==3 && out[0]==1 && !out[1] && !out[2]);
+    to[1]=2;to[2]=1;assert(ufi_analysis_command(to,4,out,&size)==UFI_ERR_BAD_ARGS);
+    to[1]=1;to[2]=0x20;assert(ufi_analysis_command(to,4,out,&size)==UFI_ERR_BAD_ARGS);
+    to[2]=0x1f;busy=true;assert(ufi_analysis_command(to,4,out,&size)==UFI_ERR_BUSY);busy=false;
+    assert(!ufi_analysis_command(to,4,out,&size) && size==3 && out[1]==0x1f && !out[2] && mfm_get_tolerance()==0x1f);
+    assert(ufi_analysis_command(to,3,out,&size)==UFI_ERR_BAD_ARGS);
+    assert(!ufi_analysis_command(to,1,out,&size) && out[1]==0x1f);
+    to[2]=0;assert(!ufi_analysis_command(to,4,out,&size) && !out[1] && !mfm_get_tolerance());
     /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
     uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
     assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);
