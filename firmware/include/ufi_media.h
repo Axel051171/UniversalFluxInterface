@@ -13,6 +13,7 @@
 #define MEDIA_CHECK_HEADER_POSITION_MISMATCH 128u
 void ufi_drive_port_report(uint8_t out[24]);
 int ufi_drive_operating_profile(const uint8_t* input,uint8_t out[40]);
+int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]);   /* 1 factory, 2 conservative (1.18) */
 /* Reasons: step=1, geometry=2, format=4, rate=8, missing profile=16,
  * missing physical index=32, missing decode=64, missing expected RPM=128,
  * missing capture settings=256. */

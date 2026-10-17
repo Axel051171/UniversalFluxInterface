@@ -15,7 +15,8 @@
 #include "ufi_media.h"
 #include "ufi_capabilities.h"
 #include <string.h>
-static drive_extra_t extra_timing={0,0,20000,0,0,0};
+#define DEFAULT_EXTRA_INIT {0,0,20000,0,0,0}
+static drive_extra_t extra_timing=DEFAULT_EXTRA_INIT;
 static uint32_t motor_started_ms;
 static bool motor_step_pending;
 static void motor_step_wait(void){
@@ -37,11 +38,12 @@ static media_state_t media[DRIVE_TYPE_COUNT];
 
 // Timing-Konstanten (µs)
 // Timing (host-tunable per drive via UFI_CMD_DRIVE_TIMING, defaults = PC/Amiga safe values)
-static drive_timing_t g_timing = {
-    .step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 0,
-    .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000,
-    .motor_off_s = 30, .double_step = 0, .precomp_ns = PRECOMP_AUTO, .tg43 = 0,
-};
+#define DEFAULT_TIMING_INIT { \
+    .step_pulse_us = 10, .step_rate_us = 3000, .settle_us = 15000, .dir_change_us = 15000, \
+    .side_settle_us = 200, .spinup_ms = 500, .select_settle_us = 10000, \
+    .motor_off_s = 30, .double_step = 0, .precomp_ns = PRECOMP_AUTO, .tg43 = 0, \
+}
+static drive_timing_t g_timing = DEFAULT_TIMING_INIT;
 static void tg43_apply(uint32_t phys);
 #define STEP_PULSE_US       (g_timing.step_pulse_us)
 #define STEP_RATE_US        (g_timing.step_rate_us)
@@ -632,6 +634,33 @@ int ufi_drive_operating_profile(const uint8_t* input,uint8_t out[40])
     memset(out,0,40);out[0]=1;memcpy(out+1,&g_timing,22);memcpy(out+23,&extra_timing,12);
     out[35]=rpm_line;out[36]=rpm_360_low;memcpy(out+37,&rpm_set,2);
     out[39]=operating_profiles[g_current_drive][39];return UFI_OK;
+}
+
+/* Named timing presets (1.18): 1 = factory defaults, 2 = conservative (the KryoFlux 3.00
+ * defaults: step 8 ms, head settle 40 ms, 38 ms on direction reversal, 1 ms side select,
+ * 800 ms spin-up, 60 ms drive select, 200 ms motor-to-first-step, density settle capped at
+ * the 60 ms field limit).  Only the movement/settle timings change; step pulse, motor-off,
+ * double step, precompensation, TG43, write settle, WGATE margins and the RPM line keep their
+ * current values.  Sets the effective values like TIMING/Op 10 do and does not touch the
+ * stored per-drive profile; the reply is the effective 40-byte profile. */
+int ufi_drive_operating_preset(uint8_t id,uint8_t out[40])
+{
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
+    if(id<1 || id>2)return UFI_ERR_BAD_ARGS;
+    drive_timing_t t=g_timing;drive_extra_t e=extra_timing;
+    if(id==1){
+        const drive_timing_t d=DEFAULT_TIMING_INIT;const drive_extra_t x=DEFAULT_EXTRA_INIT;
+        t.step_rate_us=d.step_rate_us;t.settle_us=d.settle_us;t.dir_change_us=d.dir_change_us;
+        t.side_settle_us=d.side_settle_us;t.spinup_ms=d.spinup_ms;t.select_settle_us=d.select_settle_us;
+        e.density_us=x.density_us;e.motor_step_ms=x.motor_step_ms;
+    }else{
+        t.step_rate_us=8000;t.settle_us=40000;t.dir_change_us=38000;
+        t.side_settle_us=1000;t.spinup_ms=800;t.select_settle_us=60000;
+        e.density_us=60000;e.motor_step_ms=200;
+    }
+    ufi_drive_set_timing(&t);
+    (void)ufi_drive_extra_set(&e);
+    return ufi_drive_operating_profile(NULL,out);
 }
 
 int ufi_drive_select_native(drive_type_t type)

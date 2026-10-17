@@ -446,9 +446,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         for(unsigned i=0;i<6;i++)wr(out+16+4*i,rates[i]);
         out[40]=80;out[41]=16;out[42]=12;out[43]=8;out[44]=12;*size=48;return UFI_OK;
     }
-    if(p[0]==18 && (n==1 || n==41)){
+    if(p[0]==18 && (n==1 || n==2 || n==41)){
         if(n>1 && (ufi_operation_busy() || ufi_job_live()))return UFI_ERR_BUSY;
-        int ret=ufi_drive_operating_profile(n>1?p+1:NULL,out);
+        /* n == 2: named timing preset (1 factory, 2 conservative) - effective values only */
+        int ret=n==2?ufi_drive_operating_preset(p[1],out):ufi_drive_operating_profile(n>1?p+1:NULL,out);
         if(!ret)*size=40;
         return ret;
     }

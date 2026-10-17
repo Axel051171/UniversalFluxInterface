@@ -671,6 +671,28 @@ stubs (a report length above the given capacity, an oversized internal end paylo
 and were corrected in the harness; the firmware was not changed. No firmware
 behaviour changed in this step, so the protocol document is unchanged.
 
+## Timing presets from the KryoFlux reconstruction — 2026-10-17
+
+The Ghidra pass over the KryoFlux 3.00 image (`REA_Firmware_Analyse_2026-10-17.md`)
+recovered the firmware's drive timing defaults. UFI already had every corresponding
+parameter (TIMING 0x15, additional drive times op 10, stored per-drive profiles op 18),
+so the adoption is a named preset rather than new fields:
+
+- `ANALYSIS_JOB [18, id]` applies a timing set and answers with the effective 40-byte
+  profile: 1 = factory, 2 = conservative (step 8 ms, head settle 40 ms, 38 ms on direction
+  reversal, 1 ms side select, 800 ms spin-up, 60 ms drive select, 200 ms motor-to-step,
+  density settle capped at 60 ms). Only movement/settle times change; the stored profile,
+  step pulse, precompensation, TG43, write settle, WGATE margins and the RPM line stay.
+- Factory default `dir_change_us` is now 15 ms (was 0): a head that reverses direction
+  without settling mis-tracks on older mechanisms; the preset keeps the cost at one seek.
+- Host: `ufi extra` (op 10), `ufi profile [standard|konservativ|save]` (op 18), wrappers
+  `extra_timing()`, `operating_profile()`, `operating_profile_store()`, `timing_preset()`.
+- Not adopted: KryoFlux's text replies and control-request protocol, the bypass line
+  (no hardware), the 86-step recalibration (UFI's three-phase TRK00 search is stricter).
+
+Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
+(`test_extra_timing_profile_and_presets`), the offline gate, ARM build and static analysis.
+
 `firmware/tests/coverage.py` measures line and branch coverage (clang, llvm-cov) of
 every native whole-unit build: the runner, the five corpora and the v2 fuzzer corpus
 replay. First measurement: 96.1 % lines, 83.2 % branches over 18 modules; `ufi_v2.c`

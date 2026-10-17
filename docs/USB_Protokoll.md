@@ -331,7 +331,7 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 - **INDEX_SIM (1.13):** Open-Drain-Ausgang auf J9 Pin 6 (PE1) mit `rpm` Impulsen je Minute, Impuls = Low für `pulse_us`. Für Flippy-Disketten: Draht an den Indexsensor-Ausgang eines PC-Laufwerks, das ohne Index nicht schreibt. Derselbe Pin ist die SD-Stellung des Betriebsart-Schalters an J13: steht der Schalter auf SD, antwortet INDEX_SIM mit Status 1; solange die Simulation läuft, wird der Schalter dort als „nicht SD“ gelesen. Die Antwort enthält immer den aktuellen Zustand (auch bei Status 16 für `rpm` außerhalb 200–400, `pulse_us` ≥ halbe Umdrehung oder unbekannte `mode`-Bits). **`mode` Bit1 intern (1.14):** Der Impulsbeginn gilt im Lese- und Schreibpfad als Indeximpuls (READ-Umdrehungen, WRITE-Start und -Ende, ERASE, DIAG_RPM); die INDEX-Leitung des Laufwerks wird solange ignoriert, damit ein über den Draht zurückgespiegelter Impuls nicht doppelt zählt. Ohne Bit0 bleibt J9 Pin 6 Eingang (Betriebsart-Schalter weiter nutzbar). `UFI.CFG index_sim_mode=pin|internal|both`.
 - **SELFTEST (1.14):** blockierend (etwa 0,5 s), nicht während READ/WRITE/Dump. Posten: 1 `timer` TIM2-Takte je ms gegen SysTick (275 000 ± 2 %); 2 `usb_sof` Quarzabweichung in ppm gegen 128 USB-Rahmen des Hosts (2 = nicht enumeriert, Warnung ab ±500 ppm); 3 `psram` Größe des Flussspeichers, frischer Mustertest über die obersten 64 KB (Fehler: `value` = Offset); 4 `sd` Kapazität in MB; 5/6 `rail_5v`/`rail_12v` Strom in mA (1 = Überstrom ausgelöst, 2 = abgeschaltet/Sicherheitsmodus); 7 `board_id` Teiler in mV (3 = keine bekannte Revision); 8 `usbc_cc` beworbener Strom in mA (3 = kein CC, USB-A-Kabel); 9 `fdd_lines` Laufwerkseingänge ohne gewähltes Laufwerk, Bitmaske der Leitungen auf Low (Bit0 INDEX, 1 TRK0, 2 WPROT, 3 DSKCHG, 4 READY, 5 RDATA; 3 = etwas zieht, z. B. ein angeschlossenes Laufwerk; 2 = Laufwerk gewählt); 10 `iec_loop` Rückschleife durch die IEC-Treiber/Empfänger (Bit0–3 ATN/CLK/DATA/SRQ nicht als gezogen gelesen = Fehler, Bit4–7 nicht als losgelassen gelesen = Warnung, RESET bleibt unberührt); 11 `index_loop` Indexsimulation 300 U/min auf J9 Pin 6, Impuls muss binnen 250 ms auf INDEX erscheinen (Draht J9-6 → J6-8; 2 = kein Draht oder Schalter auf SD); 12 `last_reset` Absturzaufzeichnung beim Start (`value` 1 HardFault, 2 MemManage, 3 BusFault, 4 UsageFault; 3 = vorhanden); 13 `stack_free` seit dem Start nie benutzte Stack-Bytes (beim Start wird das freie DTCM unter dem Stackzeiger mit einem Muster gefüllt; 3 unter 2 KB, 1 unter 512 Byte; der Linker prüft, dass die DTCM-Daten mindestens 16 KiB Stack frei lassen); 14 `log` `SELFTEST.LOG` geschrieben (`value` = Bytes). Dieselbe Tabelle steht als Text in `SELFTEST.LOG`.
 - **Absturzaufzeichnung (1.14):** Ein Cortex-M-Fault legt Register (r0–r3, r12, lr, pc, xpsr), CFSR/HFSR/MMFAR/BFAR und die Laufzeit im DTCM ab und löst sofort einen Reset aus (statt bis zum Watchdog zu hängen). Beim nächsten Start schreibt die Firmware `CRASH.LOG` (nur der letzte Fault, per READ_FILE abholbar) und INFO meldet in der fünften Textzeile `reset: HardFault pc=… lr=… cfsr=… (CRASH.LOG)`; sonst steht dort die Reset-Ursache (`power-on`, `pin`, `software`, `watchdog`, `brown-out`).
-- **TIMING / TG43 (1.16):** Die Zeitwerte sind 11 × u16: `step_pulse_us, step_rate_us, settle_us, dir_change_us, side_settle_us, spinup_ms, select_settle_us, motor_off_s, double_step, precomp_ns, tg43`. Mit `tg43` = 1 folgt die DENSITY-Leitung (J6 Pin 2) nach jedem Positionieren und Rekalibrieren der physischen Spur: ab Spur 43 gezogen (low), darunter losgelassen. Auf dem 50-poligen Bus eines 8-Zoll-Laufwerks ist Pin 2 des Adapters TG43 („track greater than 43“), das den Schreibstrom auf den inneren Spuren senkt; ohne das Signal sind Schreibvorgänge dort unzuverlässig. Nicht zusammen mit `rpm_line=density` (dann hat die Drehzahlwahl Vorrang) und nicht am Apple-Port. `UFI.CFG tg43=1` setzt das Feld beim Start, LINES (0x16) überschreibt den Pegel bis zum nächsten Positionieren. Ältere Hosts senden 10 Felder und lassen `tg43` unberührt.
+- **TIMING / TG43 (1.16):** Die Zeitwerte sind 11 × u16: `step_pulse_us, step_rate_us, settle_us, dir_change_us, side_settle_us, spinup_ms, select_settle_us, motor_off_s, double_step, precomp_ns, tg43`. Mit `tg43` = 1 folgt die DENSITY-Leitung (J6 Pin 2) nach jedem Positionieren und Rekalibrieren der physischen Spur: ab Spur 43 gezogen (low), darunter losgelassen. Auf dem 50-poligen Bus eines 8-Zoll-Laufwerks ist Pin 2 des Adapters TG43 („track greater than 43“), das den Schreibstrom auf den inneren Spuren senkt; ohne das Signal sind Schreibvorgänge dort unzuverlässig. Nicht zusammen mit `rpm_line=density` (dann hat die Drehzahlwahl Vorrang) und nicht am Apple-Port. `UFI.CFG tg43=1` setzt das Feld beim Start, LINES (0x16) überschreibt den Pegel bis zum nächsten Positionieren. Ältere Hosts senden 10 Felder und lassen `tg43` unberührt. Standardwerte: 10 µs, 3 ms, 15 ms, 15 ms (ab 1.18, zuvor 0: Beruhigung bei Richtungsumkehr), 200 µs, 500 ms, 10 ms, 30 s, 0, 0xFFFF, 0. Benannte Sätze (Standard, Konservativ) setzt ANALYSIS_JOB Op 18 (4.15).
 - **Nicht in v2:** Timer-/GPIO-Diagnose gibt es nur in v1; die Drehzahl liefern DIAG_RPM und ANALYZE.
 
 ### Ergänzungen ab Firmware 1.18-dev
@@ -1085,7 +1085,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 12 | 1 | Fähigkeiten der Vergleichs-/Wiederholungserweiterung (4.12), 32 Bytes |
 | 13 | 1 | Laufwerks-/Medienstatus, 40 Bytes (4.13) |
 | 17 | 1 | Portbelegung, Leitungskonflikte und Schreibgrenzen, 24 Bytes (4.15; INFO Bit28) |
-| 18 | 1 / 41 | Wirksame Betriebseinstellungen lesen / pro Laufwerk speichern und anwenden, 40 Bytes Antwort (4.15) |
+| 18 | 1 / 2 / 41 | Wirksame Betriebseinstellungen lesen / Zeit-Voreinstellung anwenden (1.18) / pro Laufwerk speichern und anwenden, 40 Bytes Antwort (4.15) |
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (4.16; INFO Bit29) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
@@ -1887,6 +1887,28 @@ Bei aktivem Motor wartet eine gesetzte Drehzahl die konfigurierte Anlaufzeit.
 Unbelegte DENSITY/DRATE-Ausgänge werden beim Anwenden freigegeben; DRATE wird
 auf dem Shugart-DS-Bus nicht verändert. TG43 berücksichtigt eine gültige
 physische Kopfposition. Apple erhält keine Änderungen an diesen FDD-Ausgängen.
+
+**Zeit-Voreinstellungen (1.18):** `[18, id]` (exakt 2 Bytes) setzt die
+Bewegungs- und Beruhigungszeiten auf einen benannten Satz und antwortet wie
+`[18]` mit den wirksamen 40 Bytes. Nur `step_rate_us`, `settle_us`,
+`dir_change_us`, `side_settle_us`, `spinup_ms`, `select_settle_us` sowie die
+Zusatzzeiten 0 (Umschaltwartezeit) und 1 (Motorstart bis erster Schritt) ändern
+sich; STEP-Pulsdauer, Motor-Aus, Schrittfaktor, Precomp, TG43, Schreibberuhigung,
+Schreibfreigabe-Ränder, Drehzahlleitung und das gespeicherte Profil bleiben
+unverändert. Zum Speichern anschließend `[18, profile[40]]` senden. NONE/IEC:
+NO_DRIVE; unbekannte Kennung: BAD_ARGS; aktive Operation oder Integritätsjob:
+BUSY.
+
+| id | Name | step_rate | settle | dir_change | side_settle | spinup | select_settle | Umschalt | Motor→Schritt |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | Standard | 3 ms | 15 ms | 15 ms | 200 µs | 500 ms | 10 ms | 0 | 0 |
+| 2 | Konservativ | 8 ms | 40 ms | 38 ms | 1 ms | 800 ms | 60 ms | 60 ms | 200 ms |
+
+„Konservativ" entspricht den Standardwerten der KryoFlux-Firmware 3.00
+(`REA_Firmware_Analyse_2026-10-17.md`); deren Dichte-Wartezeit von 500 ms ist
+durch die Feldgrenze auf 60 ms gekappt. Gedacht für alte oder langsame
+Laufwerke, bei denen Spurfehler nach Richtungsumkehr oder nach dem Positionieren
+auftreten.
 
 Das gespeicherte Profil wird bei **nativer SELECT-Auswahl** dieses Laufwerks
 wieder angewendet. Das gilt für v2 und das ältere native Protokoll. Profile

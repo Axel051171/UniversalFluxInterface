@@ -32,6 +32,8 @@ int ufi_file_write(const char* name,uint32_t offset,bool create,const uint8_t* d
 static uint8_t port_conflicts;
 void ufi_drive_port_report(uint8_t p[24]){memset(p,0,24);p[0]=1;p[7]=port_conflicts;}
 int ufi_drive_operating_profile(const uint8_t* p,uint8_t out[40]){(void)p;memset(out,0,40);out[0]=1;return 0;}
+static uint8_t preset_applied;
+int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]){if(id<1||id>2)return UFI_ERR_BAD_ARGS;preset_applied=id;memset(out,0,40);out[0]=1;out[1]=id;return 0;}
 uint32_t ufi_drive_media_token(void){return media_token;}
 bool ufi_drive_media_matches(uint32_t t){return t==media_token;}
 void ufi_drive_media_status(uint8_t p[40]){memset(p,0,40);p[0]=1;memcpy(p+4,&media_token,4);}
@@ -320,7 +322,14 @@ int main(void){
     assert(!ufi_analysis_command(persist,28,out,&size) && plan.cursor==0 && plan.sequence==1);
     memset(&plan,0,sizeof(plan));saved_slots[1][50]^=1;
     assert(ufi_analysis_command(persist,28,out,&size)==UFI_ERR_STORAGE && !plan.id);
-    puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding and cancel passed");
+    /* Op 18 timing presets (1.18): [18, id] applies, 1/2 valid, others BAD_ARGS, three-byte form rejected. */
+    uint8_t preset[3]={18,2,0};
+    assert(!ufi_analysis_command(preset,2,out,&size) && size==40 && out[1]==2 && preset_applied==2);
+    preset[1]=1;assert(!ufi_analysis_command(preset,2,out,&size) && preset_applied==1);
+    preset[1]=3;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS && preset_applied==1);
+    preset[1]=0;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS);
+    preset[1]=2;assert(ufi_analysis_command(preset,3,out,&size)==UFI_ERR_BAD_ARGS);
+    puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding, cancel and timing presets passed");
 }
 '''
     run('regression_analysis_job',code,('src/ufi_mfm.c','src/ufi_verify.c','src/ufi_compare.c','src/ufi_quality.c','src/ufi_evidence.c','src/ufi_drive_extra.c','src/ufi_media.c','src/ufi_capabilities.c'))
