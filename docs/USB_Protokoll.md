@@ -34,6 +34,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.4 Portbelegung und gespeicherte Betriebsprofile (INFO Bit28, 2026-10-16)
   - 4.5 Mediengebundene Starts und robuste Anfrageprüfung
   - 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
+  - 4.7 Flagmasken-Abfrage (Op 38, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -426,7 +427,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–37), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–38), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1277,6 +1278,32 @@ das eigenständige Schreiben per Taster sind ebenfalls wie beim Jumper blockiert
 Host: `write_lock(engage=False)` liefert `{'session', 'jumper', 'locked'}`, `ufi write-lock
 [engage]`; `BoardStatus.session_locked` liest Bit7. FakeV2 modelliert Op 37, Bit7 und die
 Abweisungen mit 22.
+
+### 4.7 Flagmasken-Abfrage (Op 38, 1.18-dev)
+
+Ein Werkzeug soll genau die Optionen anbieten, die diese Firmware annimmt, ohne sie aus
+Versionsnummern abzuleiten. `0x0F [38]` liefert 16 Bytes; alle Werte sind die Konstanten,
+mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
+
+| Offset | Typ | Inhalt | Stand 1.18-dev |
+|---:|---|---|---|
+| 0 | u8 | Schema | 1 |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0x07 |
+| 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
+| 3 | u8 | WRITE `flags2` | 0x01 |
+| 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
+| 5 | u8 | höchster Formathinweis | 7 |
+| 6 | u16 | Op-33-Flags (Apple-GCR) | 0x003F |
+| 8 | u16 | Op-34-Toleranzflags | 0x001F |
+| 10 | u16 | QUALITY-Merkmale (`features`, Op 1 Länge 37) | 0x0007 |
+| 12 | u16 | Diagnoseflags (`diagnostic_flags`, 5.2) | 0x0018 |
+| 14 | u8 | Positionsbyte der Analyse (Seite, Viertelspurmodus, Viertel) | 0xB1 |
+| 15 | u8 | reserviert | 0 |
+
+Reine Abfrage: auch während Dump, Jobs oder gehaltener Ressource beantwortet, nie BUSY;
+jede Nutzlast nach dem Op-Byte → BAD_ARGS. Eine Maske sagt nur, welche Bits der Parser
+kennt; Kombinationsregeln (DETAIL-Pflicht, Bit 6/7 nur mit 0x21, Apple-Bedingungen) stehen
+bei den Kommandos. Host: `flag_masks()`, `ufi masks`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2384,6 +2411,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 274 Bytes, Schema 2 (5.7) |
 | 36 | 1 / 66 | Apple-II-6-and-2-Symboltabelle lesen / setzen, 65 Bytes Antwort (5.7) |
 | 37 | 1 / 2 | Sitzungs-Schreibsperre abfragen / einschalten (`[37, 1]`), 2 Bytes Antwort; kein Ausschalten über USB (4.6) |
+| 38 | 1 | Flagmasken, die die Anfrageparser annehmen, 16 Bytes (4.7); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

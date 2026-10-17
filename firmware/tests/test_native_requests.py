@@ -4,6 +4,7 @@ from test_regressions import BASE, ERRORS, function, run
 
 def main():
     code = BASE + ERRORS + r'''
+#include "ufi_capabilities.h"
 #define REVOLUTIONS_STREAM 8u
 #define FLUX_TIMER_FREQ 275000000u
 enum {JOB_OPEN};

@@ -482,6 +482,18 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[0]=1;out[1]=(uint8_t)((ufi_board_soft_locked()?1u:0u)|(ufi_board_jumper_locked()?2u:0u));
         *size=2;return UFI_OK;
     }
+    if(p[0]==38 && n==1){
+        /* Flag masks the request parsers accept (4.7): one answer for every GUI checkbox */
+        memset(out,0,16);out[0]=1;
+        out[1]=UFI_V2_READ_FLAG_MASK;out[2]=UFI_V2_WRITE_FLAG_MASK;out[3]=UFI_V2_WRITE_FLAGS2_MASK;
+        out[4]=UFI_V2_ANALYZE_FLAG_MASK;out[5]=UFI_V2_FORMAT_HINT_MAX;
+        out[6]=(uint8_t)APPLE_GCR_FLAG_MASK;out[7]=(uint8_t)(APPLE_GCR_FLAG_MASK>>8);
+        out[8]=(uint8_t)MFM_TOL_MASK;out[9]=(uint8_t)(MFM_TOL_MASK>>8);
+        out[10]=(uint8_t)QUALITY_FEATURE_MASK;out[11]=(uint8_t)(QUALITY_FEATURE_MASK>>8);
+        out[12]=(uint8_t)EVIDENCE_MASK;out[13]=(uint8_t)(EVIDENCE_MASK>>8);
+        out[14]=UFI_V2_POSITION_MASK;
+        *size=16;return UFI_OK;
+    }
     if(p[0]==35 && n==1){
         /* Apple II nibble statistics of the last format 7 analysis: 178 bytes, revs 0 = none yet */
         memcpy(out,mfm_apple_stats(),sizeof(apple_stats_t));*size=sizeof(apple_stats_t);return UFI_OK;

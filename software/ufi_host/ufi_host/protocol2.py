@@ -942,6 +942,18 @@ class Device2:
             info["read_start"], info["read_data"] = reply[16], reply[17]
         return info
 
+    def flag_masks(self) -> dict:
+        """Op 38 (firmware 1.18, 4.7): the request flag masks the parsers accept, taken from the
+        parser constants, so a GUI enables exactly the options this firmware takes."""
+        reply = self.analysis_op(38)
+        if len(reply) < 16 or reply[0] != 1:
+            raise DeviceError("flag masks: unexpected reply")
+        apple, tolerance, features, diagnostics = struct.unpack_from("<HHHH", reply, 6)
+        return {"read_flags": reply[1], "write_flags": reply[2], "write_flags2": reply[3],
+                "analyze_flags": reply[4], "format_hint_max": reply[5], "apple_gcr_flags": apple,
+                "tolerance_flags": tolerance, "quality_features": features, "diagnostic_flags": diagnostics,
+                "position_byte": reply[14]}
+
     def write_lock(self, engage: bool = False) -> dict:
         """Session write lock (op 37, firmware 1.18).  engage=True engages it; there is no
         disengage over USB, only an MCU reset clears it.  Returns {'session': bool,

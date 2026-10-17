@@ -208,6 +208,9 @@ class FakeV2:
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
+            r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
+              bytes([1, 0x07, 0xFF, 0x01, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -990,6 +993,22 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_flag_masks(monkeypatch, capsys):
+    """Op 38: one 16-byte answer with every request mask the parsers accept."""
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.flag_masks() == {"read_flags": 0x07, "write_flags": 0xFF, "write_flags2": 0x01, "analyze_flags": 0xFF,
+                                "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
+                                "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
+    assert fake.requests[-1].payload == bytes([38])
+    assert dev.flag_masks()["apple_gcr_flags"] == max(P2.APPLE_GCR_FLAGS.values()) * 2 - 1    # every host name fits the mask
+    assert dev.flag_masks()["tolerance_flags"] == sum(P2.TOLERANCE_FLAGS.values())
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["masks"]) == 0
+    out = capsys.readouterr().out
+    assert "write_flags2       0x0001" in out and "format_hint_max    7" in out
 
 
 def test_end_generation_block():

@@ -956,3 +956,15 @@ with status 16 before WGATE, longer sources end with verify level 3; the generat
 and `erased_ticks` follow in both cases. Host test `test_firmware_verify_modelled`.
 UFT's bridge instantiates `GuardedDevice` for the media-bound starts and may lower the
 threshold per run.
+
+## Flag masks in one answer — 2026-10-17
+
+First item of UFT's second list. ANALYSIS_JOB op 38 returns 16 bytes with every request
+mask the parsers accept: READ flags, WRITE flags, WRITE flags2, analysis flags, highest
+format hint, op 33 Apple mask, op 34 tolerance mask, QUALITY feature mask, diagnostic
+flags mask and the analysis position byte. The READ/WRITE/flags2/analysis/position masks
+moved into `ufi_capabilities.h` and the parsers check against those same constants, so the
+answer cannot drift from the code; the other values are the existing module masks.
+Read-only, never BUSY, payload after the op byte is BAD_ARGS. Native test in
+`test_analysis_job.py`; host `flag_masks()`, `ufi masks`, FakeV2 op 38 with a test that
+the host flag-name tables fit the masks. Protocol doc 4.7 and op table.

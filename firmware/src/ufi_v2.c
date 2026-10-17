@@ -458,7 +458,7 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         return UFI_ERR_BAD_ARGS;
     }
     const uint8_t flags=len>=4u?p[3]:0;
-    if((flags&~7u) || (len==7u && !(flags&2u)))return UFI_ERR_BAD_ARGS;
+    if((flags&~UFI_V2_READ_FLAG_MASK) || (len==7u && !(flags&2u)))return UFI_ERR_BAD_ARGS;
     uint8_t revs = p[2];
     if (revs == 0) revs = 1;
     if (revs > REVOLUTIONS_STREAM) revs = REVOLUTIONS_STREAM;
@@ -563,7 +563,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     uint8_t flags2 = 0;
     if (len == at + 1u) {
         flags2 = p[at++];
-        if (flags2 & ~0x01u) return UFI_ERR_BAD_ARGS;
+        if (flags2 & ~UFI_V2_WRITE_FLAGS2_MASK) return UFI_ERR_BAD_ARGS;
         if ((flags2 & 0x01u) && ufi_drive_is_apple()) return UFI_ERR_NOT_IMPL;   /* no index on that path */
     }
     if (len!=at) return UFI_ERR_BAD_ARGS;
