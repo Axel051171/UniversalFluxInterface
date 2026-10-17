@@ -270,7 +270,13 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
             case 20: (void)ufi_drive_seek_q(fuzz_byte() % 40u, fuzz_byte() & 3u); break;
             case 21: (void)ufi_drive_apple_step(fuzz_bit() ? 1 : -1); break;
             case 22: { bool c, p; (void)ufi_drive_check_disk(&c, &p); (void)ufi_drive_write_protected(); (void)ufi_drive_disk_changed(); (void)ufi_drive_ready(); break; }
-            default: { uint32_t id; (void)ufi_drive_amiga_id(&id); (void)ufi_drive_motor_is_on(); (void)ufi_drive_get_rpm(); (void)ufi_drive_rpm_line(); break; }
+            default: {
+                uint32_t id;
+                (void)ufi_drive_amiga_id(&id); (void)ufi_drive_motor_is_on(); (void)ufi_drive_get_rpm(); (void)ufi_drive_rpm_line();
+                ufi_drive_media_observed(fuzz_byte(), fuzz_u32());      /* format/rate learnt from a capture */
+                (void)ufi_drive_media_matches(fuzz_bit() ? ufi_drive_media_token() : fuzz_u32());
+                break;
+            }
         }
     }
     ufi_drive_safe_state();

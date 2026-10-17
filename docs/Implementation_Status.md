@@ -716,6 +716,12 @@ Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
   some inputs and carry a few damaged spots, `ufi_flux_capture_start/stop` and the drive
   timing are modelled, so `probe_double_step`, `ds_sector`, `recapture` and
   `search_track` are reachable.
+- Long fuzz runs, 301 s per target, no finding: drive 2.2 M, SD 29.5 k, v2 5.6 M,
+  Greaseweazle 10.2 M, parsers 13.3 M executions. Coverage with the new target:
+  95.9 % lines / 85.9 % branches over 21 modules (was 93.9 / 82.4 over 20);
+  `ufi_dump.c` 93.0 / 80.4 (was 87.9 / 75.2) with `search_track` and `ds_sector` fully,
+  `probe_double_step` and `recapture` partly reached; `ufi_drive.c` 97.5 / 90.6, the
+  profile file code and the presets fully. 35 of 56 modules remain unmeasured (HAL-bound).
 - Host: all `zip()` calls carry an explicit `strict=` (ruff B905), the two deliberately
   truncating pairings in `hfe.py` say so; one unused loop variable and one late-binding
   lambda in `cli.py` fixed; ruff `--select F,B` is clean for the package.
