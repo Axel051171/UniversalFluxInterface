@@ -1911,8 +1911,21 @@ Laufwerke, bei denen Spurfehler nach Richtungsumkehr oder nach dem Positionieren
 auftreten.
 
 Das gespeicherte Profil wird bei **nativer SELECT-Auswahl** dieses Laufwerks
-wieder angewendet. Das gilt für v2 und das ältere native Protokoll. Profile
-sind flüchtig; für jedes verwendete Laufwerk einmal ausdrücklich anlegen.
+wieder angewendet. Das gilt für v2 und das ältere native Protokoll.
+
+**Ablage auf SD (1.18):** Jedes erfolgreiche `[18, profile[40]]` schreibt alle
+gespeicherten Profile in `UFIPROF.BIN` im Wurzelverzeichnis der SD (8 Byte Kopf
+`UFIPROF` + Schema 1, dann je Laufwerkstyp 40 Byte in Enum-Reihenfolge, dann
+CRC-32 (IEEE) über alles davor; 492 Byte). Schlägt das Schreiben fehl, bleibt
+das Profil im RAM wirksam und gespeichert, die Antwort ist der Speicherstatus
+(STORAGE oder der SD-Fehler). Beim Start werden die Profile nach `UFI.CFG`
+gelesen; Datei fehlend, falsche Größe, falsche CRC oder Schema → keine Profile;
+ein einzelner Eintrag, der die laufwerksunabhängige Formprüfung nicht besteht
+(Schema, STEP-Puls, Schrittfaktor/TG43 0/1, Zusatzzeitengrenzen, Leitung/RPM
+passend), wird verworfen. Die laufwerksabhängige Prüfung erfolgt weiterhin beim
+Anwenden durch SELECT. Zum Vergessen aller Profile die Datei löschen
+(`ufi rm UFIPROF.BIN`) und neu starten; Zeit-Voreinstellungen und einzelne
+TIMING-/Op-10-Änderungen schreiben die Datei nicht.
 Ohne gespeichertes Profil bleibt das bisherige Verhalten mit gemeinsamen
 Einstellungen erhalten. Einzelne TIMING-/RPM-/Op-10-Änderungen verändern die
 wirksamen Werte, überschreiben aber nicht automatisch das gespeicherte Profil;

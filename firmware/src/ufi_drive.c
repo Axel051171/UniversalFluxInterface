@@ -12,6 +12,7 @@
 
 #include "ufi_firmware.h"
 #include "ufi_drive_extra.h"
+#include "ufi_verify.h"             /* ufi_crc32 for the stored profile file */
 #include "ufi_media.h"
 #include "ufi_capabilities.h"
 #include <string.h>
@@ -171,6 +172,10 @@ static int apl_seek(uint8_t track)
 
 int ufi_drive_apple_step(int direction)
 {
+    /* Apple port only: on any other drive the phase lines move nothing, and the
+     * recalibration below would mark that drive's position valid (found by fuzz_drive). */
+    if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
+    if(!is_apple(g_current_drive))return UFI_ERR_NOT_IMPL;
     if(!media[g_current_drive].position_valid)return apl_recalibrate();
     const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
     if (qt < 0) {
@@ -661,6 +666,49 @@ int ufi_drive_operating_preset(uint8_t id,uint8_t out[40])
     ufi_drive_set_timing(&t);
     (void)ufi_drive_extra_set(&e);
     return ufi_drive_operating_profile(NULL,out);
+}
+
+/* Stored operating profiles survive a restart in UFIPROF.BIN on the SD NAND (1.18):
+ * "UFIPROF" + schema byte 1, DRIVE_TYPE_COUNT x 40 profile bytes, CRC32 (IEEE) over all
+ * of it.  Written when Op 18 stores a profile, read once after UFI.CFG.  A missing,
+ * short, damaged or differently sized file leaves the profiles empty; a slot that does
+ * not pass the drive-independent shape check is dropped on its own. */
+#define PROFILE_FILE        "UFIPROF.BIN"
+#define PROFILE_FILE_SIZE   (8u + 40u * DRIVE_TYPE_COUNT + 4u)
+
+static bool profile_shape_ok(const uint8_t* p)
+{
+    drive_timing_t t;drive_extra_t e;uint16_t rpm;
+    memcpy(&t,p+1,22);memcpy(&e,p+23,12);memcpy(&rpm,p+37,2);
+    return p[0]==1 && p[39]==1 && t.step_pulse_us && t.double_step<=1 && t.tg43<=1 &&
+        drive_extra_valid(&e) && p[35]<=2 && p[36]<=1 && (rpm==0 || rpm==300 || rpm==360) &&
+        ((rpm!=0)==(p[35]!=0));
+}
+
+int ufi_drive_profiles_save(void)
+{
+    uint8_t buf[PROFILE_FILE_SIZE];
+    memcpy(buf,"UFIPROF",7);buf[7]=1;
+    for(unsigned i=0;i<DRIVE_TYPE_COUNT;i++)memcpy(buf+8+40*i,operating_profiles[i],40);
+    const uint32_t crc=ufi_crc32(0,buf,PROFILE_FILE_SIZE-4u);
+    memcpy(buf+PROFILE_FILE_SIZE-4u,&crc,4);
+    uint16_t written=0;
+    const int ret=ufi_file_write(PROFILE_FILE,0,true,buf,PROFILE_FILE_SIZE,&written);
+    return ret?ret:(written==PROFILE_FILE_SIZE?UFI_OK:UFI_ERR_STORAGE);
+}
+
+void ufi_drive_profiles_load(void)
+{
+    uint8_t buf[PROFILE_FILE_SIZE+1];uint16_t got=0;
+    if(ufi_file_read(PROFILE_FILE,0,buf,sizeof buf,&got) || got!=PROFILE_FILE_SIZE ||
+       memcmp(buf,"UFIPROF",7) || buf[7]!=1)return;
+    uint32_t crc;memcpy(&crc,buf+PROFILE_FILE_SIZE-4u,4);
+    if(crc!=ufi_crc32(0,buf,PROFILE_FILE_SIZE-4u))return;
+    for(unsigned i=0;i<DRIVE_TYPE_COUNT;i++){
+        const uint8_t* p=buf+8+40*i;
+        if(profile_shape_ok(p))memcpy(operating_profiles[i],p,40);
+        else memset(operating_profiles[i],0,40);
+    }
 }
 
 int ufi_drive_select_native(drive_type_t type)

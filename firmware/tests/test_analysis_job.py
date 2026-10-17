@@ -32,7 +32,8 @@ int ufi_file_write(const char* name,uint32_t offset,bool create,const uint8_t* d
 static uint8_t port_conflicts;
 void ufi_drive_port_report(uint8_t p[24]){memset(p,0,24);p[0]=1;p[7]=port_conflicts;}
 int ufi_drive_operating_profile(const uint8_t* p,uint8_t out[40]){(void)p;memset(out,0,40);out[0]=1;return 0;}
-static uint8_t preset_applied;
+static uint8_t preset_applied,profiles_saved;
+int ufi_drive_profiles_save(void){profiles_saved++;return 0;}
 int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]){if(id<1||id>2)return UFI_ERR_BAD_ARGS;preset_applied=id;memset(out,0,40);out[0]=1;out[1]=id;return 0;}
 uint32_t ufi_drive_media_token(void){return media_token;}
 bool ufi_drive_media_matches(uint32_t t){return t==media_token;}
@@ -329,6 +330,9 @@ int main(void){
     preset[1]=3;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS && preset_applied==1);
     preset[1]=0;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS);
     preset[1]=2;assert(ufi_analysis_command(preset,3,out,&size)==UFI_ERR_BAD_ARGS);
+    /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
+    uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
+    assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);
     puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding, cancel and timing presets passed");
 }
 '''

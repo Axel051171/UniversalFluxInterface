@@ -450,6 +450,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         if(n>1 && (ufi_operation_busy() || ufi_job_live()))return UFI_ERR_BUSY;
         /* n == 2: named timing preset (1 factory, 2 conservative) - effective values only */
         int ret=n==2?ufi_drive_operating_preset(p[1],out):ufi_drive_operating_profile(n>1?p+1:NULL,out);
+        if(!ret && n==41)ret=ufi_drive_profiles_save();   /* applied and kept in RAM even if the SD write fails */
         if(!ret)*size=40;
         return ret;
     }

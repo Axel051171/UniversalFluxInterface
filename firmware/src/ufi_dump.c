@@ -16,6 +16,7 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_media.h"              /* ufi_drive_profiles_load after UFI.CFG */
 #include "ufi_resources.h"
 #include "ff.h"
 #include "ufi_mfm.h"
@@ -1685,6 +1686,7 @@ void ufi_config_load(void)
         f_close(&file);
     }
     unmount();
+    ufi_drive_profiles_load();                          /* UFIPROF.BIN, mounts on its own (1.18) */
     ufi_index_sim_set(index_sim, 0, index_sim_mode);    /* pin mode: refused with the switch on SD */
     ufi_drive_rpm_config(rpm_line, rpm_360_low);
     if (rpm_start) {

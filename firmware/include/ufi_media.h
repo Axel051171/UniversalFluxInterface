@@ -14,6 +14,8 @@
 void ufi_drive_port_report(uint8_t out[24]);
 int ufi_drive_operating_profile(const uint8_t* input,uint8_t out[40]);
 int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]);   /* 1 factory, 2 conservative (1.18) */
+int ufi_drive_profiles_save(void);      /* stored profiles -> UFIPROF.BIN (1.18) */
+void ufi_drive_profiles_load(void);     /* UFIPROF.BIN -> stored profiles, after UFI.CFG */
 /* Reasons: step=1, geometry=2, format=4, rate=8, missing profile=16,
  * missing physical index=32, missing decode=64, missing expected RPM=128,
  * missing capture settings=256. */

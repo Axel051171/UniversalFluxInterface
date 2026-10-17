@@ -693,6 +693,33 @@ so the adoption is a named preset rather than new fields:
 Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
 (`test_extra_timing_profile_and_presets`), the offline gate, ARM build and static analysis.
 
+## Stored profiles on SD, drive-module fuzzing, SD fuzzer reach — 2026-10-17
+
+- Stored operating profiles persist in `UFIPROF.BIN` (header, 12 x 40 bytes, CRC-32):
+  written by every successful Op 18 store, read after UFI.CFG, shape-checked per slot,
+  dropped on size/CRC/schema mismatch (protocol 4.15). Presets and single TIMING/Op 10
+  changes do not touch the file.
+- New fuzz target `run_fuzz.py --target drive`: `ufi_drive.c` as a whole with the real
+  media, capability, extra-timing and CRC modules; HAL GPIO, time and the SD file API are
+  harness doubles. The harness models one head per drive type (STEP edges in the DIR
+  direction, TRK00 from the model with rare injected faults) and checks that a successful
+  seek or recalibrate leaves module and model on the same physical track, that stored
+  profiles round-trip through the file double, and that the port report keeps its schema.
+  First finding, fixed: `ufi_drive_apple_step()` on a non-Apple drive ran the Apple
+  recalibration and marked that drive's head position valid without moving it; it now
+  returns NOT_IMPL (NO_DRIVE for NONE/IEC). The other reports were harness-model errors
+  (per-drive positions, positions kept across inputs, status sampling TRK00 live, a
+  sensor lie surviving into the next operation) and were corrected in the harness.
+  After the fix: 2.2 M executions in 301 s without a finding (839 edges of 1360).
+- SD fuzzer: the `double_step=2` presets never enabled the auto probe (the key takes
+  `auto`); fixed in harness and seed. Synthesised tracks now stamp cylinder track/2 for
+  some inputs and carry a few damaged spots, `ufi_flux_capture_start/stop` and the drive
+  timing are modelled, so `probe_double_step`, `ds_sector`, `recapture` and
+  `search_track` are reachable.
+- Host: all `zip()` calls carry an explicit `strict=` (ruff B905), the two deliberately
+  truncating pairings in `hfe.py` say so; one unused loop variable and one late-binding
+  lambda in `cli.py` fixed; ruff `--select F,B` is clean for the package.
+
 `firmware/tests/coverage.py` measures line and branch coverage (clang, llvm-cov) of
 every native whole-unit build: the runner, the five corpora and the v2 fuzzer corpus
 replay. First measurement: 96.1 % lines, 83.2 % branches over 18 modules; `ufi_v2.c`
