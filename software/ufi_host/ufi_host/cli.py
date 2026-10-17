@@ -529,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("track", type=int)
     p.add_argument("side", type=int, choices=(0, 1))
     p.add_argument("-r", "--revs", type=int, default=3)
+    p.add_argument("-q", "--quarter", type=int, choices=(0, 1, 2, 3), help="Apple drives (firmware 1.18): analyse the quarter track TRACK + q/4")
     sub.add_parser("iec-status", help="DOS status line of the IEC drive (firmware 1.16)")
     p = sub.add_parser("iec-read", help="D64/D71/D81 from a 1541/1571/1581 over IEC via U1 block reads (firmware 1.16)")
     p.add_argument("output")
@@ -776,8 +777,9 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "format":
             cmd_format(dev, a)
         elif a.cmd == "analyze":
-            r = dev.analyze(a.track, a.side, a.revs)
-            print(f"track {a.track}.{a.side}: {r['rpm']:.2f} rpm, {r['transitions']} transitions, "
+            r = dev.analyze(a.track, a.side, a.revs, a.quarter)
+            pos = f"track {a.track}.{a.side}" + (f" quarter {a.quarter}" if a.quarter is not None else "")
+            print(f"{pos}: {r['rpm']:.2f} rpm, {r['transitions']} transitions, "
                   f"{r['revs']} revs")
             print(f"  intervals: {', '.join(f'{p / 1000:.2f} us' for p in r['peaks_ns']) or '-'}"
                   f"  -> {r['encoding']}, bit cell {r['bitcell_ns']} ns, {r['bitcells']} bit cells per track")

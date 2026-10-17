@@ -38,6 +38,10 @@ bool quality_options(const uint8_t* p,uint16_t n,quality_options_t* o)
     o->margin_permille=250;
     o->glitch=220;o->gap=4400;o->budget_ms=10000;
     o->flags=n>=4u?p[3]:0;o->format=n>=9u?p[4]:0;
+    /* byte 1: side in bit 0; bit 7 = Apple quarter-track mode with the quarter in bits 4-5 (1.18) */
+    if (p[1]&0x4eu) return false;
+    o->side=p[1]&1u;o->position=(p[1]&0x80u)?(uint8_t)(p[1]&0xb0u):0u;
+    if (!(p[1]&0x80u) && p[1]>1u) return false;
     if (n>=9u) o->rate=get32(p+5);
     if (n>=33u) {
         if ((n==33u && (p[9]!=1 || !(o->flags&0xfcu))) || (n==37u && p[9]!=2)) return false;
@@ -51,7 +55,7 @@ bool quality_options(const uint8_t* p,uint16_t n,quality_options_t* o)
         if(!o->features || (o->features&~QUALITY_FEATURE_MASK) || !o->margin_permille || o->margin_permille>=500)return false;
     }
     return (!o->flags || (o->flags&1u)) &&
-           (n<9u || o->flags) && o->format<=7 && p[1]<=1 &&
+           (n<9u || o->flags) && o->format<=7 &&
            o->limit>=1 && o->limit<=48 && o->window>=1 && o->window<=4 &&
            o->bits>=1 && o->bits<=32 && (o->bits==32 || !(o->pattern>>o->bits)) &&
            o->glitch && o->gap>o->glitch && (!o->cell || (o->cell>=100 && o->cell<=100000)) &&
@@ -339,7 +343,7 @@ uint16_t quality_pack(const quality_t* q,uint8_t* out,uint16_t capacity)
     out[4]=q->status;out[5]=q->profiles;out[6]=QUALITY_BINS;out[7]=125;
     put32(out+8,q->rate);put32(out+12,q->dropped);
     out[16]=q->ambiguous;
-    out[17]=q->track;out[18]=q->side;
+    out[17]=q->track;out[18]=q->side;out[19]=q->position;
     for (unsigned i=0;i<8;i++) {out[20+2*i]=(uint8_t)q->candidates[i];out[21+2*i]=(uint8_t)(q->candidates[i]>>8);}
     put32(out+36,q->generation);put32(out+40,MFM_TICK_HZ);put32(out+44,q->elapsed_ms);
     const uint16_t tol=q->dec?q->dec->tolerance:0,apple=mfm_apple_get_options().flags;   /* flags in effect for this decode */

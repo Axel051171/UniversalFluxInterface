@@ -74,8 +74,10 @@ static bool ufi_operation_busy(void){return busy || ufi_analysis_job_active();}
 static bool ufi_job_live(void){return integrity;}
 static uint8_t ufi_flux_get_revolution_count(void){return 1;}
 static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i?NULL:&revolution;}
-static int ufi_capture_start(uint8_t c,uint8_t h,uint8_t r,uint32_t period){
-    (void)r;(void)period;captures++;g_capture.current_track=c;g_capture.current_side=h;
+static bool apple_drive;
+bool ufi_drive_is_apple(void){return apple_drive;}
+static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t r,uint32_t period,uint8_t q){
+    (void)r;(void)period;captures++;g_capture.current_track=c;g_capture.current_side=h;g_capture.current_quarter=q?(uint8_t)(0x80u|(q<<4)):0u;
     if(start_error)return start_error; /* seek failure before capture/evidence exists */
     uint8_t context[EVIDENCE_CONTEXT_SIZE]={1};
     context[46]=simulated_index;evidence_begin(context,diagnostic_flags);

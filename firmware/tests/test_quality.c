@@ -22,6 +22,12 @@ int main(void) {
     request[3]=1;CHECK(!quality_options(request,8,&options),"truncated hints refused");
     request[4]=7;CHECK(quality_options(request,9,&options) && options.format==7,"Apple II GCR hint accepted (1.18)");
     request[4]=8;CHECK(!quality_options(request,9,&options),"unknown codec hint refused");
+    request[4]=7;request[1]=0xa1;CHECK(quality_options(request,9,&options) && options.side==1 && options.position==0xa0,"quarter-track position byte: side 1, quarter 2 (1.18)");
+    request[1]=0x80;CHECK(quality_options(request,9,&options) && !options.side && options.position==0x80,"quarter mode with quarter 0 keeps bit 7");
+    request[1]=0x02;CHECK(!quality_options(request,9,&options),"side 2 still refused");
+    request[1]=0xc0;CHECK(!quality_options(request,9,&options),"unknown bits in the side byte refused");
+    request[1]=0x10;CHECK(!quality_options(request,9,&options),"quarter bits without bit 7 refused");
+    request[1]=0;
     uint32_t n=mfm_encode_amiga_track(250000,100000,0,0,11,data,flux,100000);
     quality_init(&q,2,250000,2);
     for (uint8_t p=0;p<3;p++) {

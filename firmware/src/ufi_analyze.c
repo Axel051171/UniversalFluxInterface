@@ -50,13 +50,20 @@ static void on_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc
 
 int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r)
 {
+    return ufi_analyze_track_q(track, side, revs, 0, r);
+}
+
+int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r)
+{
     memset(r, 0, sizeof(*r));
     if (revs == 0) revs = 3;
     if (revs > 8) revs = 8;
-    int ret = ufi_capture_start(track, side, revs, 0);
+    if ((position & 0x80u) && !ufi_drive_is_apple()) return UFI_ERR_BAD_ARGS;   /* quarter tracks: Apple only */
+    int ret = ufi_capture_start_q(track, side, revs, 0, (position & 0x80u) ? (uint8_t)((position >> 4) & 3u) : 0u);
     if (ret != UFI_OK) {
         return ret;
     }
+    g_capture.current_quarter = position;            /* quarter 0 in quarter mode keeps bit 7 for the report */
     const uint32_t t0 = HAL_GetTick();
     capture_state_t cs;
     while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {

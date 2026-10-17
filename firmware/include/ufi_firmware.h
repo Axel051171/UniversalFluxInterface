@@ -68,6 +68,7 @@ typedef struct {
     volatile capture_state_t state;
     uint8_t current_track;
     uint8_t current_side;
+    uint8_t current_quarter;    /* position byte: 0 whole track, 0x80 | quarter << 4 (Apple, 1.18) */
     uint8_t revolutions_requested;
     uint8_t revolutions_captured;
     flux_revolution_t* buffer;
@@ -331,6 +332,8 @@ typedef struct {
     uint64_t weak_mask;         // bit w = window w weak
 } analyze_result_t;             // 40 bytes, packed little endian on the wire
 int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r);
+/* position: 0 = whole track, 0x80 | quarter << 4 = Apple quarter track (1.18) */
+int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r);
 uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
 void ufi_quality_clear(void);
 int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);

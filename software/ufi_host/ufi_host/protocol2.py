@@ -1005,10 +1005,14 @@ class Device2:
         status, synclen, maxlen, ht = struct.unpack_from("<BBHB", p)
         return NibChunk(status, synclen, maxlen, ht, bytes(p[5:5 + 512]))
 
-    def analyze(self, track: int, side: int, revs: int = 3) -> dict:
+    def analyze(self, track: int, side: int, revs: int = 3, quarter: int | None = None) -> dict:
         """Track analysis (firmware 1.14): rpm, interval peaks, encoding guess, bit cells,
-        weak-bit windows, MFM sectors and the index-to-first-sector time."""
-        p = self.request(ANALYZE, bytes([track, side, revs]), timeout=8.0)
+        weak-bit windows, MFM sectors and the index-to-first-sector time.  quarter 0-3 (Apple
+        drives, firmware 1.18) analyses the quarter track: side byte = side | 0x80 | quarter << 4."""
+        if quarter is not None and not 0 <= quarter <= 3:
+            raise ValueError("quarter must be 0..3")
+        side_byte = side | (0x80 | quarter << 4 if quarter is not None else 0)
+        p = self.request(ANALYZE, bytes([track, side_byte, revs]), timeout=8.0)
         v = ANALYZE_FMT.unpack_from(p)
         return dict(revs=v[0], encoding=ENCODINGS.get(v[1], str(v[1])), bitcell_ns=v[2],
                     rpm=v[3] / 100, peaks_ns=[x for x in v[4:8] if x], index_ticks=v[8],

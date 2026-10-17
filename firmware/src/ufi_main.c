@@ -147,6 +147,7 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
 
     g_capture.current_track = track;
     g_capture.current_side = side;
+    g_capture.current_quarter = quarter ? (uint8_t)(0x80u | (quarter << 4)) : 0u;   /* analysis entry points refine this */
 
     /* Apple Disk II: RDDATA input; without a sync sensor (J19, UFI.CFG apple_sync=1) there
      * is no index pulse -> revolutions are 200 ms slices */

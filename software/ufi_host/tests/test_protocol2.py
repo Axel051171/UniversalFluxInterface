@@ -286,6 +286,9 @@ class FakeV2:
                 q = P2.FORMAT_REQ.unpack(a)
                 r(0, struct.pack("<IB", q[4] * 1000, q[4] if q[2] & 1 else 0xFF))
         elif cmd == P2.ANALYZE:
+            if a[1] & 0x4E or (not a[1] & 0x80 and a[1] > 1):    # side byte: side, or 0x80 | quarter << 4 (1.18)
+                r(P2.BAD_ARGS)
+                return
             r(0, P2.ANALYZE_FMT.pack(a[2] or 3, 2, 2000, 30012, 4000, 6000, 8000, 0, 55_000_000,
                                      50_000, 100_000, 18, 2, 1234, 0x11))
         elif cmd == P2.STEP_SCHEDULE:
@@ -518,6 +521,10 @@ def test_diagnostics():
     assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS
     r = dev.analyze(5, 1, 4)
     assert fake.requests[-1].payload == bytes([5, 1, 4]) and r["revs"] == 4
+    assert dev.analyze(17, 0, 2, quarter=3)["revs"] == 2 and fake.requests[-1].payload == bytes([17, 0xB0, 2])
+    assert dev.analyze(17, 1, 2, quarter=0)["revs"] == 2 and fake.requests[-1].payload == bytes([17, 0x81, 2])
+    with pytest.raises(ValueError):
+        dev.analyze(17, 0, 2, quarter=4)
     assert r["encoding"] == "MFM" and r["peaks_ns"] == [4000, 6000, 8000] and r["rpm"] == 300.12
     assert r["sectors"] == 18 and r["weak_windows"] == 2 and r["weak_mask"] == 0x11
     dev.step_schedule([(50, 17 * 4 + 1), (100, 17 * 4 + 2)], quarter=True)

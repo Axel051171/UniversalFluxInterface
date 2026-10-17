@@ -18,7 +18,7 @@ enum { A_IDLE,A_CAPTURE,A_ANALYZE,A_DONE,A_FAILED };
 static uint8_t recovery_config[11]={1,0,0,0,2,2,0,110,0,0,0};
 static struct {
     uint32_t id,started,attempt_started,budget,generation,elapsed,capture_id;
-    uint8_t state,status,attempt,max_attempts,track,side,revs,c,h,n;
+    uint8_t state,status,attempt,max_attempts,track,side,revs,c,h,n,position;
     uint16_t flags;
     uint64_t expected,seen;
     quality_options_t options;
@@ -74,7 +74,8 @@ static int capture(void) {
     ufi_quality_clear();
     ufi_evidence_arm(job.flags);
     uint32_t previous=evidence_id();
-    int ret=ufi_capture_start(job.track,job.side,job.revs,0);
+    int ret=ufi_capture_start_q(job.track,job.side,job.revs,0,(uint8_t)((job.position>>4)&3u));
+    if(!ret)g_capture.current_quarter=job.position;
     ufi_evidence_disarm();job.capture_id=evidence_id()==previous?0:evidence_id();
     if(ret){record(ret);finish(ret);}
     return ret;
@@ -561,7 +562,8 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         memcpy(job.recovery,recovery_config,11);
         options.report_mask=recovery_config[1];options.compare_tolerance=rd(recovery_config+7);
         job.c=p[20];job.h=p[21];job.n=p[22];job.max_attempts=p[7];job.budget=rd(p+8);
-        job.track=p[24];job.side=p[25];job.revs=p[26]?p[26]:3;if(job.revs>8)job.revs=8;
+        if(options.position && !ufi_drive_is_apple())return UFI_ERR_BAD_ARGS;    /* quarter tracks: Apple only */
+        job.track=p[24];job.side=options.side;job.position=options.position;job.revs=p[26]?p[26]:3;if(job.revs>8)job.revs=8;
         job.options=options;job.started=HAL_GetTick();ufi_cancel_clear();
         int ret=capture();*size=status(out);return ret;
     }

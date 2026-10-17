@@ -840,3 +840,16 @@ with format 7, revolution set by `quality_revolution`. Native test with the synt
 track (383 nibbles and 20 syncs per sector, orphan header fixture `apl_header_only`),
 op 35 in `test_analysis_job.py`; host `apple_gcr_stats()`, `ufi apple-stats`, FakeV2 op
 35 with a settable report; protocol doc 5.7 and op table.
+
+## ANALYZE on quarter tracks — 2026-10-17
+
+ANALYZE 0x25 and the analysis job start (op 1, byte 25) take a position byte in the side
+field: `side | 0x80 | quarter << 4` selects an Apple quarter track (bit 7 = quarter mode,
+quarter 0-3 in bits 4-5; other bits or side values above 1 are refused, non-Apple drives
+get BAD_ARGS). The track byte stays the whole track. The capture context keeps the position
+(`g_capture.current_quarter`), the quality block reports it at offset 19 (previously
+reserved), sector identities stay the track numbers read from the disk. New
+`ufi_analyze_track_q()`, `quality_options_t.side/position`, `quality_t.position`,
+`ufi_capture_start_q()` from the job. Tests: option parsing in `test_quality.c`, the job
+harness stubs the Apple query and the quarter-aware capture start; host `analyze(...,
+quarter=)` and `ufi analyze -q`, FakeV2 validates the side byte.

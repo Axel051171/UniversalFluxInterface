@@ -88,7 +88,7 @@ static int run(uint8_t format,uint32_t rate,bool adaptive,const verify_ref_t* re
     quality_init(&result,format,rate,revs);
     if(options)result.extra.options=*options;
     budget_ms=options?options->budget_ms:10000u;
-    result.track=g_capture.current_track;result.side=g_capture.current_side;
+    result.track=g_capture.current_track;result.side=g_capture.current_side;result.position=g_capture.current_quarter;
     result.generation=++generation;
     if (!revs || revs>QUALITY_REVS || g_capture.error_code) return UFI_ERR_BUFFER_FULL;
     if (!format || !rate) {
@@ -183,7 +183,7 @@ int ufi_quality_async_start(const quality_options_t* options) {
     started=HAL_GetTick();budget_ms=options->budget_ms;available=true;
     cooperative.revs=ufi_flux_get_revolution_count();
     quality_init(&result,options->format,options->rate,cooperative.revs);result.extra.options=*options;
-    result.generation=++generation;result.track=g_capture.current_track;result.side=g_capture.current_side;
+    result.generation=++generation;result.track=g_capture.current_track;result.side=g_capture.current_side;result.position=g_capture.current_quarter;
     if(!cooperative.revs || cooperative.revs>8 || g_capture.error_code)return async_finish(UFI_ERR_BUFFER_FULL);
     cooperative.active=true;
     if((!options->format || !options->rate) && async_candidate())return UFI_OK;

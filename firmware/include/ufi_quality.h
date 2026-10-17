@@ -33,6 +33,7 @@ typedef struct {
 #define QUALITY_FEATURE_MASK    0x0007u
 typedef struct {
     uint8_t flags,format,limit,window,bits;
+    uint8_t side,position;      /* request byte 1: side = bit 0; position = 0 or 0x80 | quarter << 4 (Apple, 1.18) */
     uint16_t features,margin_permille;
     uint32_t rate,glitch,gap,cell,pattern,budget_ms;
     uint16_t report_mask;
@@ -67,7 +68,7 @@ typedef struct {
     uint32_t revolution_ticks[QUALITY_REVS], flux_count[QUALITY_REVS], max_gap[QUALITY_REVS];
     uint16_t candidates[QUALITY_CANDIDATES]; /* +18..23 Macintosh GCR */
     uint8_t profiles, ambiguous;
-    uint8_t track, side;
+    uint8_t track, side, position;  /* position byte of the capture (report offset 19) */
     uint32_t generation, elapsed_ms;
     uint8_t profile, revolution;
     quality_extra_t extra;

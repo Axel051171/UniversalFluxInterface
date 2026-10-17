@@ -944,7 +944,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 ret=UFI_ERR_BAD_ARGS;break;
             }
             if (options.flags) ufi_quality_clear();
-            ret = ufi_analyze_track(p[0], p[1], len >= 3u ? p[2] : 0u, &a);
+            ret = ufi_analyze_track_q(p[0], options.side, len >= 3u ? p[2] : 0u, options.position, &a);
             if (ret == UFI_OK) {
                 out[0] = a.revs;
                 out[1] = a.encoding;

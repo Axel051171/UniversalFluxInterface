@@ -444,7 +444,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x1D | INDEX_SIM (1.13) | – (Abfrage) oder `rpm` u16 (0 = aus, 200–400), `pulse_us` u16 (0 = 2000), `mode` u8 (1.14: Bit0 Ausgang J9 Pin 6, Bit1 intern; 0 = Bit0) | `rpm` u16, `mode` u8 (1.14) aktueller Zustand |
 | 0x1E | SET_RPM (1.14) | – (Abfrage) oder `rpm` u16 (300/360, 0 = Abfrage) | `rpm` u16 (0 = nicht gesetzt), `line` u8 (0 keine, 1 DENSITY, 2 DRATE) |
 | 0x26 | FORMAT (1.14) | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 Amiga, Bit2 1581-Seitentausch), `rate_kbps` u16 (250/300/500/1000), `spt` u8 (Amiga 11, HD 22 ab 1.16), `gap3` u8 (0 = nach Layout), `fill` u8 | `flux_count` u32, `good` u8 (Sektoren mit gültiger CRC beim Prüflesen, 0xFF ohne) |
-| 0x25 | ANALYZE (1.14) | `track, side` u8, `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
+| 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8 |
@@ -1264,8 +1264,8 @@ Bestehende Requests mit 2 oder 3 Bytes bleiben gültig und liefern unverändert
 
 | Offset | Typ | Bedeutung |
 |---:|---|---|
-| 0 | u8 | Zylinder/Spur, wie bisher |
-| 1 | u8 | Seite |
+| 0 | u8 | Zylinder/Spur, wie bisher (ganze Spur, auch im Viertelspurmodus) |
+| 1 | u8 | Bit 0 Seite. Ab 1.18-dev zusätzlich Bit 7 = Viertelspurmodus (nur Apple-Laufwerke, sonst BAD_ARGS) mit dem Viertel 0–3 in Bits 4–5: `side | 0x80 | quarter << 4`. Andere Bits oder Werte > 1 ohne Bit 7 → BAD_ARGS. Gilt ebenso für die ANALYZE-Nutzlast im Analysejob (Op 1, Byte 25) |
 | 2 | u8 | Umdrehungen: 0 = 3, maximal 8 |
 | 3 | u8 | Analyseflags, siehe unten |
 | 4 | u8, optional | Formathinweis: 0 automatisch, 1 IBM-MFM, 2 Amiga-MFM, 3 IBM-FM, 4 HP-MMFM, 5 Commodore-GCR, 6 Macintosh-GCR (INFO Bit29, 5.4), 7 Apple-II-5,25-Zoll-GCR (5.7, nur ausdrücklich) |
@@ -1340,7 +1340,7 @@ also auf Antwortoffset 40. Reservierte Bytes werden mit 0 übertragen.
 | 16 | 1 | Gleichstand der besten Erkennungskandidaten: 1 = mehrdeutig |
 | 17 | 1 | Zylinder/Spur der Aufnahme |
 | 18 | 1 | Seite der Aufnahme |
-| 19 | 1 | Reserviert |
+| 19 | 1 | Positionsbyte der Aufnahme (1.18): 0 ganze Spur, `0x80 | Viertel << 4` Apple-Viertelspur; Spur in Offset 17 bleibt die ganze Spur |
 | 20 | 16 | Acht u16-Zähler gültiger Kandidatensektoren: IBM 250/300/500/1000, dann Amiga 250/300/500/1000 kbit/s; maximal zwei Umdrehungen, gesättigt bei 65535 |
 | 36 | 4 | Flüchtige Berichtsgeneration, erhöht je Analyse, Wrap erlaubt |
 | 40 | 4 | Zeitstempeltakt = 275000000 Hz |
@@ -2158,7 +2158,10 @@ laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutz
   (Kandidatenliste, 5.3/6.1) enthält kein Apple-II-Profil, damit Berichtsaufbau und
   Op-0-Fähigkeiten unverändert bleiben. Qualitätsbericht, Prüflesen und Vergleich
   arbeiten mit 256-Byte-Sektoren wie bei IBM `N=1`; die Mac-spezifischen Zonenfelder
-  bleiben bei Format 7 leer (255). Zwischen Halbspuren wird nicht unterschieden.
+  bleiben bei Format 7 leer (255). Halb- und Viertelspuren werden über das Positionsbyte
+  im Seitenfeld von ANALYZE und Analysejob angefahren (5.2, Byte 1: `0x80 | Viertel << 4`,
+  nur Apple-Laufwerke); der Bericht trägt die Position an Offset 19, die Kennung der
+  Sektoren bleibt die gelesene Spurnummer.
 - **Decoder-Optionen (Op 33):** `[33]` liest, `[33, Schema 1, 12 Bytes]` setzt (exakt
   14 Bytes); Antwort `[1, 12 Bytes]`. Die 12 Bytes: Adressprolog (3, Standard
   `D5 AA 96`), Datenprolog (3, `D5 AA AD`), Adressepilog (2, `DE AA`), Datenepilog (2,
