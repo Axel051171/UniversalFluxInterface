@@ -983,3 +983,19 @@ whole). Native tests check the notes for the READ shapes, the guarded prefix, ev
 optional field, flags2 and the EXPECT_SET fields, plus op 39 itself. Host
 `last_refusal()` with field names, `ufi refusal`; FakeV2 and GuardedDevice keep a note for
 their own length/flags2/generation refusals. Protocol doc 4.8 and op table.
+
+## Per-sector verify report — 2026-10-17
+
+Third item of UFT's list. The read-back matcher (`verify_match_t`) now keeps a state per
+reference sector (missing / ok / CRC error / different content; ok wins across the three
+decoder profiles, then different, then CRC error), and the quality runtime writes the
+report of the last verified WRITE: schema, reference format, count, flags (overflow,
+conflicting duplicates, level 3 reached, read-back missing), the track byte as sent and
+the side, then c, h, r, n, state per sector; ANALYSIS_JOB op 40 returns it (6 + 5 n bytes,
+max 326). The header with track/side is written when a WRITE with the verify bit is
+accepted (flags bit3 set until the matcher fills the rest), a WRITE without verify leaves
+the report alone. Native tests: every sector ok / every sector different / every sector
+missing in the verify unit test, header and the single changed sector in the quality
+runtime, op 40 and the header in the analysis job harness, the begin call in the write
+flags harness. Host `verify_report()` with names, `ufi verify-report` (lists state != ok as
+CHRN + reason); FakeV2 derives the report from its 0x21 model. Protocol doc 4.9, op table.

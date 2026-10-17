@@ -36,6 +36,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
   - 4.7 Flagmasken-Abfrage (Op 38, 1.18-dev)
   - 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
+  - 4.9 Prüflesebericht je Sektor (Op 40, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -428,7 +429,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–39), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–40), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1348,6 +1349,32 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 
 Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `last_refusal()`
 mit Feldnamen, `ufi refusal`.
+
+### 4.9 Prüflesebericht je Sektor (Op 40, 1.18-dev)
+
+Das Firmware-Prüflesen (5.2) baut vor dem Schreibtor eine Referenz aus bis zu 64 Sektoren
+(CHRN und CRC-32 der Daten) und vergleicht zwei zurückgelesene Umdrehungen damit; bisher
+erreichte den Host nur `verify_level` und Status 6. Ab 1.18-dev merkt sich der Vergleicher
+je Referenzsektor das Ergebnis, und `0x0F [40]` liefert den Bericht des letzten geprüften
+WRITE (0x22, 0x27, Flags 0x01/0x21/0x61):
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Format der Referenz: 0 keine (nichts zu listen), 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 Commodore-GCR |
+| 2 | u8 | Anzahl n der Einträge (0–64) |
+| 3 | u8 | Bit0 Referenz übergelaufen (> 64 Sektoren), Bit1 widersprüchliche Duplikate in der Quelle, Bit2 Stufe 3 erreicht, Bit3 Rücklesen fehlt (Prüfen angefordert, Rücklesen lief nie) |
+| 4 | u8 | Spurbyte wie in der WRITE-Anfrage gesendet (Viertelspurform eingeschlossen) |
+| 5 | u8 | Seite |
+| 6 + 5·i | 5 × u8 | Eintrag i: `c, h, r, n` (Größencode) und Zustand: 0 nie mit brauchbarem Kopf zurückgelesen, 1 CRC gültig und gleicher Inhalt, 2 nur mit CRC-/Prüfsummenfehler zurückgelesen, 3 CRC-gültig mit anderem Inhalt |
+
+Höchstens 326 Byte. Der Kopf mit Spur, Seite und Bit3 entsteht bei der Annahme eines WRITE
+mit Prüfbit; der Vergleicher füllt Format, Anzahl, Flags und Einträge nach dem Rücklesen
+(über drei Decoderprofile hinweg gilt je Sektor das beste Ergebnis: gültig vor abweichend
+vor CRC-Fehler vor fehlend). Ein WRITE ohne Prüfbit lässt den Bericht unverändert, daher
+vergleicht das Werkzeug Spur und Seite mit seinem Auftrag. Reine Abfrage, nie BUSY;
+Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `verify_report()`, `ufi verify-report`
+(listet Einträge mit Zustand ≠ 1 als CHRN mit Grund).
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2457,6 +2484,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 37 | 1 / 2 | Sitzungs-Schreibsperre abfragen / einschalten (`[37, 1]`), 2 Bytes Antwort; kein Ausschalten über USB (4.6) |
 | 38 | 1 | Flagmasken, die die Anfrageparser annehmen, 16 Bytes (4.7); reine Abfrage, nie BUSY |
 | 39 | 1 | Letzte Abweisung mit Status 16/21: Kommando, Sequenz, Status, Feld, Detail, 6 Bytes (4.8); reine Abfrage, nie BUSY |
+| 40 | 1 | Prüflesebericht je Sektor des letzten geprüften WRITE: Kopf 6 Bytes + 5 Bytes je Referenzsektor, höchstens 326 (4.9); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

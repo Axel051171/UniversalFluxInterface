@@ -48,10 +48,20 @@ int main(void) {
     verify_ref_t ref;mfm_decoder_t reference_decoder;
     assert(verify_ref_build_u32(&ref,&reference_decoder,flux,n,55000000,NULL));
     uint8_t level=0;
+    uint8_t vr[VERIFY_REPORT_MAX];
+    ufi_quality_verify_begin(7,0);                       /* op 40: header before any read-back */
+    assert(ufi_quality_verify_report(vr)==6 && vr[0]==1 && !vr[1] && !vr[2] && vr[3]==8 && vr[4]==7 && !vr[5]);
+    ufi_quality_verify_begin(3,1);
     assert(ufi_quality_verify(&ref,true,&level)==0 && level==VERIFY_CONTENT);
+    assert(ufi_quality_verify_report(vr)==6+5*11 && vr[1]==2 && vr[2]==11 && vr[3]==4 && vr[4]==3 && vr[5]==1);
+    { unsigned ok=0;for(unsigned i=0;i<11;i++){ok+=vr[6+5*i+4]==VERIFY_SECTOR_OK;assert(vr[6+5*i]==0 && vr[6+5*i+1]==0 && vr[6+5*i+3]==2);}assert(ok==11); }
     data[0]=1;capture_track();
+    ufi_quality_verify_begin(3,1);
     assert(ufi_quality_verify(&ref,true,&level)==UFI_ERR_DMA);
     assert(ufi_quality_report(report,sizeof(report)) && report[4]==6);
+    { unsigned ok=0,diff=0;assert(ufi_quality_verify_report(vr)==6+5*11 && !(vr[3]&4));
+      for(unsigned i=0;i<11;i++){ok+=vr[6+5*i+4]==VERIFY_SECTOR_OK;diff+=vr[6+5*i+4]==VERIFY_SECTOR_DIFFERENT;}
+      assert(ok==10 && diff==1); }                       /* exactly the changed sector reads back different */
     cancelled=true;
     assert(ufi_quality_analyze(2,250000,true)==UFI_ERR_CANCELLED && result.status==20);
     cancelled=false;tick_step=10001;
@@ -214,6 +224,8 @@ static bool ufi_job_live(void) {return false;}
 static bool ufi_board_write_locked(void) {return false;}
 static bool ufi_drive_write_protected(void) {return false;}
 static bool apple_drive,erase_rest;
+static uint8_t report_track=0xff,report_side=0xff;
+static void ufi_quality_verify_begin(uint8_t t,uint8_t s){report_track=t;report_side=s;}
 static bool ufi_drive_is_apple(void) {return apple_drive;}
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
       REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS};
@@ -241,6 +253,9 @@ int main(void) {
     uint8_t p[15]={0,0,0x21,3,0,0,0,3,0,0,0,0xc0,0x3b,0x47,3};
     assert(cmd_write(7,p,11)==0 && verified && extended && op_write && write_seq==7);
     assert(hard_sectors==0);
+    { uint8_t vb[11]={9,1,0x01,3,0,0,0,3,0,0,0};   /* op 40 header only for a verified WRITE */
+      report_track=report_side=0xff;assert(cmd_write(7,vb,11)==0 && report_track==9 && report_side==1);
+      vb[2]=0;report_track=0xff;assert(cmd_write(7,vb,11)==0 && report_track==0xff); }
     assert(native_activity==0);
     p[2]=0x61;assert(cmd_write(8,p,15)==0 && source_ticks==55000000);
     uint32_t before=prepare_calls;

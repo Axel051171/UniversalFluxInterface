@@ -608,6 +608,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         ufi_write_set_expected(expected,c,h,n);
         ufi_write_set_clamp((p[2] & 0x10u) != 0);   /* bit4: clamp instead of status 18 (1.15) */
         ufi_write_set_erase_rest((flags2 & 0x01u) != 0);
+        if (p[2] & 0x01u) ufi_quality_verify_begin(p[0], p[1]);   /* op 40: new per-sector report */
         op_write = true;
         write_seq = seq;
     }

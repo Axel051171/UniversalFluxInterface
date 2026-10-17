@@ -44,12 +44,20 @@ typedef struct {
     uint32_t rate_bps;          /* guessed data rate, 0 = unknown */
 } verify_ref_t;
 
+/* per-sector outcome of the read-back (op 40 report, 1.18) */
+enum {
+    VERIFY_SECTOR_MISSING = 0,  /* never read back with a usable header */
+    VERIFY_SECTOR_OK = 1,       /* CRC valid and same content */
+    VERIFY_SECTOR_BAD_CRC = 2,  /* read back with a CRC/checksum error only */
+    VERIFY_SECTOR_DIFFERENT = 3 /* read back CRC-valid with different content */
+};
 typedef struct {
     const verify_ref_t* ref;
     mfm_decoder_t* dec;
     uint64_t found;             /* bit i: reference sector i read back with the same data */
     uint8_t bad_crc;            /* reference sectors read back with a CRC error (capped) */
     bool mismatch;             /* any checksum-valid reference sector differs */
+    uint8_t state[VERIFY_MAX_SECTORS];  /* VERIFY_SECTOR_* per reference sector; ok wins, then different, then bad CRC */
 } verify_match_t;
 
 uint32_t ufi_crc32(uint32_t crc, const uint8_t* p, uint32_t n);     /* init 0, IEEE, final xor done */

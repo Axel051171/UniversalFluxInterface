@@ -444,6 +444,10 @@ class OperatingProfile:
 
 GEN_BLOCK = struct.Struct("<BIIII")     # END generation block (4.5, 1.18): schema 1, config, media start, media end, capture id
 
+# op 40 (4.9): per-sector verify report
+VERIFY_SECTOR_STATES = {0: "missing", 1: "ok", 2: "CRC error", 3: "different content"}
+VERIFY_FORMATS = {0: "no reference", 1: "IBM MFM", 2: "Amiga", 3: "IBM FM", 4: "HP MMFM", 5: "Commodore GCR"}
+
 # op 39 (4.8): field codes of the last refusal, shared by READ/0x28, WRITE/0x27 and ANALYZE
 REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
                   6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
@@ -946,6 +950,22 @@ class Device2:
         if reply[0] == 2:
             info["read_start"], info["read_data"] = reply[16], reply[17]
         return info
+
+    def verify_report(self) -> dict:
+        """Op 40 (firmware 1.18, 4.9): per-sector outcome of the last verified WRITE.  Returns
+        {'format', 'format_name', 'count', 'flags', 'overflow', 'conflicting', 'content_verified',
+        'readback_missing', 'track', 'side', 'sectors': [{'c','h','r','n','state','state_name'}]}.
+        Match track/side against the write you just made; a WRITE without verify leaves the
+        previous report in place."""
+        reply = self.analysis_op(40)
+        if len(reply) < 6 or reply[0] != 1 or len(reply) < 6 + 5 * reply[2]:
+            raise DeviceError("verify report: unexpected reply")
+        fmt, count, flags, track, side = reply[1:6]
+        sectors = [{"c": c, "h": h, "r": r, "n": n, "state": s, "state_name": VERIFY_SECTOR_STATES.get(s, str(s))}
+                   for c, h, r, n, s in (reply[6 + 5 * i:11 + 5 * i] for i in range(count))]
+        return {"format": fmt, "format_name": VERIFY_FORMATS.get(fmt, str(fmt)), "count": count, "flags": flags,
+                "overflow": bool(flags & 1), "conflicting": bool(flags & 2), "content_verified": bool(flags & 4),
+                "readback_missing": bool(flags & 8), "track": track, "side": side, "sectors": sectors}
 
     def last_refusal(self) -> dict:
         """Op 39 (firmware 1.18, 4.8): which request the firmware last refused with 16/21 and why.

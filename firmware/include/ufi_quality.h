@@ -88,6 +88,12 @@ void quality_interval(quality_t* q, uint32_t ticks);
 void quality_end_revolution(quality_t* q);
 uint16_t quality_pack(const quality_t* q, uint8_t* out, uint16_t capacity);
 int ufi_quality_verify(const verify_ref_t* ref, bool count_ok, uint8_t* level);
+/* op 40 (1.18): per-sector outcome of the last verified WRITE - schema 1, format, count, flags
+ * (bit0 overflow, bit1 conflicting, bit2 level 3 reached, bit3 read-back missing), track byte
+ * as sent, side, then c,h,r,n,state per sector (VERIFY_SECTOR_*) */
+#define VERIFY_REPORT_MAX (6u + 5u * VERIFY_MAX_SECTORS)
+void ufi_quality_verify_begin(uint8_t track, uint8_t side);   /* verified WRITE accepted: new header */
+uint16_t ufi_quality_verify_report(uint8_t* out);
 
 int ufi_quality_analyze_options(const quality_options_t* options);
 

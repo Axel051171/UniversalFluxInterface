@@ -99,6 +99,8 @@ class FakeV2:
         self.media_gen = 42             # ... media generation (start and end are equal unless bumped mid-run)
         self.capture_id = 0x1234        # ... capture id reported by READ END (0 for WRITE)
         self.refusal = (0, 0, 0, 0, 0)  # op 39 (4.8): cmd, seq, status, field, detail of the last 16/21 refusal
+        self.verify_report = bytes([1, 0, 0, 0, 0, 0])   # op 40 (4.9): header until a verified WRITE ran
+        self.verify_sectors = 9         # reference sectors the 0x21 model reports (c = track, h = side, r = 1.., n = 2)
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -183,13 +185,18 @@ class FakeV2:
             self.write_frames += 1
             self.write_code += f.payload
             if len(self.write_code) >= self.write_req[2]:
-                _seq, count, _size, flags, flags2 = self.write_req
+                _seq, count, _size, flags, flags2, track, side = self.write_req
                 erased = 0x1234567 if flags2 & 1 else 0            # flags2 bit0: an erased tail up to the index
                 status, level = 0, 2 if flags & 1 else 1
+                if flags & 1:                                      # op 40: a verified WRITE opens a new report
+                    self.verify_report = bytes([1, 0, 0, 8, track, side])
                 if flags & 0x21 == 0x21:
                     # firmware read-back (5.2): the firmware decodes the source before WGATE; a
                     # source without reference sectors ends with 16, a verified one with level 3
                     status, level = (P2.BAD_ARGS, 0) if count < self.VERIFY_MIN_INTERVALS else (0, 3)
+                    if level == 3:
+                        self.verify_report = bytes([1, 1, self.verify_sectors, 4, track, side]) + b"".join(
+                            bytes([track, side, r, 2, 1]) for r in range(1, self.verify_sectors + 1))
                 self._frame(P2.T_END, P2.WRITE, f.seq, status, struct.pack("<BI", level, 3 if flags & P2.WRITE_CLAMP else 0)
                             + self._gen_block(0) + struct.pack("<I", erased))
                 self.write_req = None
@@ -209,6 +216,8 @@ class FakeV2:
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 40:          # per-sector verify report (4.9)
+            r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else self.verify_report)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 39:          # last refusal (4.8)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
@@ -391,7 +400,7 @@ class FakeV2:
                 self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x01) if len(a) == want + 1 else (1, want))
                 r(P2.BAD_ARGS)
                 return
-            self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2)
+            self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2, a[0], a[1])
             self.write_code = bytearray()
             r()
         elif cmd == P2.ERASE:
@@ -1000,6 +1009,33 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_verify_report(monkeypatch, capsys):
+    """Op 40: header only until a verified WRITE ran; the 0x21 model lists every reference sector, a WRITE
+    without verify leaves the report alone, a short source leaves a header with read-back missing."""
+    import pytest
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    vr = dev.verify_report()
+    assert vr["format"] == 0 and vr["count"] == 0 and vr["sectors"] == [] and not vr["readback_missing"]
+    assert fake.requests[-1].payload == bytes([40])
+    dev.write_track(5, 1, [1100] * 2000, extended=True, firmware_verify=True)
+    vr = dev.verify_report()
+    assert (vr["format_name"], vr["count"], vr["content_verified"], vr["track"], vr["side"]) == ("IBM MFM", 9, True, 5, 1)
+    assert all(s["state_name"] == "ok" and s["c"] == 5 and s["h"] == 1 for s in vr["sectors"]) and vr["sectors"][8]["r"] == 9
+    dev.write_track(6, 0, [1100] * 2000)                                   # no verify: report untouched
+    assert dev.verify_report()["track"] == 5
+    with pytest.raises(P2.DeviceError):
+        dev.write_track(7, 0, [1100] * 10, extended=True, firmware_verify=True)
+    vr = dev.verify_report()
+    assert vr["track"] == 7 and vr["format"] == 0 and vr["readback_missing"] and vr["count"] == 0
+    fake.verify_report = bytes([1, 2, 2, 0, 3, 1]) + bytes([3, 1, 1, 2, 3]) + bytes([3, 1, 2, 2, 0])
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["verify-report"]) == 0
+    out = capsys.readouterr().out
+    assert "track 3.1: Amiga, 2 reference sectors, not verified" in out
+    assert "C3 H1 R1 N2: different content" in out and "C3 H1 R2 N2: missing" in out
 
 
 def test_last_refusal(monkeypatch, capsys):

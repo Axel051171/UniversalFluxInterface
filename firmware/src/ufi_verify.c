@@ -183,10 +183,13 @@ void verify_match_accept(void* p, const mfm_id_t* id, const uint8_t* data, bool 
         }
         if (!crc_ok || (m->ref->format>=3 && m->dec && (m->dec->field_bad || (m->dec->sector_flags&4)))) {
             if (m->bad_crc < 255u) m->bad_crc++;
+            if (m->state[i] == VERIFY_SECTOR_MISSING) m->state[i] = VERIFY_SECTOR_BAD_CRC;
         } else if (s->n == id->n && content_hash(data,id->n,m->ref->amiga,m->ref->format,m->dec) == s->crc) {
             m->found |= 1ull << i;
+            m->state[i] = VERIFY_SECTOR_OK;
         } else {
             m->mismatch = true;
+            if (m->state[i] != VERIFY_SECTOR_OK) m->state[i] = VERIFY_SECTOR_DIFFERENT;
         }
         return;
     }

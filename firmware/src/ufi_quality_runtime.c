@@ -36,7 +36,23 @@ uint16_t ufi_local_report(uint8_t* out,uint16_t capacity,uint32_t id){
     }
     return n;
 }
+/* Per-sector outcome of the last verified WRITE (op 40, 1.18): schema, format, count,
+ * flags, track byte as sent, side, then c, h, r, n, state per reference sector.  The
+ * header is written when the verified WRITE is accepted (flags bit3 = read-back missing
+ * until the matcher fills the rest); a WRITE without verify leaves it untouched. */
+static uint8_t verify_report[VERIFY_REPORT_MAX]={1};   /* schema 1, nothing verified yet */
+
 void ufi_quality_clear(void) {available=false;}
+
+void ufi_quality_verify_begin(uint8_t track,uint8_t side) {
+    memset(verify_report,0,sizeof verify_report);
+    verify_report[0]=1;verify_report[3]=8;verify_report[4]=track;verify_report[5]=side;
+}
+
+uint16_t ufi_quality_verify_report(uint8_t* out) {
+    const uint16_t n=(uint16_t)(6u+5u*verify_report[2]);
+    memcpy(out,verify_report,n);return n;
+}
 
 static int progress(void) {
     UFI_WATCHDOG_FEED();
@@ -110,15 +126,29 @@ static int run(uint8_t format,uint32_t rate,bool adaptive,const verify_ref_t* re
     }
     uint64_t found=0;bool mismatch=false;
     verify_match_t match;
+    uint8_t state[VERIFY_MAX_SECTORS];memset(state,0,sizeof state);
+    static const uint8_t rank[4]={0,3,1,2};  /* ok beats different beats bad CRC beats missing */
     for (uint8_t p=0;p<(adaptive && result.format?3u:1u);p++) {
         if (ref) verify_match_begin(&match,ref,&decoder);
         quality_begin(&result,&decoder,p,ref?&match:NULL);
         int ret=feed(true,p,revs);if(ret) return ret;
-        if (ref) {found|=match.found;mismatch|=match.mismatch;}
+        if (ref) {
+            found|=match.found;mismatch|=match.mismatch;
+            for (uint8_t i=0;i<ref->n && i<VERIFY_MAX_SECTORS;i++)
+                if (rank[match.state[i]&3u]>rank[state[i]&3u]) state[i]=match.state[i];
+        }
     }
     if (ref) {
         match.found=found;match.mismatch=mismatch;
         *level=verify_match_result(&match,count_ok);
+        /* op 40 report: the per-sector outcome survives the level decision */
+        const uint8_t n=ref->n>VERIFY_MAX_SECTORS?VERIFY_MAX_SECTORS:ref->n;
+        verify_report[0]=1;verify_report[1]=ref->format?ref->format:(ref->amiga?2u:1u);verify_report[2]=n;
+        verify_report[3]=(uint8_t)((ref->overflow?1u:0u)|(ref->conflicting?2u:0u)|(*level==VERIFY_CONTENT?4u:0u));
+        for (uint8_t i=0;i<n;i++) {              /* track/side at 4/5 stay from ufi_quality_verify_begin() */
+            uint8_t* e=verify_report+6+5u*i;
+            e[0]=ref->s[i].c;e[1]=ref->s[i].h;e[2]=ref->s[i].r;e[3]=ref->s[i].n;e[4]=state[i];
+        }
         if (!*level) return UFI_ERR_DMA;
     }
     return UFI_OK;

@@ -482,6 +482,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[0]=1;out[1]=(uint8_t)((ufi_board_soft_locked()?1u:0u)|(ufi_board_jumper_locked()?2u:0u));
         *size=2;return UFI_OK;
     }
+    if(p[0]==40 && n==1){
+        /* Per-sector outcome of the last verified WRITE (4.9): 4 + 5 * count bytes */
+        *size=ufi_quality_verify_report(out);return UFI_OK;
+    }
     if(p[0]==39 && n==1){
         /* Last refusal (4.8): schema 1, cmd, seq, status, field, detail; cmd 0 = none since reset */
         ufi_v2_last_refusal(out);*size=6;return UFI_OK;

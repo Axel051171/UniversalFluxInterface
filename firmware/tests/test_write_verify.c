@@ -33,6 +33,8 @@ static uint32_t make_track(uint32_t rate, uint8_t spt, uint8_t cyl, uint8_t head
     return n;
 }
 
+static verify_match_t last_m;
+
 static uint8_t level_for(const verify_ref_t* ref, const uint16_t* back, uint32_t n, uint32_t jitter_pct,
                          uint32_t seed, bool count_ok)
 {
@@ -50,7 +52,15 @@ static uint8_t level_for(const verify_ref_t* ref, const uint16_t* back, uint32_t
             verify_match_interval(&m, t);
         }
     }
+    last_m = m;                                             /* per-sector states for the op 40 checks */
     return verify_match_result(&m, count_ok);
+}
+
+static unsigned states(uint8_t state, uint8_t n)
+{
+    unsigned k = 0;
+    for (uint8_t i = 0; i < n; i++) k += last_m.state[i] == state;
+    return k;
 }
 
 int main(void)
@@ -68,15 +78,19 @@ int main(void)
           "reference 1.44M: rate %u sectors %u", ref.rate_bps, ref.n);
 
     CHECK(level_for(&ref, arr, n, 0, 1, true) == VERIFY_CONTENT, "identical read-back -> content verified");
+    CHECK(states(VERIFY_SECTOR_OK, 18) == 18, "op 40 states: every sector ok (%u)", states(VERIFY_SECTOR_OK, 18));
     CHECK(level_for(&ref, arr, n, 3, 7, true) == VERIFY_CONTENT, "3 %% jitter -> still content verified");
     CHECK(level_for(&ref, arr, n, 0, 1, false) == VERIFY_CONTENT, "content beats a count mismatch");
 
     /* other data, same geometry and (nearly) same transition count -> must fail */
     uint32_t n2 = make_track(500000u, 18, 5, 1, sectors2, deltas2, arr2, false);
     CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "same count, other data -> fails (n %u vs %u)", n, n2);
+    CHECK(states(VERIFY_SECTOR_DIFFERENT, 18) == 18 && !states(VERIFY_SECTOR_OK, 18),
+          "op 40 states: every sector read back with different content (%u)", states(VERIFY_SECTOR_DIFFERENT, 18));
     /* same data on another cylinder id -> fails */
     n2 = make_track(500000u, 18, 6, 1, sectors, deltas2, arr2, false);
     CHECK(level_for(&ref, arr2, n2, 0, 1, true) == 0, "other cylinder id -> fails");
+    CHECK(states(VERIFY_SECTOR_MISSING, 18) == 18, "op 40 states: other cylinder id = every reference sector missing");
     /* one sector lost: drop the read-back after 17 sectors worth of data */
     CHECK(level_for(&ref, arr, n * 9u / 10u, 0, 1, true) == 0, "truncated read-back -> fails");
 

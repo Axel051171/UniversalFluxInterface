@@ -367,6 +367,12 @@ int main(void){
     lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && soft_lock);
     jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==3);jumper_lock=false;
     soft_lock=false;
+    /* Op 40: per-sector verify report - header only until a verified WRITE ran, read-only */
+    uint8_t vr2[2]={40};assert(!ufi_analysis_command(vr2,1,out,&size) && size==6 && out[0]==1 && !out[1] && !out[2] && !out[3]);
+    ufi_quality_verify_begin(0x4a,1);
+    assert(!ufi_analysis_command(vr2,1,out,&size) && size==6 && out[3]==8 && out[4]==0x4a && out[5]==1 && !out[1]);
+    busy=true;assert(!ufi_analysis_command(vr2,1,out,&size) && size==6);busy=false;
+    vr2[1]=0;assert(ufi_analysis_command(vr2,2,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 39: last refusal - 6 bytes straight from the v2 layer, read-only, no payload allowed */
     uint8_t lr[2]={39};assert(!ufi_analysis_command(lr,1,out,&size) && size==6 && !memcmp(out,refusal_stub,6));
     busy=true;assert(!ufi_analysis_command(lr,1,out,&size) && size==6);busy=false;

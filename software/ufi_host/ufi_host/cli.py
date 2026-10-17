@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal"}
+           "write-lock", "masks", "refusal", "verify-report"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -585,6 +585,8 @@ def main(argv: list[str] | None = None) -> int:
                    "Apple GCR, tolerance, quality features, diagnostics, position byte")
     sub.add_parser("refusal", help="which request the firmware last refused with status 16/21 and which field caused it "
                    "(firmware 1.18, op 39); ask right after a refusal")
+    sub.add_parser("verify-report", help="per-sector outcome of the last verified WRITE (firmware 1.18, op 40): CHRN and "
+                   "missing / ok / CRC error / different content for every reference sector")
     sub.add_parser("write-lock", help="session write lock (firmware 1.18, op 37): no argument shows lock and jumper state, 'engage' locks every disk "
                    "and drive write (status 22) until the board is reset; there is no disengage").add_argument("action", nargs="?", choices=["engage"])
     sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
@@ -896,6 +898,15 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "verify-report":
+            vr = dev.verify_report()
+            print(f"track {vr['track']}.{vr['side']}: {vr['format_name']}, {vr['count']} reference sectors, "
+                  f"{'content verified' if vr['content_verified'] else 'not verified'}"
+                  + (", read-back missing" if vr["readback_missing"] else "")
+                  + (", reference overflow" if vr["overflow"] else "") + (", conflicting source" if vr["conflicting"] else ""))
+            for s in vr["sectors"]:
+                if s["state"] != 1:
+                    print(f"  C{s['c']} H{s['h']} R{s['r']} N{s['n']}: {s['state_name']}")
         elif a.cmd == "refusal":
             rf = dev.last_refusal()
             if not rf["command"]:
