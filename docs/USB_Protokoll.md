@@ -35,6 +35,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.5 Mediengebundene Starts und robuste Anfrageprüfung
   - 4.6 Sitzungs-Schreibsperre (Op 37, Status 22, 1.18-dev)
   - 4.7 Flagmasken-Abfrage (Op 38, 1.18-dev)
+  - 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -427,7 +428,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–38), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–39), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1304,6 +1305,49 @@ Reine Abfrage: auch während Dump, Jobs oder gehaltener Ressource beantwortet, n
 jede Nutzlast nach dem Op-Byte → BAD_ARGS. Eine Maske sagt nur, welche Bits der Parser
 kennt; Kombinationsregeln (DETAIL-Pflicht, Bit 6/7 nur mit 0x21, Apple-Bedingungen) stehen
 bei den Kommandos. Host: `flag_masks()`, `ufi masks`.
+
+### 4.8 Grund der letzten Abweisung (Op 39, 1.18-dev)
+
+Ein Werkzeug soll dem Benutzer sagen können, **welche** Option die Firmware abgelehnt hat,
+statt nur „ungültige Argumente“. Der Antwortrahmen selbst bleibt unverändert (ein
+Detailbyte in jeder 16er-Antwort würde den Rahmenvertrag aller Kommandos ändern); stattdessen
+merkt sich die Firmware die letzte Abweisung, und `0x0F [39]` liefert 6 Bytes:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Abgewiesenes Kommando; 0 = keine Abweisung seit Reset |
+| 2 | u8 | Sequenznummer dieser Anfrage |
+| 3 | u8 | Status der Abweisung (16; 21 bei Generationsprüfungen) |
+| 4 | u8 | Feld, siehe unten |
+| 5 | u8 | Detail zum Feld |
+
+Jede Anfrage löscht die Notiz vor dem Parsen; nur Abweisungen mit 16 oder 21 schreiben
+sie. Eine später angenommene Anfrage lässt sie stehen, Kommando und Sequenz sagen, zu
+welcher Abweisung sie gehört. Das Werkzeug fragt direkt nach einem 16 ab und vergleicht
+Kommando und Sequenz mit seiner Anfrage, bevor es das Feld nennt.
+
+Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
+
+| Feld | Name | Detail |
+|---:|---|---|
+| 0 | unbekannt | der Parser liefert keine Aufschlüsselung |
+| 1 | Länge | Mindestlänge, die die Flags verlangen (READ: 3 = keine gültige Länge, 6/7 = Form mit Periode/Sektoren) |
+| 2 | Flags | die unbekannten Bits |
+| 3 | Spur/Viertel | 1 = Viertelspur ohne Apple-Port |
+| 4 | Seite/Position | das Byte |
+| 5 | Umdrehungen/Periode | 1 = Periode > 2000 ms |
+| 6 | Sektoren | der übergebene Wert (< 2) |
+| 7 | Zeitskala | 1 = außerhalb 500–2000 |
+| 8 | `index_ticks` | 1 = verlangt Flags 0x21, 2 = Null |
+| 9 | Sektormenge (EXPECT_SET) | 1 = verlangt 0x21, 2 = leere Menge, 3 = Größencode > 3, 4 = Reservebyte ≠ 0 |
+| 10 | `flags2` | die unbekannten Bits |
+| 11 | Konfigurationsgeneration | 1 = Null oder veraltet |
+| 12 | Mediengeneration | 1 = Null oder anderes Medium (Status 21) |
+| 13 | Analyseoptionen | ANALYZE-/Op-1-Optionsblock als Ganzes abgelehnt; Detail 0 |
+
+Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `last_refusal()`
+mit Feldnamen, `ufi refusal`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2412,6 +2456,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 36 | 1 / 66 | Apple-II-6-and-2-Symboltabelle lesen / setzen, 65 Bytes Antwort (5.7) |
 | 37 | 1 / 2 | Sitzungs-Schreibsperre abfragen / einschalten (`[37, 1]`), 2 Bytes Antwort; kein Ausschalten über USB (4.6) |
 | 38 | 1 | Flagmasken, die die Anfrageparser annehmen, 16 Bytes (4.7); reine Abfrage, nie BUSY |
+| 39 | 1 | Letzte Abweisung mit Status 16/21: Kommando, Sequenz, Status, Feld, Detail, 6 Bytes (4.8); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

@@ -98,6 +98,7 @@ class FakeV2:
         self.config_gen = 7             # generation block in READ/WRITE END (4.5): configuration generation
         self.media_gen = 42             # ... media generation (start and end are equal unless bumped mid-run)
         self.capture_id = 0x1234        # ... capture id reported by READ END (0 for WRITE)
+        self.refusal = (0, 0, 0, 0, 0)  # op 39 (4.8): cmd, seq, status, field, detail of the last 16/21 refusal
         self.requests: list[P2.Frame] = []
         self.blocks: dict[tuple[int, int], bytes] = {}
         self.write_req = None           # (seq, flux_count, byte_count, flags)
@@ -208,6 +209,8 @@ class FakeV2:
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 39:          # last refusal (4.8)
+            r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
               bytes([1, 0x07, 0xFF, 0x01, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
@@ -385,6 +388,7 @@ class FakeV2:
             want = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0) + (4 if flags & 0x40 else 0) + (12 if flags & 0x80 else 0)
             flags2 = a[want] if len(a) == want + 1 else 0
             if len(a) not in (want, want + 1) or flags2 & ~0x01:
+                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x01) if len(a) == want + 1 else (1, want))
                 r(P2.BAD_ARGS)
                 return
             self.write_req = (seq, *struct.unpack_from("<II", a, 3), flags, flags2)
@@ -463,15 +467,18 @@ class GuardedDevice(FakeV2):
                 return
             if len(f.payload) < 8:
                 self.requests.append(f)
+                self.refusal = (f.cmd, f.seq, P2.BAD_ARGS, 1, 11)
                 self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.BAD_ARGS)
                 return
             config, media = struct.unpack_from("<II", f.payload)
             if config != self.config_gen:
                 self.requests.append(f)
+                self.refusal = (f.cmd, f.seq, P2.BAD_ARGS, 11, 1)
                 self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.BAD_ARGS)
                 return
             if media != self.media_gen:
                 self.requests.append(f)
+                self.refusal = (f.cmd, f.seq, P2.MEDIA_CHANGED, 12, 1)
                 self._frame(P2.T_RESPONSE, f.cmd, f.seq, P2.MEDIA_CHANGED)
                 return
             self.guarded_starts += 1
@@ -993,6 +1000,33 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_last_refusal(monkeypatch, capsys):
+    """Op 39: the fake keeps cmd/seq/status/field/detail of its last 16/21 refusal, the host names the field."""
+    import pytest
+    fake = GuardedDevice(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.last_refusal() == {"command": 0, "seq": 0, "status": 0, "field": 0, "field_name": "unknown", "detail": 0}
+    with pytest.raises(P2.DeviceError):
+        dev.read_track(0, 0, 1, expected_config=6, expected_media=42)
+    seq = fake.requests[-2].seq if fake.requests[-1].cmd == P2.ANALYSIS_JOB else fake.requests[-1].seq
+    rf = dev.last_refusal()
+    assert (rf["command"], rf["seq"], rf["status"], rf["field_name"], rf["detail"]) == (P2.GUARDED_READ, seq, P2.BAD_ARGS, "configuration generation", 1)
+    fake.bump_media()
+    with pytest.raises(P2.DeviceError):
+        dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
+    rf = dev.last_refusal()
+    assert (rf["command"], rf["status"], rf["field"], rf["field_name"]) == (P2.GUARDED_WRITE, P2.MEDIA_CHANGED, 12, "media generation")
+    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x02")   # flags2 bit1: unknown
+    assert dev._wait(P2.WRITE, 77, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
+    rf = dev.last_refusal()
+    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 2)
+    assert len(dev.read_track(0, 0, 1).revolutions) == 1 and dev.last_refusal()["seq"] == 77   # an accepted request keeps the note
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["refusal"]) == 0 and "flags2, detail 2" in capsys.readouterr().out
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
+    assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
 
 def test_flag_masks(monkeypatch, capsys):

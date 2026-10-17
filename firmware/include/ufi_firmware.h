@@ -609,6 +609,7 @@ uint32_t ufi_write_erased_ticks(void);          // END payload: length of the er
 uint32_t ufi_capture_media_token(void);         // media generation the capture was bound to (ufi_main.c, END block)
 #define UFI_V2_GEN_BLOCK 17u                    // END generation block: schema u8, config/media start/media end/capture id u32
 uint16_t ufi_v2_generations(uint8_t* out, uint32_t media_start, uint32_t capture_id);  // ufi_v2.c, writes UFI_V2_GEN_BLOCK bytes
+void ufi_v2_last_refusal(uint8_t out[6]);       // op 39 (4.8): schema 1, cmd, seq, status, field, detail of the last 16/21 refusal
 void ufi_write_tim3_irq(void);
 void ufi_write_dma_irq(void);
 

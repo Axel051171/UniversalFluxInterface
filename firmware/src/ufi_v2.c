@@ -451,35 +451,59 @@ static bool uses_drive(uint8_t cmd)
     }
 }
 
+/* Last refusal (4.8, op 39): the parsers note the field and a detail while they refuse,
+ * request() stamps command, sequence and status when the reply goes out.  The reply
+ * frame itself stays unchanged; a tool asks [39] right after a 16 and matches cmd/seq. */
+enum {
+    REFUSE_LENGTH = 1, REFUSE_FLAGS, REFUSE_TRACK, REFUSE_SIDE, REFUSE_REVS, REFUSE_SECTORS,
+    REFUSE_SCALE, REFUSE_INDEX_TICKS, REFUSE_EXPECTED, REFUSE_FLAGS2, REFUSE_CONFIG_GEN,
+    REFUSE_MEDIA_GEN, REFUSE_ANALYSIS_OPTIONS
+};
+static uint8_t note_field, note_detail;     /* set by the parser of the running request */
+static uint8_t refusal[5];                  /* cmd, seq, status, field, detail of the last refusal */
+
+static void refuse(uint8_t field, uint8_t detail)
+{
+    note_field = field;
+    note_detail = detail;
+}
+
+void ufi_v2_last_refusal(uint8_t out[6])
+{
+    out[0] = 1;
+    memcpy(out + 1, refusal, sizeof(refusal));
+}
+
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
     if (ufi_job_live() && (ufi_job.kind!=1 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
     if (len != 3u && len != 4u && len != 6u && len != 7u) {
+        refuse(REFUSE_LENGTH, 3);
         return UFI_ERR_BAD_ARGS;
     }
     const uint8_t flags=len>=4u?p[3]:0;
-    if((flags&~UFI_V2_READ_FLAG_MASK) || (len==7u && !(flags&2u)))return UFI_ERR_BAD_ARGS;
+    if(flags&~UFI_V2_READ_FLAG_MASK){refuse(REFUSE_FLAGS,(uint8_t)(flags&~UFI_V2_READ_FLAG_MASK));return UFI_ERR_BAD_ARGS;}
+    if(len==7u && !(flags&2u)){refuse(REFUSE_LENGTH,6);return UFI_ERR_BAD_ARGS;}   /* sectors byte without HARD_SECTORS */
     uint8_t revs = p[2];
     if (revs == 0) revs = 1;
     if (revs > REVOLUTIONS_STREAM) revs = REVOLUTIONS_STREAM;
     uint32_t period_ticks = 0;
     if (len >= 4u && (p[3] & 0x01u)) {     /* no index: slices of period_ms (0 = 200) */
         uint32_t ms = (len >= 6u) ? get16(&p[4]) : 0u;
-        if (ms > 2000u) return UFI_ERR_BAD_ARGS;
+        if (ms > 2000u) { refuse(REFUSE_REVS, 1); return UFI_ERR_BAD_ARGS; }
         if (ms == 0) ms = 200u;
         period_ticks = ms * (FLUX_TIMER_FREQ / 1000u);
     }
     uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes in p[6] */
     if (len >= 4u && (p[3] & 0x02u)) {
-        if (len < 7u || p[6] < 2u) {
-            return UFI_ERR_BAD_ARGS;
-        }
+        if (len < 7u) { refuse(REFUSE_LENGTH, 7); return UFI_ERR_BAD_ARGS; }
+        if (p[6] < 2u) { refuse(REFUSE_SECTORS, p[6]); return UFI_ERR_BAD_ARGS; }
         sectors = p[6];
     }
     /* bit2: track field in quarter tracks (Apple), 1.14 */
     const uint8_t track = (len >= 4u && (p[3] & 0x04u)) ? p[0] >> 2 : p[0];
     const uint8_t quarter = (len >= 4u && (p[3] & 0x04u)) ? p[0] & 3u : 0u;
-    if(quarter && !ufi_drive_is_apple())return UFI_ERR_BAD_ARGS;
+    if(quarter && !ufi_drive_is_apple()){refuse(REFUSE_TRACK,1);return UFI_ERR_BAD_ARGS;}
     uint8_t previous[6];ufi_flux_evidence_context(previous);
     ufi_flux_hard_sectors(sectors);
     const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
@@ -496,8 +520,9 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
  * The reply carries 0x28, DATA/END keep 0x20 with the same sequence number. */
 static int cmd_guarded_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
-    if (len < 11u || !get32(p) || get32(p) != ufi_config_generation()) return UFI_ERR_BAD_ARGS;
-    if (!get32(p + 4) || !ufi_drive_media_matches(get32(p + 4))) return UFI_ERR_MEDIA_CHANGED;
+    if (len < 11u) { refuse(REFUSE_LENGTH, 11); return UFI_ERR_BAD_ARGS; }
+    if (!get32(p) || get32(p) != ufi_config_generation()) { refuse(REFUSE_CONFIG_GEN, 1); return UFI_ERR_BAD_ARGS; }
+    if (!get32(p + 4) || !ufi_drive_media_matches(get32(p + 4))) { refuse(REFUSE_MEDIA_GEN, 1); return UFI_ERR_MEDIA_CHANGED; }
     const int ret = cmd_read(seq, p + 8, (uint16_t)(len - 8u));
     /* The capture start samples the media too: a change line asserted between the first
      * check and the start must not become the new baseline. */
@@ -515,6 +540,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     native_activity=HAL_GetTick();
     if (ufi_job_live() && (ufi_job.kind!=2 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
     if (len < 11u) {
+        refuse(REFUSE_LENGTH, 11);
         return UFI_ERR_BAD_ARGS;
     }
     if (ufi_board_write_locked() || ufi_drive_write_protected()) {
@@ -523,39 +549,39 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     uint16_t at = 11;                       /* optional fields follow in flag order */
     uint8_t sectors = 0;                    /* bit1: hard-sectored, sector holes u8 */
     if (p[2] & 0x02u) {
-        if (len < at + 1u || p[at] < 2u) {
-            return UFI_ERR_BAD_ARGS;
-        }
+        if (len < at + 1u) { refuse(REFUSE_LENGTH, (uint8_t)(at + 1u)); return UFI_ERR_BAD_ARGS; }
+        if (p[at] < 2u) { refuse(REFUSE_SECTORS, p[at]); return UFI_ERR_BAD_ARGS; }
         sectors = p[at++];
     }
     uint16_t scale = 1000;                  /* bit3: time scale u16 in 1/1000 (1.14) */
     if (p[2] & 0x08u) {
-        if (len < at + 2u) {
-            return UFI_ERR_BAD_ARGS;
-        }
+        if (len < at + 2u) { refuse(REFUSE_LENGTH, (uint8_t)(at + 2u)); return UFI_ERR_BAD_ARGS; }
         scale = (uint16_t)get16(&p[at]);
         at = (uint16_t)(at + 2u);
-        if (scale < 500u || scale > 2000u) {
-            return UFI_ERR_BAD_ARGS;
-        }
+        if (scale < 500u || scale > 2000u) { refuse(REFUSE_SCALE, 1); return UFI_ERR_BAD_ARGS; }
     }
     const uint8_t track = (p[2] & 0x04u) ? p[0] >> 2 : p[0];    /* bit2: quarter tracks (1.14) */
     const uint8_t quarter = (p[2] & 0x04u) ? p[0] & 3u : 0u;
     if (quarter && !ufi_drive_is_apple()) {
+        refuse(REFUSE_TRACK, 1);
         return UFI_ERR_BAD_ARGS;
     }
     uint32_t source_index=0;
     if (p[2]&0x40u) {
-        if ((p[2]&0x21u)!=0x21u || len<at+4u) return UFI_ERR_BAD_ARGS;
+        if ((p[2]&0x21u)!=0x21u) { refuse(REFUSE_INDEX_TICKS, 1); return UFI_ERR_BAD_ARGS; }
+        if (len<at+4u) { refuse(REFUSE_LENGTH, (uint8_t)(at + 4u)); return UFI_ERR_BAD_ARGS; }
         source_index=get32(p+at);at+=4u;
-        if (!source_index) return UFI_ERR_BAD_ARGS;
+        if (!source_index) { refuse(REFUSE_INDEX_TICKS, 2); return UFI_ERR_BAD_ARGS; }
     }
     uint64_t expected=0;uint8_t c=0,h=0,n=0;
     if(p[2]&0x80u) {
-        if((p[2]&0x21u)!=0x21u || len<at+12u)return UFI_ERR_BAD_ARGS;
+        if((p[2]&0x21u)!=0x21u) { refuse(REFUSE_EXPECTED, 1); return UFI_ERR_BAD_ARGS; }
+        if(len<at+12u) { refuse(REFUSE_LENGTH, (uint8_t)(at + 12u)); return UFI_ERR_BAD_ARGS; }
         expected=get32(p+at)|(uint64_t)get32(p+at+4)<<32;
         c=p[at+8];h=p[at+9];n=p[at+10];
-        if(!expected || n>3 || p[at+11])return UFI_ERR_BAD_ARGS;
+        if(!expected) { refuse(REFUSE_EXPECTED, 2); return UFI_ERR_BAD_ARGS; }
+        if(n>3) { refuse(REFUSE_EXPECTED, 3); return UFI_ERR_BAD_ARGS; }
+        if(p[at+11]) { refuse(REFUSE_EXPECTED, 4); return UFI_ERR_BAD_ARGS; }
         at+=12u;
     }
     /* flags2 (1.18): one optional trailing byte behind every flag-driven field, announced by
@@ -563,10 +589,10 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     uint8_t flags2 = 0;
     if (len == at + 1u) {
         flags2 = p[at++];
-        if (flags2 & ~UFI_V2_WRITE_FLAGS2_MASK) return UFI_ERR_BAD_ARGS;
+        if (flags2 & ~UFI_V2_WRITE_FLAGS2_MASK) { refuse(REFUSE_FLAGS2, (uint8_t)(flags2 & ~UFI_V2_WRITE_FLAGS2_MASK)); return UFI_ERR_BAD_ARGS; }
         if ((flags2 & 0x01u) && ufi_drive_is_apple()) return UFI_ERR_NOT_IMPL;   /* no index on that path */
     }
-    if (len!=at) return UFI_ERR_BAD_ARGS;
+    if (len!=at) { refuse(REFUSE_LENGTH, (uint8_t)at); return UFI_ERR_BAD_ARGS; }
     /* Extended data is already timed by the sender. Firmware verification is
      * supported; Apple/precomp/scaling still use the original backend. */
     if ((p[2]&0x20u) && ((p[2]&0x1cu) || scale!=1000 || ufi_drive_is_apple()))
@@ -590,8 +616,9 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
 
 static int cmd_guarded_write(uint8_t seq,const uint8_t* p,uint16_t len)
 {
-    if(len<19 || !get32(p) || get32(p)!=ufi_config_generation())return UFI_ERR_BAD_ARGS;
-    if(!ufi_drive_media_matches(get32(p+4)))return UFI_ERR_MEDIA_CHANGED;
+    if(len<19){refuse(REFUSE_LENGTH,19);return UFI_ERR_BAD_ARGS;}
+    if(!get32(p) || get32(p)!=ufi_config_generation()){refuse(REFUSE_CONFIG_GEN,1);return UFI_ERR_BAD_ARGS;}
+    if(!ufi_drive_media_matches(get32(p+4))){refuse(REFUSE_MEDIA_GEN,1);return UFI_ERR_MEDIA_CHANGED;}
     /* Main-loop dispatch does not yield between comparison and preparation. */
     int ret=cmd_write(seq,p+8,(uint16_t)(len-8));
     /* Preparation samples the media too: do not adopt a newer medium if its
@@ -646,6 +673,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
     uint8_t* out = &tx[UFI_V2_HDR];
     uint16_t n = 0;
     int ret = UFI_OK;
+    note_field = note_detail = 0;           /* op 39: the note belongs to this request only */
 
     if (ufi_board_soft_locked() && locked_write(cmd, p, len)) {
         send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_SOFT_LOCK), NULL, 0);
@@ -1011,6 +1039,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             static analyze_result_t a;
             quality_options_t options;
             if (!quality_options(p,len,&options)) {
+                refuse(REFUSE_ANALYSIS_OPTIONS, 0);   /* the option parser gives no breakdown */
                 ret=UFI_ERR_BAD_ARGS;break;
             }
             if (options.flags) ufi_quality_clear();
@@ -1250,6 +1279,11 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             break;
     }
     if (ufi_cancel_requested() && ufi_resources_owner()!=UFI_OWNER_GW) ret=UFI_ERR_CANCELLED;
+    if (ret == UFI_ERR_BAD_ARGS || ret == UFI_ERR_MEDIA_CHANGED) {
+        /* op 39: remember which request was refused and why (field 0 = no breakdown) */
+        refusal[0] = cmd; refusal[1] = seq; refusal[2] = st(ret);
+        refusal[3] = note_field; refusal[4] = note_detail;
+    }
     send(UFI_V2_REPLY, cmd, seq, st(ret), out, n);
 }
 

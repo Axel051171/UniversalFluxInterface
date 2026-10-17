@@ -215,6 +215,10 @@ static bool ufi_board_write_locked(void) {return false;}
 static bool ufi_drive_write_protected(void) {return false;}
 static bool apple_drive,erase_rest;
 static bool ufi_drive_is_apple(void) {return apple_drive;}
+enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
+      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS};
+static uint8_t note_f,note_d;
+static void refuse(uint8_t f,uint8_t d){note_f=f;note_d=d;}
 static void ufi_write_set_erase_rest(bool x) {erase_rest=x;}
 static void ufi_flux_hard_sectors(uint8_t x) {hard_sectors=x;line_calls++;}
 static bool ufi_drive_media_matches(uint32_t token){return token==42 && !(change_during_prepare && media_checks++);}
@@ -240,26 +244,31 @@ int main(void) {
     assert(native_activity==0);
     p[2]=0x61;assert(cmd_write(8,p,15)==0 && source_ticks==55000000);
     uint32_t before=prepare_calls;
-    assert(cmd_write(8,p,14)==UFI_ERR_BAD_ARGS && prepare_calls==before);
-    p[2]=0x60;assert(cmd_write(8,p,15)==UFI_ERR_BAD_ARGS);
+    assert(cmd_write(8,p,14)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_LENGTH && note_d==15);
+    p[2]=0x60;assert(cmd_write(8,p,15)==UFI_ERR_BAD_ARGS && note_f==REFUSE_INDEX_TICKS && note_d==1);
     p[2]=0x31;assert(cmd_write(8,p,11)==UFI_ERR_NOT_IMPL);
-    p[2]=0x80;assert(cmd_write(8,p,11)==UFI_ERR_BAD_ARGS);
+    p[2]=0x80;assert(cmd_write(8,p,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_EXPECTED && note_d==1);
     assert(prepare_calls==before);
+    assert(cmd_write(8,p,10)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==11);
+    { uint8_t sc[13]={0,0,0x08,3,0,0,0,3,0,0,0,0xff,0x0f};              /* scale 4095 */
+      assert(cmd_write(8,sc,13)==UFI_ERR_BAD_ARGS && note_f==REFUSE_SCALE && note_d==1);
+      sc[2]=0x02;sc[11]=1;assert(cmd_write(8,sc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_SECTORS && note_d==1);
+      sc[2]=0x04;sc[0]=1;assert(cmd_write(8,sc,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==1); }
     /* flags2 (1.18): one trailing byte behind the flag-driven fields; bit0 erase remainder */
     uint8_t f2[18]={0,0,0x21,3,0,0,0,3,0,0,0,1};
     assert(cmd_write(8,f2,12)==0 && erase_rest);
     f2[11]=0;assert(cmd_write(8,f2,12)==0 && !erase_rest);
-    f2[11]=2;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before);
+    f2[11]=2;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_FLAGS2 && note_d==2);
     f2[11]=1;apple_drive=true;assert(cmd_write(8,f2,12)==UFI_ERR_NOT_IMPL && prepare_calls==before);apple_drive=false;
     f2[2]=0x61;memcpy(f2+11,"\xc0\x3b\x47\x03",4);f2[15]=1;      /* behind index_ticks */
     assert(cmd_write(8,f2,16)==0 && erase_rest && source_ticks==55000000);
-    assert(cmd_write(8,f2,17)==UFI_ERR_BAD_ARGS);                /* two trailing bytes */
+    assert(cmd_write(8,f2,17)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==15);   /* two trailing bytes: the flags ask for 15 */
     f2[2]=0x21;assert(cmd_write(8,f2,11)==0 && !erase_rest);     /* no flags2: option off again */
     uint8_t strict[23]={0,0,0xa1,3,0,0,0,3,0,0,0,0xfe,0x0f,0,0,0,0,0,0,0,0,2,0};
     assert(cmd_write(9,strict,23)==0 && requested_set==4094);
-    strict[22]=1;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS);
-    strict[22]=0;strict[21]=4;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS);
-    strict[21]=2;assert(cmd_write(9,strict,22)==UFI_ERR_BAD_ARGS);
+    strict[22]=1;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS && note_f==REFUSE_EXPECTED && note_d==4);
+    strict[22]=0;strict[21]=4;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS && note_f==REFUSE_EXPECTED && note_d==3);
+    strict[21]=2;assert(cmd_write(9,strict,22)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==23);
     /* Rejected flag/length combinations must not change index configuration. */
     uint8_t fuzz[40]={0};fuzz[3]=fuzz[7]=3;
     for(unsigned flags=0;flags<256;flags++)for(unsigned len=0;len<=sizeof(fuzz);len++){

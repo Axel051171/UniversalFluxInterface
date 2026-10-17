@@ -22,6 +22,11 @@ static void ufi_stream_begin_v2(uint8_t seq){(void)seq;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t rev,uint32_t period,uint8_t quarter){
     (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;return start_error;
 }
+/* op 39 refusal note (4.8): the parser records field and detail */
+enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
+      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS};
+static uint8_t note_f,note_d;
+static void refuse(uint8_t f,uint8_t d){note_f=f;note_d=d;}
 /* GUARDED_READ doubles: configuration generation, media token, capture abort */
 static uint32_t get32(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static uint32_t config_gen=5,media_gen=9,media_after_start;
@@ -41,13 +46,13 @@ static struct {int state;} g_capture;
 static void guarded_checks(void){
     uint8_t q[19]={0};q[8]=0;q[9]=0;q[10]=2;         /* READ payload: track 0, side 0, 2 revs */
     unsigned before=starts;op_read=false;
-    assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before);          /* config 0 */
-    q[0]=4;q[4]=9;assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before);   /* stale config */
-    q[0]=5;q[4]=8;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before); /* other medium */
+    assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_CONFIG_GEN);   /* config 0 */
+    q[0]=4;q[4]=9;assert(cmd_guarded_read(3,q,11)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_CONFIG_GEN);   /* stale config */
+    q[0]=5;q[4]=8;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before && note_f==REFUSE_MEDIA_GEN); /* other medium */
     q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
-    q[4]=9;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before);            /* prefix only */
+    q[4]=9;note_f=0;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==11); /* prefix only */
     assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
-    op_read=false;q[11]=9;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1); /* READ flags still checked */
+    op_read=false;q[11]=9;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==8); /* READ flags still checked */
     q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
     media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
     assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
@@ -58,11 +63,14 @@ int main(void){
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;
-    p[3]=8;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls);
-    p[3]=1;p[4]=0xd1;p[5]=7;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before);
+    p[3]=8;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==8);
+    p[3]=1;p[4]=0xd1;p[5]=7;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_REVS && note_d==1);
     p[4]=p[5]=0;assert(!cmd_read(8,p,4));
+    assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==3);        /* length 5 is not a READ shape */
     p[3]=2;assert(!cmd_read(8,p,7) && hard_sectors==5);
-    p[6]=1;calls=line_calls;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && line_calls==calls);
+    assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==7);        /* HARD_SECTORS without the sectors byte */
+    p[6]=1;calls=line_calls;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && line_calls==calls && note_f==REFUSE_SECTORS && note_d==1);
+    p[3]=4;p[0]=2;assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==1);p[0]=0;p[3]=2;
     p[6]=7;start_error=UFI_ERR_SEEK_FAIL;
     assert(cmd_read(8,p,7)==UFI_ERR_SEEK_FAIL && hard_sectors==5);start_error=0;
     for(unsigned flags=0;flags<256;flags++)for(unsigned len=0;len<=sizeof(p);len++){

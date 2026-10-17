@@ -444,6 +444,11 @@ class OperatingProfile:
 
 GEN_BLOCK = struct.Struct("<BIIII")     # END generation block (4.5, 1.18): schema 1, config, media start, media end, capture id
 
+# op 39 (4.8): field codes of the last refusal, shared by READ/0x28, WRITE/0x27 and ANALYZE
+REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
+                  6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
+                  11: "configuration generation", 12: "media generation", 13: "analysis options"}
+
 
 def generation_block(payload: bytes, offset: int) -> dict | None:
     """Decode the generation block firmware 1.18 appends to READ/WRITE END payloads; None
@@ -941,6 +946,16 @@ class Device2:
         if reply[0] == 2:
             info["read_start"], info["read_data"] = reply[16], reply[17]
         return info
+
+    def last_refusal(self) -> dict:
+        """Op 39 (firmware 1.18, 4.8): which request the firmware last refused with 16/21 and why.
+        Returns {'command', 'seq', 'status', 'field', 'field_name', 'detail'}; command 0 = none
+        since reset.  Match command/seq against your own request before naming the field."""
+        reply = self.analysis_op(39)
+        if len(reply) < 6 or reply[0] != 1:
+            raise DeviceError("last refusal: unexpected reply")
+        return {"command": reply[1], "seq": reply[2], "status": reply[3], "field": reply[4],
+                "field_name": REFUSAL_FIELDS.get(reply[4], f"field {reply[4]}"), "detail": reply[5]}
 
     def flag_masks(self) -> dict:
         """Op 38 (firmware 1.18, 4.7): the request flag masks the parsers accept, taken from the

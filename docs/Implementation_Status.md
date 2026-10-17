@@ -968,3 +968,18 @@ answer cannot drift from the code; the other values are the existing module mask
 Read-only, never BUSY, payload after the op byte is BAD_ARGS. Native test in
 `test_analysis_job.py`; host `flag_masks()`, `ufi masks`, FakeV2 op 38 with a test that
 the host flag-name tables fit the masks. Protocol doc 4.7 and op table.
+
+## Reason of the last refusal — 2026-10-17
+
+Second item of UFT's list. The reply frame stays as it is; the v2 layer keeps the last
+refusal instead: the READ/GUARDED_READ/WRITE/GUARDED_WRITE parsers and the ANALYZE option
+check note a field code and a detail while they refuse (`refuse()`), `request()` clears
+the note before parsing and stamps command, sequence and status when a 16 or 21 goes out,
+and ANALYSIS_JOB op 39 returns the 6 bytes (schema, cmd, seq, status, field, detail; cmd 0
+= none since reset). Thirteen field codes shared by the commands (length with the required
+minimum, unknown flag bits, quarter without Apple, period, sectors, scale, index_ticks,
+expected set, flags2 bits, configuration and media generation, analysis options as a
+whole). Native tests check the notes for the READ shapes, the guarded prefix, every WRITE
+optional field, flags2 and the EXPECT_SET fields, plus op 39 itself. Host
+`last_refusal()` with field names, `ufi refusal`; FakeV2 and GuardedDevice keep a note for
+their own length/flags2/generation refusals. Protocol doc 4.8 and op table.

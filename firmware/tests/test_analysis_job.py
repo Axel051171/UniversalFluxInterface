@@ -14,6 +14,8 @@ static uint8_t resource_owner;
 uint8_t ufi_resources_owner(void){return resource_owner;}
 static uint32_t media_token=1;
 static bool soft_lock,jumper_lock;
+static uint8_t refusal_stub[6]={1,0x22,9,16,2,0x40};
+void ufi_v2_last_refusal(uint8_t out[6]){memcpy(out,refusal_stub,6);}
 void ufi_board_soft_lock(void){soft_lock=true;}
 bool ufi_board_soft_locked(void){return soft_lock;}
 bool ufi_board_jumper_locked(void){return jumper_lock;}
@@ -365,6 +367,10 @@ int main(void){
     lk[1]=0;assert(ufi_analysis_command(lk,2,out,&size)==UFI_ERR_BAD_ARGS && soft_lock);
     jumper_lock=true;assert(!ufi_analysis_command(lk,1,out,&size) && out[1]==3);jumper_lock=false;
     soft_lock=false;
+    /* Op 39: last refusal - 6 bytes straight from the v2 layer, read-only, no payload allowed */
+    uint8_t lr[2]={39};assert(!ufi_analysis_command(lr,1,out,&size) && size==6 && !memcmp(out,refusal_stub,6));
+    busy=true;assert(!ufi_analysis_command(lr,1,out,&size) && size==6);busy=false;
+    lr[1]=0;assert(ufi_analysis_command(lr,2,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 38: flag masks the parsers accept - fixed 16-byte answer, values are the parser constants */
     uint8_t fm[2]={38};assert(!ufi_analysis_command(fm,1,out,&size) && size==16 && out[0]==1);
     assert(out[1]==UFI_V2_READ_FLAG_MASK && out[2]==0xff && out[3]==UFI_V2_WRITE_FLAGS2_MASK && out[4]==0xff && out[5]==7);

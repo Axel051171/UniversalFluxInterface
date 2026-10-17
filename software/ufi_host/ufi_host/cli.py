@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks"}
+           "write-lock", "masks", "refusal"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -583,6 +583,8 @@ def main(argv: list[str] | None = None) -> int:
                    "no argument shows the current flags").add_argument("flags", nargs="?")
     sub.add_parser("masks", help="request flag masks this firmware accepts (firmware 1.18, op 38): READ/WRITE/flags2/analysis flags, "
                    "Apple GCR, tolerance, quality features, diagnostics, position byte")
+    sub.add_parser("refusal", help="which request the firmware last refused with status 16/21 and which field caused it "
+                   "(firmware 1.18, op 39); ask right after a refusal")
     sub.add_parser("write-lock", help="session write lock (firmware 1.18, op 37): no argument shows lock and jumper state, 'engage' locks every disk "
                    "and drive write (status 22) until the board is reset; there is no disengage").add_argument("action", nargs="?", choices=["engage"])
     sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
@@ -894,6 +896,13 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "refusal":
+            rf = dev.last_refusal()
+            if not rf["command"]:
+                print("no refusal since reset")
+            else:
+                print(f"command 0x{rf['command']:02X} seq {rf['seq']} status {rf['status']} "
+                      f"({P2.STATUS_TEXT.get(rf['status'], '?')}): {rf['field_name']}, detail {rf['detail']}")
         elif a.cmd == "masks":
             for k, v in dev.flag_masks().items():
                 print(f"{k:18} 0x{v:04x}" if k != "format_hint_max" else f"{k:18} {v}")
