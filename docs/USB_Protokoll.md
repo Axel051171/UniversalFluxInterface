@@ -40,6 +40,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 5.4 Macintosh-GCR, Zonenprüfung und getrennte Abweichungsbefunde (INFO Bit29)
   - 5.5 Lokale Zeitfenster, HFEv3 und getrennte Schwachstellenbefunde
   - 5.6 Erkennungszustände, Positionsbefunde und Wiederholungsursachen
+  - 5.7 Apple-II-5,25-Zoll-GCR (Format 7)
 - 6 Analysejobs
   - 6.1 Analysejobs, Discovery und Prüfabdeckung (INFO Bit24, 2026-10-14)
   - 6.2 Mehrspur-Analyse mit bestätigter Fortsetzung (0x0F, Op27–29)
@@ -131,7 +132,7 @@ Formatzeile, relative Offsets:
 
 | Offset | Typ | Inhalt |
 |---:|---|---|
-| 0 | u8 | Format: 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR |
+| 0 | u8 | Format: 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR, 7 Apple-II-GCR (5.7) |
 | 1 | u8 | Implementierte Softwarepfade, aktuell 15 |
 | 2 | u8 | Nach Port, Leitungskonflikten und Belegung derzeit zulässige Softwarepfade |
 | 3 | u8 | Offline getestete Teile der Formatfamilie: 10 = Decoder und Inhaltsvergleich |
@@ -834,7 +835,7 @@ Grenzen ersetzen keine mechanische Vermessung des Laufwerks.
 
 | Profiloffset | Typ | Bedeutung |
 |---:|---|---|
-| 0 | u8 | Format 1 MFM, 2 Amiga, 3 FM, 4 HP-MMFM, 5 CBM-GCR, 6 Macintosh-GCR (5.4); 0 löscht das Profil |
+| 0 | u8 | Format 1 MFM, 2 Amiga, 3 FM, 4 HP-MMFM, 5 CBM-GCR, 6 Macintosh-GCR (5.4), 7 Apple-II-5,25-Zoll-GCR (5.7); 0 löscht das Profil |
 | 1 | u8 | Zylinderzahl 1–84 oder 0 unbekannt |
 | 2 | u8 | Kopfzahl 1–2 oder 0 unbekannt |
 | 3 | u8 | Sektoren je Spur 1–64 oder 0 unbekannt/variabel |
@@ -1266,7 +1267,7 @@ Bestehende Requests mit 2 oder 3 Bytes bleiben gültig und liefern unverändert
 | 1 | u8 | Seite |
 | 2 | u8 | Umdrehungen: 0 = 3, maximal 8 |
 | 3 | u8 | Analyseflags, siehe unten |
-| 4 | u8, optional | Formathinweis: 0 automatisch, 1 IBM-MFM, 2 Amiga-MFM, 3 IBM-FM, 4 HP-MMFM, 5 Commodore-GCR, 6 Macintosh-GCR (INFO Bit29, 4.16) |
+| 4 | u8, optional | Formathinweis: 0 automatisch, 1 IBM-MFM, 2 Amiga-MFM, 3 IBM-FM, 4 HP-MMFM, 5 Commodore-GCR, 6 Macintosh-GCR (INFO Bit29, 5.4), 7 Apple-II-5,25-Zoll-GCR (5.7, nur ausdrücklich) |
 | 5 | u32 LE, optional | Datenrate in bit/s: 0 automatisch; 125000/150000/250000/300000/500000/1000000 |
 
 Gültige Requestlängen: **2, 3, 4, 9, 33 oder 37 Bytes**. Die beiden optionalen
@@ -2132,6 +2133,33 @@ Zeitbudget und Abbruchpfade bleiben erhalten.
 
 Hostparser: `ufi_host.recognition.decode_recognition()` und
 `decode_attempt_assessments()`. Greaseweazle-Wireformat unverändert.
+
+### 5.7 Apple-II-5,25-Zoll-GCR (Format 7)
+
+Decoder für 16-Sektor-Disketten des Apple II (DOS 3.3, ProDOS; 6-and-2-Kodierung,
+250 kbit/s, 4-µs-Zellen), eigenständig nach dem dokumentierten Spuraufbau umgesetzt
+(Referenztabellen in `REA_Floppy_Emu_Analyse_2026-10-17.md`). Adressfeld `D5 AA 96`,
+dann Volume, Spur, Sektor und Prüfsumme (XOR) in 4-and-4-Kodierung, Epilog `DE AA`;
+Datenfeld `D5 AA AD`, 342 Nibbles, Prüfnibble, Epilog `DE AA`. Der Decoder löst die
+laufende XOR-Kette und die 6-and-2-Aufteilung auf und liefert je Sektor 256 Nutzbytes.
+
+- **Sektorkennung:** `c` = Spur 0–39, `h` = 0, `r` = **physischer** Sektor 0–15,
+  `n` = 1 (256 Byte). Die Volume-Nummer steht im Decoder (`disk_id`), nicht in der
+  Kennung. DOS-3.3- oder ProDOS-Reihenfolge stellt der Host her (Tabellen
+  `0 7 14 6 13 5 12 4 11 3 10 2 9 1 8 15` bzw. `0 8 1 9 2 10 3 11 4 12 5 13 6 14 7 15`).
+- **Gültigkeit:** Kopf nur mit passender XOR-Prüfsumme, Spur < 40, Sektor < 16 und
+  Epilog; Datenfeld nur innerhalb von 4000 Zellen nach einem gültigen Kopf. `crc_ok`
+  im Rückruf bedeutet Prüfnibble und Epilog stimmen; Nibbles außerhalb des
+  6-and-2-Alphabets oder ohne gesetztes höchstes Bit zählen als Kodierfehler.
+- **Zugang:** Format 7 wird **nur ausdrücklich** gewählt (Formathinweis in ANALYZE und
+  in den Analysejobs, Laufwerks-/Medienprofil Op 14); die automatische Erkennung
+  (Kandidatenliste, 5.3/6.1) enthält kein Apple-II-Profil, damit Berichtsaufbau und
+  Op-0-Fähigkeiten unverändert bleiben. Qualitätsbericht, Prüflesen und Vergleich
+  arbeiten mit 256-Byte-Sektoren wie bei IBM `N=1`; die Mac-spezifischen Zonenfelder
+  bleiben bei Format 7 leer (255). Zwischen Halbspuren wird nicht unterschieden.
+- **Nicht enthalten:** 13-Sektor-Disketten (5-and-3), Schreiben im Format 7,
+  Kopierschutz-Abweichungen (geänderte Prologe/Epiloge) – dafür bleibt der Flusspfad
+  (READ, NIB über den Host) zuständig.
 
 ## 6 Analysejobs
 

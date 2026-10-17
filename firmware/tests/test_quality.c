@@ -20,7 +20,8 @@ int main(void) {
     request[3]=2;CHECK(!quality_options(request,4,&options),"adaptive requires detail");
     request[3]=0xff;CHECK(quality_options(request,4,&options),"all analysis flags accepted");
     request[3]=1;CHECK(!quality_options(request,8,&options),"truncated hints refused");
-    request[4]=7;CHECK(!quality_options(request,9,&options),"unknown codec hint refused");
+    request[4]=7;CHECK(quality_options(request,9,&options) && options.format==7,"Apple II GCR hint accepted (1.18)");
+    request[4]=8;CHECK(!quality_options(request,9,&options),"unknown codec hint refused");
     uint32_t n=mfm_encode_amiga_track(250000,100000,0,0,11,data,flux,100000);
     quality_init(&q,2,250000,2);
     for (uint8_t p=0;p<3;p++) {

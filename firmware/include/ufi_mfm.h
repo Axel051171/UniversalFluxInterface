@@ -33,7 +33,9 @@ typedef struct {
  * head, sector + 1, 2} from the track number in the header, crc_ok = both checksums.
  * Amiga data[0..511] is payload, data[512..527] contains the 16 label bytes,
  * data[528] is the sectors-until-gap header field. Macintosh: data[0..11] tags,
- * data[12..523] payload, data[524] format byte; N=2, sectors zero-based. */
+ * data[12..523] payload, data[524] format byte; N=2, sectors zero-based. Apple II 5.25
+ * (format 7): id = {track, 0, physical sector 0-15, 1}, data[0..255] payload, volume in
+ * the decoder's disk_id; DOS 3.3 / ProDOS logical order is applied by the host. */
 typedef void (*mfm_sector_cb)(void* ctx, const mfm_id_t* id, const uint8_t* data, bool crc_ok);
 
 typedef struct {
@@ -45,7 +47,7 @@ typedef struct {
     bool amiga;
     uint8_t gcr_ones,gcr_half,gcr_value;
     uint16_t disk_id;
-    uint8_t encoding; /* 1 IBM MFM, 2 Amiga MFM, 3 FM, 4 HP, 5 CBM, 6 Macintosh GCR */
+    uint8_t encoding; /* 1 IBM MFM, 2 Amiga MFM, 3 FM, 4 HP, 5 CBM, 6 Macintosh GCR, 7 Apple II 5.25 GCR */
     bool field_bad, previous_transition;
     uint8_t sector_flags, id_flags, last_mark;
     uint32_t code_errors, marks, margin_errors;

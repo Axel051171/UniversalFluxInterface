@@ -73,7 +73,7 @@ void mfm_dec_init_format(mfm_decoder_t* d,uint8_t format,uint32_t rate,mfm_secto
     mfm_dec_init(d,rate,cb,ctx);
     d->encoding=format;d->amiga=format==2;
     d->check_encoding=format>=3;
-    if(format==5 || format==6){d->nominal=(uint32_t)(((uint64_t)MFM_TICK_HZ*256u)/rate);d->period=d->nominal;d->pmin=d->nominal-d->nominal/8;d->pmax=d->nominal+d->nominal/8;}
+    if(format==5 || format==6 || format==7){d->nominal=(uint32_t)(((uint64_t)MFM_TICK_HZ*256u)/rate);d->period=d->nominal;d->pmin=d->nominal-d->nominal/8;d->pmax=d->nominal+d->nominal/8;}
 }
 
 static uint8_t raw_to_byte(uint32_t raw)
@@ -409,9 +409,69 @@ static void mac_cell(mfm_decoder_t* d)
     d->state=S_SEARCH;
 }
 
+/* Apple II 5.25-inch 16-sector 6-and-2 GCR (DOS 3.3 / ProDOS), format 7 (1.18).
+ * Independently implemented from the documented layout (address field D5 AA 96 with
+ * 4-and-4 volume/track/sector/checksum and DE AA, data field D5 AA AD with 342 nibbles
+ * plus checksum nibble and DE AA; docs/REA_Floppy_Emu_Analyse_2026-10-17.md lists the
+ * reference tables).  Sectors are reported in physical order: id = {track, 0, sector, 1},
+ * 256 payload bytes, disk_id = volume; DOS 3.3 / ProDOS ordering is a host concern. */
+static void apple_payload(mfm_decoder_t* d, uint8_t out[256])
+{
+    for(unsigned i=0;i<256;i++){
+        const uint8_t pair=(uint8_t)((d->buf[i%86u]>>(2u*(i/86u)))&3u);
+        out[i]=(uint8_t)((d->buf[86u+i]<<2)|((pair&1u)<<1)|(pair>>1));
+    }
+}
+
+static void apple_cell(mfm_decoder_t* d)
+{
+    if(d->id_age<UINT32_MAX)d->id_age++;
+    if(d->state==S_SEARCH){
+        uint32_t sync=(uint32_t)d->sr&0xffffffu;
+        if(sync==0xd5aa96u || (sync==0xd5aaadu && d->id_ok && d->id_age<4000)){
+            d->mark=d->last_mark=(uint8_t)sync;d->marks++;
+            d->want=d->mark==0x96?10:345;d->got=d->cells=0;
+            d->field_bad=false;d->sector_flags=0;d->state=S_FIELD;
+            if(d->mark==0x96)d->id_ok=false;
+        }
+        return;
+    }
+    if(++d->cells<8)return;
+    d->cells=0;const uint8_t byte=(uint8_t)d->sr;
+    if(!(byte&0x80u)){d->code_errors++;d->field_bad=true;d->id_ok=false;d->state=S_SEARCH;return;}
+    if(d->mark==0xad && d->got<d->want-2){
+        int symbol=mac_symbol(byte);
+        if(symbol<0){d->code_errors++;d->field_bad=true;d->id_ok=false;d->state=S_SEARCH;return;}
+        /* undo the running XOR of the 6-and-2 stream while storing */
+        d->buf[d->got]=(uint8_t)(symbol^(d->got?d->buf[d->got-1]:0));
+        d->got++;
+    }else d->buf[d->got++]=byte;
+    if(d->got<d->want)return;
+    const bool ending=d->buf[d->want-2]==0xde && d->buf[d->want-1]==0xaa;
+    if(d->mark==0x96){
+        uint8_t v[4];
+        for(unsigned i=0;i<4;i++)v[i]=(uint8_t)(((d->buf[2*i]<<1)|1u)&d->buf[2*i+1]);
+        d->id_ok=ending && v[3]==(uint8_t)(v[0]^v[1]^v[2]) && v[1]<40 && v[2]<16;
+        if(d->id_ok){
+            d->id=(mfm_id_t){v[1],0,v[2],1};
+            d->disk_id=v[0];d->id_age=0;d->ids_seen++;
+        }else d->header_errors++;
+    }else{
+        /* buf[342] holds the decoded checksum nibble: it must equal buf[341] after the XOR chain */
+        const bool checksum=d->buf[342]==0;
+        uint8_t out[256];apple_payload(d,out);memcpy(d->buf,out,256);
+        const bool ok=ending && checksum;
+        if(!ok)d->data_errors++;
+        if(d->cb)d->cb(d->ctx,&d->id,d->buf,ok);
+        d->id_ok=false;
+    }
+    d->state=S_SEARCH;
+}
+
 static void cell(mfm_decoder_t* d, uint32_t bit)
 {
     d->sr = (d->sr << 1) | bit;
+    if(d->encoding==7){apple_cell(d);return;}
     if(d->encoding==6){mac_cell(d);return;}
     if(d->encoding==5){gcr_cell(d,bit);return;}
     if(d->encoding>=3){legacy_cell(d);return;}

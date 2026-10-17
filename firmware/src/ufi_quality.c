@@ -51,7 +51,7 @@ bool quality_options(const uint8_t* p,uint16_t n,quality_options_t* o)
         if(!o->features || (o->features&~QUALITY_FEATURE_MASK) || !o->margin_permille || o->margin_permille>=500)return false;
     }
     return (!o->flags || (o->flags&1u)) &&
-           (n<9u || o->flags) && o->format<=6 && p[1]<=1 &&
+           (n<9u || o->flags) && o->format<=7 && p[1]<=1 &&
            o->limit>=1 && o->limit<=48 && o->window>=1 && o->window<=4 &&
            o->bits>=1 && o->bits<=32 && (o->bits==32 || !(o->pattern>>o->bits)) &&
            o->glitch && o->gap>o->glitch && (!o->cell || (o->cell>=100 && o->cell<=100000)) &&

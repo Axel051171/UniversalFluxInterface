@@ -51,6 +51,7 @@ if __name__ == "__main__":
     run("firmware/tests/test_runtime.py")
     run("firmware/tests/test_quality_runtime.py")
     run("firmware/tests/test_analysis_job.py")
+    run("firmware/tests/test_apple_gcr.py")
     run("firmware/tests/test_evidence_runtime.py")
     run("firmware/tests/test_media_runtime.py")
     run("firmware/tests/test_drive_profiles.py")

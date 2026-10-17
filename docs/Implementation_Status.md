@@ -722,6 +722,14 @@ Checks: native `test_analysis_job.py` (preset dispatch, invalid ids), pytest
   `ufi_dump.c` 93.0 / 80.4 (was 87.9 / 75.2) with `search_track` and `ds_sector` fully,
   `probe_double_step` and `recapture` partly reached; `ufi_drive.c` 97.5 / 90.6, the
   profile file code and the presets fully. 35 of 56 modules remain unmeasured (HAL-bound).
+- Format 7, Apple II 5.25-inch 16-sector 6-and-2 GCR (`apple_cell` in `ufi_mfm.c`):
+  D5 AA 96 address field with 4-and-4 volume/track/sector/XOR checksum and DE AA,
+  D5 AA AD data field with 342 nibbles, running XOR, checksum nibble and DE AA; 256-byte
+  sectors reported in physical order as `{track, 0, sector, 1}`, volume in `disk_id`.
+  Explicit selection only (no auto-detection candidate, so report layouts stay).
+  Native test `test_apple_gcr.py` with a synthetic track generator (`apple_fixture.h`):
+  16 sectors with data compare, header/data/epilogue faults, 6 % speed error.
+  Prompted by the Floppy Emu Apple II teardown; nothing was taken from the binary.
 - Host: all `zip()` calls carry an explicit `strict=` (ruff B905), the two deliberately
   truncating pairings in `hfe.py` say so; one unused loop variable and one late-binding
   lambda in `cli.py` fixed; ruff `--select F,B` is clean for the package.
