@@ -60,6 +60,7 @@ JOB = 0x0B
 GUARDED_WRITE = 0x27
 FEATURES = 0x0C
 DIAGNOSTICS = 0x0D
+ANALYSIS_JOB = 0x0F                     # firmware 1.18: sub-operations (op u8 first), 4.10-4.23
 DESCRIBE_FMT = struct.Struct("<BBHIIIIHHIII")
 WRITE_LIMITS_FMT = struct.Struct("<BBIIII")
 SELFTEST_ITEMS = {
@@ -333,6 +334,39 @@ class WriteLimits:
     @classmethod
     def unpack(cls, b: bytes) -> "WriteLimits":
         return cls(*WRITE_LIMITS_FMT.unpack_from(b))
+
+
+# ANALYSIS_JOB op 10 (additional drive times, 4.11) and op 18 (operating profile, 4.15)
+EXTRA_FIELDS = ("density_us", "motor_step_ms", "write_settle_us", "gate_lead_us", "gate_tail_us", "reserved")
+EXTRA = struct.Struct("<6H")
+PROFILE_FMT = struct.Struct("<B22s12sBBHB")     # schema, timing, extra, rpm_line, rpm_360_low, rpm, stored
+TIMING_PRESETS = {"standard": 1, "konservativ": 2}     # op 18 with [18, id] (firmware 1.18)
+
+
+@dataclass
+class OperatingProfile:
+    """Effective drive settings (ANALYSIS_JOB op 18, firmware 1.18): DRIVE_TIMING fields,
+    the additional drive times of op 10, the RPM line and whether a per-drive profile is
+    stored.  `pack()` yields the 40-byte request body for storing (stored byte = 0)."""
+    timing: dict[str, int]
+    extra: dict[str, int]
+    rpm_line: int               # 0 none, 1 DENSITY, 2 DRATE
+    rpm_360_low: int
+    rpm: int                    # 0 = not set, else 300/360
+    stored: bool
+
+    @classmethod
+    def unpack(cls, b: bytes) -> "OperatingProfile":
+        schema, t, e, line, low, rpm, stored = PROFILE_FMT.unpack_from(b)
+        if schema != 1:
+            raise DeviceError(f"operating profile schema {schema} unsupported")
+        return cls(dict(zip(TIMING_FIELDS, _timing_unpack(t))), dict(zip(EXTRA_FIELDS, EXTRA.unpack(e))),
+                   line, low, rpm, bool(stored))
+
+    def pack(self) -> bytes:
+        return PROFILE_FMT.pack(1, TIMING.pack(*(self.timing[f] for f in TIMING_FIELDS)),
+                                EXTRA.pack(*(self.extra[f] for f in EXTRA_FIELDS)),
+                                self.rpm_line, self.rpm_360_low, self.rpm, 0)
 
 
 @dataclass
@@ -698,6 +732,39 @@ class Device2:
             new = self.request(TIMING_CMD, TIMING.pack(*(cur[f] for f in TIMING_FIELDS)))
             cur = dict(zip(TIMING_FIELDS, _timing_unpack(new)))
         return cur
+
+    # -- drive settings beyond TIMING (firmware 1.18, ANALYSIS_JOB ops 10 and 18) ----------
+    def analysis_op(self, op: int, payload: bytes = b"", timeout: float = 2.0) -> bytes:
+        """One ANALYSIS_JOB sub-operation; the op byte leads the payload."""
+        return self.request(ANALYSIS_JOB, bytes([op]) + payload, timeout=timeout)
+
+    def extra_timing(self, **changes: int) -> dict[str, int]:
+        """Read the additional drive times (op 10); keyword arguments (EXTRA_FIELDS) change them."""
+        cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(self.analysis_op(10), 1)))
+        if changes:
+            unknown = set(changes) - set(EXTRA_FIELDS)
+            if unknown:
+                raise ValueError(f"unknown extra timing field(s): {', '.join(sorted(unknown))}")
+            cur.update(changes)
+            new = self.analysis_op(10, bytes([1]) + EXTRA.pack(*(cur[f] for f in EXTRA_FIELDS)))
+            cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(new, 1)))
+        return cur
+
+    def operating_profile(self) -> OperatingProfile:
+        """Effective drive settings of the selected drive (op 18)."""
+        return OperatingProfile.unpack(self.analysis_op(18))
+
+    def operating_profile_store(self, profile: OperatingProfile | None = None) -> OperatingProfile:
+        """Validate, apply and store a profile for the selected drive (op 18, 40 bytes); without
+        an argument the effective settings are stored so a later SELECT restores them."""
+        body = (profile or self.operating_profile()).pack()
+        return OperatingProfile.unpack(self.analysis_op(18, body))
+
+    def timing_preset(self, preset: int | str) -> OperatingProfile:
+        """Apply a named timing set (op 18 with [18, id]): 'standard' or 'konservativ'.  Only the
+        movement/settle times change; the stored profile is untouched (use operating_profile_store)."""
+        pid = TIMING_PRESETS[preset.lower()] if isinstance(preset, str) else int(preset)
+        return OperatingProfile.unpack(self.analysis_op(18, bytes([pid])))
 
     def lines(self, density: int, drate: int) -> None:
         self.request(LINES, bytes([density, drate]))

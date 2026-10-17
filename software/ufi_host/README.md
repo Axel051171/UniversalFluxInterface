@@ -47,6 +47,8 @@ ufi read 17 0 --quarter 2                 # Firmware ≥ 1.14: Apple-Viertelspur
 ufi read 17 0 --steps 50:17.1,100:17.2    # Firmware ≥ 1.14: Kopfschritte nach Zeitplan während des Lesens (Spiradisc); auch write
 ufi write-limits                          # Firmware ≥ 1.15: was der Schreibpfad annimmt (Takt, max. Intervalle, 1,6–238 µs); ufi write prüft damit vor dem Senden
 ufi timing tg43=1                         # Firmware ≥ 1.16: 8-Zoll-Laufwerke, Pin 2 = TG43 (reduzierter Schreibstrom ab Spur 43); auch UFI.CFG tg43=1
+ufi extra density_us=1500                 # Firmware ≥ 1.18: zusätzliche Laufwerkszeiten (Umschaltwartezeit, Motorstart→Schritt, Schreibberuhigung, WGATE-Vor-/Nachlauf)
+ufi profile [standard|konservativ|save]   # Firmware ≥ 1.18: wirksame Einstellungen des gewählten Laufwerks; Zeitsatz anwenden (konservativ = KryoFlux-Werte: Schritt 8 ms, Beruhigung 40 ms, Umkehr 38 ms); save merkt sie sich je Laufwerk bis zum Neustart
 ufi selftest                              # Firmware ≥ 1.14: Platinen-Selbsttest (Takt, PSRAM, SD, Versorgungen, USB-C, Laufwerksleitungen, IEC-Rückschleife, Index-Schleife), schreibt SELFTEST.LOG
 ufi format 1440 --verify                  # Firmware ≥ 1.14: Diskette in der Firmware formatieren (1440 720 1200 360 dmf amiga 1581 st720 st800, ab 1.16 amigahd; --track T für eine Spur)
 ufi analyze 0 0 -r 5                      # Firmware ≥ 1.14: Drehzahl, Abstands-Spitzen, Kodierung/Bitzelle, Spurlänge, schwache Bits, Index→erster Sektor

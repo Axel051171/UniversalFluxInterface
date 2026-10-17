@@ -484,7 +484,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
-           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor"}
+           "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -567,6 +567,11 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_parser(name)
     sub.add_parser("timing", help="show/set drive timings, e.g. timing step_rate_us=6000; tg43=1 for 8-inch drives (firmware 1.16)").add_argument(
         "set", nargs="*", metavar="FIELD=VALUE")
+    sub.add_parser("extra", help="show/set the additional drive times (firmware 1.18): density_us motor_step_ms write_settle_us gate_lead_us gate_tail_us").add_argument(
+        "set", nargs="*", metavar="FIELD=VALUE")
+    sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
+                   "'profile save' stores the effective settings so SELECT restores them (firmware 1.18)").add_argument(
+        "action", nargs="?", choices=("standard", "konservativ", "save"))
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
     q_help = "Apple Disk II quarter-track offset 0-3 (2 = half track), firmware >= 1.14"
@@ -822,6 +827,28 @@ def main(argv: list[str] | None = None) -> int:
             changes = {k: int(v, 0) for k, v in (s.split("=", 1) for s in a.set)}
             for k, v in dev.timing(**changes).items():
                 print(f"{k:18} {v}")
+        elif a.cmd == "extra":
+            changes = {k: int(v, 0) for k, v in (s.split("=", 1) for s in a.set)}
+            for k, v in dev.extra_timing(**changes).items():
+                if k != "reserved":
+                    print(f"{k:18} {v}")
+        elif a.cmd == "profile":
+            if a.action == "save":
+                prof = dev.operating_profile_store()
+            elif a.action:
+                prof = dev.timing_preset(a.action)
+            else:
+                prof = dev.operating_profile()
+            for k, v in prof.timing.items():
+                print(f"{k:18} {v}")
+            for k, v in prof.extra.items():
+                if k != "reserved":
+                    print(f"{k:18} {v}")
+            line = {0: "none", 1: "density", 2: "drate"}.get(prof.rpm_line, str(prof.rpm_line))
+            print(f"{'rpm_line':18} {line}" + (f" (low = 360)" if prof.rpm_line and prof.rpm_360_low else ""))
+            print(f"{'rpm':18} {prof.rpm or 'not set'}")
+            print(f"{'stored profile':18} {'yes' if prof.stored else 'no'}" +
+                  ("" if prof.stored or a.action == "save" else "  (ufi profile save keeps these settings for this drive)"))
         elif a.cmd == "read":
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))

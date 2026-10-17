@@ -82,6 +82,8 @@ class FakeV2:
         self.write_frames = 0
         self.events_mask = 0
         self.timing = P.TIMING.pack(3, 3000, 15000, 0, 200, 500, 10000, 30, 0, 0xFFFF, 0)
+        self.extra = P2.EXTRA.pack(0, 0, 20000, 0, 0, 0)
+        self.profile_stored = False
         self.index_sim = 0
         self.index_sim_mode = 0
         self.rpm_set = 0
@@ -147,6 +149,32 @@ class FakeV2:
             if a:
                 self.timing = a[:P2.TIMING.size]
             r(0, self.timing)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 10:          # additional drive times (4.11)
+            if len(a) == 14:
+                if a[1] != 1:
+                    r(P2.BAD_ARGS)
+                    return
+                self.extra = a[2:14]
+            r(0, bytes([1]) + self.extra)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.15)
+            if len(a) == 2:                                   # [18, id]: movement/settle times only
+                presets = {1: ((3000, 15000, 15000, 200, 500, 10000), (0, 0)),
+                           2: ((8000, 40000, 38000, 1000, 800, 60000), (60000, 200))}
+                if a[1] not in presets:
+                    r(P2.BAD_ARGS)
+                    return
+                t = list(P2.TIMING.unpack(self.timing))
+                t[1:7] = presets[a[1]][0]
+                self.timing = P2.TIMING.pack(*t)
+                e = list(P2.EXTRA.unpack(self.extra))
+                e[0:2] = presets[a[1]][1]
+                self.extra = P2.EXTRA.pack(*e)
+            elif len(a) == 41:
+                if a[1] != 1 or a[40] != 0:
+                    r(P2.BAD_ARGS)
+                    return
+                self.timing, self.extra, self.profile_stored = a[2:24], a[24:36], True
+            r(0, P2.PROFILE_FMT.pack(1, self.timing, self.extra, 0, 1, 0, int(self.profile_stored)))
         elif cmd == P2.IEC_MEM and a[0] == 4:
             r(0, b"00, OK,00,00\r")
         elif cmd == P2.IEC_BLOCK:
@@ -646,6 +674,38 @@ def test_write_limits_and_preflight():
     dev.write_track(1, 0, [1000, 800, 1000], scale=0.5, clamp=True)
     assert len([q for q in fake.requests if q.cmd == P2.WRITE]) == n_before + 2
     assert P2.STATUS_TEXT[19].startswith("track longer")
+
+
+def test_extra_timing_profile_and_presets():
+    import pytest
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    extra = dev.extra_timing()
+    assert extra["write_settle_us"] == 20000 and extra["density_us"] == 0
+    assert dev.extra_timing(density_us=1500)["density_us"] == 1500
+    with pytest.raises(ValueError):
+        dev.extra_timing(bogus=1)
+    prof = dev.operating_profile()
+    assert prof.timing["step_rate_us"] == 3000 and prof.extra["density_us"] == 1500 and not prof.stored
+    # conservative preset: KryoFlux-derived movement/settle times, everything else untouched
+    prof = dev.timing_preset("konservativ")
+    assert (prof.timing["step_rate_us"], prof.timing["settle_us"], prof.timing["dir_change_us"],
+            prof.timing["side_settle_us"], prof.timing["spinup_ms"], prof.timing["select_settle_us"]) == \
+        (8000, 40000, 38000, 1000, 800, 60000)
+    assert prof.extra["density_us"] == 60000 and prof.extra["motor_step_ms"] == 200
+    assert prof.timing["precomp_ns"] == 0xFFFF and prof.extra["write_settle_us"] == 20000 and not prof.stored
+    assert dev.timing()["step_rate_us"] == 8000, "TIMING reports the preset values"
+    assert fake.requests[-2].payload == bytes([18, 2])
+    with pytest.raises(KeyError):
+        dev.timing_preset("turbo")
+    with pytest.raises(P2.DeviceError):
+        dev.timing_preset(7)
+    # store: the effective settings go out as a 40-byte profile with the stored byte cleared
+    stored = dev.operating_profile_store()
+    assert stored.stored and fake.requests[-1].payload[0] == 18 and len(fake.requests[-1].payload) == 41
+    assert fake.requests[-1].payload[40] == 0 and stored.timing["dir_change_us"] == 38000
+    back = dev.timing_preset("standard")
+    assert back.timing["dir_change_us"] == 15000 and back.stored
 
 
 def test_dump_start_format():
