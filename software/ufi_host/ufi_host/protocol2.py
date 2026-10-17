@@ -360,7 +360,7 @@ class OperatingProfile:
         schema, t, e, line, low, rpm, stored = PROFILE_FMT.unpack_from(b)
         if schema != 1:
             raise DeviceError(f"operating profile schema {schema} unsupported")
-        return cls(dict(zip(TIMING_FIELDS, _timing_unpack(t))), dict(zip(EXTRA_FIELDS, EXTRA.unpack(e))),
+        return cls(dict(zip(TIMING_FIELDS, _timing_unpack(t), strict=True)), dict(zip(EXTRA_FIELDS, EXTRA.unpack(e), strict=True)),
                    line, low, rpm, bool(stored))
 
     def pack(self) -> bytes:
@@ -616,7 +616,7 @@ class Device2:
                "native_tx_timeouts","lease_releases","heap_bytes","axi_free_bytes",
                "stack_space_bytes","native_idle_timeout_ms")
         return dict(schema=data[0],psram=bool(data[1]&1),owner=data[2],
-                    **dict(zip(names,struct.unpack_from('<15I',data,4))))
+                    **dict(zip(names,struct.unpack_from('<15I',data,4), strict=True)))
 
     def features(self) -> list[dict]:
         data = self.request(FEATURES)
@@ -723,14 +723,14 @@ class Device2:
 
     def timing(self, **changes: int) -> dict[str, int]:
         """Read drive timings; keyword arguments (TIMING_FIELDS) change them."""
-        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.request(TIMING_CMD))))
+        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.request(TIMING_CMD)), strict=True))
         if changes:
             unknown = set(changes) - set(TIMING_FIELDS)
             if unknown:
                 raise ValueError(f"unknown timing field(s): {', '.join(sorted(unknown))}")
             cur.update(changes)
             new = self.request(TIMING_CMD, TIMING.pack(*(cur[f] for f in TIMING_FIELDS)))
-            cur = dict(zip(TIMING_FIELDS, _timing_unpack(new)))
+            cur = dict(zip(TIMING_FIELDS, _timing_unpack(new), strict=True))
         return cur
 
     # -- drive settings beyond TIMING (firmware 1.18, ANALYSIS_JOB ops 10 and 18) ----------
@@ -740,14 +740,14 @@ class Device2:
 
     def extra_timing(self, **changes: int) -> dict[str, int]:
         """Read the additional drive times (op 10); keyword arguments (EXTRA_FIELDS) change them."""
-        cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(self.analysis_op(10), 1)))
+        cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(self.analysis_op(10), 1), strict=True))
         if changes:
             unknown = set(changes) - set(EXTRA_FIELDS)
             if unknown:
                 raise ValueError(f"unknown extra timing field(s): {', '.join(sorted(unknown))}")
             cur.update(changes)
             new = self.analysis_op(10, bytes([1]) + EXTRA.pack(*(cur[f] for f in EXTRA_FIELDS)))
-            cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(new, 1)))
+            cur = dict(zip(EXTRA_FIELDS, EXTRA.unpack_from(new, 1), strict=True))
         return cur
 
     def operating_profile(self) -> OperatingProfile:

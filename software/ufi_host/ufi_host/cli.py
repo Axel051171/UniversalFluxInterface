@@ -76,7 +76,7 @@ def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None
         limits = dev.describe()
         if not limits.flags & 2:
             raise ValueError("firmware does not advertise the extended write backend")
-        for deltas, duration in plans.values():
+        for deltas, _duration in plans.values():
             if not 3 <= len(deltas) <= limits.store_words or any(d < 220 or d > 0xffffffff for d in deltas):
                 raise ValueError("HFEv3 flux exceeds firmware interval or buffer limits")
         for (c, s), (deltas, duration) in plans.items():
@@ -186,7 +186,7 @@ def cmd_read_native(dev, a) -> None:
                 attempt = archive.begin(cyl, head, a.revs)
                 try:
                     cap = dev.read_track(cyl, head, a.revs, hard_sectors=a.hard_sectors,
-                                         frame_sink=lambda b: archive.frame(attempt, b))
+                                         frame_sink=lambda b, att=attempt: archive.frame(att, b))
                     archive.finish(attempt, cap)
                 except BaseException as exc:
                     archive.fail(attempt, str(exc) or type(exc).__name__)
@@ -845,7 +845,7 @@ def main(argv: list[str] | None = None) -> int:
                 if k != "reserved":
                     print(f"{k:18} {v}")
             line = {0: "none", 1: "density", 2: "drate"}.get(prof.rpm_line, str(prof.rpm_line))
-            print(f"{'rpm_line':18} {line}" + (f" (low = 360)" if prof.rpm_line and prof.rpm_360_low else ""))
+            print(f"{'rpm_line':18} {line}" + (" (low = 360)" if prof.rpm_line and prof.rpm_360_low else ""))
             print(f"{'rpm':18} {prof.rpm or 'not set'}")
             print(f"{'stored profile':18} {'yes' if prof.stored else 'no'}" +
                   ("" if prof.stored or a.action == "save" else "  (ufi profile save keeps these settings for this drive)"))

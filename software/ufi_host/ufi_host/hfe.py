@@ -135,7 +135,7 @@ def flux_to_cells(samples: list[int], rate_bps: int, nbytes: int) -> bytes:
 def guess_rate(samples: list[int]) -> int:
     """Data rate from the shortest common interval (= two cells): 10th percentile of the
     intervals snapped to 250/300/500/1000 kbit/s."""
-    deltas = sorted(b - a for a, b in zip(samples, samples[1:]) if b > a)
+    deltas = sorted(b - a for a, b in zip(samples, samples[1:], strict=False) if b > a)
     if not deltas:
         return 250_000
     two = deltas[len(deltas) // 10]
@@ -328,7 +328,7 @@ def encode_hfe_v3(track: HfeV3Track) -> bytes:
     indexes = {}
     for i in track.indexes:
         indexes[i] = indexes.get(i, 0) + 1
-    for start, end in zip(points, points[1:]):
+    for start, end in zip(points, points[1:], strict=False):
         out.extend([0xf1]*indexes.get(start, 0))
         if rate != track.periods[start]:
             rate = track.periods[start];out.extend((0xf2, rate))

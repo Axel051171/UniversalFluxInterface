@@ -22,5 +22,5 @@ def decode_regions(payload: bytes) -> dict:
                 completed_revolutions=payload[3], selected_flags=payload[13],
                 compared_revolutions=payload[14], ambiguous=bool(payload[15]), minimum_samples=minimum,
                 change_threshold_permille=threshold, baseline_cell_q8=baseline,
-                windows=[dict(zip(names, struct.unpack_from('<10I', payload, 32+40*k)))
+                windows=[dict(zip(names, struct.unpack_from('<10I', payload, 32+40*k), strict=True))
                          for k in range(32)])

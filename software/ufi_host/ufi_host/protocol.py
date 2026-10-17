@@ -219,14 +219,14 @@ class Device:
 
     def timing(self, **changes: int) -> dict[str, int]:
         """Read drive timings; keyword arguments (TIMING_FIELDS) change them."""
-        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.command(DRIVE_TIMING))))
+        cur = dict(zip(TIMING_FIELDS, _timing_unpack(self.command(DRIVE_TIMING)), strict=True))
         if changes:
             unknown = set(changes) - set(TIMING_FIELDS)
             if unknown:
                 raise ValueError(f"unknown timing field(s): {', '.join(sorted(unknown))}")
             cur.update(changes)
             cur = dict(zip(TIMING_FIELDS, _timing_unpack(
-                self.command(DRIVE_TIMING, *TIMING.pack(*(cur[f] for f in TIMING_FIELDS))))))
+                self.command(DRIVE_TIMING, *TIMING.pack(*(cur[f] for f in TIMING_FIELDS)))), strict=True))
         return cur
 
     def usb_power(self) -> tuple[int, int, int]:
