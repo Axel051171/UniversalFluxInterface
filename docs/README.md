@@ -30,6 +30,7 @@ Geprüft wurde jeweils ein fester Commit beziehungsweise eine Datei mit Hash; es
 | [ADF_Drive_Review.md](ADF_Drive_Review.md) | ADF-Drive-Firmware (Amiga-Laufwerk am Arduino) |
 | [Biosfuck_Review.md](Biosfuck_Review.md) | biosfuck |
 | [Floppy_Emu_Review.md](Floppy_Emu_Review.md) | Floppy Emu 231209M (englisch) |
+| [REA_Floppy_Emu_Analyse_2026-10-17.md](REA_Floppy_Emu_Analyse_2026-10-17.md) | Floppy Emu 231209M, Binärabbild zerlegt: AVR-Programm und XC9572XL-XSVF, GCR-Tabellen und -Kodierer, 7-Bit-CPLD-Schnittstelle, Zonentabellen |
 | [GLaDISK_Review.md](GLaDISK_Review.md) | GLaDISK |
 | [HP9895_Review.md](HP9895_Review.md) | HP 9895 Firmware (hp9895fw) |
 | [HxC_Gotek_Review.md](HxC_Gotek_Review.md) | HxC-Firmwarearchiv für Gotek |

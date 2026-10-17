@@ -3,7 +3,9 @@
 Reviewed 2026-10-16. Input: user-supplied `femu-231209M.zip`, SHA-256
 `d5fac3b5bfd4b2ad8caa7ac69a6a179632d3d0bf44582fa0455a6e9e5584a94f`.
 The archive contains a combined AVR/CPLD update, documentation and two MOOF
-examples. No femu.bin code was executed, imported or reverse-engineered.
+examples. No femu.bin code was executed, imported or reverse-engineered in this
+review; the binary itself is taken apart in
+[REA_Floppy_Emu_Analyse_2026-10-17.md](REA_Floppy_Emu_Analyse_2026-10-17.md).
 
 ## References
 
