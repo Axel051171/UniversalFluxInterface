@@ -1,6 +1,6 @@
 # Abnahme des Schreibpfads auf der UFI Headless v0.7
 
-Stand: Firmware 1.16 (Audit F01–F07 behoben, DMA-Streaming, Verify-Stufen; 1.16: TG43, Dump dekodiert, Abbild von SD, IEC-Schreiben, Amiga HD). Noch **nicht ausgeführt** –
+Stand: Firmware 1.18-dev (Audit F01–F07 behoben, DMA-Streaming, Verify-Stufen; 1.16: TG43, Dump dekodiert, Abbild von SD, IEC-Schreiben, Amiga HD; 1.18: Spurrest löschen, Sitzungs-Schreibsperre, Generationsblock, mediengebundener READ-Start). Noch **nicht ausgeführt** –
 alles unten ist am Gerät zu messen, bevor Schreibfunktionen als verlässlich gelten. Grundlage:
 `Erkenntnisse/UFI_Firmware_2026-10-11` (Audit) und `Erkenntnisse/UFI_Weiterentwicklung_2026-10-11`
 (Kandidat, Hardware-Testplan) im UnifiedFloppyTool-Repo, ergänzt um die Punkte der 1.15-Umsetzung.
@@ -30,6 +30,9 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | ERASE_FLUX | `gw erase --ticks …` | WGATE-Dauer = angeforderte Zeit (1…5000 ms) |
 | Apple-Pfad | WRDATA (J14) im Toggle-Modus | Flankenabstände = Soll, /WRREQ nur während des Schreibens |
 | TG43 (1.16) | `ufi timing tg43=1`, Seeks 42 → 43 → 42 | DENSITY (J6 Pin 2) fällt bei Spur ≥ 43 auf Low und geht darunter wieder hoch; mit `rpm_line=density` bleibt die Drehzahlwahl unberührt |
+| **Spurrest löschen (1.18)** | `ufi write … --erase-rest` mit einer Spur von etwa 100 ms Länge, Index-Simulation 200 ms; dieselbe Spur ohne `--erase-rest` als Gegenprobe | mit Option: nach dem letzten Impuls **kein** weiterer Flankenwechsel auf WDATA, WGATE bleibt aktiv und fällt erst mit der nächsten Indexflanke (Abstand zum letzten Impuls = `erased_ticks` ± 1 Takt, hier ≈ 100 ms); ohne Option fällt WGATE direkt nach der letzten Periode und `erased_ticks` = 0. Zusätzlich: Spur länger als die Index-Periode mit Option → Status 19, `erased_ticks` 0, kein Nachlauf |
+| Spurrest löschen, Abbruch (1.18) | wie oben, ABORT während des Nachlaufs | WGATE fällt sofort, Ende-Status 4, kein Impuls; danach normaler WRITE möglich |
+| Spurrest löschen, Apple (1.18) | `flags2` Bit0 bei angewähltem Disk-II-Laufwerk | Status 11 bei der Annahme, /WRREQ bleibt inaktiv |
 
 ## 2 Fehlerfälle und Schutz
 
@@ -40,6 +43,11 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | WRITE-LOCK-Jumper, WPROT des Laufwerks | Status 12, keine Schreibaktivität |
 | Watchdog / Fault während des Schreibens | WGATE aus (Reset), `CRASH.LOG`, INFO meldet Ursache |
 | Schreibschutz während des Schreibens gesetzt | Laufwerk ignoriert WGATE; Verify meldet Fehler statt Erfolg |
+| Sitzungs-Schreibsperre (1.18) | `ufi write-lock engage`, danach WRITE, ERASE, PATTERN, FORMAT, `sd-write`, `iec-write`, `gw write`, USB-Floppy-Modus schreiben, Taster-Schreiben | native Befehle: Status 22 bei der Annahme, WGATE nie an; GW-Modus: GW-Quittung „schreibgeschützt“; Massenspeicher: Schreibfehler am PC; Taster: keine Schreibaktivität. STATUS-Flagbyte Bit 7 gesetzt (`BoardStatus.session_locked`), `ufi write-lock` zeigt die Sperre getrennt vom Jumper |
+| Sperre überlebt (1.18) | nach `engage`: `ufi mode gw` und zurück, USB abziehen und neu verbinden, ABORT | Sperre bleibt gesetzt (`[37]` → Bit 0); erst nach Reset-Taster/Spannung aus ist sie weg; Watchdog-Reset löscht sie ebenfalls (`CRASH.LOG` prüfen) |
+| Sperre nach Annahme (1.18) | langen WRITE starten, während die Daten laufen `[37, 1]` setzen | Ende-Rahmen Status 22, WGATE ging nie an |
+| Generationsblock (1.18) | `ufi read` und `ufi write` auf einer Spur, dann Diskette wechseln (oder `[16]`) und wiederholen | Start- und Endgeneration je Ende-Rahmen gleich; nach dem Wechsel andere Mediengeneration, `capture_id` steigt je READ; GUARDED_READ/GUARDED_WRITE mit der alten Generation → Status 21 vor jedem Daten-Rahmen |
+| Wechsel während GUARDED_READ (1.18) | Diskettenwechselsignal während einer laufenden Aufnahme auslösen (Klappe öffnen) | Aufnahme endet mit Status 21, keine weiteren Daten-Rahmen, nächster Start mit neuer Generation läuft |
 
 ## 3 Mit Medium
 
