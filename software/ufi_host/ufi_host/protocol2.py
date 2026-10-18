@@ -147,6 +147,7 @@ EVENTS_ALL = sum(1 << (c - 0x80) for c in EVENT_NAMES)
 
 USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3, "composite": 4}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
+READ_PROVENANCE = 0x08                  # READ flag (1.18, 4.12): END carries the 96-byte provenance block
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
@@ -604,6 +605,29 @@ class ProtocolDescription:
         return cls(*DESCRIBE_FMT.unpack_from(data))
 
 
+PROVENANCE_SIZE = 96                    # op 43 block, also appended to READ END with READ_PROVENANCE (4.12)
+
+
+def decode_provenance(d: bytes) -> dict:
+    """The 96-byte provenance block (firmware 1.18, op 43 / READ flag bit 3, USB_Protokoll 4.12)."""
+    if len(d) != PROVENANCE_SIZE or d[0] != 1 or d[1] != PROVENANCE_SIZE:
+        raise ValueError("unsupported provenance block")
+    uid = struct.unpack_from("<III", d, 4)
+    dev_id, silicon, board_mv = struct.unpack_from("<HHH", d, 16)
+    (flux_hz, config_gen, media_gen, capture_id, capture_media, index_ticks, speed_ticks) = struct.unpack_from("<7I", d, 48)
+    rpm_set, uptime = struct.unpack_from("<H", d, 78)[0], struct.unpack_from("<I", d, 80)[0]
+    return dict(board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
+                session_locked=bool(d[3] & 4), apple_sync=bool(d[3] & 8), capture_present=bool(d[3] & 16),
+                mcu_uid=f"{uid[2]:08x}{uid[1]:08x}{uid[0]:08x}", mcu_device_id=dev_id, mcu_revision=silicon,
+                board_id_mv=board_mv, firmware=(d[22], d[23]),
+                git_rev=d[24:36].split(b"\0", 1)[0].decode("ascii", "replace"),
+                build_date=d[36:48].split(b"\0", 1)[0].decode("ascii", "replace"),
+                flux_hz=flux_hz, config_generation=config_gen, media_generation=media_gen,
+                capture_id=capture_id, capture_media_generation=capture_media,
+                index_ticks=index_ticks, speed_measured_ticks=speed_ticks,
+                drive=d[76], profile_stored=bool(d[77]), rpm_set=rpm_set, uptime_ms=uptime)
+
+
 JOB_RETRY_MISSING, JOB_RETRY_ERRORS, JOB_EXPECT_SET, JOB_RAW_INDEX, JOB_TRANSFER_TRACE, JOB_CHECK_PROFILE = 1, 2, 4, 8, 16, 32
 JOB_STATES = {0: "unused", 1: "capture", 2: "analysis", 3: "done", 4: "failed"}
 ANALYSIS_STATUS = struct.Struct("<BBBBIIIQQQBBBxIBBBBBBBBII")    # 64 bytes (USB_Protokoll 6.1, op 2)
@@ -1021,23 +1045,7 @@ class Device2:
         was bound to, the last index period the flux timer saw, the last speed-check measurement,
         the selected drive with its rpm setting and profile source, uptime.  One request, 96 bytes,
         pure query; meant to be stored next to every raw file."""
-        d = self.analysis_op(43)
-        if len(d) != 96 or d[0] != 1 or d[1] != 96:
-            raise ValueError("unsupported provenance block")
-        uid = struct.unpack_from("<III", d, 4)
-        dev_id, silicon, board_mv = struct.unpack_from("<HHH", d, 16)
-        (flux_hz, config_gen, media_gen, capture_id, capture_media, index_ticks, speed_ticks) = struct.unpack_from("<7I", d, 48)
-        rpm_set, uptime = struct.unpack_from("<H", d, 78)[0], struct.unpack_from("<I", d, 80)[0]
-        return dict(board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
-                    session_locked=bool(d[3] & 4), apple_sync=bool(d[3] & 8), capture_present=bool(d[3] & 16),
-                    mcu_uid=f"{uid[2]:08x}{uid[1]:08x}{uid[0]:08x}", mcu_device_id=dev_id, mcu_revision=silicon,
-                    board_id_mv=board_mv, firmware=(d[22], d[23]),
-                    git_rev=d[24:36].split(b"\0", 1)[0].decode("ascii", "replace"),
-                    build_date=d[36:48].split(b"\0", 1)[0].decode("ascii", "replace"),
-                    flux_hz=flux_hz, config_generation=config_gen, media_generation=media_gen,
-                    capture_id=capture_id, capture_media_generation=capture_media,
-                    index_ticks=index_ticks, speed_measured_ticks=speed_ticks,
-                    drive=d[76], profile_stored=bool(d[77]), rpm_set=rpm_set, uptime_ms=uptime)
+        return decode_provenance(self.analysis_op(43))
 
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
@@ -1381,14 +1389,19 @@ class Device2:
     def read_track(self, track: int, side: int, revolutions: int = 3,
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
                    quarter: int = 0, frame_sink=None, integrity: bool | None = None,
-                   expected_config: int | None = None, expected_media: int | None = None) -> Capture:
+                   expected_config: int | None = None, expected_media: int | None = None,
+                   provenance: bool = False) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
+        provenance (firmware 1.18, READ flag bit 3): the END also carries the 96-byte provenance
+        block of op 43, decoded into Capture.provenance, so the raw data and the device state it
+        came from arrive in one transaction.
         hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
         quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5).
         expected_config/expected_media (both, firmware 1.18): start with GUARDED_READ 0x28, which
         refuses a stale configuration (16) or another medium (21) before any DATA frame."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
-        flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0)
+        flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0) | \
+                (READ_PROVENANCE if provenance else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
@@ -1429,7 +1442,9 @@ class Device2:
             if f.status == 0 and end[0] != revolutions:
                 raise ValueError("successful capture returned fewer revolutions than requested")
             revs = revs[:end[0]]
-            return Capture(revs, f.status, generation_block(end, 1))
+            block = end[1 + GEN_BLOCK.size:1 + GEN_BLOCK.size + PROVENANCE_SIZE] if provenance else b""
+            return Capture(revs, f.status, generation_block(end, 1),
+                           decode_provenance(block) if len(block) == PROVENANCE_SIZE else None)
 
     def write_limits(self) -> WriteLimits:
         """Effective limits of the write backend (firmware 1.15, caps bit 14)."""

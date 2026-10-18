@@ -338,6 +338,7 @@ int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t posit
 uint16_t ufi_analyze_weak_report(uint8_t* out);
 #define UFI_PROVENANCE_SIZE 96u                  // ANALYSIS_JOB op 43 (4.12): provenance block, schema 1
 uint16_t ufi_provenance_block(uint8_t* out);    // ufi_v2.c: board, firmware, drive setting, generations, last capture
+bool ufi_v2_read_provenance(void);              // ufi_v2.c: the open READ asked for the block in its END (flag bit3)
 uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
 void ufi_quality_clear(void);
 int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);

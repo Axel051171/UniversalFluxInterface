@@ -9,7 +9,7 @@ def main():
 #define FLUX_TIMER_FREQ 275000000u
 enum {JOB_OPEN};
 static struct {unsigned kind,state;} ufi_job;
-static bool op_read;
+static bool op_read,read_provenance;
 static uint8_t read_seq,hard_sectors=9;
 static unsigned starts,line_calls;
 static int start_error;
@@ -52,7 +52,7 @@ static void guarded_checks(void){
     q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
     q[4]=9;note_f=0;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==11); /* prefix only */
     assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
-    op_read=false;q[11]=9;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==8); /* READ flags still checked */
+    op_read=false;q[11]=17;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==16); /* READ flags still checked */
     q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
     media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
     assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
@@ -63,7 +63,9 @@ int main(void){
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;
-    p[3]=8;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==8);
+    p[3]=16;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==16);
+    p[3]=8;assert(!cmd_read(8,p,4) && read_provenance && starts==before+1);              /* bit3: provenance block in END (4.12) */
+    p[3]=0;assert(!cmd_read(8,p,4) && !read_provenance);before=starts;                  /* the next READ without it clears the request */
     p[3]=1;p[4]=0xd1;p[5]=7;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_REVS && note_d==1);
     p[4]=p[5]=0;assert(!cmd_read(8,p,4));
     assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==3);        /* length 5 is not a READ shape */

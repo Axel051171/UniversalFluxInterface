@@ -475,6 +475,9 @@ void ufi_v2_last_refusal(uint8_t out[6])
     memcpy(out + 1, refusal, sizeof(refusal));
 }
 
+static bool read_provenance;                /* READ flag bit3 (1.18): END carries the provenance block (4.12) */
+bool ufi_v2_read_provenance(void) { return read_provenance; }
+
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
     if (ufi_job_live() && (ufi_job.kind!=1 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
@@ -511,6 +514,7 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     if (ret == UFI_OK) {
         op_read = true;
         read_seq = seq;
+        read_provenance = (flags & 0x08u) != 0;   /* bit3: END = revs, generation block, provenance block */
         ufi_stream_begin_v2(seq);           /* DATA frames follow the reply */
     } else ufi_flux_hard_sectors(previous[4]);
     return ret;

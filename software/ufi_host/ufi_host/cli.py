@@ -627,6 +627,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--revs", type=int, default=50, help="revolutions per READ (default 50, max 200)")
     p.add_argument("--scale", type=float, default=1.0, help="full bar deflection in percent (default 1)")
     p = sub.add_parser("read")
+    p.add_argument("--provenance", action="store_true",
+                   help="READ flag bit 3 (firmware 1.18): the END carries the provenance block of op 43; printed after the summary")
     p.add_argument("--amiga-quality", metavar="JSON", help="save adaptive Amiga quality report; keep raw flux with -o capture.scp")
     p.add_argument("--amiga-spt", type=int, choices=(11, 22), default=11)
     p.add_argument("track", type=int)
@@ -1022,8 +1024,15 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "read":
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))
-            cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter)
+            cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter,
+                                 provenance=getattr(a, "provenance", False))
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
+            if getattr(a, "provenance", False):
+                pv = cap.provenance
+                print("provenance: " + ("not in END (older firmware)" if pv is None else
+                      f"board v0.{pv['board_rev']}, MCU {pv['mcu_uid']}, firmware {pv['firmware'][0]}.{pv['firmware'][1]} "
+                      f"rev {pv['git_rev']}{'+' if pv['git_dirty'] else ''}, configuration {pv['config_generation']}, "
+                      f"media {pv['media_generation']}, capture id {pv['capture_id']}, drive {pv['drive']}"))
             if a.output and a.output.lower().endswith(".hfe"):
                 write_hfe(a.output, _hfe_image({(a.track, a.side): cap.revolutions}, a.bitrate, a.encoding))
                 print(f"wrote {a.output}")

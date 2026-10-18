@@ -474,7 +474,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Provenienzblock im Ende-Rahmen, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -1250,7 +1250,8 @@ bisherigen Ende-Nutzdaten von READ 0x20 (`revs` u8) und WRITE 0x22 (`verify_leve
 | 9 | u32 | Mediengeneration zum Zeitpunkt des Ende-Rahmens |
 | 13 | u32 | Capture-ID der Aufnahme (dieselbe wie Op 8 / Qualitätsbericht); 0 bei WRITE |
 
-Die Ende-Nutzdaten sind damit 18 Byte (READ) beziehungsweise 22 Byte (WRITE; 30 mit den
+Die Ende-Nutzdaten sind damit 18 Byte (READ; 114 mit READ-Flag Bit3, dann folgt der
+Provenienzblock aus 4.12 hinter dem Generationsblock) beziehungsweise 22 Byte (WRITE; 30 mit den
 anschließenden `erased_ticks` u32 und `start_offset_applied` u32, 3.3) lang; die alten
 Felder stehen unverändert vorn, alte Parser lesen weiter nur sie. Der Block steht
 auch in Ende-Rahmen mit Fehlerstatus, soweit diese bisher Nutzdaten trugen (READ-Ende nach
@@ -1315,7 +1316,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | Offset | Typ | Inhalt | Stand 1.18-dev |
 |---:|---|---|---|
 | 0 | u8 | Schema | 1 |
-| 1 | u8 | READ-Flags (0x20, 0x28) | 0x07 |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0x0F (0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
 | 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz) | 0x03 |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
@@ -1487,7 +1488,15 @@ Op-Byte → BAD_ARGS):
 
 Der Block ersetzt keine Prüfsumme der Firmware: die SHA-256 des geflashten Abbilds
 berechnet der Host aus der Datei, die er geflasht hat, und legt sie neben den Block.
-Host: `provenance()`, `ufi provenance [--json]` (JSON zum Ablegen neben der Rohdatei).
+
+**Per Flag an die Aufnahme gebunden:** READ und GUARDED_READ mit Flags Bit3 (`0x08`;
+Op 38 READ-Maske `0x0F`) hängen denselben 96-Byte-Block an den Ende-Rahmen hinter den
+Generationsblock (Ende-Nutzdaten 114 Byte, auch bei Fehlerstatus und nach ABORT, soweit
+der Ende-Rahmen Nutzdaten trägt). Rohdaten und Herkunft kommen so in einer Transaktion;
+die Capture-ID im Block ist die der gerade beendeten Aufnahme. Ohne Bit3 bleibt der
+Ende-Rahmen bei 18 Byte.
+Host: `provenance()`, `read_track(..., provenance=True)` → `Capture.provenance`,
+`ufi provenance [--json]` (JSON zum Ablegen neben der Rohdatei), `ufi read --provenance`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 

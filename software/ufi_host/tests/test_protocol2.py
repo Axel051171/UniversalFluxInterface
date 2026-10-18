@@ -155,6 +155,16 @@ class FakeV2:
         """Generation block firmware 1.18 appends to READ/WRITE END (4.5): schema 1, config, media start, media end, capture id."""
         return P2.GEN_BLOCK.pack(1, self.config_gen, self.media_gen, self.media_gen, capture_id)
 
+    def _provenance_block(self) -> bytes:
+        """96-byte provenance block (4.12): v0.7 board at 2200 mV, a fixed MCU id, dirty build abc1234 of
+        2026-10-17, the fake's generations, capture id, index period, speed check and drive."""
+        flags = 1 | (4 if self.soft_locked else 0) | (16 if self.capture_id else 0)      # dirty build, no jumper
+        block = bytes([1, 96, 7, flags]) + struct.pack("<IIIHHH", 0x00310028, 0x31355117, 0x20323633, 0x483, 0x1003, 2200)
+        block += bytes(self.firmware) + b"abc1234".ljust(12, b"\0") + b"Oct 17 2026".ljust(12, b"\0")
+        block += struct.pack("<7I", 275_000_000, self.config_gen, self.media_gen, self.capture_id, self.media_gen,
+                             self.index_ticks, self.speed_last[0])
+        return block + bytes([self.drive, 0]) + struct.pack("<HI", 0, 123_456) + bytes(12)
+
     def _capability_matrix(self) -> bytes:
         """Op 22 as ufi_capability_matrix() builds it on a v0.7 board with a flux drive selected (4.3):
         head 1, 6, 32, 32; generation; flags 3 (CAPABILITY_UNCONFIRMED | WRITE_MODE_UNQUALIFIED);
@@ -330,7 +340,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x07, 0xFF, 0x03, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x0F, 0xFF, 0x03, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -477,13 +487,7 @@ class FakeV2:
             if len(a) != 1:
                 r(P2.BAD_ARGS)
                 return
-            flags = 1 | (4 if self.soft_locked else 0) | (16 if self.capture_id else 0)      # dirty build, no jumper
-            block = bytes([1, 96, 7, flags]) + struct.pack("<IIIHHH", 0x00310028, 0x31355117, 0x20323633, 0x483, 0x1003, 2200)
-            block += bytes(self.firmware) + b"abc1234".ljust(12, b"\0") + b"Oct 17 2026".ljust(12, b"\0")
-            block += struct.pack("<7I", 275_000_000, self.config_gen, self.media_gen, self.capture_id, self.media_gen,
-                                 self.index_ticks, self.speed_last[0])
-            block += bytes([self.drive, 0]) + struct.pack("<HI", 0, 123_456) + bytes(12)
-            r(0, block)
+            r(0, self._provenance_block())
         elif cmd == P2.ANALYSIS_JOB and a[0] == 42:          # weak windows of the last ANALYZE (4.11)
             if len(a) != 1:
                 r(P2.BAD_ARGS)
@@ -515,7 +519,11 @@ class FakeV2:
             for code, payload in self.pending_events:
                 self.emit_event(code, payload)
         elif cmd == P2.READ:
-            _track, _side, revs, _flags, _period = P2.READ_REQ.unpack_from(a)
+            _track, _side, revs, flags, _period = P2.READ_REQ.unpack_from(a)
+            if flags & ~0x0F:                                 # op 38 READ mask: bit3 = provenance in END (4.12)
+                self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x0F)
+                r(P2.BAD_ARGS)
+                return
             r()
             if self.read_status in (P2.CANCELLED, P2.MEDIA_CHANGED):
                 self._frame(P2.T_END, cmd, seq, self.read_status)
@@ -523,7 +531,8 @@ class FakeV2:
             data = encode_stream(self.revs[:revs])
             for k in range(0, len(data), self.data_chunk):
                 self._frame(P2.T_DATA, cmd, seq, 0, data[k:k + self.data_chunk])
-            self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id))
+            self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id)
+                        + (self._provenance_block() if flags & 0x08 else b""))
         elif cmd == P2.WRITE:
             flags = a[2]                    # optional fields in flag order, then an optional flags2 byte (1.18)
             if flags & 0x40 and not flags & 0x20:                 # bit6 needs extended timing (0x60; 0x61 before 1.18-dev)
@@ -1296,7 +1305,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x07, "write_flags": 0xFF, "write_flags2": 0x03, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x0F, "write_flags": 0xFF, "write_flags2": 0x03, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1635,3 +1644,30 @@ def test_provenance_block(monkeypatch, capsys):
     assert "drive 2" in out and "write lock session" in out and "last index period 55000000 ticks = 300.00 rpm" in out
     assert cli.main(["provenance", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["mcu_uid"] == "203236333135511700310028"
+
+
+def test_read_provenance_flag(monkeypatch, capsys):
+    """READ flag bit 3 (4.12): the request carries 0x08, the END grows to 114 bytes with the provenance
+    block behind the generation block, Capture.provenance decodes it (same capture id as the generation
+    block), a READ without the flag keeps the 18-byte END and None, an unknown bit 4 is refused with op 39
+    field 2, GUARDED_READ passes the flag through, and ufi read --provenance prints the line."""
+    fake = GuardedDevice(revolutions=REVS)
+    dev = P2.Device2(fake)
+    cap = dev.read_track(0, 0, 2, provenance=True)
+    req = [q for q in fake.requests if q.cmd == P2.READ][-1]
+    assert req.payload[3] & 0x08 and len(cap.revolutions) == 2
+    pv = cap.provenance                                      # decoded only from exactly 96 bytes behind the 18-byte END head
+    assert pv["capture_id"] == cap.generations["capture_id"] == 0x1234 and pv["config_generation"] == 7
+    assert pv["mcu_uid"] == "203236333135511700310028" and pv["git_rev"] == "abc1234" and pv["board_rev"] == 7
+    plain = dev.read_track(0, 0, 2)
+    assert plain.provenance is None and plain.generations["capture_id"] == 0x1234
+    g = dev.read_track(0, 0, 2, expected_config=7, expected_media=42, provenance=True)
+    assert g.provenance["capture_id"] == 0x1234 and fake.requests[-1].cmd == P2.GUARDED_READ
+    with pytest.raises(P2.DeviceError) as e:
+        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x10, 0))
+    assert e.value.status == P2.BAD_ARGS and dev.last_refusal()["field"] == 2 and dev.last_refusal()["detail"] == 0x10
+    assert dev.flag_masks()["read_flags"] == 0x0F
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["read", "0", "0", "-r", "2", "--provenance"]) == 0
+    out = capsys.readouterr().out
+    assert "provenance: board v0.7, MCU 203236333135511700310028, firmware 1.18 rev abc1234+" in out and "capture id 4660" in out

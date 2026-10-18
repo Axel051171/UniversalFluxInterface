@@ -1183,3 +1183,21 @@ harness stubs it and checks op 43 size and refusal of a payload. Host `provenanc
 Protocol doc 4.12 and op table, README. Open from the same list: READ flag bit 3 to append the
 block to the READ END (asked by the owner as "flag-driven"), re-seek flag for multi-reads,
 half-track positioning for Shugart, weak-bit position list, precomp profile per write.
+
+## Provenance block bound to a capture: READ flag bit 3 — 2026-10-18
+
+The owner asked whether the provenance block can be flag-driven. READ 0x20 and GUARDED_READ
+0x28 gained flags bit 3 (PROVENANCE, op 38 READ mask 0x0F): the END payload then carries the
+96-byte op 43 block behind the generation block (114 bytes in all; 18 without the bit), so the
+raw data and the device state it came from arrive in one transaction and the capture id in the
+block is the one of the capture that just ended. The flag is remembered per accepted READ and
+cleared by the next one; error-status and ABORT ENDs carry the block too when they carry
+payload, since the request fixes the layout. Native READ harness: bit 3 accepted and recorded,
+bit 4 refused with op 39 field 2 = 16, a plain READ clears the request. Host:
+`read_track(provenance=True)` -> `Capture.provenance`, `decode_provenance()` shared with
+`provenance()`, `READ_PROVENANCE`, `ufi read --provenance`; FakeV2 honours the bit on READ and
+GUARDED_READ, refuses bits above 0x0F, reports 0x0F in op 38; test with the 114-byte END, the
+plain END, the guarded path and the CLI line. Protocol doc: command row 0x20, 4.5 END sizes,
+4.7 mask row, 4.12 paragraph. AXI reserve moves by 8 bytes (END buffer), still above the
+32 KiB mark. Open from the fourth list: re-seek flag for multi-reads, half-track positioning
+for Shugart, weak-bit position list, precomp profile per write.

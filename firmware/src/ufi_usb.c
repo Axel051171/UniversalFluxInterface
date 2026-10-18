@@ -334,10 +334,13 @@ int ufi_usb_send_read_done(int result, uint8_t revolutions) {
     /* v2 END: revs u8, then the generation block (4.5): schema, configuration
      * generation, media generation at start and now, capture id of op 8 / quality.
      * ufi_v2_end() declines when no v2 READ is open; the v1 message keeps one byte. */
-    uint8_t end[1 + UFI_V2_GEN_BLOCK];
+    uint8_t end[1 + UFI_V2_GEN_BLOCK + UFI_PROVENANCE_SIZE];
     end[0] = revolutions;
     ufi_v2_generations(end + 1, ufi_capture_media_token(), evidence_id());
-    if (ufi_v2_end(UFI_V2_READ, result, end, sizeof(end))) {
+    uint16_t size = 1 + UFI_V2_GEN_BLOCK;
+    if (ufi_v2_read_provenance())           /* READ flag bit3 (4.12): the block rides along, 114 bytes in all */
+        size = (uint16_t)(size + ufi_provenance_block(end + size));
+    if (ufi_v2_end(UFI_V2_READ, result, end, size)) {
         return UFI_OK;
     }
     return reply(UFI_EVT_READ_DONE, st(result), &revolutions, 1);
