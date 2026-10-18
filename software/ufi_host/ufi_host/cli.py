@@ -603,9 +603,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--reseek", action="store_true",
                    help="RESEEK (firmware 1.18): step one track outward and back before every retry, so each attempt "
                         "reads from an independently settled head position")
-    sub.add_parser("weak", help="weak windows of the last analyze (firmware 1.18, op 42): max-min transition count per 1/64 "
-                   "revolution as a heat strip; --min N lists windows at or above N (default 1)").add_argument(
-                   "--min", type=int, default=1, metavar="N")
+    p = sub.add_parser("weak", help="weak windows of the last analyze (firmware 1.18, op 42): max-min transition count per 1/64 "
+                       "revolution as a heat strip; --min N lists windows at or above N (default 1); --positions lists the "
+                       "fine 1/1024 windows of op 44 whose max-min reaches --threshold (default 2)")
+    p.add_argument("--min", type=int, default=1, metavar="N")
+    p.add_argument("--positions", action="store_true")
+    p.add_argument("--threshold", type=int, default=2, metavar="N")
     sub.add_parser("speed-check", help="speed check before writing (firmware 1.18, op 41): no argument shows tolerance and last "
                    "measurement, PERMILLE (1-500) sets the allowed deviation of the drive from the source index period "
                    "(writes with index_ticks end with status 23 outside it), 'off' disables").add_argument("tolerance", nargs="?")
@@ -979,6 +982,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"track {ww['track']} side byte 0x{ww['side_byte']:02x}, {ww['revs']} revs: |{strip}|")
                 hits = [(w, c) for w, c in enumerate(ww["counts"]) if c >= a.min]
                 print("  " + (", ".join(f"w{w}={c}" for w, c in hits) if hits else f"no window at or above {a.min}"))
+            if getattr(a, "positions", False):
+                wp = dev.weak_positions(a.threshold)
+                if not wp["entries"]:
+                    print(f"  no 1/{wp['windows']} window differs by {wp['threshold']} or more")
+                else:
+                    print(f"  {len(wp['entries'])}{'+' if wp['truncated'] else ''} fine windows (1/{wp['windows']} revolution) "
+                          f"with max-min >= {wp['threshold']}: " +
+                          ", ".join(f"{e['window']}:{e['min']}+{e['diff']}" for e in wp["entries"]))
         elif a.cmd == "speed-check":
             sc = dev.speed_check(None if a.tolerance is None else 0 if a.tolerance == "off" else int(a.tolerance))
             tol = sc["tolerance_permille"]

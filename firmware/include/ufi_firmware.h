@@ -336,6 +336,7 @@ int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_
 int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r);
 /* op 42 (1.18): schema 1, revs, track, side/position byte, then 64 x max-min transition count per window */
 uint16_t ufi_analyze_weak_report(uint8_t* out);
+uint16_t ufi_analyze_weak_positions(uint8_t threshold, uint8_t* out);   // op 44 (4.13): fine windows above threshold, <= 266 bytes
 #define UFI_PROVENANCE_SIZE 96u                  // ANALYSIS_JOB op 43 (4.12): provenance block, schema 1
 uint16_t ufi_provenance_block(uint8_t* out);    // ufi_v2.c: board, firmware, drive setting, generations, last capture
 bool ufi_v2_read_provenance(void);              // ufi_v2.c: the open READ asked for the block in its END (flag bit3)

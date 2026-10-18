@@ -1050,6 +1050,23 @@ class Device2:
         pure query; meant to be stored next to every raw file."""
         return decode_provenance(self.analysis_op(43))
 
+    def weak_positions(self, threshold: int = 2) -> dict:
+        """Fine weak-bit positions of the last ANALYZE (firmware 1.18, op 44, USB_Protokoll 4.13): the
+        board counts transitions per 1/1024 revolution in every revolution and keeps min and max;
+        this lists the windows whose max-min reaches `threshold` (1..255, default 2), at most 64,
+        with `truncated` set when more exist.  Window w of revolution k covers
+        [index_time*w/1024, index_time*(w+1)/1024) ticks after that revolution's index."""
+        if not 1 <= threshold <= 255:
+            raise ValueError("threshold 1..255")
+        d = self.analysis_op(44, bytes([threshold]) if threshold != 2 else b"")
+        if len(d) < 10 or d[0] != 1:
+            raise ValueError("unsupported weak position report")
+        windows, count = struct.unpack_from("<HxxH", d, 4)
+        entries = [dict(window=w, diff=diff, min=lo) for w, diff, lo in
+                   (struct.unpack_from("<HBB", d, 10 + 4 * i) for i in range(count))]
+        return dict(revs=d[1], track=d[2], side_byte=d[3], windows=windows, threshold=d[6],
+                    truncated=bool(d[7] & 1), entries=entries)
+
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
         0 switches the check off, 1..500 sets the allowed deviation of the drive's index period

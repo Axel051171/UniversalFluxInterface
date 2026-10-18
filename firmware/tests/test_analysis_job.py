@@ -17,6 +17,8 @@ static bool soft_lock,jumper_lock;
 static uint8_t refusal_stub[6]={1,0x22,9,16,2,0x40};
 static uint16_t speed_tol;static uint32_t speed_meas=55500000u,speed_src=55000000u;
 uint16_t ufi_analyze_weak_report(uint8_t* out){memset(out,0,68);out[0]=1;out[1]=3;out[2]=40;out[3]=0x91;out[4+17]=6;return 68;}
+static uint8_t weak_threshold;
+uint16_t ufi_analyze_weak_positions(uint8_t threshold,uint8_t* out){memset(out,0,14);out[0]=1;out[6]=threshold;out[8]=1;out[10]=0x11;out[11]=1;out[12]=3;weak_threshold=threshold;return 14;}
 void ufi_write_set_speed_check(uint16_t p){speed_tol=p;}
 void ufi_write_speed_state(uint16_t* p,uint32_t* m,uint32_t* s){*p=speed_tol;*m=speed_meas;*s=speed_src;}
 void ufi_v2_last_refusal(uint8_t out[6]){memcpy(out,refusal_stub,6);}
@@ -148,6 +150,9 @@ int main(void){
     uint8_t matrix=22;assert(!ufi_analysis_command(&matrix,1,out,&size) && size==320 && out[0]==2 && out[1]==9);
     { uint8_t prov[2]={43,0};assert(!ufi_analysis_command(prov,1,out,&size) && size==96 && out[0]==1 && out[1]==96 && out[2]==7);   /* op 43 provenance */
       assert(ufi_analysis_command(prov,2,out,&size)==UFI_ERR_BAD_ARGS); }
+    { uint8_t wp[2]={44,0};assert(!ufi_analysis_command(wp,1,out,&size) && size==14 && weak_threshold==2 && out[8]==1);   /* op 44 default threshold 2 */
+      wp[1]=5;assert(!ufi_analysis_command(wp,2,out,&size) && weak_threshold==5);
+      wp[1]=0;assert(ufi_analysis_command(wp,2,out,&size)==UFI_ERR_BAD_ARGS); }                                           /* threshold 0 refused */
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;

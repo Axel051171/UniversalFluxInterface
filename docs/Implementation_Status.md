@@ -1236,3 +1236,22 @@ quarter on the Apple port). Reports keep the quarter form as sent. Native harnes
 no wire change for Apple, nothing moves for a tool that never sends the quarter form on
 Shugart. Acceptance plan row with the step count at the logic analyser. Open from the list:
 weak-bit position list, precomp profile per write.
+
+## Fine weak-bit positions, ANALYSIS_JOB op 44 — 2026-10-18
+
+Fourth item of the owner's fourth list. Op 42 counts per 1/64 revolution, too coarse to place
+unstable transitions for UFT's protection and weak-bit work. ANALYZE now additionally sweeps
+every revolution once with a running window cursor and keeps, per 1/1024 revolution, the
+minimum and maximum transition count over the revolutions (2 KiB in DTCM, which keeps the AXI
+reserve; counts capped at 255; samples past the index dropped as in op 42). Op 44 lists on
+request the windows whose max-min reaches a threshold (default 2, `[44, t]` for 1..255, 0
+refused), at most 64 entries with a truncation flag, window ascending, each with the
+difference and the minimum: 10 + 4n bytes. Pure query of the last ANALYZE, empty with one
+revolution. Native weak harness: fine pass on the synthetic revolutions (differences only
+inside the coarse windows that were made to differ, window 17 sums to its 0/3/6 gain,
+thresholds 7 and 0 list nothing, single revolution, cancel); analysis job harness checks the
+default and explicit threshold and the refusal. Host `weak_positions(threshold)`,
+`ufi weak --positions [--threshold N]`, FakeV2 op 44 with three fixed windows after an
+ANALYZE, test. Protocol doc 4.13 and op table. Also in this commit: the ANALYZE quarter
+check now uses `ufi_drive_quarter_ok()` like READ/WRITE (the Shugart half track of a34aed1
+was still refused there). Open from the list: precomp profile per write.

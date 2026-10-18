@@ -417,6 +417,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         *size=20;return UFI_OK;
     }
     if(p[0]==43 && n==1){*size=ufi_provenance_block(out);return UFI_OK;}   /* provenance block (4.12) */
+    if(p[0]==44 && (n==1 || (n==2 && p[1]))){*size=ufi_analyze_weak_positions(n==2?p[1]:2u,out);return UFI_OK;}   /* weak positions (4.13) */
     if(p[0]==22 && n==1){
         uint8_t port[24];ufi_drive_port_report(port);
         ufi_capability_matrix(port,ufi_operation_busy() || ufi_job_live() || ufi_resources_owner()==UFI_OWNER_GW,out);

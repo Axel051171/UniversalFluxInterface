@@ -490,6 +490,16 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             r(0, self._provenance_block())
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 44:          # weak positions of the last ANALYZE (4.13): [44] or [44, threshold]
+            if len(a) > 2 or (len(a) == 2 and a[1] == 0):
+                r(P2.BAD_ARGS)
+                return
+            threshold = a[1] if len(a) == 2 else 2
+            track, side_byte, revs = getattr(self, "last_analyze", (0, 0, 0))
+            fine = {72: (3, 10), 77: (2, 11), 290: (5, 9)} if revs >= 2 else {}        # window: (diff, min)
+            hits = [(w, d, m) for w, (d, m) in sorted(fine.items()) if d >= threshold]
+            r(0, struct.pack("<BBBBHBBH", 1, revs, track, side_byte, 1024, threshold, 0, len(hits))
+              + b"".join(struct.pack("<HBB", w, d, m) for w, d, m in hits))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 42:          # weak windows of the last ANALYZE (4.11)
             if len(a) != 1:
                 r(P2.BAD_ARGS)
@@ -1693,3 +1703,27 @@ def test_analysis_job_reseek_flag(monkeypatch, capsys):
     assert struct.unpack_from("<H", [q for q in fake.requests if q.cmd == P2.ANALYSIS_JOB and q.payload[0] == 1][-1].payload, 5)[0] \
         == 1 | 2 | 4 | 64
     assert "missing_sectors" in capsys.readouterr().out and fake.reseeks == 3
+
+
+def test_weak_positions(monkeypatch, capsys):
+    """Op 44 against the fake: default threshold 2 lists the two windows at or above it, threshold 5 one,
+    threshold 7 none, the request carries the threshold only when it differs from 2, 0 and 256 are refused
+    locally, no data before an ANALYZE with two revolutions, and ufi weak --positions prints the list."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.weak_positions()["entries"] == [] and fake.requests[-1].payload == bytes([44])
+    dev.analyze(7, 1, 3)
+    wp = dev.weak_positions()
+    assert (wp["revs"], wp["track"], wp["side_byte"], wp["windows"], wp["threshold"], wp["truncated"]) == (3, 7, 1, 1024, 2, False)
+    assert wp["entries"] == [dict(window=72, diff=3, min=10), dict(window=77, diff=2, min=11), dict(window=290, diff=5, min=9)]
+    assert [e["window"] for e in dev.weak_positions(3)["entries"]] == [72, 290] and fake.requests[-1].payload == bytes([44, 3])
+    assert dev.weak_positions(5)["entries"] == [dict(window=290, diff=5, min=9)] and dev.weak_positions(7)["entries"] == []
+    for bad in (0, 256):
+        with pytest.raises(ValueError):
+            dev.weak_positions(bad)
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([44, 0]))
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["weak", "--positions", "--threshold", "3"]) == 0
+    out = capsys.readouterr().out
+    assert "2 fine windows (1/1024 revolution) with max-min >= 3: 72:10+3, 290:9+5" in out

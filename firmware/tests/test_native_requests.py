@@ -187,6 +187,10 @@ static flux_revolution_t* ufi_capture_get_data(uint8_t k){return &revs[k];}
 static int analysis_progress(uint32_t t0){(void)t0;progress_calls++;return progress_error;}
 static uint8_t weak_diff[WEAK_WINDOWS];
 static uint8_t weak_revs, weak_track, weak_side;
+#define WEAK_FINE 1024u
+#define WEAK_LIST 64u
+static uint8_t fine_min[WEAK_FINE], fine_max[WEAK_FINE];
+static bool fine_valid;
 /* window w of revolution k gets base(w) + extra(k, w) transitions, evenly spaced */
 static void build(uint8_t k, unsigned (*extra)(uint8_t, unsigned)){
     unsigned n=0;
@@ -204,7 +208,8 @@ static unsigned some(uint8_t k,unsigned w){
     return 0;
 }
 '''
-    code += function('ufi_analyze.c', 'weak_windows') + function('ufi_analyze.c', 'ufi_analyze_weak_report') + r'''
+    code += function('ufi_analyze.c', 'weak_windows') + function('ufi_analyze.c', 'ufi_analyze_weak_report') + \
+        function('ufi_analyze.c', 'weak_positions') + function('ufi_analyze.c', 'ufi_analyze_weak_positions') + r'''
 int main(void){
     analyze_result_t r;uint8_t out[70];
     for(uint8_t k=0;k<3;k++)build(k,none);
@@ -219,7 +224,25 @@ int main(void){
     memset(&r,0,sizeof r);assert(weak_windows(1,0,&r)==0 && !weak_revs && !weak_diff[17]);   /* one revolution: nothing to compare */
     for(uint8_t k=0;k<3;k++)build(k,some);
     progress_error=UFI_ERR_CANCELLED;assert(weak_windows(3,0,&r)==UFI_ERR_CANCELLED);progress_error=0;
-    puts("weak windows: raw differences, fixed mask threshold, header, single revolution and cancel passed");
+    /* op 44: fine windows (1/1024) with min/max over the revolutions; the differences of `some` land
+     * inside coarse windows 5, 17 and 63 only; threshold filters at report time; list capped at 64 */
+    { uint8_t wp[10+4*WEAK_LIST];
+      for(uint8_t k=0;k<3;k++)build(k,none);
+      assert(weak_positions(3,0)==0 && fine_valid && ufi_analyze_weak_positions(1,wp)==10 && !wp[8] && !wp[9] && wp[4]==0 && wp[5]==4 && wp[6]==1);
+      for(uint8_t k=0;k<3;k++)build(k,some);
+      assert(weak_positions(3,0)==0);
+      uint16_t n=(uint16_t)(ufi_analyze_weak_positions(1,wp)>10?wp[8]|wp[9]<<8:0);
+      assert(n>0 && n<=WEAK_LIST && !(wp[7]&1));
+      unsigned sum17=0;
+      for(uint16_t e=0;e<n;e++){const uint8_t* q=wp+10+4*e;unsigned w=q[0]|q[1]<<8;unsigned coarse=w/16;
+          assert(coarse==5 || coarse==17 || coarse==63);assert(q[2]>=1 && q[3]<=q[2]+5);if(coarse==17)sum17+=q[2];}
+      assert(sum17>=6);                                                       /* window 17 gained 0/3/6 transitions */
+      assert(ufi_analyze_weak_positions(7,wp)==10 && !wp[8]);                   /* no fine window differs by 7 */
+      assert(ufi_analyze_weak_positions(0,wp)==10 && !wp[8]);                   /* threshold 0 lists nothing */
+      assert(weak_positions(1,0)==0 && !fine_valid && ufi_analyze_weak_positions(1,wp)==10);   /* one revolution */
+      for(uint8_t k=0;k<3;k++)build(k,some);
+      progress_error=UFI_ERR_CANCELLED;assert(weak_positions(3,0)==UFI_ERR_CANCELLED);progress_error=0; }
+    puts("weak windows: raw differences, fixed mask threshold, header, single revolution, fine positions and cancel passed");
 }
 '''
     run('regression_weak_windows', code)

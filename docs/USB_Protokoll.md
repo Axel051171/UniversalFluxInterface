@@ -1498,6 +1498,34 @@ Ende-Rahmen bei 18 Byte.
 Host: `provenance()`, `read_track(..., provenance=True)` → `Capture.provenance`,
 `ufi provenance [--json]` (JSON zum Ablegen neben der Rohdatei), `ufi read --provenance`.
 
+### 4.13 Weak-Positionen fein (Op 44, 1.18-dev)
+
+Op 42 (4.11) zählt je 1/64 Umdrehung; für die Lage instabiler Flusswechsel ist das zu
+grob. ANALYZE 0x25 zählt seit 1.18-dev zusätzlich je **1/1024 Umdrehung** die Flusswechsel
+jeder Umdrehung und behält je Fenster Minimum und Maximum über die Umdrehungen (Zähler
+auf 255 gekappt; Fenster w der Umdrehung k reicht von `index_time·w/1024` bis
+`index_time·(w+1)/1024` Takte nach deren Index, Flusswechsel nach dem Index entfallen).
+`0x0F [44]` listet die Fenster, deren Maximum − Minimum die Schwelle erreicht,
+`[44, schwelle:u8]` mit eigener Schwelle 1–255 (Vorgabe 2; 0 → BAD_ARGS). Reine Abfrage,
+nie BUSY; nur der letzte ANALYZE; mit einer Umdrehung ist die Liste leer.
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Verglichene Umdrehungen (0 = keine Daten) |
+| 2 | u8 | Spur wie gesendet |
+| 3 | u8 | Seitenbyte wie gesendet (Viertelform eingeschlossen) |
+| 4 | u16 | Fensterzahl je Umdrehung, 1024 |
+| 6 | u8 | Angewandte Schwelle |
+| 7 | u8 | Bit0 Liste bei 64 Einträgen abgeschnitten (höhere Schwelle wählen) |
+| 8 | u16 | Anzahl n der Einträge (0–64) |
+| 10 | n × 4 | je Eintrag: Fenster u16 (0–1023, aufsteigend), Maximum − Minimum u8, Minimum u8 |
+
+Antwortlänge 10 + 4·n, höchstens 266 Byte. Die Zählung ist eine Differenz von
+Flusswechselzahlen, keine Bitzuordnung: ein Fenster mit Differenz 1 bei 500 kbit/s MFM
+umfasst rund 25 Bitzellen. Host: `weak_positions(threshold=2)`, `ufi weak --positions
+[--threshold N]`.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
@@ -2632,6 +2660,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 41 | 1 / 4 | Drehzahlprüfung vor dem Schreiben lesen / Toleranz setzen (`[41, 1, promille u16]`, 0 = aus), 11 Bytes Antwort mit letzter Messung (4.10) |
 | 42 | 1 | Weak-Fenster des letzten ANALYZE 0x25: Schema, Umdrehungen, Spur, Seitenbyte, 64 × Differenz der Flusswechselzahl je 1/64 Umdrehung, 68 Bytes (4.11); reine Abfrage, nie BUSY |
 | 43 | 1 | Provenienzblock: Board, MCU-ID, Firmware-Revision und Build, Generationen, Capture-ID, letzte Indexperiode, Laufwerkseinstellung, Laufzeit; 96 Bytes (4.12); reine Abfrage, nie BUSY |
+| 44 | 1 / 2 | Weak-Positionen fein des letzten ANALYZE: Fenster je 1/1024 Umdrehung, deren Maximum − Minimum der Flusswechselzahl die Schwelle (Vorgabe 2, optional u8 1–255) erreicht; Kopf 10 Byte plus n × 4, höchstens 266 (4.13); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |
