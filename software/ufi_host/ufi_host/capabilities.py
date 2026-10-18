@@ -1,4 +1,6 @@
-"""Native 0x0f operations 22-24; software admission is not hardware qualification."""
+"""Native 0x0f operations 22 (capability matrix), 23 (configuration report), 24 and 26 (analysis
+start bound to the configuration generation, op 26 also to the media generation); software
+admission is not hardware qualification."""
 import struct
 
 CAPABILITY_UNCONFIRMED = 1

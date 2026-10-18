@@ -87,7 +87,10 @@ Im UFI-Flux-Modus versteht das Gerät zwei Protokolle: das alte **UFI v1** (ein 
 `protocol=composite` beziehungsweise `ufi mode composite` aktiviert Modus 4.
 Die Verbindung bleibt USB Full Speed; beide Funktionen teilen dessen Bandbreite.
 Die Entwicklungsidentität `1209:4F58` muss vor Veröffentlichung auf zulässige
-VID/PID-Zuteilung geprüft werden. Die Seriennummer stammt aus der MCU-UID.
+VID/PID-Zuteilung geprüft werden. Die Seriennummer stammt aus der MCU-UID und ist
+in allen Personalities (4F54–4F58) dieselbe: ein Seriendeskriptor bedient jede
+PID, der Host findet dasselbe Board nach einem Moduswechsel und der folgenden
+Neu-Enumeration an der Seriennummer wieder.
 
 | Funktion | Interfaces | Endpoints | Protokoll |
 |---|---|---|---|
@@ -139,7 +142,7 @@ Formatzeile, relative Offsets:
 
 | Offset | Typ | Inhalt |
 |---:|---|---|
-| 0 | u8 | Format: 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR, 7 Apple-II-GCR (5.7) |
+| 0 | u8 | Format: 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR (Schema 1 liefert genau diese sechs Zeilen; Apple-II-GCR, Format 7 aus 5.7, hat in Schema 1 keine Zeile) |
 | 1 | u8 | Implementierte Softwarepfade, aktuell 15 |
 | 2 | u8 | Nach Port, Leitungskonflikten und Belegung derzeit zulässige Softwarepfade |
 | 3 | u8 | Offline getestete Teile der Formatfamilie: 10 = Decoder und Inhaltsvergleich |
@@ -2534,6 +2537,19 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 17 | 1 | Portbelegung, Leitungskonflikte und Schreibgrenzen, 24 Bytes (4.4; INFO Bit28) |
 | 18 | 1 / 2 / 41 | Wirksame Betriebseinstellungen lesen / Zeit-Voreinstellung anwenden (1.18) / pro Laufwerk speichern und anwenden, 40 Bytes Antwort (4.4) |
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
+| 20 | 1 | Discovery der lokalen Zeitfenster (Abschnitt 14 des Ergebnisses): Schema, 32 Fenster à 40 Byte, Gesamtbytes, Aktivierungsmaske, 24 Bytes (5.5) |
+| 21 | 1 | Discovery des Erkennungsblocks (Abschnitt 15, 64 Bytes, Abruf über Op 3): 24 Bytes (5.6) |
+| 22 | 1 | Fähigkeitsmatrix: Schema 1, Generation, Flags, sechs Formatzeilen, 224 Bytes (1.3) |
+| 23 | 1 / 5 | Konfigurationsbericht, mit `expected_generation` u32 meldet `PROFILE_CHANGED` bei Abweichung, 24 Bytes (1.3) |
+| 24 | 5 + Op-1-Anfrage | Analysestart gebunden an die Konfigurationsgeneration (`expected_generation` u32), sonst wie Op 1 (1.3) |
+| 25 | 1 | Discovery der medien­gebundenen Starts: Schema 2, GUARDED_WRITE 0x27, GUARDED_READ 0x28, aktuelle Generationen, 20 Bytes (4.5) |
+| 26 | 9 + Op-1-Anfrage | Analysestart gebunden an Konfigurations- und Mediengeneration (je u32); anderes Medium → Status 21 (4.5) |
+| 27 | 44–77 | Mehrspurplan anlegen: Plan-ID, Generationen, Spurbereich, Seiten, Op-1-Anfrage (6.2) |
+| 28 | 1 | Mehrspurstatus, 32 Bytes; zugleich Discovery der Mehrspur-Analyse (6.2) |
+| 29 | 8 | Mehrspursteuerung: Plan-ID u32, erwarteter Cursor u16, Aktion u8 (0 Schritt starten/wiederholen, 1 Ergebnis bestätigen und Cursor weiter, 2 Plan beenden) (6.2) |
+| 30 | 1 | Checkpoint des dauerhaften Plans auf SD, 16 Bytes (6.3) |
+| 31 | 1 / 5 | Rohspur-Timingprüfung lesen / setzen: Schema 1, Flags u8, Toleranz u16 in Promille (6.3) |
+| 32 | 1 | Letzter Rohspurbericht, 288 Bytes oder NOT_FOUND (6.3) |
 | 33 | 1 / 14 | Apple-II-GCR-Decoderoptionen lesen / setzen, 13 Bytes Antwort (5.7, Format 7) |
 | 34 | 1 / 4 | Toleranzflags der Decoder für Format 1–6 lesen / setzen, 3 Bytes Antwort (5.8) |
 | 35 | 1 | Apple-II-Nibble-Statistik der letzten Format-7-Analyse, 274 Bytes, Schema 2 (5.7) |

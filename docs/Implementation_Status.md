@@ -1085,3 +1085,22 @@ provoke PROFILE_CHANGED and the generation block against the fake. Both reports 
 `capabilities.decode_capabilities/decode_configuration`; test
 `test_capability_matrix_and_configuration_against_fake`. Host-side only, no protocol change.
 UFT's list is closed with this; nothing is parked.
+
+## UFT's third list, items 6 and 5: documentation gaps, USB serial — 2026-10-18
+
+UFT sent a third list of seven suggestions (owner asked for it); the owner released it in the
+order documentation first. Item 6, read and confirmed: the op table in 6.1 skipped ops 20-32
+(they were described only in 1.3, 4.5, 5.5, 5.6, 6.2 and 6.3), the `capabilities.py` docstring
+named ops 22-24 while the module also builds op 26, and the matrix table in 1.3 listed format
+7 (Apple II GCR) although schema 1 carries exactly six rows. All three corrected: rows 20-32
+added to the table with request lengths and section references, docstring names 22, 23, 24
+and 26, the matrix row says schema 1 has no Apple row (a schema 2 with that row is the next
+item). Item 5, USB serial across personalities: checked in the code, one serial string
+descriptor fed from the MCU unique ID serves every PID 4F54-4F58, so the serial does not
+change over a mode switch; written into the USB section and into the acceptance plan as a
+bench check (read the descriptor in each mode). Documentation and a docstring only, no
+protocol or firmware change. Remaining from the list: 7 (host recognition fetcher), 1+3
+(matrix schema 2 with Apple row and format-independent raw-flux/IEC entries), 4 (which bench
+measurement sets which qualification bit, as a table); 2 (configuration change as an event)
+declined, the END generation block already carries the configuration generation for a local
+comparison.

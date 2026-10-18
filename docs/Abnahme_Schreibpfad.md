@@ -43,6 +43,7 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 |---|---|
 | Ungültiges Präfix (`00`, `FD`, `FF`), Null-Intervall, Überzahl, zu wenige Daten | Ende-Status 10 sofort, WGATE nie an, nächster Auftrag sauber |
 | USB-Abzug während Empfang / während Ausgabe | definierter Zustand: WGATE spätestens am nächsten Index aus, Motor aus nach Timeout, Neuverbindung ohne Reset |
+| USB-Moduswechsel, Seriennummer | `ufi mode sd`, `ufi mode floppy`, `ufi mode gw`, zurück zu `ufi mode flux`; je Modus USB-Deskriptor auslesen (Windows: Geräte-Manager, Linux: `lsusb -v`) | PID wechselt 4F54 → 4F55 → 4F56 → 4F57 → 4F54, iSerialNumber bleibt in jedem Modus dieselbe MCU-UID; ein Host, der an der Seriennummer zuordnet, findet nach jeder Neu-Enumeration dasselbe Board |
 | WRITE-LOCK-Jumper, WPROT des Laufwerks | Status 12, keine Schreibaktivität |
 | Watchdog / Fault während des Schreibens | WGATE aus (Reset), `CRASH.LOG`, INFO meldet Ursache |
 | Schreibschutz während des Schreibens gesetzt | Laufwerk ignoriert WGATE; Verify meldet Fehler statt Erfolg |
