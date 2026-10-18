@@ -1,7 +1,12 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
-#define UFI_CAP_MATRIX_SIZE 224u
+/* Capability matrix (op 22) schema 2: 32-byte head + 9 rows of 32 bytes, row index = row id. */
+#define UFI_CAP_ROWS        9u
+#define UFI_CAP_ROW_RAW     0u      /* raw flux capture / raw-flux write, format independent */
+#define UFI_CAP_ROW_APPLE   7u      /* Apple II GCR (format 7, 5.7) */
+#define UFI_CAP_ROW_IEC     8u      /* IEC block path via the drive CPU (U1 / channel 15) */
+#define UFI_CAP_MATRIX_SIZE (32u + 32u * UFI_CAP_ROWS)
 #define UFI_CAP_UNCONFIRMED 1u
 #define UFI_WRITE_UNQUALIFIED 2u
 #define UFI_PROFILE_CHANGED 4u

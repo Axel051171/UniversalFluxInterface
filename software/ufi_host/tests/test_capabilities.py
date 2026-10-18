@@ -17,7 +17,9 @@ def test_capability_qualification_and_rates():
     assert row['extended_limits'] == (220, 0xffffffff)
     with pytest.raises(ValueError):
         decode_capabilities(p[:-1])
-    p[0] = 2
+    p[0] = 2                                    # schema 2 with the same six rows still decodes (count from the head)
+    assert decode_capabilities(p)['schema'] == 2 and decode_capabilities(p)['rows'][0]['rates'] == row['rates']
+    p[0] = 3
     with pytest.raises(ValueError):
         decode_capabilities(p)
 
@@ -37,3 +39,35 @@ def test_generation_guard():
         guarded_analysis(8, bytes(33))
     with pytest.raises(ValueError):
         decode_configuration(p[:-1])
+
+
+def test_capability_matrix_schema_2_rows():
+    """Schema 2 (1.18-dev): row count from the head, rows found by their id byte, raw flux and IEC
+    rows exposed separately, Apple II GCR as format row 7; schema 1 still decodes; sizes that do
+    not match the head are refused."""
+    p = bytearray(320)
+    p[:4] = bytes((2, 9, 32, 32))
+    struct.pack_into('<4I', p, 4, 11, 3, 63, 275000000)
+    for rid in range(9):
+        p[32 + 32 * rid] = rid
+    p[32:40] = bytes((0, 5, 5, 5, 0, 3, 3, 7))
+    struct.pack_into('<6I', p, 40, 0, 440, 65536, 220, 0xffffffff, 3)
+    p[64:72] = bytes((1, 15, 15, 10, 0, 3, 3, 7))
+    struct.pack_into('<6I', p, 72, 15, 440, 65536, 220, 0xffffffff, 3)
+    p[256:264] = bytes((7, 7, 7, 2, 0, 1, 1, 7))
+    struct.pack_into('<6I', p, 264, 1, 440, 65536, 0, 0, 3)
+    p[288:296] = bytes((8, 13, 13, 13, 0, 0, 0, 5))
+    report = decode_capabilities(p)
+    assert report['schema'] == 2 and report['generation'] == 11
+    assert [r['format'] for r in report['rows']] == [1, 2, 3, 4, 5, 6, 7]
+    assert report['raw_flux']['implemented'] == 5 and report['raw_flux']['rates'] == [] and report['raw_flux']['extended_limits'] == (220, 0xffffffff)
+    assert report['iec']['eligible'] == 13 and report['iec']['prerequisites'] == 5 and report['iec']['classic_limits'] == (0, 0)
+    assert report['rows'][6]['rates'] == [250000] and report['rows'][6]['backends'] == 1
+    with pytest.raises(ValueError):
+        decode_capabilities(p[:-32])
+    p[1] = 8
+    with pytest.raises(ValueError):
+        decode_capabilities(p)
+    p[0], p[1] = 1, 9
+    with pytest.raises(ValueError):
+        decode_capabilities(p)

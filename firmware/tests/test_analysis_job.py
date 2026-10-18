@@ -140,7 +140,7 @@ int main(void){
     assert(ufi_analysis_command(media_guarded,42,out,&size)==UFI_ERR_MEDIA_CHANGED && captures==captures_before);
     wr(media_guarded+5,media_token);
     busy=true;assert(ufi_analysis_command(guarded,38,out,&size)==UFI_ERR_BUSY);busy=false;
-    uint8_t matrix=22;assert(!ufi_analysis_command(&matrix,1,out,&size) && size==224);
+    uint8_t matrix=22;assert(!ufi_analysis_command(&matrix,1,out,&size) && size==320 && out[0]==2 && out[1]==9);
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;

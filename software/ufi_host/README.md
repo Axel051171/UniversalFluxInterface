@@ -173,7 +173,11 @@ Gültige widersprüchliche Inhalte werden nicht per Mehrheit akzeptiert.
 ## HFEv3 und lokale Firmwareanalyse
 
 Native Generationen: `Device2.capability_matrix()` und `configuration()` liefern
-Fähigkeiten sowie getrennte Konfigurations-/Medientoken. Nach Unterstützungserkennung
+Fähigkeiten sowie getrennte Konfigurations-/Medientoken. Die Matrix kommt ab
+1.18-dev als Schema 2 (neun Zeilen): `rows` enthält die Formatzeilen 1–7 (7 =
+Apple-II-GCR), `raw_flux` die formatunabhängige Zeile für Rohfluss-Lesen und
+-Schreiben, `iec` den IEC-Blockweg; Schema 1 älterer Builds wird weiter gelesen
+(`raw_flux`/`iec` dann `None`). Nach Unterstützungserkennung
 über Matrixbyte23 kann `write_track(..., expected_config=..., expected_media=...)`
 den Schreibstart an beide Token binden. Kein automatischer Rückfall auf ungeprüftes
 Schreiben. `ufi_host.capabilities.guarded_analysis(..., media_generation=...)`

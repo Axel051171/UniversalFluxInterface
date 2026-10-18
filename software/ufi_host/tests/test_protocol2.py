@@ -161,10 +161,13 @@ class FakeV2:
         mask 63; 275 MHz; drive id and the op numbers 23..32; six rows (formats 1-6) with
         implemented/eligible 15, offline_tested 10, hardware_qualified 0, both raw backends,
         prerequisites 7, the format's rate mask and the classic/extended interval limits."""
-        head = bytes([1, 6, 32, 32]) + struct.pack("<4I", self.config_gen, 3, 63, 275_000_000)
+        head = bytes([2, 9, 32, 32]) + struct.pack("<4I", self.config_gen, 3, 63, 275_000_000)
         head += bytes([self.drive, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 0])
-        rows = b"".join(bytes([f, 15, 15, 10, 0, 3, 3, 7]) + struct.pack("<6I", rate, 440, 65536, 220, 0xFFFFFFFF, 3)
-                        for f, rate in enumerate((0x0F, 0x0F, 0x37, 0x04, 0x1C1, 0x3E04), 1))
+        rows = bytes([0, 5, 5, 5, 0, 3, 3, 7]) + struct.pack("<6I", 0, 440, 65536, 220, 0xFFFFFFFF, 3)    # raw flux
+        rows += b"".join(bytes([f, 15, 15, 10, 0, 3, 3, 7]) + struct.pack("<6I", rate, 440, 65536, 220, 0xFFFFFFFF, 3)
+                         for f, rate in enumerate((0x0F, 0x0F, 0x37, 0x04, 0x1C1, 0x3E04), 1))
+        rows += bytes([7, 7, 2, 2, 0, 1, 0, 7]) + struct.pack("<6I", 1, 440, 65536, 0, 0, 3)             # Apple II GCR, decoder only here
+        rows += bytes([8, 13, 0, 13, 0, 0, 0, 5]) + struct.pack("<6I", 0, 0, 0, 0, 0, 3)                  # IEC block path, no IEC drive
         return head + rows
 
     def _job_status(self) -> bytes:
@@ -1510,10 +1513,14 @@ def test_capability_matrix_and_configuration_against_fake():
     m = dev.capability_matrix()
     assert (m["generation"], m["flags"], m["supported_flags"], m["timer_hz"], m["drive"]) == (7, 3, 63, 275_000_000, 1)
     assert (m["write_guard_discovery"], m["media_guarded_analysis"], m["multitrack_create"]) == (25, 26, 27)
-    assert [r["format"] for r in m["rows"]] == [1, 2, 3, 4, 5, 6]
-    assert all(r["hardware_qualified"] == 0 and r["implemented"] == 15 and r["backends"] == 3 and r["flags"] == 3
-               and r["classic_limits"] == (440, 65536) and r["extended_limits"] == (220, 0xFFFFFFFF) for r in m["rows"])
+    assert m["schema"] == 2 and [r["format"] for r in m["rows"]] == [1, 2, 3, 4, 5, 6, 7]
+    assert all(r["hardware_qualified"] == 0 and r["flags"] == 3 and r["classic_limits"] == (440, 65536) for r in m["rows"])
+    assert all(r["implemented"] == 15 and r["backends"] == 3 and r["extended_limits"] == (220, 0xFFFFFFFF) for r in m["rows"][:6])
     assert m["rows"][0]["rate_mask"] == 0x0F and m["rows"][5]["rate_mask"] == 0x3E04
+    apple, raw, iec = m["rows"][6], m["raw_flux"], m["iec"]
+    assert (apple["implemented"], apple["eligible"], apple["backends"], apple["rates"]) == (7, 2, 1, [250000])
+    assert (raw["format"], raw["implemented"], raw["eligible"], raw["rate_mask"], raw["extended_limits"]) == (0, 5, 5, 0, (220, 0xFFFFFFFF))
+    assert (iec["format"], iec["implemented"], iec["eligible"], iec["prerequisites"], iec["classic_limits"]) == (8, 13, 0, 5, (0, 0))
     assert len(fake.requests[-1].payload) == 1 and decode_capabilities(dev.request(0x0F, bytes([22]))) == m
     c = dev.configuration()
     assert c == {"generation": 7, "expected": 0, "flags": 0, "media_generation": 42, "supported_flags": 4}

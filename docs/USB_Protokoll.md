@@ -118,14 +118,19 @@ keine neuen Jobflags und keine Änderung der Greaseweazle-Kommandos.
 Discovery durch `0x0F [22]`: ältere Firmware kann BAD_ARGS melden. Dann fehlen
 diese Erweiterungen; das Tool darf keine Generation oder Qualifikation annehmen.
 
-**Op22, Anfrage `[22]`: 224 Byte Antwort, Schema 1.** Die Matrix beschreibt
-die sechs Decoderfamilien und ihre gemeinsamen Raw-Flux-Pfade. „Schreiben“
-bedeutet Übertragen bereits erzeugter Fluxintervalle, keinen Sektorencoder
-für jedes aufgeführte Format. Keine IEC-/Dateiformat-Fähigkeitsmatrix.
+**Op22, Anfrage `[22]`: Antwort Schema 2 mit 320 Byte (1.18-dev; Schema 1 mit
+224 Byte bei älteren Builds).** Die Matrix beschreibt den formatunabhängigen
+Rohflusspfad (Zeile 0), die sieben Decoderfamilien (Zeilen 1–7) und den
+IEC-Blockweg über die Laufwerks-CPU (Zeile 8). „Schreiben“ bedeutet Übertragen
+bereits erzeugter Fluxintervalle, keinen Sektorencoder für jedes aufgeführte
+Format. Ein Leser nimmt Zeilenanzahl, Zeilengröße und Kopfgröße aus dem Kopf
+und findet Zeilen über ihr ID-Byte, nicht über die Position; Schema 1 hat genau
+die sechs Zeilen 1–6, Schema 2 die neun Zeilen 0–8 in aufsteigender ID-Reihenfolge.
+Keine Dateiformat-Fähigkeitsmatrix.
 
 | Offset | Typ | Inhalt |
 |---:|---|---|
-| 0–3 | je u8 | Schema 1, Zeilenanzahl 6, Zeilengröße 32, Headergröße 32 |
+| 0–3 | je u8 | Schema 2 (1 bei älteren Builds), Zeilenanzahl 9 (Schema 1: 6), Zeilengröße 32, Headergröße 32 |
 | 4 | u32 | Aktuelle Konfigurationsgeneration |
 | 8 | u32 | Befundflags |
 | 12 | u32 | Bekannte Befundflagmaske 63; PROFILE_CHANGED nur in Op23 |
@@ -136,13 +141,13 @@ für jedes aufgeführte Format. Keine IEC-/Dateiformat-Fähigkeitsmatrix.
 | 25–27 | Bytes | Mehrspur-Operationen: 27 Anlegen, 28 Status, 29 Steuern |
 | 28–30 | Bytes | Operationen30 Checkpoint,31 Rohspur-Optionen,32 Rohspur-Bericht |
 | 31 | u8 | Reserviert, 0 |
-| 32 | 6 × 32 Bytes | Formatzeilen in Reihenfolge IDs 1–6 |
+| 32 | 9 × 32 Bytes | Zeilen in aufsteigender ID-Reihenfolge 0–8 (Schema 1: 6 × 32 Bytes, IDs 1–6) |
 
 Formatzeile, relative Offsets:
 
 | Offset | Typ | Inhalt |
 |---:|---|---|
-| 0 | u8 | Format: 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR (Schema 1 liefert genau diese sechs Zeilen; Apple-II-GCR, Format 7 aus 5.7, hat in Schema 1 keine Zeile) |
+| 0 | u8 | Zeilen-ID: 0 Rohfluss (formatunabhängig), 1 IBM-MFM, 2 Amiga, 3 IBM-FM, 4 HP-MMFM, 5 CBM-GCR, 6 Mac-GCR, 7 Apple-II-GCR (5.7), 8 IEC-Blockweg (Schema 1: nur 1–6) |
 | 1 | u8 | Implementierte Softwarepfade, aktuell 15 |
 | 2 | u8 | Nach Port, Leitungskonflikten und Belegung derzeit zulässige Softwarepfade |
 | 3 | u8 | Offline getestete Teile der Formatfamilie: 10 = Decoder und Inhaltsvergleich |
@@ -155,8 +160,21 @@ Formatzeile, relative Offsets:
 | 20, 24 | je u32 | Extended-Schreibgrenzen: 220…4294967295 |
 | 28 | u32 | Befundflags dieser Zeile |
 
-Pfadmasken bei 1–4: Bit0 Capture, Bit1 Decodierung, Bit2 Raw-Flux-Schreiben,
-Bit3 Inhalts-Prüflesen. Offline-Bit3 belegt den Referenz-/Inhaltsvergleich an
+Pfadmasken bei 1–4: Bit0 Capture, Bit1 Decodierung (Board-Decoder in ANALYZE
+DETAIL und Prüflese-Referenz), Bit2 Raw-Flux-Schreiben, Bit3 Inhalts-Prüflesen.
+Die Werte „aktuell 15 / 10 / 3 / 7“ in der Tabelle gelten für die Zeilen 1–6; die
+übrigen Zeilen weichen ab (Schema 2):
+
+| Zeile | implementiert | zulässig (nicht belegt) | offline geprüft | Backends | Voraussetzungen | Ratenmaske, Grenzen |
+|---:|---|---|---|---|---|---|
+| 0 Rohfluss | 5 (Capture, Raw-Flux-Schreiben; kein Decoder, kein Prüflesen) | 5 mit Flux-Port ohne Leitungskonflikt, sonst 0 | 5 (Stromparser, Schreibcodec) | 3; zulässig wie Zeilen 1–6 (1 bei Apple) | 7 | Maske 0, Grenzen wie Zeilen 1–6 |
+| 7 Apple-II-GCR | 7 (kein Prüflesen: die Firmware-Referenz kennt kein Apple-Format) | 7 nur mit gewähltem Apple-Port (Flux ohne Dichteausgang), sonst 2 (nur Decoder) | 2 (Decoder, MOOF-Korpus) | 1 (nur klassisch); zulässig 1 am Apple-Port | 7 | Maske `0x0001` (250 kbit/s), klassische Grenzen 440…65536, Extended 0/0 |
+| 8 IEC-Blockweg | 13 (Blöcke lesen = Bit0, schreiben = Bit2, Rücklesen = Bit3; Bit1 entfällt) | 13 nur mit gewähltem IEC-Laufwerk (Portbericht: Laufwerk ≠ 0 ohne Flux-Bit), sonst 0 | 13 (IEC-Regressionen) | 0 | 5 (Quelldaten, physischer Aufbau) | alles 0 |
+
+Eine formatunabhängige Zustimmung zum Rohfluss-Lesen oder -Schreiben liest das
+Werkzeug aus Zeile 0, nicht aus der UND-Verknüpfung der Formatzeilen.
+`hardware_qualified` ist in jeder Zeile 0, bis die Bank-Abnahme je Pfad ein Bit
+setzt (Abnahme_Schreibpfad.md). Offline-Bit3 belegt den Referenz-/Inhaltsvergleich an
 Testdaten, **keinen physisch ausgeführten Write/Read-Zyklus**. Die Tests decken
 Formatfamilien ab, nicht jede mögliche Kombination aus Rate, Port und Medium.
 Bei belegter Engine ist die Zulässigkeitsmaske 0. Ohne Flux-Port oder bei
@@ -164,8 +182,8 @@ Leitungskonflikten bleibt nur der reine Decoderpfad mit Wert 2 zulässig.
 
 Ratenbits 0–13 in dieser Reihenfolge: 250000, 300000, 500000, 1000000, 125000,
 150000, 266667, 285714, 307692, 380228, 346021, 312500, 280112, 251256.
-Masken der sechs Formate: `0x000F`, `0x000F`, `0x0037`, `0x0004`, `0x01C1`,
-`0x3E04`. Die Liste beschreibt Decoderkandidaten; Mac-Zonen gelten weiterhin.
+Masken der Formate 1–7: `0x000F`, `0x000F`, `0x0037`, `0x0004`, `0x01C1`,
+`0x3E04`, `0x0001`. Die Liste beschreibt Decoderkandidaten; Mac-Zonen gelten weiterhin.
 
 Zulässigkeit ist eine Momentaufnahme, keine Erfolgsgarantie: Quelldaten,
 Schreibschutz, Index, Laufwerks-/Medienkompatibilität, U11-Kapazität und jedes
@@ -2545,7 +2563,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 19 | 1 | Macintosh-GCR-Fähigkeiten, 48 Bytes (5.4; INFO Bit29) |
 | 20 | 1 | Discovery der lokalen Zeitfenster (Abschnitt 14 des Ergebnisses): Schema, 32 Fenster à 40 Byte, Gesamtbytes, Aktivierungsmaske, 24 Bytes (5.5) |
 | 21 | 1 | Discovery des Erkennungsblocks (Abschnitt 15, 64 Bytes, Abruf über Op 3): 24 Bytes (5.6) |
-| 22 | 1 | Fähigkeitsmatrix: Schema 1, Generation, Flags, sechs Formatzeilen, 224 Bytes (1.3) |
+| 22 | 1 | Fähigkeitsmatrix: Schema 2, Generation, Flags, neun Zeilen (Rohfluss, Formate 1–7, IEC), 320 Bytes; ältere Builds Schema 1 mit sechs Formatzeilen, 224 Bytes (1.3) |
 | 23 | 1 / 5 | Konfigurationsbericht, mit `expected_generation` u32 meldet `PROFILE_CHANGED` bei Abweichung, 24 Bytes (1.3) |
 | 24 | 5 + Op-1-Anfrage | Analysestart gebunden an die Konfigurationsgeneration (`expected_generation` u32), sonst wie Op 1 (1.3) |
 | 25 | 1 | Discovery der medien­gebundenen Starts: Schema 2, GUARDED_WRITE 0x27, GUARDED_READ 0x28, aktuelle Generationen, 20 Bytes (4.5) |

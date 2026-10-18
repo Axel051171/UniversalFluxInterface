@@ -1125,3 +1125,26 @@ prove the host check), foreign job ids and generations are refused. Test
 `test_analysis_job_client_and_recognition`; protocol doc 5.6 and README name the reference
 API. No protocol or firmware change. Remaining from the list: 1+3 (matrix schema 2), 4
 (qualification table).
+
+## Capability matrix schema 2: raw flux, Apple II GCR and IEC rows — 2026-10-18
+
+Items 1 and 3 of UFT's third list. Op 22 answered schema 1 with six format rows, so a tool
+that wanted a format-independent answer for raw flux capture or raw-flux write had to AND
+all six rows, and Apple II GCR (format 7) and the IEC block path had no row at all. Schema 2
+keeps the 32-byte head and the 32-byte row layout, sets byte 0 = 2 and byte 1 = 9 rows
+(320 bytes), rows in ascending id order with the id in byte 0: 0 raw flux (implemented 5 =
+capture and raw write, eligible 5 with a flux port and no line conflict, offline 5, both
+backends, rate mask 0, the usual limits), 1..6 unchanged, 7 Apple II GCR (implemented 7, no
+content verify since the verify reference has no Apple format, eligible 7 only with the Apple
+port selected else 2, offline 2 via the MOOF corpus, classic backend only, mask 0x0001), 8 IEC
+block path (implemented 13 = read blocks, write blocks, read-back verify, eligible 13 only
+with an IEC drive selected, offline 13, no backends, prerequisites 5, everything else 0). Port
+report drives the admission: flux bit, density bit (Apple has none), drive id without the
+flux bit = IEC. hardware_qualified stays 0 everywhere; the bench table (item 4) says which
+measurement will set which bit. Native test rewritten for the nine rows and the five port
+situations (Shugart, Apple, line conflict, nothing selected, IEC, busy); analysis job harness
+expects 320 bytes. Host decode_capabilities() reads schema 1 and 2 from the head, finds rows
+by id, returns `rows` (format rows 1..7), `raw_flux` and `iec`; FakeV2 answers schema 2;
+tests for both schemas. UFT (Sitzung 1) agreed to the layout beforehand and adapts its
+parser to both schemas once the hash is known. Protocol doc 1.3 (tables, row paragraph,
+masks), op table 6.1; README. Remaining from the list: item 4 (qualification table).
