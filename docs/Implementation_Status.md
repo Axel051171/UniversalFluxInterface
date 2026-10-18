@@ -1300,3 +1300,19 @@ encodes live from the ring store with absolute timestamps, a finished job captur
 per-revolution arrays and needs its own v2 encoder, one to two days; parked with that note.
 Remaining from the list in the agreed order: 2 (READ progress event per revolution), 5 (track
 survey job), 6 + 7 (weak-bit writing with long gaps), 4 and 8 after the first bench run.
+
+## 8-inch timing preset and bus drive strength — 2026-10-18
+
+Prompted by a Greaseweazle community thread the owner forwarded (BASF 6102 on a PC
+controller: lost steps at a 3 ms step rate, STEP only reaching 4 V against the 220/330 ohm
+termination). Our default and preset 1 also step at 3 ms, so an 8-inch drive on the UFI
+would have shown the same picture. Op 18 gained timing preset 3 "8 Zoll" (8 ms step, 20 ms
+settle and direction change, 1 ms side settle, 1 s spin-up, 20 ms select settle, 100 ms from
+motor/select to the first step for the head load that the 50-to-34 adapter ties to MOTOR or
+SELECT, since the 34-pin bus has no HLD line). Host `timing_preset("8zoll")`, `ufi profile
+8zoll`, FakeV2 preset 3, harness and host tests. Documented alongside: the v0.7 drives the
+Shugart bus with 74LS07 open-collector stages (40 mA sink), which covers the roughly 23 mA an
+8-inch termination needs, unlike many super-I/O controllers; 360 rpm and the FM/MFM rates
+follow the 1.2 MB settings; hard-sectored 32-hole media use READ/WRITE bit 1. Acceptance
+plan row: step timing at the drive and the low level against the termination, with the
+standard preset as the failing counter-example. No change for existing drives.

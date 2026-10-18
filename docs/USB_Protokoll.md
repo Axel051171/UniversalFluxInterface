@@ -1086,6 +1086,19 @@ BUSY.
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
 | 1 | Standard | 3 ms | 15 ms | 15 ms | 200 µs | 500 ms | 10 ms | 0 | 0 |
 | 2 | Konservativ | 8 ms | 40 ms | 38 ms | 1 ms | 800 ms | 60 ms | 60 ms | 200 ms |
+| 3 | 8 Zoll (1.18-dev) | 8 ms | 20 ms | 20 ms | 1 ms | 1000 ms | 20 ms | 0 | 100 ms |
+
+**8 Zoll** (SA800/850-Klasse, BASF 6102 und Verwandte): diese Laufwerke verlieren bei den
+3 ms der Standardvorgabe Schritte, genau das Fehlerbild eines PC-Controllers an einem
+8-Zoll-Laufwerk; 8 ms Schritt und 20 ms Beruhigung sind der sichere Bereich. Drei
+Voraussetzungen, die keine Voreinstellung ersetzt: (1) Der 34-polige Bus hat keine
+HEAD-LOAD-Leitung; der 50-auf-34-Adapter legt HLD auf MOTOR oder SELECT, deshalb wartet die
+Voreinstellung 100 ms vom Motor bis zum ersten Schritt. (2) Die Terminierung dieser
+Laufwerke ist 150–220 Ω (teils Thevenin 220/330 Ω) und verlangt rund 23 mA Senkstrom je
+Leitung; die UFI Headless v0.7 treibt den Bus mit 74LS07-Open-Collector-Stufen (40 mA) und
+erfüllt das, anders als viele Super-I/O-Controller. (3) Drehzahl 360 U/min, FM 250 kbit/s
+und MFM 500 kbit/s: `rpm_line` beziehungsweise die Datenrate wie beim 1,2-MB-Laufwerk
+wählen; hartsektorierte 8-Zoll-Medien mit 32 Löchern über READ/WRITE Bit1.
 
 „Konservativ" entspricht den Standardwerten der KryoFlux-Firmware 3.00
 (`REA_Firmware_Analyse_2026-10-17.md`); deren Dichte-Wartezeit von 500 ms ist

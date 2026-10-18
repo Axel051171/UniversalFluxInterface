@@ -353,7 +353,7 @@ class WriteLimits:
 EXTRA_FIELDS = ("density_us", "motor_step_ms", "write_settle_us", "gate_lead_us", "gate_tail_us", "reserved")
 EXTRA = struct.Struct("<6H")
 PROFILE_FMT = struct.Struct("<B22s12sBBHB")     # schema, timing, extra, rpm_line, rpm_360_low, rpm, stored
-TIMING_PRESETS = {"standard": 1, "konservativ": 2}     # op 18 with [18, id] (firmware 1.18)
+TIMING_PRESETS = {"standard": 1, "konservativ": 2, "8zoll": 3, "8inch": 3}     # op 18 with [18, id] (firmware 1.18)
 
 # ANALYSIS_JOB op 33: Apple II 5.25-inch GCR decoder options (format 7, 5.7)
 APPLE_GCR_FIELDS = ("addr_prologue", "data_prologue", "addr_epilogue", "data_epilogue", "flags")
@@ -1160,7 +1160,8 @@ class Device2:
         return {"session": bool(reply[1] & 1), "jumper": bool(reply[1] & 2), "locked": bool(reply[1] & 3)}
 
     def timing_preset(self, preset: int | str) -> OperatingProfile:
-        """Apply a named timing set (op 18 with [18, id]): 'standard' or 'konservativ'.  Only the
+        """Apply a named timing set (op 18 with [18, id]): 'standard', 'konservativ' or '8zoll' (8-inch
+        drives, firmware 1.18: 8 ms steps, 20 ms settle, head load via the adapter).  Only the
         movement/settle times change; the stored profile is untouched (use operating_profile_store)."""
         pid = TIMING_PRESETS[preset.lower()] if isinstance(preset, str) else int(preset)
         return OperatingProfile.unpack(self.analysis_op(18, bytes([pid])))

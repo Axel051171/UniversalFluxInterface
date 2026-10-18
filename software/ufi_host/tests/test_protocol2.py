@@ -402,7 +402,8 @@ class FakeV2:
         elif cmd == P2.ANALYSIS_JOB and a[0] == 18:          # operating profile / presets (4.4)
             if len(a) == 2:                                   # [18, id]: movement/settle times only
                 presets = {1: ((3000, 15000, 15000, 200, 500, 10000), (0, 0)),
-                           2: ((8000, 40000, 38000, 1000, 800, 60000), (60000, 200))}
+                           2: ((8000, 40000, 38000, 1000, 800, 60000), (60000, 200)),
+                           3: ((8000, 20000, 20000, 1000, 1000, 20000), (0, 100))}       # 8 inch (1.18)
                 if a[1] not in presets:
                     r(P2.BAD_ARGS)
                     return
@@ -1149,6 +1150,10 @@ def test_extra_timing_profile_and_presets():
     assert prof.timing["precomp_ns"] == 0xFFFF and prof.extra["write_settle_us"] == 20000 and not prof.stored
     assert dev.timing()["step_rate_us"] == 8000, "TIMING reports the preset values"
     assert fake.requests[-2].payload == bytes([18, 2])
+    prof = dev.timing_preset("8zoll")                                            # 8-inch preset (1.18)
+    assert (prof.timing["step_rate_us"], prof.timing["settle_us"], prof.timing["spinup_ms"], prof.extra["motor_step_ms"]) == \
+        (8000, 20000, 1000, 100) and fake.requests[-1].payload == bytes([18, 3])
+    dev.timing_preset("konservativ")                                             # back to the values the store check expects
     with pytest.raises(KeyError):
         dev.timing_preset("turbo")
     with pytest.raises(P2.DeviceError):

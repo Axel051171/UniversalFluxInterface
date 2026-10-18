@@ -50,7 +50,7 @@ uint16_t ufi_provenance_block(uint8_t* out){memset(out,0,96);out[0]=1;out[1]=96;
 int ufi_drive_operating_profile(const uint8_t* p,uint8_t out[40]){(void)p;memset(out,0,40);out[0]=1;return 0;}
 static uint8_t preset_applied,profiles_saved;
 int ufi_drive_profiles_save(void){profiles_saved++;return 0;}
-int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]){if(id<1||id>2)return UFI_ERR_BAD_ARGS;preset_applied=id;memset(out,0,40);out[0]=1;out[1]=id;return 0;}
+int ufi_drive_operating_preset(uint8_t id,uint8_t out[40]){if(id<1||id>3)return UFI_ERR_BAD_ARGS;preset_applied=id;memset(out,0,40);out[0]=1;out[1]=id;return 0;}
 uint32_t ufi_drive_media_token(void){return media_token;}
 bool ufi_drive_media_matches(uint32_t t){return t==media_token;}
 void ufi_drive_media_status(uint8_t p[40]){memset(p,0,40);p[0]=1;memcpy(p+4,&media_token,4);}
@@ -372,7 +372,8 @@ int main(void){
     uint8_t preset[3]={18,2,0};
     assert(!ufi_analysis_command(preset,2,out,&size) && size==40 && out[1]==2 && preset_applied==2);
     preset[1]=1;assert(!ufi_analysis_command(preset,2,out,&size) && preset_applied==1);
-    preset[1]=3;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS && preset_applied==1);
+    preset[1]=3;assert(!ufi_analysis_command(preset,2,out,&size) && preset_applied==3);     /* 8-inch (1.18) */
+    preset[1]=4;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS && preset_applied==3);
     preset[1]=0;assert(ufi_analysis_command(preset,2,out,&size)==UFI_ERR_BAD_ARGS);
     preset[1]=2;assert(ufi_analysis_command(preset,3,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 33: Apple II GCR options (format 7) - read defaults, reject bad schema/flags/marks, set and read back */

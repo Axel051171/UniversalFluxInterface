@@ -619,9 +619,9 @@ def main(argv: list[str] | None = None) -> int:
                    "(writes with index_ticks end with status 23 outside it), 'off' disables").add_argument("tolerance", nargs="?")
     sub.add_parser("write-lock", help="session write lock (firmware 1.18, op 37): no argument shows lock and jumper state, 'engage' locks every disk "
                    "and drive write (status 22) until the board is reset; there is no disengage").add_argument("action", nargs="?", choices=["engage"])
-    sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ' applies a timing preset, "
+    sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ|8zoll' applies a timing preset (8zoll: 8-inch drives, 8 ms steps),"
                    "'profile save' stores the effective settings so SELECT restores them (firmware 1.18)").add_argument(
-        "action", nargs="?", choices=("standard", "konservativ", "save"))
+        "action", nargs="?", choices=("standard", "konservativ", "8zoll", "save"))
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
     q_help = ("Apple Disk II quarter-track offset 0-3 (2 = half track), firmware >= 1.14; Shugart drives (firmware 1.18) "

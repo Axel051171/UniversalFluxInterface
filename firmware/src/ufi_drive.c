@@ -673,13 +673,19 @@ int ufi_drive_operating_profile(const uint8_t* input,uint8_t out[40])
 int ufi_drive_operating_preset(uint8_t id,uint8_t out[40])
 {
     if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
-    if(id<1 || id>2)return UFI_ERR_BAD_ARGS;
+    if(id<1 || id>3)return UFI_ERR_BAD_ARGS;
     drive_timing_t t=g_timing;drive_extra_t e=extra_timing;
     if(id==1){
         const drive_timing_t d=DEFAULT_TIMING_INIT;const drive_extra_t x=DEFAULT_EXTRA_INIT;
         t.step_rate_us=d.step_rate_us;t.settle_us=d.settle_us;t.dir_change_us=d.dir_change_us;
         t.side_settle_us=d.side_settle_us;t.spinup_ms=d.spinup_ms;t.select_settle_us=d.select_settle_us;
         e.density_us=x.density_us;e.motor_step_ms=x.motor_step_ms;
+    }else if(id==3){
+        /* 8-inch (SA800/850 class, BASF 6102): 8 ms steps, 20 ms settle, head load via the adapter
+         * (34-pin bus has no HLD): 100 ms from motor/select to the first step. */
+        t.step_rate_us=8000;t.settle_us=20000;t.dir_change_us=20000;
+        t.side_settle_us=1000;t.spinup_ms=1000;t.select_settle_us=20000;
+        e.density_us=0;e.motor_step_ms=100;
     }else{
         t.step_rate_us=8000;t.settle_us=40000;t.dir_change_us=38000;
         t.side_settle_us=1000;t.spinup_ms=800;t.select_settle_us=60000;
