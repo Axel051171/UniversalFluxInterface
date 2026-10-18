@@ -681,6 +681,11 @@ uint16_t ufi_provenance_block(uint8_t* out)
     out[78] = port[8];                      /* rpm setting u16 */
     out[79] = port[9];
     put32(&out[80], HAL_GetTick());
+    const board_status_t bs = ufi_board_status();  /* supply state at the time of the record */
+    put16(&out[84], bs.i5_ma);
+    put16(&out[86], bs.i12_ma);
+    out[88] = bs.power;                     /* bit0 FDD 5 V on, bit1 FDD 12 V on */
+    out[89] = bs.flags;                     /* board_status flags: jumper, overcurrent, SD, buttons, safe mode, session lock */
     return UFI_PROVENANCE_SIZE;
 }
 

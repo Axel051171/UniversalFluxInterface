@@ -163,7 +163,7 @@ class FakeV2:
         block += bytes(self.firmware) + b"abc1234".ljust(12, b"\0") + b"Oct 17 2026".ljust(12, b"\0")
         block += struct.pack("<7I", 275_000_000, self.config_gen, self.media_gen, self.capture_id, self.media_gen,
                              self.index_ticks, self.speed_last[0])
-        return block + bytes([self.drive, 0]) + struct.pack("<HI", 0, 123_456) + bytes(12)
+        return block + bytes([self.drive, 0]) + struct.pack("<HI", 0, 123_456) + struct.pack("<HHBB", 120, 0, 3, 8) + bytes(6)
 
     def _capability_matrix(self) -> bytes:
         """Op 22 as ufi_capability_matrix() builds it on a v0.7 board with a flux drive selected (4.3):
@@ -1673,6 +1673,7 @@ def test_provenance_block(monkeypatch, capsys):
     assert pv["capture_present"] and pv["capture_media_generation"] == 42 and pv["index_ticks"] == 55_000_000
     assert (pv["drive"], pv["rpm_set"], pv["profile_stored"], pv["uptime_ms"], pv["speed_measured_ticks"]) == (1, 0, False, 123_456, 0)
     assert not pv["jumper_locked"] and not pv["session_locked"] and not pv["apple_sync"]
+    assert (pv["i5_ma"], pv["i12_ma"], pv["power"], pv["board_flags"]) == (120, 0, 3, 8)
     dev.select(2)
     dev.request(0x0F, bytes([37, 1]))                        # engage the session write lock
     pv = dev.provenance()

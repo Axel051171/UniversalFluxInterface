@@ -966,6 +966,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"drive {pv['drive']}, rpm setting {pv['rpm_set'] or 'default'}, profile "
                       f"{'stored by tool' if pv['profile_stored'] else 'firmware default'}, write lock {', '.join(locks) or 'none'}"
                       + (", Apple sync sensor" if pv['apple_sync'] else ""))
+                print(f"supplies: 5 V {'on' if pv['power'] & 1 else 'off'} {pv['i5_ma']} mA, 12 V "
+                      f"{'on' if pv['power'] & 2 else 'off'} {pv['i12_ma']} mA, board flags 0x{pv['board_flags']:02x}")
                 if pv['index_ticks']:
                     print(f"last index period {pv['index_ticks']} ticks = {60 * pv['flux_hz'] / pv['index_ticks']:.2f} rpm")
                 if pv['speed_measured_ticks']:

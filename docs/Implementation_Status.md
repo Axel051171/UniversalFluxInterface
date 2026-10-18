@@ -1282,3 +1282,21 @@ evidence runtime stub. Host write_track(precomp_ns=), precomp_profile(), ufi wri
 tests. Protocol doc 4.14, rows 0x08/0x22, 4.7 mask, op 39 field 15, op table. That closes
 the owner's fourth list: provenance block, READ provenance flag, RESEEK, Shugart half track,
 fine weak positions, precompensation.
+
+## Provenance block: drive supply state in the reserve — 2026-10-18
+
+Owner's fifth list (further firmware support for UFT), item 3 taken first because it is the
+cheapest: the twelve reserve bytes of the op 43 block (also in the READ END with flag bit 3)
+now carry the drive supply state at the time of the record: 5 V and 12 V currents in mA,
+the `power` byte (which supplies are on) and the board_status flags (jumper, overcurrent, SD,
+buttons, safe mode, session lock). A forensic record can then tell a capture under a sagging
+supply or after an overcurrent trip from a clean one. No MCU temperature: the internal sensor
+channel is not configured on this board, documented as such; six bytes stay reserved. Layout
+and size unchanged (96 bytes, schema 1), so UFT's archive packaging of op 43 keeps working and
+gains fields. Host decode_provenance() exposes i5_ma, i12_ma, power, board_flags; `ufi
+provenance` prints a supplies line; FakeV2 fills the fields; test. Item 1 of that list (stream
+the flux of a finished analysis job) turned out deeper than estimated: the v2 DATA path
+encodes live from the ring store with absolute timestamps, a finished job capture sits in
+per-revolution arrays and needs its own v2 encoder, one to two days; parked with that note.
+Remaining from the list in the agreed order: 2 (READ progress event per revolution), 5 (track
+survey job), 6 + 7 (weak-bit writing with long gaps), 4 and 8 after the first bench run.

@@ -617,7 +617,9 @@ def decode_provenance(d: bytes) -> dict:
     dev_id, silicon, board_mv = struct.unpack_from("<HHH", d, 16)
     (flux_hz, config_gen, media_gen, capture_id, capture_media, index_ticks, speed_ticks) = struct.unpack_from("<7I", d, 48)
     rpm_set, uptime = struct.unpack_from("<H", d, 78)[0], struct.unpack_from("<I", d, 80)[0]
-    return dict(board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
+    i5_ma, i12_ma = struct.unpack_from("<HH", d, 84)
+    return dict(i5_ma=i5_ma, i12_ma=i12_ma, power=d[88], board_flags=d[89],
+                board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
                 session_locked=bool(d[3] & 4), apple_sync=bool(d[3] & 8), capture_present=bool(d[3] & 16),
                 mcu_uid=f"{uid[2]:08x}{uid[1]:08x}{uid[0]:08x}", mcu_device_id=dev_id, mcu_revision=silicon,
                 board_id_mv=board_mv, firmware=(d[22], d[23]),
