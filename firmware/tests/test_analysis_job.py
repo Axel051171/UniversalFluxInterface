@@ -87,6 +87,8 @@ static uint8_t ufi_flux_get_revolution_count(void){return 1;}
 static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i?NULL:&revolution;}
 static bool apple_drive;
 bool ufi_drive_is_apple(void){return apple_drive;}
+static uint32_t reseeks;static uint8_t reseek_track,reseek_quarter;static int reseek_error;
+int ufi_drive_seek_q(uint8_t t,uint8_t q){reseeks++;reseek_track=t;reseek_quarter=q;return reseek_error;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t r,uint32_t period,uint8_t q){
     (void)r;(void)period;captures++;g_capture.current_track=c;g_capture.current_side=h;g_capture.current_quarter=q?(uint8_t)(0x80u|(q<<4)):0u;
     if(start_error)return start_error; /* seek failure before capture/evidence exists */
@@ -235,6 +237,16 @@ int main(void){
     assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_SEEK_FAIL);
     assert(job.attempt==1 && job.history[0][3]==-UFI_ERR_SEEK_FAIL && !job.capture_id);
     start_error=0;
+    /* RESEEK (0x40): no seek on the first attempt, one step outward before every retry, same quarter;
+     * a failed re-seek ends the job like a failed capture start. */
+    reseeks=0;p[5]=5|64;wr64(p+12,0x1ffe);p[7]=2;assert(!ufi_analysis_command(p,33,out,&size) && !reseeks);
+    pump();assert(job.attempt==2 && reseeks==1 && reseek_track==(job.track?job.track-1:1) && !reseek_quarter);   /* track 0: inward */
+    reseeks=0;p[5]=5;assert(!ufi_analysis_command(p,33,out,&size));pump();assert(job.attempt==2 && !reseeks);
+    reseeks=0;p[5]=5|64;reseek_error=UFI_ERR_SEEK_FAIL;assert(!ufi_analysis_command(p,33,out,&size));pump();
+    assert(job.attempt==2 && reseeks==1 && job.state==A_FAILED && job.status==-UFI_ERR_SEEK_FAIL &&
+           (rd(job.assessment[1]+4)&CAUSE_POSITION) && job.history[1][3]==-UFI_ERR_SEEK_FAIL);
+    reseek_error=0;p[5]=128;assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BAD_ARGS);p[5]=5;
+    { uint8_t caps0=0;assert(!ufi_analysis_command(&caps0,1,out,&size) && rd(out+4)==127); }
     /* Recovery policies use independent configuration, never consume job flag bits. */
     p[5]=32;wr64(p+12,0);assert(!ufi_analysis_command(p,33,out,&size));pump();
     wr(page+5,job.generation);page[9]=11;

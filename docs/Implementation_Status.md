@@ -1201,3 +1201,19 @@ plain END, the guarded path and the CLI line. Protocol doc: command row 0x20, 4.
 4.7 mask row, 4.12 paragraph. AXI reserve moves by 8 bytes (END buffer), still above the
 32 KiB mark. Open from the fourth list: re-seek flag for multi-reads, half-track positioning
 for Shugart, weak-bit position list, precomp profile per write.
+
+## Independent head positioning between analysis attempts: job flag RESEEK — 2026-10-18
+
+Second item of the owner's fourth list. UFT's recovery fusion and OTDR modules want physically
+independent reads of a track; retries of an analysis job so far captured again at the head
+position the first seek had settled on, which only adds revolutions of the same reading.
+ANALYSIS_JOB op 1 gained job flag RESEEK 0x40 (mask 0x7F, op 0 byte 4 now 127): before every
+retry capture (attempt 2 and later) the job seeks one track outward (inward at track 0, same
+quarter) and the capture's own seek brings the head back, so the position is settled afresh.
+The first attempt is untouched; a failed re-seek ends the job like a failed capture start
+(status 3, CAUSE_POSITION in that attempt's assessment and history). Multitrack templates carry
+the flag unchanged. Native harness: no re-seek on attempt 1, one per retry with the outward
+track and quarter, none without the flag, re-seek failure path, bit 7 refused, op 0 mask 127.
+Host JOB_RESEEK / JOB_FLAG_MASK, `ufi recognize --reseek`; FakeV2 accepts 0x40 and counts one
+re-seek per retry in `reseeks`; test. Protocol doc: op 1 flag table, op 0 row. Open from the
+list: half-track positioning for Shugart, weak-bit position list, precomp profile per write.

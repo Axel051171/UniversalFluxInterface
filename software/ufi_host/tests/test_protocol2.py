@@ -289,12 +289,14 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             job_id, flags, attempts, budget, expected, c, h, n, res = struct.unpack_from("<IHBIQBBBB", a, 1)
-            if not job_id or flags & ~0x3F or not 1 <= attempts <= 8 or not 1 <= budget <= 60000 or res or n > 3 \
+            if not job_id or flags & ~0x7F or not 1 <= attempts <= 8 or not 1 <= budget <= 60000 or res or n > 3 \
                     or (flags & 1 and not flags & 4) or bool(flags & 4) != bool(expected):
                 r(P2.BAD_ARGS)
                 return
             seen = sum(1 << s for s in range(1, self.verify_sectors + 1))
             missing = expected & ~seen
+            if missing and flags & 1 and attempts > 1 and flags & 0x40:      # RESEEK: one re-seek per retry attempt
+                self.reseeks = getattr(self, "reseeks", 0) + attempts - 1
             self.job = dict(id=job_id, flags=flags, attempts=attempts, budget=budget, expected=expected, c=c, h=h, n=n,
                             track=a[24], side=a[25], revs=a[26] or 3, seen=seen, generation=1,
                             status=6 if missing else 0, state=4 if missing else 3)    # 6: expected sectors missing
@@ -1671,3 +1673,23 @@ def test_read_provenance_flag(monkeypatch, capsys):
     assert cli.main(["read", "0", "0", "-r", "2", "--provenance"]) == 0
     out = capsys.readouterr().out
     assert "provenance: board v0.7, MCU 203236333135511700310028, firmware 1.18 rev abc1234+" in out and "capture id 4660" in out
+
+
+def test_analysis_job_reseek_flag(monkeypatch, capsys):
+    """RESEEK 0x40 (6.1): accepted by the host and the fake, sent in the op 1 flags word, counted once per retry
+    by the fake; bit 7 is still refused locally; ufi recognize --reseek sets it."""
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    st = dev.analysis_start(0x2001, 5, 1, flags=P2.JOB_RETRY_MISSING | P2.JOB_RESEEK, max_attempts=3,
+                            expected=0xFFE, c=5, h=1, n=2)
+    assert struct.unpack_from("<H", fake.requests[-1].payload, 5)[0] == 1 | 4 | 64 and st.flags == 1 | 4 | 64
+    assert st.status == 6 and fake.reseeks == 2                     # two retries after the first attempt
+    dev.analysis_start(0x2002, 5, 1, flags=P2.JOB_RETRY_MISSING, max_attempts=3, expected=0xFFE, c=5, h=1, n=2)
+    assert fake.reseeks == 2                                        # without the flag nothing moves
+    with pytest.raises(ValueError):
+        dev.analysis_start(0x2003, 5, 1, flags=0x80)
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["recognize", "5", "1", "--expect", "0xffe", "--retry", "--attempts", "2", "--reseek"]) == 0
+    assert struct.unpack_from("<H", [q for q in fake.requests if q.cmd == P2.ANALYSIS_JOB and q.payload[0] == 1][-1].payload, 5)[0] \
+        == 1 | 2 | 4 | 64
+    assert "missing_sectors" in capsys.readouterr().out and fake.reseeks == 3

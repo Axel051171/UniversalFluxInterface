@@ -629,6 +629,8 @@ def decode_provenance(d: bytes) -> dict:
 
 
 JOB_RETRY_MISSING, JOB_RETRY_ERRORS, JOB_EXPECT_SET, JOB_RAW_INDEX, JOB_TRANSFER_TRACE, JOB_CHECK_PROFILE = 1, 2, 4, 8, 16, 32
+JOB_RESEEK = 64                         # 1.18: step one track outward and back before every retry capture
+JOB_FLAG_MASK = 0x7F
 JOB_STATES = {0: "unused", 1: "capture", 2: "analysis", 3: "done", 4: "failed"}
 ANALYSIS_STATUS = struct.Struct("<BBBBIIIQQQBBBxIBBBBBBBBII")    # 64 bytes (USB_Protokoll 6.1, op 2)
 
@@ -1262,7 +1264,7 @@ class Device2:
         carry.  The appended ANALYZE request always carries DETAIL, as the firmware requires."""
         if not 1 <= job_id <= 0xffffffff:
             raise ValueError("job id must be a nonzero u32")
-        if flags & ~0x3F:
+        if flags & ~JOB_FLAG_MASK:
             raise ValueError("unknown job flag bits")
         if expected:
             if not 0 < expected <= 0xffffffffffffffff:

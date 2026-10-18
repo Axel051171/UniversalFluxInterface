@@ -2661,7 +2661,7 @@ und automatische Suchkandidaten, keine durch Hardwaretests bestätigten Formate.
 | 1 | u8 | Anzahl Formate: 5 |
 | 2 | u8 | Unterstützte ANALYZE-Flags: 0xFF |
 | 3 | u8 | Diagnoseflagmaske: 7 |
-| 4 | u32 | Unterstützte Jobflags: 63 (0x003F); CHECK_PROFILE ab 2026-10-16 |
+| 4 | u32 | Unterstützte Jobflags: 127 (0x007F) ab 1.18-dev mit RESEEK; 63 (0x003F) davor, CHECK_PROFILE ab 2026-10-16 |
 | 8 | u32 | Maximales Gesamtbudget: 60000 ms |
 | 12 | u32 | Maximales Analysebudget pro Versuch: 10000 ms |
 | 16 | u32 | Maximale Seitennutzdaten: 1024 Bytes |
@@ -2712,6 +2712,7 @@ einfließen. Detail-Parametergrenzen aus Abschnitt 5.2 gelten unverändert.
 | RAW_INDEX | 0x0008 | Beobachtete Index-/Sektorlochereignisse einschließlich verworfener Impulse aufzeichnen (4.1) |
 | TRANSFER_TRACE | 0x0010 | Begrenzte Aufnahme-/Transporthistorie aufzeichnen (4.1) |
 | CHECK_PROFILE | 0x0020 | Profil, wirksamen Schrittfaktor und Aufnahmebefunde vergleichen; Ergebnis in Abschnitt 11 (4.3) |
+| RESEEK | 0x0040 | 1.18-dev: vor jeder Wiederholungsaufnahme (ab Versuch 2) einen Schritt nach außen (Spur − 1, auf Spur 0 nach innen, gleiches Viertel) und mit dem normalen Seek der Aufnahme zurück, damit jeder Versuch von einer neu eingeschwungenen Kopflage liest statt dieselbe Lage erneut abzutasten (Fusion unabhängiger Lesungen, OTDR); der erste Versuch bleibt unverändert; scheitert der Rückschritt, endet der Auftrag wie ein gescheiterter Aufnahmestart (Status 3, Ursache `position` im Versuch) |
 
 Ohne EXPECT_SET muss die Maske 0 sein. C/H/N wählen die erwarteten Kennungen,
 nicht die mechanische Zielposition; diese steht im angehängten ANALYZE-Request.

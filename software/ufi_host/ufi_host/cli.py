@@ -600,6 +600,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--expect", metavar="MASK", help="expected sector-ID mask (hex or decimal, bit R = sector R); sets EXPECT_SET")
     p.add_argument("--chn", nargs=3, type=int, metavar=("C", "H", "N"), help="C H N the expected sectors carry (default: track side 2)")
     p.add_argument("--retry", action="store_true", help="RETRY_ERRORS, with --expect also RETRY_MISSING, within --attempts")
+    p.add_argument("--reseek", action="store_true",
+                   help="RESEEK (firmware 1.18): step one track outward and back before every retry, so each attempt "
+                        "reads from an independently settled head position")
     sub.add_parser("weak", help="weak windows of the last analyze (firmware 1.18, op 42): max-min transition count per 1/64 "
                    "revolution as a heat strip; --min N lists windows at or above N (default 1)").add_argument(
                    "--min", type=int, default=1, metavar="N")
@@ -949,6 +952,7 @@ def main(argv: list[str] | None = None) -> int:
             expected = int(a.expect, 0) if a.expect else 0
             c, h, n = a.chn if a.chn else (a.track, a.side, 2)
             flags = (P2.JOB_RETRY_ERRORS | (P2.JOB_RETRY_MISSING if expected else 0)) if a.retry else 0
+            flags |= P2.JOB_RESEEK if getattr(a, "reseek", False) else 0
             job_id = secrets.randbits(32) or 1
             st = dev.analysis_start(job_id, a.track, a.side, a.revs, flags=flags, max_attempts=a.attempts,
                                     budget_ms=a.budget, expected=expected, c=c, h=h, n=n)

@@ -1,4 +1,5 @@
 /* Native analysis jobs: bounded work, retained final report and retry history. */
+#define JOB_RESEEK 64u          /* op 1 job flag (6.1): re-settle the head before every retry capture */
 #include "ufi_firmware.h"
 #include "ufi_quality.h"
 #include "ufi_analysis_job.h"
@@ -74,7 +75,15 @@ static int capture(void) {
     ufi_quality_clear();
     ufi_evidence_arm(job.flags);
     uint32_t previous=evidence_id();
-    int ret=ufi_capture_start_q(job.track,job.side,job.revs,0,(uint8_t)((job.position>>4)&3u));
+    int ret=0;
+    if((job.flags&JOB_RESEEK) && job.attempt>1){
+        /* RESEEK (0x40): leave the track one step outward so the capture's own seek settles the
+         * head afresh; a retry then reads an independent head position, not the same one again. */
+        const uint8_t away=job.track?(uint8_t)(job.track-1u):1u;
+        const int r=ufi_drive_seek_q(away,(uint8_t)((job.position>>4)&3u));
+        if(r)ret=r==UFI_ERR_BAD_ARGS?UFI_ERR_BAD_ARGS:UFI_ERR_SEEK_FAIL;
+    }
+    if(!ret)ret=ufi_capture_start_q(job.track,job.side,job.revs,0,(uint8_t)((job.position>>4)&3u));
     if(!ret)g_capture.current_quarter=job.position;
     ufi_evidence_disarm();job.capture_id=evidence_id()==previous?0:evidence_id();
     if(ret){record(ret);finish(ret);}
@@ -239,7 +248,7 @@ static uint16_t status(uint8_t* out) {
 }
 static uint16_t capabilities(uint8_t* out) {
     memset(out,0,192);out[0]=1;out[1]=5;out[2]=0xff;out[3]=7; /* five legacy descriptors; Mac via op 19 */
-    wr(out+4,63);wr(out+8,60000);wr(out+12,10000);wr(out+16,1024);
+    wr(out+4,127);wr(out+8,60000);wr(out+12,10000);wr(out+16,1024);   /* job flags incl. RESEEK 0x40 */
     out[20]=8;out[21]=8;out[22]=48;out[23]=4;out[24]=1;out[25]=1;out[26]=1;
     wr(out+28,QUALITY_MAX_WIRE);wr(out+32,FLUX_TIMER_FREQ);
     static const uint32_t rates[]={250000,300000,500000,1000000,125000,150000};
@@ -611,7 +620,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         quality_options_t options;
         if(n<28 || !quality_options(p+24,n-24,&options) || !(options.flags&1))return UFI_ERR_BAD_ARGS;
         uint16_t flags=(uint16_t)(p[5]|(uint16_t)p[6]<<8);uint64_t expected=rd(p+12)|(uint64_t)rd(p+16)<<32;
-        if(!rd(p+1) || (flags&~63u) || !p[7] || p[7]>8 || !rd(p+8) || rd(p+8)>60000 || p[23] || p[22]>3 ||
+        if(!rd(p+1) || (flags&~127u) || !p[7] || p[7]>8 || !rd(p+8) || rd(p+8)>60000 || p[23] || p[22]>3 ||
            ((flags&1)&&!(flags&4)) || ((flags&4)?!expected:expected!=0))return UFI_ERR_BAD_ARGS;
         if(ufi_analysis_job_active() || ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
         if((recovery_config[3]==1 && p[7]<recovery_config[4]) ||
