@@ -39,6 +39,10 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.9 Prüflesebericht je Sektor (Op 40, 1.18-dev)
   - 4.10 Drehzahlprüfung vor dem Schreiben (Op 41, Status 23, 1.18-dev)
   - 4.11 Weak-Fenster als Zähler (Op 42, 1.18-dev)
+  - 4.12 Provenienzblock (Op 43, 1.18-dev)
+  - 4.13 Weak-Positionen fein (Op 44, 1.18-dev)
+  - 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
+  - 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -453,7 +457,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–42), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–46), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
@@ -1580,6 +1584,80 @@ TIMING/automatisch mit Spurregel. Die Quelle (Byte 1) erlaubt dem Werkzeug, im
 Schreibbericht wörtlich „Board: aus / Profil / automatisch“ zu nennen. Host:
 `write_track(..., precomp_ns=)`, `precomp_profile()`, `ufi write --precomp NS`,
 `ufi precomp [--zones 0:125,40:62 | --clear]`.
+
+### 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
+
+Bevor ein Werkzeug entscheidet, welche Spuren es mit ANALYZE, Analysejob oder READ im
+Detail liest, braucht es den Überblick über die ganze Diskette: welche Spuren formatiert
+sind, FM/MFM/GCR, HD oder DD, Drehzahl, Flusswechselzahl. Bisher kostete das je Spur eine
+eigene Anfrage mit Seek und mehreren Umdrehungen. `0x0F [46]` fährt den Spurbereich
+**auf dem Board** ab, liest je Spur und Seite **eine Umdrehung**, wendet dieselbe
+Histogrammeinordnung wie ANALYZE 0x25 an (Gipfelverhältnis 1,5 → MFM, am Apple-Port GCR;
+2,0 mit drittem Gipfel ≥ 2,8 → GCR; 2,0 ohne → FM) und hält die Tabelle, die der Host
+schon während des Laufs liest. Sitzungslokal, flüchtig; ein neuer Start ersetzt die Tabelle.
+
+- `[46]` liest: nie BUSY, auch während des Laufs (dann die bisher fertigen Einträge).
+  Antwort Kopf 28 Byte + Cursor × 20 Byte, höchstens 28 + 168·20 = 3388 Byte.
+- `[46, 1, erste u8, letzte u8, seiten u8, flags u8]` startet: `erste ≤ letzte ≤ 83`,
+  `seiten` als Maske (Bit0 Seite 0, Bit1 Seite 1; 1–3), `flags` Maske 0x01 (Bit0 zählt je
+  Spur die IBM-MFM-Sektoren mit gültiger CRC; langsamer). BUSY, solange ein anderer Vorgang,
+  Analysejob oder Mehrspurplan läuft; ohne gewähltes Laufwerk Status 2. Antwort: Kopf mit
+  Zustand 1, Cursor 0.
+- `[46, 0]` bricht ab: Zustand 3 mit Fehler 20; Antwort Kopf. Das allgemeine ABORT und ein
+  Protokollreset beenden den Lauf ebenso.
+- Alles andere → BAD_ARGS. Während des Laufs gilt das Board als belegt (Laufwerksbefehle
+  und Starts → BUSY; Status, Discovery und Abfragen bleiben lesbar).
+
+Kopf (28 Byte, Little Endian):
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Kopflänge 28 |
+| 2 | u8 | Zustand: 0 keiner seit Reset, 1 läuft, 2 fertig, 3 abgebrochen/fehlgeschlagen |
+| 3 | u8 | Fehlerstatus des ganzen Laufs: 0; 20 abgebrochen, 21 Medium gewechselt, sonst der Status des Schritts, der ihn beendet hat |
+| 4 | u8 | erste Spur |
+| 5 | u8 | letzte Spur |
+| 6 | u8 | Seitenmaske |
+| 7 | u8 | Flags |
+| 8 | u8 | Eintragslänge 20 |
+| 9 | u8 | reserviert 0 |
+| 10 | u16 | Cursor: gültige Einträge |
+| 12 | u16 | Gesamtzahl = (letzte − erste + 1) · Seitenzahl |
+| 14 | u16 | reserviert 0 |
+| 16 | u32 | Laufzeit in ms (laufend: bisher) |
+| 20 | u32 | Konfigurationsgeneration beim Start (Op 23) |
+| 24 | u32 | Mediengeneration beim Start |
+
+Eintrag (20 Byte; Reihenfolge Spur aufsteigend, je Spur die Seiten der Maske aufsteigend):
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Spur (logisch, wie gesendet) |
+| 1 | u8 | Seite |
+| 2 | u8 | Status dieses Schritts: 0 ok, sonst UFI-Status (4 kein Index, 3 Seek, 5 Timeout 4 s, 10 Puffer, 6 DMA) |
+| 3 | u8 | Kodierung: 0 unbekannt/leer, 1 FM, 2 MFM, 3 GCR |
+| 4 | u16 | erster Histogrammgipfel in ns (0 = keiner; ≈ 2000 MFM DD, ≈ 1000 MFM HD, ≈ 4000 FM DD; Bitzelle = Gipfel/2 bei MFM, Gipfel·2 bei FM, Gipfel bei GCR) |
+| 6 | u8 | IBM-MFM-Sektoren mit gültiger CRC (nur mit Flag Bit0 und Kodierung 2, sonst 0) |
+| 7 | u8 | Zahl der gefundenen Gipfel 0–4 (0 = leer oder Rauschen) |
+| 8 | u32 | Indexperiode in 275-MHz-Takten (U/min = 60 · 275 000 000 / Takte) |
+| 12 | u32 | Flusswechsel dieser Umdrehung |
+| 16 | u16 | zweiter Histogrammgipfel in ns (0 = keiner) |
+| 18 | u16 | dritter Histogrammgipfel in ns (0 = keiner) |
+
+Ein Schritt mit Status ≠ 0 lässt die Bytes 3–19 auf 0. Schrittfehler beenden den Lauf
+nicht; **drei Schrittfehler in Folge** beenden ihn mit diesem Status im Kopf, damit ein
+Laufwerk ohne Diskette nicht 168 Indexwartezeiten durchläuft. Ein Medienwechsel beendet
+den Lauf mit 21 und ist zusätzlich an der Mediengeneration im Kopf erkennbar; die
+Konfigurationsgeneration bindet die logischen Spurnummern an das Laufwerksprofil
+(`double_step`). Die Gipfel 2 und 3 stehen neben dem Urteil, damit ein Werkzeug die
+Kodierung nachrechnen kann, ohne die Spur erneut zu lesen. Nicht enthalten: Weak-Bits
+(brauchen ≥ 2 Umdrehungen je Spur: ANALYZE/Op 44 je Spur), Viertel- und Halbspuren, Events
+(der Host fragt `[46]` einmal je Sekunde ab). Ein 80-Spur-Lauf über beide Seiten dauert
+etwa eine Minute. Die Tabelle liegt in D2-SRAM1 neben dem Aufnahmebeleg (3360 Byte); AXI-
+Reserve und DTCM-Stapel bleiben unberührt. Host: `track_survey(first, last, sides=3,
+sectors=False)`, `track_survey_status()`, `track_survey_wait()`, `track_survey_abort()`,
+`ufi survey [FIRST LAST] [--side 0|1] [--sectors] [--status | --abort]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2717,11 +2795,13 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 43 | 1 | Provenienzblock: Board, MCU-ID, Firmware-Revision und Build, Generationen, Capture-ID, letzte Indexperiode, Laufwerkseinstellung, Laufzeit; 96 Bytes (4.12); reine Abfrage, nie BUSY |
 | 44 | 1 / 2 | Weak-Positionen fein des letzten ANALYZE: Fenster je 1/1024 Umdrehung, deren Maximum − Minimum der Flusswechselzahl die Schwelle (Vorgabe 2, optional u8 1–255) erreicht; Kopf 10 Byte plus n × 4, höchstens 266 (4.13); reine Abfrage, nie BUSY |
 | 45 | 1 / 2 / 3 + 3·n | Präkompensationsprofil (4.14): `[45]` liest, `[45, 0]` löscht, `[45, 1, n, Zonen]` setzt 1–4 Zonen (ab physischer Spur u8, ns u16); Antwort 19 Bytes mit Quelle, Zonen und letzter angewandter Präkompensation; Setzen während eines Vorgangs BUSY |
+| 46 | 1 / 2 / 6 | Spurübersicht (4.15): `[46]` liest Kopf 28 Byte + fertige Einträge à 20 Byte (nie BUSY, auch während des Laufs), `[46, 1, erste, letzte, seitenmaske, flags]` startet eine Umdrehung je Spur und Seite auf dem Board, `[46, 0]` bricht ab; höchstens 3388 Byte |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |
 
-Nur ein Analysejob gleichzeitig; ein neuer angenommener Job ersetzt den alten
+Nur ein Analysejob gleichzeitig (die Spurübersicht Op 46 zählt dabei als laufender
+Vorgang); ein neuer angenommener Job ersetzt den alten
 Job und seine Historie. Andere aktive Laufwerksoperationen und offene
 Integritätsjobs verhindern den Start mit BUSY. Status und Discovery bleiben
 während der Analyse abfragbar. QUALITY 0x0E und Ergebnis-Seiten liefern dann BUSY,

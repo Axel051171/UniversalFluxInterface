@@ -152,47 +152,19 @@ static void on_sector(void* p, const mfm_id_t* id, const uint8_t* data, bool crc
     }
 }
 
-int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r)
+/* Histogram classification of one captured revolution, shared by ANALYZE 0x25 and the track
+ * survey (op 46): revolution time / rpm, transition count, up to four interval peaks, the
+ * encoding guess with its bit cell, the track length in bit cells and, when `sectors` is set
+ * and the track looks like MFM, the IBM sectors with good CRC and the index-to-first-ID time.
+ * Fills those fields of *r only; t0 is the HAL tick the caller started at (cancel / timeout). */
+int ufi_analyze_classify(const flux_revolution_t* rev, uint32_t t0, bool sectors, analyze_result_t* r)
 {
-    return ufi_analyze_track_q(track, side, revs, 0, r);
-}
-
-int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r)
-{
-    memset(r, 0, sizeof(*r));
-    if (revs == 0) revs = 3;
-    if (revs > 8) revs = 8;
-    if ((position & 0x80u) && !ufi_drive_quarter_ok((uint8_t)((position >> 4) & 3u))) return UFI_ERR_BAD_ARGS;   /* Apple 0..3, Shugart half track */
-    weak_revs = 0; weak_track = track; weak_side = (uint8_t)(side | position);  /* op 42 / op 44 header */
-    memset(weak_diff, 0, sizeof weak_diff);
-    fine_valid = false;
-    int ret = ufi_capture_start_q(track, side, revs, 0, (position & 0x80u) ? (uint8_t)((position >> 4) & 3u) : 0u);
-    if (ret != UFI_OK) {
-        return ret;
-    }
-    g_capture.current_quarter = position;            /* quarter 0 in quarter mode keeps bit 7 for the report */
-    const uint32_t t0 = HAL_GetTick();
-    capture_state_t cs;
-    while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
-        UFI_WATCHDOG_FEED();
-        if (ufi_cancel_requested()) {
-            ufi_capture_abort();g_capture.state=CAPTURE_IDLE;return UFI_ERR_CANCELLED;
-        }
-        if (HAL_GetTick() - t0 > ANALYZE_MS) {
-            ufi_capture_abort();
-            g_capture.state = CAPTURE_IDLE;
-            return UFI_ERR_TIMEOUT;
-        }
-    }
-    const uint8_t n = ufi_flux_get_revolution_count();
-    if (cs == CAPTURE_ERROR || n == 0 || g_capture.error_code) {
-        g_capture.state = CAPTURE_IDLE;
-        return g_capture.error_code==4?UFI_ERR_MEDIA_CHANGED:g_capture.error_code ? UFI_ERR_BUFFER_FULL : UFI_ERR_NO_INDEX;
-    }
-    const flux_revolution_t* rev = ufi_capture_get_data(0);
-    r->revs = n;
+    int ret;
     r->index_ticks = rev->index_time;
     r->transitions = rev->count;
+    r->rpm_x100 = 0;
+    r->encoding = 0; r->bitcell_ns = 0; r->bitcells = 0; r->sectors = 0; r->first_sector_us = 0;
+    memset(r->peak_ns, 0, sizeof r->peak_ns);
     if (rev->index_time) {
         r->rpm_x100 = (uint16_t)((6000ull * FLUX_TIMER_FREQ + rev->index_time / 2u) / rev->index_time);
     }
@@ -242,12 +214,8 @@ int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t posit
                                  ((uint64_t)r->bitcell_ns * FLUX_TIMER_FREQ));
     }
 
-    /* weak bits: transition counts per 1/64 revolution that differ between revolutions */
-    if ((ret = weak_windows(n, t0, r)) != UFI_OK) return ret;
-    if ((ret = weak_positions(n, t0)) != UFI_OK) return ret;      /* op 44: fine min/max per 1/1024 */
-
     /* IBM MFM sectors and the index-to-first-ID time */
-    if (r->encoding == 2u && r->bitcell_ns) {
+    if (sectors && r->encoding == 2u && r->bitcell_ns) {
         sec_ctx_t c = {0, 0, 0};
         mfm_dec_init(&dec, 1000000000u / (2u*r->bitcell_ns), on_sector, &c);
         for (uint32_t i = 1; i < rev->count; i++) {
@@ -261,6 +229,53 @@ int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t posit
             r->first_sector_us = (uint32_t)((uint64_t)c.first_t * 1000000ull / FLUX_TIMER_FREQ);
         }
     }
+    return UFI_OK;
+}
+
+int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r)
+{
+    return ufi_analyze_track_q(track, side, revs, 0, r);
+}
+
+int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r)
+{
+    memset(r, 0, sizeof(*r));
+    if (revs == 0) revs = 3;
+    if (revs > 8) revs = 8;
+    if ((position & 0x80u) && !ufi_drive_quarter_ok((uint8_t)((position >> 4) & 3u))) return UFI_ERR_BAD_ARGS;   /* Apple 0..3, Shugart half track */
+    weak_revs = 0; weak_track = track; weak_side = (uint8_t)(side | position);  /* op 42 / op 44 header */
+    memset(weak_diff, 0, sizeof weak_diff);
+    fine_valid = false;
+    int ret = ufi_capture_start_q(track, side, revs, 0, (position & 0x80u) ? (uint8_t)((position >> 4) & 3u) : 0u);
+    if (ret != UFI_OK) {
+        return ret;
+    }
+    g_capture.current_quarter = position;            /* quarter 0 in quarter mode keeps bit 7 for the report */
+    const uint32_t t0 = HAL_GetTick();
+    capture_state_t cs;
+    while ((cs = ufi_capture_get_state()) != CAPTURE_COMPLETE && cs != CAPTURE_ERROR) {
+        UFI_WATCHDOG_FEED();
+        if (ufi_cancel_requested()) {
+            ufi_capture_abort();g_capture.state=CAPTURE_IDLE;return UFI_ERR_CANCELLED;
+        }
+        if (HAL_GetTick() - t0 > ANALYZE_MS) {
+            ufi_capture_abort();
+            g_capture.state = CAPTURE_IDLE;
+            return UFI_ERR_TIMEOUT;
+        }
+    }
+    const uint8_t n = ufi_flux_get_revolution_count();
+    if (cs == CAPTURE_ERROR || n == 0 || g_capture.error_code) {
+        g_capture.state = CAPTURE_IDLE;
+        return g_capture.error_code==4?UFI_ERR_MEDIA_CHANGED:g_capture.error_code ? UFI_ERR_BUFFER_FULL : UFI_ERR_NO_INDEX;
+    }
+    const flux_revolution_t* rev = ufi_capture_get_data(0);
+    r->revs = n;
+    if ((ret = ufi_analyze_classify(rev, t0, true, r)) != UFI_OK) return ret;
+
+    /* weak bits: transition counts per 1/64 revolution that differ between revolutions */
+    if ((ret = weak_windows(n, t0, r)) != UFI_OK) return ret;
+    if ((ret = weak_positions(n, t0)) != UFI_OK) return ret;      /* op 44: fine min/max per 1/1024 */
     g_capture.state = CAPTURE_IDLE;
     return UFI_OK;
 }

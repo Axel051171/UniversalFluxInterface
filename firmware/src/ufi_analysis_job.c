@@ -66,7 +66,7 @@ static void finish(int ret) {
     job.elapsed=HAL_GetTick()-job.started;
     job.status=(uint8_t)(ret<0?-ret:ret);job.state=ret?A_FAILED:A_DONE;
 }
-void ufi_analysis_job_abort(void){if(ufi_analysis_job_active()){record(UFI_ERR_CANCELLED);finish(UFI_ERR_CANCELLED);}}
+void ufi_analysis_job_abort(void){ufi_survey_abort();if(ufi_analysis_job_active()){record(UFI_ERR_CANCELLED);finish(UFI_ERR_CANCELLED);}}
 static int capture(void) {
     job.attempt++;job.attempt_started=HAL_GetTick();job.state=A_CAPTURE;
     job.generation=0;job.seen=0;job.capture_id=0;
@@ -404,6 +404,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         if(!ret && !ufi_drive_media_matches(plan.media)){ufi_analysis_job_abort();ret=UFI_ERR_MEDIA_CHANGED;}
         plan.error=(uint8_t)(ret<0?-ret:ret);plan.state=ret?P_FAILED:P_RUNNING;
         *size=plan_status(out);return ret;
+    }
+    if(p[0]==46){                                                            /* track survey (4.15): [46] reads, [46,1,first,last,sides,flags] starts, [46,0] aborts */
+        if(n>1 && plan_live())return UFI_ERR_BUSY;
+        return ufi_survey_command(p,n,out,size);
     }
     if(plan_live() && !plan.starting && (p[0]==1 || p[0]==24 || p[0]==26 ||
        ((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18) && n>1) || p[0]==16))return UFI_ERR_BUSY;

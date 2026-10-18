@@ -609,6 +609,38 @@ class ProtocolDescription:
 
 
 PROVENANCE_SIZE = 96                    # op 43 block, also appended to READ END with READ_PROVENANCE (4.12)
+# ANALYSIS_JOB op 46 (4.15): track survey, one revolution per track and side, table read while it runs
+SURVEY_HEADER = 28
+SURVEY_ENTRY = 20
+SURVEY_STATE = {0: "none", 1: "running", 2: "done", 3: "failed"}
+SURVEY_ENCODING = {0: "unknown", 1: "FM", 2: "MFM", 3: "GCR"}
+
+
+def decode_track_survey(d: bytes) -> dict:
+    """Header and entries of the op 46 reply (USB_Protokoll 4.15).  Entries carry track, side, the step
+    status (0 ok, else a UFI status), the board's encoding guess with the first three histogram peaks
+    in ns so the caller can recheck it, the optional IBM MFM sector count, the index period in 275 MHz
+    ticks (rpm derived) and the transition count of that revolution."""
+    if len(d) < SURVEY_HEADER or d[0] != 1 or d[1] < SURVEY_HEADER or d[8] < SURVEY_ENTRY:
+        raise ValueError("unsupported track survey reply")
+    head, entry = d[1], d[8]
+    cursor, total = struct.unpack_from("<HH", d, 10)
+    elapsed, config, media = struct.unpack_from("<III", d, 16)
+    entries = []
+    for i in range(cursor):
+        off = head + entry * i
+        if off + SURVEY_ENTRY > len(d):
+            raise ValueError("track survey reply shorter than its cursor")
+        track, side, status, enc, peak, sectors, peaks, ticks, transitions, peak2, peak3 = \
+            struct.unpack_from("<BBBBHBBIIHH", d, off)
+        entries.append(dict(track=track, side=side, status=status, status_text=STATUS_TEXT.get(status, str(status)),
+                            encoding=enc, encoding_name=SURVEY_ENCODING.get(enc, str(enc)), peak_ns=peak,
+                            peak2_ns=peak2, peak3_ns=peak3, sectors=sectors, peaks=peaks, index_ticks=ticks,
+                            transitions=transitions, rpm=(60 * 275_000_000 / ticks) if ticks else 0.0))
+    return dict(state=d[2], state_name=SURVEY_STATE.get(d[2], str(d[2])), error=d[3],
+                error_text=STATUS_TEXT.get(d[3], str(d[3])) if d[3] else "", first=d[4], last=d[5], sides=d[6],
+                flags=d[7], entry_size=entry, cursor=cursor, total=total, elapsed_ms=elapsed,
+                config_generation=config, media_token=media, entries=entries)
 
 
 def decode_provenance(d: bytes) -> dict:
@@ -1092,6 +1124,39 @@ class Device2:
         n = d[2]
         return dict(source=d[1], zones=[struct.unpack_from("<BH", d, 3 + 3 * i) for i in range(n)],
                     last_ns=struct.unpack_from("<H", d, 15)[0], last_track=d[17], last_physical=d[18])
+
+    def track_survey(self, first: int, last: int, sides: int = 3, sectors: bool = False) -> dict:
+        """Start the track survey (firmware 1.18, op 46, USB_Protokoll 4.15): one revolution per track
+        and side over first..last (0..83), sides as a bit mask (1 side 0, 2 side 1, 3 both), with
+        sectors=True also the IBM MFM sectors with good CRC per track.  The board seeks and classifies
+        on its own; poll track_survey_status() (never BUSY, entries so far) or track_survey_wait().
+        Three consecutive step errors, a media change, ABORT or track_survey_abort() end it early.
+        Returns the header dict (state 'running', cursor 0); the config generation and media token
+        of the start are in it, so the table can be tied to a drive profile and a disk."""
+        if not 0 <= first <= last <= 83 or sides not in (1, 2, 3):
+            raise ValueError("tracks 0..83 ascending, sides 1 (side 0), 2 (side 1) or 3 (both)")
+        return decode_track_survey(self.analysis_op(46, bytes([1, first, last, sides, 1 if sectors else 0])))
+
+    def track_survey_status(self) -> dict:
+        """Op 46 read: header plus the entries finished so far; valid after a reset until the next start."""
+        return decode_track_survey(self.analysis_op(46))
+
+    def track_survey_abort(self) -> dict:
+        """Op 46 abort: ends a running survey (state 'failed', error 20); harmless when none runs."""
+        return decode_track_survey(self.analysis_op(46, b"\0"))
+
+    def track_survey_wait(self, timeout: float = 300.0, poll: float = 1.0, progress=None) -> dict:
+        """Poll the survey until it left the running state; progress(status_dict) after every poll."""
+        deadline = time.monotonic() + timeout
+        while True:
+            st = self.track_survey_status()
+            if progress:
+                progress(st)
+            if st["state"] != 1:
+                return st
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"track survey still running after {timeout:.0f} s ({st['cursor']}/{st['total']})")
+            time.sleep(poll)
 
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,

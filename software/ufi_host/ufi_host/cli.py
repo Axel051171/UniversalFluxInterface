@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -614,6 +614,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--min", type=int, default=1, metavar="N")
     p.add_argument("--positions", action="store_true")
     p.add_argument("--threshold", type=int, default=2, metavar="N")
+    p = sub.add_parser("survey", help="track survey (firmware 1.18, op 46): one revolution per track and side over FIRST..LAST "
+                       "(default 0..79, both sides), classified on the board: encoding, histogram peaks, rpm, transitions, "
+                       "optional IBM MFM sector count (--sectors); runs on the board, the table is polled once a second; "
+                       "--status prints the retained table without starting, --abort ends a running survey")
+    p.add_argument("first", nargs="?", type=int, default=0)
+    p.add_argument("last", nargs="?", type=int, default=79)
+    p.add_argument("--side", type=int, choices=(0, 1), default=None, help="one side only (default both)")
+    p.add_argument("--sectors", action="store_true", help="count IBM MFM sectors with good CRC per track (slower)")
+    p.add_argument("--status", action="store_true")
+    p.add_argument("--abort", action="store_true")
     sub.add_parser("speed-check", help="speed check before writing (firmware 1.18, op 41): no argument shows tolerance and last "
                    "measurement, PERMILLE (1-500) sets the allowed deviation of the drive from the source index period "
                    "(writes with index_ticks end with status 23 outside it), 'off' disables").add_argument("tolerance", nargs="?")
@@ -1012,6 +1022,32 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  {len(wp['entries'])}{'+' if wp['truncated'] else ''} fine windows (1/{wp['windows']} revolution) "
                           f"with max-min >= {wp['threshold']}: " +
                           ", ".join(f"{e['window']}:{e['min']}+{e['diff']}" for e in wp["entries"]))
+        elif a.cmd == "survey":
+            if a.abort:
+                sv = dev.track_survey_abort()
+            elif a.status:
+                sv = dev.track_survey_status()
+            else:
+                sides = 3 if a.side is None else 1 << a.side
+                dev.track_survey(a.first, a.last, sides, a.sectors)
+                last_shown = [-1]
+
+                def _progress(st):
+                    if st["cursor"] != last_shown[0]:
+                        last_shown[0] = st["cursor"]
+                        print(f"\r  {st['cursor']}/{st['total']} tracks, {st['elapsed_ms'] / 1000:.0f} s", end="", flush=True)
+                sv = dev.track_survey_wait(progress=_progress)
+                print()
+            print(f"survey {sv['state_name']}" + (f" ({sv['error_text']})" if sv["error"] else "") +
+                  f": tracks {sv['first']}-{sv['last']}, sides mask {sv['sides']}, {sv['cursor']}/{sv['total']} entries, "
+                  f"{sv['elapsed_ms'] / 1000:.1f} s, config generation {sv['config_generation']}, media token {sv['media_token']}")
+            for e in sv["entries"]:
+                if e["status"]:
+                    print(f"  t{e['track']:02d} s{e['side']}  error {e['status']} ({e['status_text']})")
+                    continue
+                peaks = "/".join(f"{v / 1000:.2f}" for v in (e["peak_ns"], e["peak2_ns"], e["peak3_ns"]) if v) or "-"
+                print(f"  t{e['track']:02d} s{e['side']}  {e['encoding_name']:7s} peaks {peaks} us  {e['rpm']:6.1f} rpm  "
+                      f"{e['transitions']:6d} transitions" + (f"  {e['sectors']} sectors" if sv["flags"] & 1 and e["encoding"] == 2 else ""))
         elif a.cmd == "speed-check":
             sc = dev.speed_check(None if a.tolerance is None else 0 if a.tolerance == "off" else int(a.tolerance))
             tol = sc["tolerance_permille"]

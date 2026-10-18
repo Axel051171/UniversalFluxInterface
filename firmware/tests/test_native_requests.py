@@ -249,6 +249,62 @@ int main(void){
 '''
     run('regression_weak_windows', code)
 
+    # Histogram classification shared by ANALYZE 0x25 and the track survey (op 46): peaks, encoding
+    # and bit cell, the sector pass only on request, progress checks; synthetic revolutions at 275 MHz.
+    code = BASE + ERRORS + r"""
+#define HIST_NS 100u
+#define HIST_BINS 200u
+#define FLUX_TIMER_FREQ 275000000u
+typedef struct { uint32_t timestamp; } flux_sample_t;
+typedef struct { flux_sample_t* samples; uint32_t count; uint32_t index_time; uint8_t revolution; } flux_revolution_t;
+typedef struct { uint8_t revs, encoding; uint16_t bitcell_ns, rpm_x100, peak_ns[4]; uint32_t index_ticks, transitions, bitcells;
+                 uint8_t sectors, weak_count; uint32_t first_sector_us; uint64_t weak_mask; } analyze_result_t;
+typedef struct { uint8_t c, h, r, n; } mfm_id_t;
+typedef struct { uint32_t t_acc, first_t; uint8_t sectors; } sec_ctx_t;
+typedef struct { unsigned inits, intervals; } mfm_decoder_t;
+typedef void (*mfm_sector_cb)(void*, const mfm_id_t*, const uint8_t*, bool);
+static mfm_sector_cb cb; static void* cb_ctx; static uint32_t dec_rate;
+static void mfm_dec_init(mfm_decoder_t* d, uint32_t rate, mfm_sector_cb f, void* ctx){d->inits++;d->intervals=0;dec_rate=rate;cb=f;cb_ctx=ctx;}
+static void mfm_dec_interval(mfm_decoder_t* d, uint32_t t){
+    (void)t;d->intervals++;
+    if(d->intervals==100 || d->intervals==300)cb(cb_ctx,NULL,NULL,true);   /* two good sectors */
+    if(d->intervals==200)cb(cb_ctx,NULL,NULL,false);                        /* one bad CRC */
+}
+static bool apple; static bool ufi_drive_is_apple(void){return apple;}
+static unsigned progress_calls; static int progress_error;
+static int analysis_progress(uint32_t t0){(void)t0;progress_calls++;return progress_error;}
+static mfm_decoder_t dec; static uint16_t hist[HIST_BINS];
+static flux_sample_t samples[20000]; static flux_revolution_t rev={samples,0,55000000u,0};
+/* n intervals cycling through the k lengths in ns */
+static void build(const uint16_t* ns, unsigned k, unsigned n){
+    uint32_t t=0;rev.count=n;
+    for(unsigned i=0;i<n;i++){t+=(uint32_t)((uint64_t)ns[i%k]*FLUX_TIMER_FREQ/1000000000ull);samples[i].timestamp=t;}
+}
+"""
+    code += function('ufi_analyze.c', 'on_sector') + function('ufi_analyze.c', 'ufi_analyze_classify') + r"""
+int main(void){
+    analyze_result_t r;
+    static const uint16_t mfm[]={4000,6000,8000,4000,4000,6000},fm[]={4000,8000,4000,4000,8000},
+                          gcr[]={4000,8000,12000,4000,4000,8000},one[]={3000};
+    build(mfm,6,6000);assert(!ufi_analyze_classify(&rev,0,true,&r));
+    assert(r.encoding==2 && r.bitcell_ns>=1950 && r.bitcell_ns<=2100 && r.peak_ns[0]>=3950 && r.peak_ns[0]<=4150 &&
+           r.peak_ns[1]>=5950 && r.peak_ns[1]<=6150 && r.peak_ns[2]>=7950 && r.peak_ns[2]<=8150 && !r.peak_ns[3]);
+    assert(r.index_ticks==55000000u && r.transitions==6000 && r.rpm_x100==30000 && r.bitcells>96000 && r.bitcells<104000);
+    assert(dec.inits==1 && dec_rate>240000 && dec_rate<260000 && r.sectors==2 && r.first_sector_us && progress_calls);
+    build(mfm,6,6000);assert(!ufi_analyze_classify(&rev,0,false,&r) && r.encoding==2 && !r.sectors && !r.first_sector_us && dec.inits==1);   /* survey: no sector pass */
+    build(fm,5,5000);assert(!ufi_analyze_classify(&rev,0,true,&r) && r.encoding==1 && r.bitcell_ns>=7900 && r.bitcell_ns<=8300 && !r.sectors && dec.inits==1);
+    build(gcr,6,6000);assert(!ufi_analyze_classify(&rev,0,true,&r) && r.encoding==3 && r.bitcell_ns>=3950 && r.bitcell_ns<=4150 && r.peak_ns[2]>=11950);
+    apple=true;build(mfm,6,6000);assert(!ufi_analyze_classify(&rev,0,true,&r) && r.encoding==3 && dec.inits==1);apple=false;   /* Apple port: 4:6:8 is GCR */
+    build(one,1,3000);assert(!ufi_analyze_classify(&rev,0,true,&r) && !r.encoding && !r.bitcell_ns && !r.bitcells &&
+           r.peak_ns[0]>=2950 && r.peak_ns[0]<=3150 && !r.peak_ns[1]);                                                       /* one peak: no encoding */
+    rev.count=0;rev.index_time=0;assert(!ufi_analyze_classify(&rev,0,true,&r) && !r.rpm_x100 && !r.transitions && !r.peak_ns[0] && !r.encoding);
+    rev.index_time=55000000u;build(mfm,6,6000);progress_error=UFI_ERR_CANCELLED;
+    assert(ufi_analyze_classify(&rev,0,true,&r)==UFI_ERR_CANCELLED);progress_error=0;
+    puts("classify: MFM/FM/GCR peaks and bit cells, Apple port, sector pass on request, single peak, empty revolution, cancel passed");
+}
+"""
+    run('regression_classify', code)
+
 
 if __name__ == '__main__':
     main()

@@ -334,6 +334,9 @@ typedef struct {
 int ufi_analyze_track(uint8_t track, uint8_t side, uint8_t revs, analyze_result_t* r);
 /* position: 0 = whole track, 0x80 | quarter << 4 = Apple quarter track (1.18) */
 int ufi_analyze_track_q(uint8_t track, uint8_t side, uint8_t revs, uint8_t position, analyze_result_t* r);
+/* histogram classification of one revolution (shared with the track survey, op 46): rpm, peaks, encoding,
+ * bit cells, optional IBM MFM sector count; t0 = HAL tick the caller started at */
+int ufi_analyze_classify(const flux_revolution_t* rev, uint32_t t0, bool sectors, analyze_result_t* r);
 /* op 42 (1.18): schema 1, revs, track, side/position byte, then 64 x max-min transition count per window */
 uint16_t ufi_analyze_weak_report(uint8_t* out);
 uint16_t ufi_analyze_weak_positions(uint8_t threshold, uint8_t* out);   // op 44 (4.13): fine windows above threshold, <= 266 bytes

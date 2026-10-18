@@ -128,6 +128,15 @@ Drehzahleinstellung und Profilherkunft, Laufzeit. `--json` liefert ein Objekt zu
 neben der Rohdatei; die SHA-256 des geflashten Abbilds ergänzt der Host selbst.
 Bibliothek: `Device2.provenance()`.
 
+`ufi survey [FIRST LAST] [--side 0|1] [--sectors]` (Firmware 1.18, Op 46) lässt das Board
+den Spurbereich (Vorgabe 0–79, beide Seiten) mit einer Umdrehung je Spur und Seite abfahren
+und druckt je Eintrag Kodierung (FM/MFM/GCR), die ersten drei Histogrammgipfel in µs,
+Drehzahl, Flusswechsel und mit `--sectors` die IBM-MFM-Sektoren; Schrittfehler stehen als
+Zeile mit Status. Der Lauf wird einmal je Sekunde abgefragt, `--status` zeigt die behaltene
+Tabelle ohne neuen Start, `--abort` beendet einen laufenden. Bibliothek: `track_survey()`,
+`track_survey_status()`, `track_survey_wait()`, `track_survey_abort()`; der Kopf trägt
+Konfigurations- und Mediengeneration des Starts.
+
 IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
 prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
 Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein

@@ -182,6 +182,15 @@ SECTIONS
     } >SRAM1
     ASSERT(SIZEOF(.evidence) <= 8192, "capture evidence exceeds 8 KiB budget")
 
+    /* D2 SRAM1: retained track survey table (op 46), CPU access only */
+    .sram1 (NOLOAD) :
+    {
+        . = ALIGN(4);
+        *(.sram1)
+        *(.sram1*)
+        . = ALIGN(4);
+    } >SRAM1
+
     /* D2 SRAM2: write streaming ring (DMA1 reachable) */
     .sram2 (NOLOAD) :
     {

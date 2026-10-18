@@ -189,6 +189,7 @@ set(PROJECT_SOURCES
     src/ufi_media.c
     src/ufi_capabilities.c
     src/ufi_analysis_job.c
+    src/ufi_survey.c
     src/ufi_evidence.c
     src/ufi_evidence_runtime.c
     src/ufi_drive_extra.c

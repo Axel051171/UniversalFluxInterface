@@ -26,7 +26,7 @@ uint32_t ufi_capture_media_token(void)
 /* Single main-loop owner of the shared drive/store. ISR callbacks only publish state. */
 bool ufi_operation_busy(void)
 {
-    return ufi_analysis_job_active() || ufi_dump_active() || ufi_stream_active() || ufi_iec_reset_active() ||
+    return ufi_analysis_job_active() || ufi_survey_active() || ufi_dump_active() || ufi_stream_active() || ufi_iec_reset_active() ||
            g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
            ufi_write_get_state() != WRITE_IDLE;
 }
@@ -238,6 +238,8 @@ void ufi_main_loop(void)
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
         if (ufi_analysis_job_active()) {
             ufi_analysis_job_service();
+        } else if (ufi_survey_active()) {
+            ufi_survey_service();           /* track survey (op 46): one revolution per track */
         } else if (ufi_dump_active()) {
             ufi_dump_service();             /* stand-alone dump owns the capture */
         } else if (ufi_stream_active()) {

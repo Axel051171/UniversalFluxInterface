@@ -73,8 +73,15 @@ typedef struct {flux_sample_t* samples;uint32_t count,index_time;uint8_t revolut
 '''
     code += typedef(FW/'include/ufi_firmware.h', 'capture_state_t')
     code += typedef(FW/'include/ufi_firmware.h', 'capture_context_t')
+    code += typedef(FW/'include/ufi_firmware.h', 'analyze_result_t')
     code += r'''
 capture_context_t g_capture;
+static int classify_error;static unsigned classify_calls;
+int ufi_analyze_classify(const flux_revolution_t* rev,uint32_t t0,bool sectors,analyze_result_t* r){
+    (void)t0;classify_calls++;if(classify_error)return classify_error;
+    memset(r,0,sizeof *r);r->encoding=2;r->peak_ns[0]=2000;r->peak_ns[1]=3000;r->peak_ns[2]=4000;
+    r->sectors=sectors?9:0;r->index_ticks=rev->index_time;r->transitions=rev->count+g_capture.current_track;return 0;
+}
 static uint32_t ticks,captures,aborts;
 static int start_error;
 static bool cancelled,busy,integrity;
@@ -86,7 +93,7 @@ static uint32_t HAL_GetTick(void){return ticks;}
 #define FLUX_TIMER_FREQ 275000000u
 static bool ufi_cancel_requested(void){return cancelled;}
 static void ufi_cancel_clear(void){cancelled=false;}
-static bool ufi_operation_busy(void){return busy || ufi_analysis_job_active();}
+static bool ufi_operation_busy(void){return busy || ufi_analysis_job_active() || ufi_survey_active();}
 static bool ufi_job_live(void){return integrity;}
 static uint8_t ufi_flux_get_revolution_count(void){return 1;}
 static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i?NULL:&revolution;}
@@ -109,11 +116,15 @@ static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t r,uint32_t period,uin
 }
 static capture_state_t ufi_capture_get_state(void){return g_capture.state;}
 static void ufi_capture_abort(void){aborts++;g_capture.state=CAPTURE_IDLE;}
+static flux_revolution_t* ufi_capture_get_data(uint8_t k){return ufi_flux_get_revolution(k);}
+typedef enum {DRIVE_NONE,DRIVE_SHUGART} drive_type_t;
+static bool drive_present=true;
+static drive_type_t ufi_drive_get_current(void){return drive_present?DRIVE_SHUGART:DRIVE_NONE;}
 static uint16_t selected;
 static uint8_t ufi_selftest_selected(uint8_t* p,uint8_t n,uint16_t mask){(void)p;(void)n;selected=mask;return 0;}
 static uint16_t ufi_write_coverage(uint8_t* out){out[0]=1;return 32;}
 '''
-    for name in ('ufi_quality_runtime.c', 'ufi_analysis_job.c'):
+    for name in ('ufi_quality_runtime.c', 'ufi_analysis_job.c', 'ufi_survey.c'):
         source = (FW/'src'/name).read_text(encoding='utf-8')
         for inc in ('ufi_firmware.h','ufi_cancel.h','ufi_job.h'):
             source = source.replace(f'#include "{inc}"', '')
@@ -127,6 +138,13 @@ static void pump(void){
     while(ufi_analysis_job_active()){
         if(g_capture.state==CAPTURE_RUNNING)g_capture.state=CAPTURE_COMPLETE;
         ufi_analysis_job_service();assert(++steps<100000);
+    }
+}
+static void survey_pump(void){
+    unsigned steps=0;
+    while(ufi_survey_active()){
+        if(g_capture.state==CAPTURE_RUNNING)g_capture.state=CAPTURE_COMPLETE;
+        ufi_survey_service();assert(++steps<100000);
     }
 }
 int main(void){
@@ -450,7 +468,76 @@ int main(void){
     /* storing a 40-byte profile also writes UFIPROF.BIN; reading and presets do not */
     uint8_t store[41]={18,1};assert(!ufi_analysis_command(store,41,out,&size) && profiles_saved==1);
     assert(!ufi_analysis_command(preset,1,out,&size) && !ufi_analysis_command(preset,2,out,&size) && profiles_saved==1);
-    puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding, cancel and timing presets passed");
+    /* Op 46: track survey - discovery header, argument checks, run with partial reads, entry layout,
+     * step errors, timeout, three failures in a row, abort, media change, cancel, plan guard */
+    uint8_t svq[1]={46},svs[6]={46,1,5,4,3,0},sva[2]={46,0};
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==28 && out[0]==1 && out[1]==28 && !out[2] && !out[3] && out[8]==20 && !(out[10]|out[11]<<8) && !(out[12]|out[13]<<8));
+    busy=true;assert(!ufi_analysis_command(svq,1,out,&size) && size==28);busy=false;          /* read-only, never BUSY */
+    assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BAD_ARGS);                            /* first > last */
+    svs[2]=0;svs[3]=84;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BAD_ARGS);           /* track 84 */
+    svs[3]=2;svs[4]=0;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BAD_ARGS);            /* no side */
+    svs[4]=4;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BAD_ARGS);                    /* side mask 4 */
+    svs[4]=3;svs[5]=2;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BAD_ARGS);            /* flag bit 1 */
+    svs[5]=1;assert(ufi_analysis_command(svs,5,out,&size)==UFI_ERR_BAD_ARGS);                    /* short */
+    sva[1]=2;assert(ufi_analysis_command(sva,2,out,&size)==UFI_ERR_BAD_ARGS);sva[1]=0;
+    busy=true;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BUSY);busy=false;
+    drive_present=false;assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_NO_DRIVE);drive_present=true;
+    uint32_t c0=captures;ticks=1000;
+    assert(!ufi_analysis_command(svs,6,out,&size) && size==28 && out[2]==1 && !out[3] && out[4]==0 && out[5]==2 && out[6]==3 && out[7]==1 && out[8]==20);
+    assert((out[12]|out[13]<<8)==6 && !(out[10]|out[11]<<8) && rd(out+20)==ufi_config_generation() && rd(out+24)==media_token && captures==c0+1);
+    assert(ufi_survey_active() && ufi_operation_busy() && g_capture.current_track==0 && g_capture.current_side==0);
+    assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BUSY);                                /* job start while the survey runs */
+    assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BUSY);
+    ticks=1500;assert(!ufi_analysis_command(svq,1,out,&size) && size==28 && out[2]==1 && rd(out+16)==500);   /* readable while running */
+    ufi_survey_service();assert(ufi_survey_active() && captures==c0+1);                       /* capture still running */
+    g_capture.state=CAPTURE_COMPLETE;ufi_survey_service();
+    assert(ufi_survey_active() && captures==c0+2 && g_capture.current_track==0 && g_capture.current_side==1 && classify_calls==1);
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==48 && (out[10]|out[11]<<8)==1);
+    const uint8_t* se=out+28;
+    assert(se[0]==0 && se[1]==0 && se[2]==0 && se[3]==2 && (se[4]|se[5]<<8)==2000 && se[6]==9 && se[7]==3 && rd(se+8)==55000000u && rd(se+12)==revolution.count && (se[16]|se[17]<<8)==3000 && (se[18]|se[19]<<8)==4000);
+    g_capture.state=CAPTURE_ERROR;g_capture.error_code=3;ufi_survey_service();g_capture.error_code=0;   /* NO_INDEX on one step: recorded, survey continues */
+    assert(ufi_survey_active() && captures==c0+3 && g_capture.current_track==1 && g_capture.current_side==0);
+    g_capture.state=CAPTURE_COMPLETE;classify_error=UFI_ERR_TIMEOUT;ufi_survey_service();classify_error=0;   /* classification timeout: step error too */
+    ticks=2000;survey_pump();
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==28+6*20 && out[2]==2 && !out[3] && (out[10]|out[11]<<8)==6 && rd(out+16)==1000 && classify_calls==5);
+    se=out+28;
+    assert(se[20]==0 && se[21]==1 && se[22]==4 && !se[23] && !rd(se+28) && !rd(se+32));        /* entry 1: track 0 side 1, NO_INDEX, rest zero */
+    assert(se[40]==1 && se[41]==0 && se[42]==5 && !se[43]);                                  /* entry 2: TIMEOUT */
+    assert(se[60]==1 && se[61]==1 && !se[62] && rd(se+72)==revolution.count+1u && se[80]==2 && se[81]==0 && se[100]==2 && se[101]==1 && !se[102]);
+    assert(!ufi_survey_active() && !ufi_operation_busy() && g_capture.state==CAPTURE_IDLE);
+    /* side 1 only, no sector count; a step without a complete revolution within 4 s ends with TIMEOUT and an aborted capture */
+    svs[2]=3;svs[3]=3;svs[4]=2;svs[5]=0;ticks=5000;uint32_t a0=aborts;
+    assert(!ufi_analysis_command(svs,6,out,&size) && (out[12]|out[13]<<8)==1 && g_capture.current_track==3 && g_capture.current_side==1);
+    ticks=9000;ufi_survey_service();assert(ufi_survey_active() && aborts==a0);
+    ticks=9001;ufi_survey_service();assert(!ufi_survey_active() && aborts==a0+1);
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==48 && out[2]==2 && !out[3] && out[28]==3 && out[29]==1 && out[30]==5);
+    svs[4]=1;assert(!ufi_analysis_command(svs,6,out,&size));survey_pump();
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==48 && out[29]==0 && !out[30] && out[31]==2 && !out[34]);   /* side 0, sectors not counted */
+    /* three start failures in a row end the survey with that status; the entries keep the failed steps */
+    start_error=UFI_ERR_SEEK_FAIL;svs[2]=10;svs[3]=20;svs[4]=3;
+    assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_SEEK_FAIL && size==28 && out[2]==3 && out[3]==3 && (out[10]|out[11]<<8)==3 && !ufi_survey_active());
+    start_error=0;
+    assert(!ufi_analysis_command(svq,1,out,&size) && size==28+60 && out[28+2]==3 && out[28+22]==3 && out[28+42]==3 && out[28+40]==11 && out[28+41]==0);
+    /* abort by request, idempotent; media change and the general cancel end it with 21 / 20 */
+    svs[2]=0;svs[3]=1;a0=aborts;assert(!ufi_analysis_command(svs,6,out,&size) && ufi_survey_active());
+    assert(!ufi_analysis_command(sva,2,out,&size) && size==28 && out[2]==3 && out[3]==20 && aborts==a0+1 && !ufi_survey_active() && g_capture.state==CAPTURE_IDLE);
+    assert(!ufi_analysis_command(sva,2,out,&size) && out[2]==3 && out[3]==20 && aborts==a0+1);
+    assert(!ufi_analysis_command(svs,6,out,&size));media_token++;ufi_survey_service();
+    assert(!ufi_analysis_command(svq,1,out,&size) && out[2]==3 && out[3]==21 && !ufi_survey_active());
+    assert(!ufi_analysis_command(svs,6,out,&size));cancelled=true;ufi_survey_service();cancelled=false;
+    assert(!ufi_analysis_command(svq,1,out,&size) && out[2]==3 && out[3]==20);
+    assert(!ufi_analysis_command(svs,6,out,&size));ufi_analysis_job_abort();                 /* general ABORT path */
+    assert(!ufi_survey_active() && !ufi_analysis_command(svq,1,out,&size) && out[3]==20);
+    assert(!ufi_analysis_command(svs,6,out,&size));g_capture.state=CAPTURE_COMPLETE;classify_error=UFI_ERR_CANCELLED;ufi_survey_service();classify_error=0;
+    assert(!ufi_survey_active() && !ufi_analysis_command(svq,1,out,&size) && out[3]==20 && !(out[10]|out[11]<<8));
+    /* a live multitrack plan blocks the start, not the read */
+    uint8_t create2[49]={27};wr(create2+1,0x77);wr(create2+5,ufi_config_generation());wr(create2+9,media_token);
+    create2[13]=0;create2[14]=1;create2[15]=2;memcpy(create2+16,p,33);
+    assert(!ufi_analysis_command(create2,49,out,&size) && out[1]==P_READY);
+    assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BUSY && !ufi_analysis_command(svq,1,out,&size) && size==28);
+    uint8_t end2[8]={29};wr(end2+1,0x77);end2[7]=2;assert(!ufi_analysis_command(end2,8,out,&size) && out[1]==P_DONE);
+    assert(!ufi_analysis_command(svs,6,out,&size));survey_pump();assert(!ufi_analysis_command(svq,1,out,&size) && out[2]==2 && (out[10]|out[11]<<8)==4);
+    puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding, cancel, timing presets and track survey passed");
 }
 '''
     run('regression_analysis_job',code,('src/ufi_mfm.c','src/ufi_verify.c','src/ufi_compare.c','src/ufi_quality.c','src/ufi_evidence.c','src/ufi_drive_extra.c','src/ufi_media.c','src/ufi_capabilities.c'))

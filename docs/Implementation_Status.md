@@ -1333,3 +1333,36 @@ accepted and recorded, bit 5 refused, guarded path); host test. Protocol doc 2.3
 command row 0x20, 4.7 mask row. Open from the list: 5 track survey job, 6 + 7 weak-bit
 writing with long gaps, 4 and 8 after the bench run, 1 parked (needs a v2 encoder for stored
 revolutions).
+
+## Track survey as a board-side job, ANALYSIS_JOB op 46 — 2026-10-18
+
+Owner's fifth list, item 5. A tool that wants the overview of a disk (formatted or blank,
+FM/MFM/GCR, HD or DD, rpm, transition count) before it decides what to read in detail had
+to issue one ANALYZE per track, each with a seek and several revolutions. Op 46 runs the
+pass on the board: `[46, 1, first, last, sides mask, flags]` seeks every track and side of
+the range, reads one revolution, classifies it with the ANALYZE histogram (factored out as
+`ufi_analyze_classify()`, now shared by ANALYZE 0x25 and the survey; flag bit 0 adds the
+IBM MFM sector count) and keeps a 20-byte entry per step: track, side, step status, encoding,
+first three histogram peaks in ns, sector count, peak count, index period in ticks,
+transitions. `[46]` reads the 28-byte header plus the entries finished so far and is never
+BUSY, so a GUI shows the table filling; the header carries the configuration and media
+generation of the start (Sitzung-1's request: logical track numbers depend on the drive
+profile, a disk change must be visible beyond status 21) and the second and third peaks sit
+next to the board's verdict so the tool can recheck it without a second read. Step errors
+(no index, seek, 4 s timeout, buffer) are recorded and the pass continues; three in a row
+end it with that status, so a drive without a disk does not wait for 168 index timeouts.
+`[46, 0]`, the general ABORT, a cancel and a media change end it. The survey counts as an
+active operation (`ufi_operation_busy()`), a live multitrack plan blocks a start, the start
+is not read-only for the composite resource owner. The table lives in a new `.sram1` output
+section of D2 SRAM1 next to the capture evidence (3360 bytes); AXI free 33 032 B, DTCM
+stack headroom unchanged. Native: analysis job harness (discovery header, argument checks,
+run with partial reads and entry layout, NO_INDEX and classification timeout as step
+errors, step timeout with aborted capture, side masks, three start failures, abort,
+media change, cancel, general abort, plan guard) and a new classify harness (MFM/FM/GCR
+peaks and bit cells on synthetic revolutions, Apple port, sector pass only on request,
+single peak, empty revolution, cancel). Host `track_survey()`, `track_survey_status()`,
+`track_survey_wait(progress=)`, `track_survey_abort()`, `decode_track_survey()`, `ufi survey
+[FIRST LAST] [--side 0|1] [--sectors] [--status | --abort]`, FakeV2 models all three forms
+with a NO_INDEX step, test. Protocol doc 4.15, op table row 46, command row 0x0F, 6.1 note,
+TOC rows 4.12–4.15; host README. Open from the list: 6 + 7 weak-bit writing with long gaps,
+4 and 8 after the bench run, 1 parked (needs a v2 encoder for stored revolutions).

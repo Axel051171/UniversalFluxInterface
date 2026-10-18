@@ -491,6 +491,42 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             r(0, self._provenance_block())
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 46:          # track survey (4.15): [46] reads, [46, 1, first, last, sides, flags] starts, [46, 0] aborts
+            sv = getattr(self, "survey", None)
+            if len(a) == 6 and a[1] == 1:
+                if a[2] > a[3] or a[3] > 83 or a[4] not in (1, 2, 3) or a[5] & ~1:
+                    r(P2.BAD_ARGS)
+                    return
+                if sv and sv["state"] == 1:
+                    r(P2.BUSY)
+                    return
+                sides = [0, 1] if a[4] == 3 else [a[4] - 1]
+                steps = [(t, s) for t in range(a[2], a[3] + 1) for s in sides]
+                sv = self.survey = dict(state=1, error=0, first=a[2], last=a[3], sides=a[4], flags=a[5], cursor=0,
+                                        total=len(steps), steps=steps, config=self.config_gen, media=self.media_gen, polls=0)
+            elif len(a) == 2 and a[1] == 0:
+                if sv and sv["state"] == 1:
+                    sv["state"], sv["error"] = 3, 20
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            elif sv and sv["state"] == 1:                   # every read finishes half of the remaining steps
+                sv["polls"] += 1
+                sv["cursor"] = min(sv["total"], sv["cursor"] + max(1, sv["total"] // 2))
+                if sv["cursor"] == sv["total"]:
+                    sv["state"] = 2
+            if not sv:
+                r(0, bytes([1, 28, 0, 0, 0, 0, 0, 0, 20, 0]) + bytes(18))
+                return
+            body = bytearray()
+            for t, s in sv["steps"][:sv["cursor"]]:
+                if (t, s) == (2, 1):
+                    body += struct.pack("<BBBBHBBIIHH", t, s, 4, 0, 0, 0, 0, 0, 0, 0, 0)       # NO_INDEX on one step
+                else:
+                    body += struct.pack("<BBBBHBBIIHH", t, s, 0, 2, 4050, 9 if sv["flags"] & 1 else 0, 3,
+                                        55_000_000, 50_000 + t, 6050, 8050)
+            r(0, bytes([1, 28, sv["state"], sv["error"], sv["first"], sv["last"], sv["sides"], sv["flags"], 20, 0])
+              + struct.pack("<HHHIII", sv["cursor"], sv["total"], 0, 1500 * sv["cursor"], sv["config"], sv["media"]) + bytes(body))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 45:          # precomp profile (4.14): [45] reads, [45, 0] clears, [45, 1, n, zones] sets
             zones = getattr(self, "precomp_zones", [])
             if len(a) == 2 and a[1] == 0:
@@ -1742,6 +1778,51 @@ def test_analysis_job_reseek_flag(monkeypatch, capsys):
     assert struct.unpack_from("<H", [q for q in fake.requests if q.cmd == P2.ANALYSIS_JOB and q.payload[0] == 1][-1].payload, 5)[0] \
         == 1 | 2 | 4 | 64
     assert "missing_sectors" in capsys.readouterr().out and fake.reseeks == 3
+
+
+def test_track_survey(monkeypatch, capsys):
+    """Op 46 against the fake: the empty header before a start, argument checks local and on the board,
+    the start reply, polling until done with the entries decoded (encoding, peaks, rpm, sectors only with
+    the flag, the NO_INDEX step), side masks, abort, and ufi survey printing the table."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    st = dev.track_survey_status()
+    assert (st["state_name"], st["cursor"], st["total"], st["entry_size"], st["entries"]) == ("none", 0, 0, 20, [])
+    for bad in ((3, 2, 3), (0, 84, 3), (0, 1, 0), (0, 1, 4)):
+        with pytest.raises(ValueError):
+            dev.track_survey(*bad)
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([46, 1, 0, 1, 3, 2]))
+    st = dev.track_survey(0, 3, 3, sectors=True)
+    assert fake.requests[-1].payload == bytes([46, 1, 0, 3, 3, 1])
+    assert (st["state_name"], st["cursor"], st["total"], st["config_generation"], st["media_token"]) == ("running", 0, 8, 7, 42)
+    with pytest.raises(P2.DeviceError):
+        dev.track_survey(0, 1)                       # BUSY while running
+    seen = []
+    st = dev.track_survey_wait(poll=0, progress=lambda s: seen.append(s["cursor"]))
+    assert seen == [4, 8] and st["state_name"] == "done" and not st["error"] and st["elapsed_ms"] == 12000
+    assert [(e["track"], e["side"]) for e in st["entries"]] == [(t, s) for t in range(4) for s in (0, 1)]
+    e = st["entries"][0]
+    assert (e["encoding_name"], e["peak_ns"], e["peak2_ns"], e["peak3_ns"], e["sectors"], e["peaks"]) == ("MFM", 4050, 6050, 8050, 9, 3)
+    assert e["index_ticks"] == 55_000_000 and abs(e["rpm"] - 300.0) < 0.01 and e["transitions"] == 50_000
+    bad = st["entries"][5]
+    assert (bad["track"], bad["side"], bad["status"], bad["encoding"], bad["index_ticks"]) == (2, 1, 4, 0, 0) and "index" in bad["status_text"]
+    st = dev.track_survey(5, 6, 2)                   # side 1 only, no sector pass
+    st = dev.track_survey_wait(poll=0)
+    assert [(e["track"], e["side"], e["sectors"]) for e in st["entries"]] == [(5, 1, 0), (6, 1, 0)]
+    dev.track_survey(0, 9, 1)
+    st = dev.track_survey_abort()
+    assert (st["state_name"], st["error"], st["cursor"]) == ("failed", 20, 0) and fake.requests[-1].payload == bytes([46, 0])
+    assert dev.track_survey_abort()["error"] == 20     # idempotent
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    monkeypatch.setattr(P2.time, "sleep", lambda s: None)
+    assert cli.main(["survey", "0", "3", "--sectors"]) == 0
+    out = capsys.readouterr().out
+    assert "survey done: tracks 0-3, sides mask 3, 8/8 entries" in out
+    assert "t00 s0  MFM     peaks 4.05/6.05/8.05 us   300.0 rpm   50000 transitions  9 sectors" in out
+    assert "t02 s1  error 4 (no index pulse / aborted)" in out
+    assert cli.main(["survey", "--status"]) == 0 and "8/8 entries" in capsys.readouterr().out
+    assert cli.main(["survey", "--abort"]) == 0 and "survey done" in capsys.readouterr().out     # nothing running: table unchanged
 
 
 def test_weak_positions(monkeypatch, capsys):
