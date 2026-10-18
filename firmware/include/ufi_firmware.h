@@ -340,6 +340,7 @@ uint16_t ufi_analyze_weak_positions(uint8_t threshold, uint8_t* out);   // op 44
 #define UFI_PROVENANCE_SIZE 96u                  // ANALYSIS_JOB op 43 (4.12): provenance block, schema 1
 uint16_t ufi_provenance_block(uint8_t* out);    // ufi_v2.c: board, firmware, drive setting, generations, last capture
 bool ufi_v2_read_provenance(void);              // ufi_v2.c: the open READ asked for the block in its END (flag bit3)
+bool ufi_v2_read_progress(void);                // ufi_v2.c: the open READ asked for one event per revolution (flag bit4)
 uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
 void ufi_quality_clear(void);
 int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);
@@ -462,7 +463,8 @@ void ufi_floppy_service(void);                  // main loop: idle write-back
 enum { UFI_V2_REQUEST = 1, UFI_V2_REPLY = 2, UFI_V2_EVENT = 3, UFI_V2_DATA = 4, UFI_V2_END = 5 };
 enum { UFI_V2_READ = 0x20, UFI_V2_WRITE = 0x22 };
 enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_BUTTON = 0x81, UFI_V2_EVT_DUMP = 0x82,
-       UFI_V2_EVT_POWER = 0x83, UFI_V2_EVT_MODE = 0x84 };
+       UFI_V2_EVT_POWER = 0x83, UFI_V2_EVT_MODE = 0x84,
+       UFI_V2_EVT_READ_PROGRESS = 0x85 };    /* 1.18: READ flag bit4, one per completed revolution (2.3) */
 bool ufi_v2_active(void);
 bool ufi_v2_write_pending(void);                // a v2 WRITE owns the write path
 bool ufi_v2_rx(const uint8_t* buf, uint32_t len);   // USB IRQ; false = pause reception

@@ -140,14 +140,16 @@ CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_S
 
 # events (3.5); EVENTS mask bit = code - 0x80
 EV_DISK_CHANGED, EV_BUTTON, EV_PROGRESS, EV_POWER_OFF, EV_MODE_SWITCH = 0x80, 0x81, 0x82, 0x83, 0x84
+EV_READ_PROGRESS = 0x85                 # 1.18, READ flag bit4: revolution u8, index period u32 ticks, elapsed ms u32
 EVENT_NAMES = {EV_DISK_CHANGED: "disk changed", EV_BUTTON: "button",
                EV_PROGRESS: "dump/copy progress", EV_POWER_OFF: "drive supply off (overcurrent)",
-               EV_MODE_SWITCH: "mode switch moved"}
+               EV_MODE_SWITCH: "mode switch moved", EV_READ_PROGRESS: "read progress"}
 EVENTS_ALL = sum(1 << (c - 0x80) for c in EVENT_NAMES)
 
 USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3, "composite": 4}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 READ_PROVENANCE = 0x08                  # READ flag (1.18, 4.12): END carries the 96-byte provenance block
+READ_PROGRESS = 0x10                    # READ flag (1.18, 2.3): event 0x85 after every completed revolution
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
@@ -1436,8 +1438,11 @@ class Device2:
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
                    quarter: int = 0, frame_sink=None, integrity: bool | None = None,
                    expected_config: int | None = None, expected_media: int | None = None,
-                   provenance: bool = False) -> Capture:
+                   provenance: bool = False, progress=None) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
+        progress (firmware 1.18, READ flag bit 4): callable(revolution, index_ticks, elapsed_ms)
+        invoked for every event 0x85 the board sends after a completed revolution; needs the
+        event mask bit (enable_events()).
         provenance (firmware 1.18, READ flag bit 3): the END also carries the 96-byte provenance
         block of op 43, decoded into Capture.provenance, so the raw data and the device state it
         came from arrive in one transaction.
@@ -1448,7 +1453,7 @@ class Device2:
         refuses a stale configuration (16) or another medium (21) before any DATA frame."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0) | \
-                (READ_PROVENANCE if provenance else 0)
+                (READ_PROVENANCE if provenance else 0) | (READ_PROGRESS if progress is not None else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
@@ -1474,6 +1479,11 @@ class Device2:
             f = self._wait(READ, seq, (T_DATA, T_END), 2.0 + 0.4 * revolutions)
             if frame_sink is not None:
                 frame_sink(f.encode())
+            if progress is not None:                                   # events parked by _wait while streaming
+                for ev in [e for e in self.events if e.code == EV_READ_PROGRESS]:
+                    self.events.remove(ev)
+                    if len(ev.payload) >= 9:
+                        progress(ev.payload[0], *struct.unpack_from("<II", ev.payload, 1))
             if f.type == T_DATA:
                 data += job.decode(f.payload) if job else f.payload
                 continue

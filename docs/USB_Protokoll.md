@@ -327,6 +327,7 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 | 0x82 | Dump/Kopie-Fortschritt | wie DUMP_STATUS |
 | 0x83 | Laufwerksversorgung abgeschaltet (Überstrom) | `board_status` |
 | 0x84 | Betriebsart-Schalter bewegt | neuer `mode` u8 (vor der Neuanmeldung) |
+| 0x85 | Lesefortschritt (1.18-dev; nur mit READ/GUARDED_READ Flags Bit4 und Maskenbit 5) | `revolution` u8 (1 = erste abgeschlossene Umdrehung), `index_ticks` u32 (Dauer dieser Umdrehung in 275-MHz-Takten), `elapsed_ms` u32 seit Beginn der Übertragung; ein Rahmen je Umdrehung zwischen den Daten-Rahmen, der Ende-Rahmen folgt wie bisher |
 
 ### 2.4 Zeitbasis und erweiterter Schreibpfad
 
@@ -474,7 +475,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -1329,7 +1330,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | Offset | Typ | Inhalt | Stand 1.18-dev |
 |---:|---|---|---|
 | 0 | u8 | Schema | 1 |
-| 1 | u8 | READ-Flags (0x20, 0x28) | 0x0F (0x07 vor dem Provenienzbit 3) |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0x1F (0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
 | 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag) | 0x07 (0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |

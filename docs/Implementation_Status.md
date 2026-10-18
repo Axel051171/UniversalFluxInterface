@@ -1316,3 +1316,20 @@ Shugart bus with 74LS07 open-collector stages (40 mA sink), which covers the rou
 follow the 1.2 MB settings; hard-sectored 32-hole media use READ/WRITE bit 1. Acceptance
 plan row: step timing at the drive and the low level against the termination, with the
 standard preset as the failing counter-example. No change for existing drives.
+
+## READ progress event per revolution — 2026-10-18
+
+Owner's fifth list, item 2. A streamed READ gave the host nothing between the acceptance
+and the END frame; a GUI could not show progress or the live spindle speed. READ and
+GUARDED_READ flags bit 4 (op 38 READ mask 0x1F) make the stream encoder queue event 0x85
+after every completed revolution: revolution number (1 = first), the period of that
+revolution in 275 MHz ticks and the milliseconds since the transfer began, 9 bytes, between
+the DATA frames, the END unchanged. Events go through the existing queue and mask (bit 5 of
+EVENTS; a host that never enables it sees nothing, a full queue drops silently as for the
+other events). Host `read_track(progress=callable)` sets the flag and hands revolution,
+index ticks and elapsed ms to the callback as the events arrive; EV_READ_PROGRESS and the
+name table; FakeV2 emits one event per revolution under the flag; native READ harness (bit 4
+accepted and recorded, bit 5 refused, guarded path); host test. Protocol doc 2.3 event row,
+command row 0x20, 4.7 mask row. Open from the list: 5 track survey job, 6 + 7 weak-bit
+writing with long gaps, 4 and 8 after the bench run, 1 parked (needs a v2 encoder for stored
+revolutions).

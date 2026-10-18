@@ -342,7 +342,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x0F, 0xFF, 0x07, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x1F, 0xFF, 0x07, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -553,8 +553,8 @@ class FakeV2:
                 self.emit_event(code, payload)
         elif cmd == P2.READ:
             _track, _side, revs, flags, _period = P2.READ_REQ.unpack_from(a)
-            if flags & ~0x0F:                                 # op 38 READ mask: bit3 = provenance in END (4.12)
-                self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x0F)
+            if flags & ~0x1F:                                 # op 38 READ mask: bit3 provenance in END (4.12), bit4 progress events (2.3)
+                self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x1F)
                 r(P2.BAD_ARGS)
                 return
             r()
@@ -564,6 +564,9 @@ class FakeV2:
             data = encode_stream(self.revs[:revs])
             for k in range(0, len(data), self.data_chunk):
                 self._frame(P2.T_DATA, cmd, seq, 0, data[k:k + self.data_chunk])
+            if flags & 0x10:                                  # bit4: one progress event per revolution (sent before the END)
+                for n, rev in enumerate(self.revs[:revs], 1):
+                    self.emit_event(0x85, struct.pack("<BII", n, rev[0] if isinstance(rev, tuple) else rev.index_ticks, 200 * n))
             self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id)
                         + (self._provenance_block() if flags & 0x08 else b""))
         elif cmd == P2.WRITE:
@@ -1030,7 +1033,7 @@ def test_events_are_queued_and_decoded():
     fake.pending_events = [(P2.EV_BUTTON, b"\x01\x01"), (P2.EV_DISK_CHANGED, b"\x01")]
     dev = P2.Device2(fake)
     dev.enable_events()
-    assert fake.events_mask == P2.EVENTS_ALL == 0x1F
+    assert fake.events_mask == P2.EVENTS_ALL == 0x3F
     assert dev.ping()                                 # events arriving around a response
     e1, e2 = dev.poll_event(0.1), dev.poll_event(0.1)
     assert e1.describe() == "button B long" and e2.describe() == "disk changed: drive a"
@@ -1352,7 +1355,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x0F, "write_flags": 0xFF, "write_flags2": 0x07, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x07, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1712,9 +1715,9 @@ def test_read_provenance_flag(monkeypatch, capsys):
     g = dev.read_track(0, 0, 2, expected_config=7, expected_media=42, provenance=True)
     assert g.provenance["capture_id"] == 0x1234 and fake.requests[-1].cmd == P2.GUARDED_READ
     with pytest.raises(P2.DeviceError) as e:
-        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x10, 0))
-    assert e.value.status == P2.BAD_ARGS and dev.last_refusal()["field"] == 2 and dev.last_refusal()["detail"] == 0x10
-    assert dev.flag_masks()["read_flags"] == 0x0F
+        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x20, 0))
+    assert e.value.status == P2.BAD_ARGS and dev.last_refusal()["field"] == 2 and dev.last_refusal()["detail"] == 0x20
+    assert dev.flag_masks()["read_flags"] == 0x1F
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["read", "0", "0", "-r", "2", "--provenance"]) == 0
     out = capsys.readouterr().out
@@ -1802,3 +1805,23 @@ def test_precomp_per_write_and_profile(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "from physical track 0: 125 ns, from physical track 40: 62 ns" in out and "from zone profile" in out
     assert cli.main(["precomp", "--clear"]) == 0 and "none (TIMING/auto" in capsys.readouterr().out
+
+
+def test_read_progress_events():
+    """READ flag bit 4 (2.3): with the event mask enabled the fake sends event 0x85 per revolution, read_track
+    hands revolution, index period and elapsed time to the callback and drains the events; without the
+    callback the flag stays clear; bit 5 is refused; the mask reports 0x1F."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    dev.enable_events()
+    assert fake.events_mask & (1 << 5)
+    seen = []
+    cap = dev.read_track(0, 0, 2, progress=lambda rev, ticks, ms: seen.append((rev, ticks, ms)))
+    req = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
+    assert req[3] & 0x10 and len(cap.revolutions) == 2
+    assert seen == [(1, REVS[0][0], 200), (2, REVS[1][0], 400)] and not [e for e in dev.events if e.code == 0x85]
+    dev.read_track(0, 0, 2)
+    assert not [q for q in fake.requests if q.cmd == P2.READ][-1].payload[3] & 0x10
+    with pytest.raises(P2.DeviceError):
+        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x20, 0))
+    assert dev.last_refusal()["detail"] == 0x20 and P2.EVENT_NAMES[P2.EV_READ_PROGRESS] == "read progress"

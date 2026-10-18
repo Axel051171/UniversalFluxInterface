@@ -477,6 +477,8 @@ void ufi_v2_last_refusal(uint8_t out[6])
 
 static bool read_provenance;                /* READ flag bit3 (1.18): END carries the provenance block (4.12) */
 bool ufi_v2_read_provenance(void) { return read_provenance; }
+static bool read_progress;                  /* READ flag bit4 (1.18): event 0x85 per completed revolution (2.3) */
+bool ufi_v2_read_progress(void) { return read_progress; }
 
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
@@ -515,6 +517,7 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         op_read = true;
         read_seq = seq;
         read_provenance = (flags & 0x08u) != 0;   /* bit3: END = revs, generation block, provenance block */
+        read_progress = (flags & 0x10u) != 0;     /* bit4: event 0x85 after every revolution */
         ufi_stream_begin_v2(seq);           /* DATA frames follow the reply */
     } else ufi_flux_hard_sectors(previous[4]);
     return ret;

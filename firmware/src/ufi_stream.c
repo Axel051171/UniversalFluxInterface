@@ -163,8 +163,17 @@ static void put_indexes_before(uint32_t ts, bool all)
     const uint8_t known = ufi_flux_index_count();
     while (!done && fill <= cap - ROOM && next_idx < known &&
            (all || (int32_t)(ts - ufi_flux_index_time(next_idx)) >= 0)) {
-        put_index(ufi_flux_index_time(next_idx) - t_last);
+        const uint32_t period = ufi_flux_index_time(next_idx) - t_last;
+        put_index(period);
         next_idx++;
+        if (v2 && ufi_v2_read_progress()) {     /* READ flag bit4 (1.18): one event per completed revolution */
+            uint8_t ev[9];
+            ev[0] = (uint8_t)(next_idx - 1u);
+            memcpy(ev + 1, &period, 4);
+            const uint32_t ms = HAL_GetTick() - tx_start_ms;
+            memcpy(ev + 5, &ms, 4);
+            ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, ev, sizeof ev);
+        }
         if (!gw && n_final && next_idx > n_final) {
             done = true;                    /* stream ends right after index n */
         }
