@@ -28,6 +28,7 @@
 #include "ufi_analysis_job.h"
 #include "ufi_media.h"
 #include "ufi_capabilities.h"
+#include "ufi_evidence.h"
 _Static_assert(QUALITY_MAX_WIRE+40u<=UFI_V2_MAX_PAYLOAD,"analysis report exceeds native packet");
 #include "ufi_metrics.h"
 #include "usbd_cdc_if.h"
@@ -623,6 +624,52 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         write_seq = seq;
     }
     return ret;
+}
+
+/* Provenance block (ANALYSIS_JOB op 43, 4.12): board, firmware, drive setting, generations and the
+ * last capture in one record, so an archive can bind a raw file to the device state it came from. */
+uint16_t ufi_provenance_block(uint8_t* out)
+{
+    memset(out, 0, UFI_PROVENANCE_SIZE);
+    out[0] = 1;
+    out[1] = UFI_PROVENANCE_SIZE;
+    out[2] = ufi_board_rev();
+    const char* rev = UFI_GIT_REV;
+    size_t rev_len = strlen(rev);
+    const bool dirty = rev_len && rev[rev_len - 1u] == '+';
+    if (dirty) rev_len--;
+    out[3] = (uint8_t)((dirty ? 1u : 0u) | (ufi_board_jumper_locked() ? 2u : 0u) |
+                       (ufi_board_soft_locked() ? 4u : 0u) | (ufi_config_apple_sync() ? 8u : 0u) |
+                       (evidence_id() ? 16u : 0u));
+    put32(&out[4], *(volatile uint32_t*)UID_BASE);
+    put32(&out[8], *(volatile uint32_t*)(UID_BASE + 4u));
+    put32(&out[12], *(volatile uint32_t*)(UID_BASE + 8u));
+    const uint32_t idcode = DBGMCU->IDCODE;
+    put16(&out[16], (uint16_t)(idcode & 0xFFFu));
+    put16(&out[18], (uint16_t)(idcode >> 16));
+    put16(&out[20], ufi_adc_mv(ADC_CH_BOARD_ID));
+    fw_version(&out[22]);
+    memcpy(&out[24], rev, rev_len > 11u ? 11u : rev_len);
+    const char* date = __DATE__;
+    memcpy(&out[36], date, strlen(date) > 11u ? 11u : strlen(date));
+    put32(&out[48], FLUX_TIMER_FREQ);
+    put32(&out[52], ufi_config_generation());
+    put32(&out[56], ufi_drive_media_token());
+    put32(&out[60], evidence_id());
+    put32(&out[64], ufi_capture_media_token());
+    if (ufi_flux_index_count() >= 2u)
+        put32(&out[68], ufi_flux_index_time(1) - ufi_flux_index_time(0));
+    uint16_t permille; uint32_t measured, source;
+    ufi_write_speed_state(&permille, &measured, &source);
+    put32(&out[72], measured);
+    uint8_t port[24];
+    ufi_drive_port_report(port);
+    out[76] = port[1];                      /* selected drive id */
+    out[77] = port[10];                     /* operating profile stored by the tool (op 18) */
+    out[78] = port[8];                      /* rpm setting u16 */
+    out[79] = port[9];
+    put32(&out[80], HAL_GetTick());
+    return UFI_PROVENANCE_SIZE;
 }
 
 static int cmd_guarded_write(uint8_t seq,const uint8_t* p,uint16_t len)

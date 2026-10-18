@@ -120,6 +120,14 @@ Erkennungsflags, Ursachen und erwartete/gesehene Sektormasken. In der Bibliothek
 `recognition_discovery`, `recognition`. Ein gefundener Sektor bestätigt weder Geometrie noch
 Vollständigkeit; `GEOMETRY_UNCONFIRMED` bleibt bei Einzelspuraufträgen immer gesetzt.
 
+`ufi provenance [--json]` (Firmware 1.18, Op 43) holt den Provenienzblock: Board-Revision
+und BOARD_ID-Spannung, MCU-Unique-ID, Firmware-Version mit Git-Revision und Build-Datum,
+Flux-Takt, Konfigurations- und Mediengeneration, Capture-ID der letzten Aufnahme samt
+gebundener Mediengeneration, letzte Indexperiode, Drehzahlprüfung, gewähltes Laufwerk mit
+Drehzahleinstellung und Profilherkunft, Laufzeit. `--json` liefert ein Objekt zum Ablegen
+neben der Rohdatei; die SHA-256 des geflashten Abbilds ergänzt der Host selbst.
+Bibliothek: `Device2.provenance()`.
+
 IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
 prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
 Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein

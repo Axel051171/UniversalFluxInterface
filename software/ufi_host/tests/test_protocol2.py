@@ -473,6 +473,17 @@ class FakeV2:
             self.last_analyze = (a[0], a[1], a[2] or 3)      # op 42 header: track, side byte, revs
             r(0, P2.ANALYZE_FMT.pack(a[2] or 3, 2, 2000, 30012, 4000, 6000, 8000, 0, 55_000_000,
                                      50_000, 100_000, 18, 2, 1234, 0x11))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 43:          # provenance block (4.12), 96 bytes
+            if len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            flags = 1 | (4 if self.soft_locked else 0) | (16 if self.capture_id else 0)      # dirty build, no jumper
+            block = bytes([1, 96, 7, flags]) + struct.pack("<IIIHHH", 0x00310028, 0x31355117, 0x20323633, 0x483, 0x1003, 2200)
+            block += bytes(self.firmware) + b"abc1234".ljust(12, b"\0") + b"Oct 17 2026".ljust(12, b"\0")
+            block += struct.pack("<7I", 275_000_000, self.config_gen, self.media_gen, self.capture_id, self.media_gen,
+                                 self.index_ticks, self.speed_last[0])
+            block += bytes([self.drive, 0]) + struct.pack("<HI", 0, 123_456) + bytes(12)
+            r(0, block)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 42:          # weak windows of the last ANALYZE (4.11)
             if len(a) != 1:
                 r(P2.BAD_ARGS)
@@ -1593,3 +1604,34 @@ def test_analysis_job_client_and_recognition(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "done, status 0 (ok)" in out and "SECTOR_SET_CONFIRMED" in out and "expected 0x3fe seen 0x3fe" in out
     assert "format IBM MFM" in out and "decision no retry" in out
+
+
+def test_provenance_block(monkeypatch, capsys):
+    """Op 43 against the fake: 96 bytes decode into the identity, build, generation and drive fields,
+    the session lock and a SELECT show up, a payload after the op byte is refused, and the CLI prints
+    both the text form and one JSON object."""
+    import json
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    pv = dev.provenance()
+    assert fake.requests[-1].payload == bytes([43])
+    assert (pv["board_rev"], pv["board_id_mv"], pv["mcu_device_id"], pv["mcu_revision"]) == (7, 2200, 0x483, 0x1003)
+    assert pv["mcu_uid"] == "203236333135511700310028"
+    assert (pv["firmware"], pv["git_rev"], pv["git_dirty"], pv["build_date"]) == ((1, 18), "abc1234", True, "Oct 17 2026")
+    assert (pv["flux_hz"], pv["config_generation"], pv["media_generation"], pv["capture_id"]) == (275_000_000, 7, 42, 0x1234)
+    assert pv["capture_present"] and pv["capture_media_generation"] == 42 and pv["index_ticks"] == 55_000_000
+    assert (pv["drive"], pv["rpm_set"], pv["profile_stored"], pv["uptime_ms"], pv["speed_measured_ticks"]) == (1, 0, False, 123_456, 0)
+    assert not pv["jumper_locked"] and not pv["session_locked"] and not pv["apple_sync"]
+    dev.select(2)
+    dev.request(0x0F, bytes([37, 1]))                        # engage the session write lock
+    pv = dev.provenance()
+    assert pv["drive"] == 2 and pv["config_generation"] == 8 and pv["session_locked"]
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([43, 1]))
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["provenance"]) == 0
+    out = capsys.readouterr().out
+    assert "board v0.7 (2200 mV)" in out and "rev abc1234+ built Oct 17 2026" in out and "capture id 4660" in out
+    assert "drive 2" in out and "write lock session" in out and "last index period 55000000 ticks = 300.00 rpm" in out
+    assert cli.main(["provenance", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["mcu_uid"] == "203236333135511700310028"

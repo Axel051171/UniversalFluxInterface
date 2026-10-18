@@ -41,6 +41,7 @@ int ufi_file_write(const char* name,uint32_t offset,bool create,const uint8_t* d
 }
 static uint8_t port_conflicts;
 void ufi_drive_port_report(uint8_t p[24]){memset(p,0,24);p[0]=1;p[7]=port_conflicts;}
+uint16_t ufi_provenance_block(uint8_t* out){memset(out,0,96);out[0]=1;out[1]=96;out[2]=7;return 96;}
 int ufi_drive_operating_profile(const uint8_t* p,uint8_t out[40]){(void)p;memset(out,0,40);out[0]=1;return 0;}
 static uint8_t preset_applied,profiles_saved;
 int ufi_drive_profiles_save(void){profiles_saved++;return 0;}
@@ -141,6 +142,8 @@ int main(void){
     wr(media_guarded+5,media_token);
     busy=true;assert(ufi_analysis_command(guarded,38,out,&size)==UFI_ERR_BUSY);busy=false;
     uint8_t matrix=22;assert(!ufi_analysis_command(&matrix,1,out,&size) && size==320 && out[0]==2 && out[1]==9);
+    { uint8_t prov[2]={43,0};assert(!ufi_analysis_command(prov,1,out,&size) && size==96 && out[0]==1 && out[1]==96 && out[2]==7);   /* op 43 provenance */
+      assert(ufi_analysis_command(prov,2,out,&size)==UFI_ERR_BAD_ARGS); }
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;

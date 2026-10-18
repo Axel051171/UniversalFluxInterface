@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -587,6 +587,9 @@ def main(argv: list[str] | None = None) -> int:
                    "(firmware 1.18, op 39); ask right after a refusal")
     sub.add_parser("verify-report", help="per-sector outcome of the last verified WRITE (firmware 1.18, op 40): CHRN and "
                    "missing / ok / CRC error / different content for every reference sector")
+    sub.add_parser("provenance", help="provenance block (firmware 1.18, op 43): board, MCU id, firmware revision and build, "
+                   "generations, capture id, last index period, drive setting, uptime; --json prints it as one JSON object "
+                   "to store next to a raw file").add_argument("--json", action="store_true")
     p = sub.add_parser("recognize", help="run one firmware analysis job on a track (ANALYSIS_JOB op 1 with DETAIL) and print "
                        "its recognition block (result section 15 via op 3): format, flags, causes, expected/seen sector masks")
     p.add_argument("track", type=int)
@@ -917,6 +920,27 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "provenance":
+            pv = dev.provenance()
+            if a.json:
+                import json
+                print(json.dumps(pv, sort_keys=True))
+            else:
+                print(f"board v0.{pv['board_rev']} ({pv['board_id_mv']} mV), MCU {pv['mcu_uid']} id 0x{pv['mcu_device_id']:03x} "
+                      f"rev 0x{pv['mcu_revision']:04x}")
+                print(f"firmware {pv['firmware'][0]}.{pv['firmware'][1]} rev {pv['git_rev']}{'+' if pv['git_dirty'] else ''} "
+                      f"built {pv['build_date']}, flux clock {pv['flux_hz']} Hz, uptime {pv['uptime_ms'] / 1000:.0f} s")
+                print(f"configuration generation {pv['config_generation']}, media generation {pv['media_generation']}, "
+                      f"capture id {pv['capture_id']}" + (f" (bound to media generation {pv['capture_media_generation']})"
+                                                           if pv['capture_present'] else " (no capture yet)"))
+                locks = [n for n, on in (("jumper", pv['jumper_locked']), ("session", pv['session_locked'])) if on]
+                print(f"drive {pv['drive']}, rpm setting {pv['rpm_set'] or 'default'}, profile "
+                      f"{'stored by tool' if pv['profile_stored'] else 'firmware default'}, write lock {', '.join(locks) or 'none'}"
+                      + (", Apple sync sensor" if pv['apple_sync'] else ""))
+                if pv['index_ticks']:
+                    print(f"last index period {pv['index_ticks']} ticks = {60 * pv['flux_hz'] / pv['index_ticks']:.2f} rpm")
+                if pv['speed_measured_ticks']:
+                    print(f"last speed check {60 * pv['flux_hz'] / pv['speed_measured_ticks']:.2f} rpm")
         elif a.cmd == "recognize":
             import secrets
             from . import recognition as R

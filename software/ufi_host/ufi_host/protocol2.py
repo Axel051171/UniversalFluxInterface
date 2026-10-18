@@ -1014,6 +1014,31 @@ class Device2:
             raise DeviceError("weak windows: unexpected reply")
         return {"revs": reply[1], "track": reply[2], "side_byte": reply[3], "counts": list(reply[4:68])}
 
+    def provenance(self) -> dict:
+        """Provenance block (firmware 1.18, op 43, USB_Protokoll 4.12): board revision and ADC id, MCU
+        unique id / device id / silicon revision, firmware version, git revision (dirty flag), build
+        date, flux clock, configuration generation, media token, capture id and the media token it
+        was bound to, the last index period the flux timer saw, the last speed-check measurement,
+        the selected drive with its rpm setting and profile source, uptime.  One request, 96 bytes,
+        pure query; meant to be stored next to every raw file."""
+        d = self.analysis_op(43)
+        if len(d) != 96 or d[0] != 1 or d[1] != 96:
+            raise ValueError("unsupported provenance block")
+        uid = struct.unpack_from("<III", d, 4)
+        dev_id, silicon, board_mv = struct.unpack_from("<HHH", d, 16)
+        (flux_hz, config_gen, media_gen, capture_id, capture_media, index_ticks, speed_ticks) = struct.unpack_from("<7I", d, 48)
+        rpm_set, uptime = struct.unpack_from("<H", d, 78)[0], struct.unpack_from("<I", d, 80)[0]
+        return dict(board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
+                    session_locked=bool(d[3] & 4), apple_sync=bool(d[3] & 8), capture_present=bool(d[3] & 16),
+                    mcu_uid=f"{uid[2]:08x}{uid[1]:08x}{uid[0]:08x}", mcu_device_id=dev_id, mcu_revision=silicon,
+                    board_id_mv=board_mv, firmware=(d[22], d[23]),
+                    git_rev=d[24:36].split(b"\0", 1)[0].decode("ascii", "replace"),
+                    build_date=d[36:48].split(b"\0", 1)[0].decode("ascii", "replace"),
+                    flux_hz=flux_hz, config_generation=config_gen, media_generation=media_gen,
+                    capture_id=capture_id, capture_media_generation=capture_media,
+                    index_ticks=index_ticks, speed_measured_ticks=speed_ticks,
+                    drive=d[76], profile_stored=bool(d[77]), rpm_set=rpm_set, uptime_ms=uptime)
+
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
         0 switches the check off, 1..500 sets the allowed deviation of the drive's index period

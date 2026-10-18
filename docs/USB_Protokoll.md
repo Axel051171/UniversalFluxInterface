@@ -1451,6 +1451,44 @@ QX-Fenster und ist nicht abgedeckt. Ein abgebrochener oder fehlgeschlagener ANAL
 Byte 1 auf 0. Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host:
 `weak_windows()`, `ufi weak [--min N]`.
 
+### 4.12 Provenienzblock (Op 43, 1.18-dev)
+
+Ein Archiv muss eine Rohdatei an den Gerätezustand binden, aus dem sie stammt. Die
+Teile dafür lagen verstreut (INFO, STATUS, Op 18, Op 23, Generationsblock,
+Aufnahmekontext). `0x0F [43]` liefert sie als einen Datensatz, 96 Bytes, Schema 1,
+reine Abfrage (auch während Dump, Jobs oder gehaltener Ressource; Nutzlast hinter dem
+Op-Byte → BAD_ARGS):
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Länge 96 |
+| 2 | u8 | Board-Revision aus dem BOARD_ID-Teiler: 5, 6, 7; 0 unbekannt |
+| 3 | u8 | Flags: Bit0 Firmware aus unsauberem Arbeitsbaum („+“ hinter der Revision), Bit1 WRITE-LOCK-Jumper, Bit2 Sitzungs-Schreibsperre (4.6), Bit3 `apple_sync=1`, Bit4 Aufnahme vorhanden (Capture-ID ≠ 0) |
+| 4 | 3 × u32 | MCU-Unique-ID (UID_BASE, wie in der USB-Seriennummer) |
+| 16 | u16 | MCU-Device-ID (IDCODE Bits 0–11, STM32H723 = 0x483) |
+| 18 | u16 | Silizium-Revision (IDCODE Bits 16–31) |
+| 20 | u16 | BOARD_ID-Spannung in mV |
+| 22, 23 | je u8 | Firmware-Version Major, Minor |
+| 24 | 12 Bytes | Git-Revision als Text (NUL-gefüllt, ohne „+“) |
+| 36 | 12 Bytes | Build-Datum `__DATE__` als Text (NUL-gefüllt) |
+| 48 | u32 | Flux-Takt in Hz (275 000 000) |
+| 52 | u32 | Konfigurationsgeneration (Op 23) |
+| 56 | u32 | Aktuelle Mediengeneration |
+| 60 | u32 | Capture-ID der letzten Aufnahme (0 ohne Aufnahme) |
+| 64 | u32 | Mediengeneration, an die diese Aufnahme gebunden war |
+| 68 | u32 | Letzte vom Flussmesser gesehene Indexperiode in Takten (Aufnahme oder Schreibvorgang), 0 ohne zwei Impulse |
+| 72 | u32 | Letzte Messung der Drehzahlprüfung (Op 41), 0 ohne Prüfung |
+| 76 | u8 | Gewähltes Laufwerk (Kennung wie SELECT) |
+| 77 | u8 | 1 = Betriebsprofil vom Werkzeug gespeichert (Op 18), 0 = Firmware-Vorgabe |
+| 78 | u16 | Drehzahleinstellung (SET_RPM), 0 = Vorgabe |
+| 80 | u32 | Laufzeit seit Reset in ms |
+| 84 | 12 Bytes | reserviert, 0 |
+
+Der Block ersetzt keine Prüfsumme der Firmware: die SHA-256 des geflashten Abbilds
+berechnet der Host aus der Datei, die er geflasht hat, und legt sie neben den Block.
+Host: `provenance()`, `ufi provenance [--json]` (JSON zum Ablegen neben der Rohdatei).
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
@@ -2584,6 +2622,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 40 | 1 | Prüflesebericht je Sektor des letzten geprüften WRITE: Kopf 6 Bytes + 5 Bytes je Referenzsektor, höchstens 326 (4.9); reine Abfrage, nie BUSY |
 | 41 | 1 / 4 | Drehzahlprüfung vor dem Schreiben lesen / Toleranz setzen (`[41, 1, promille u16]`, 0 = aus), 11 Bytes Antwort mit letzter Messung (4.10) |
 | 42 | 1 | Weak-Fenster des letzten ANALYZE 0x25: Schema, Umdrehungen, Spur, Seitenbyte, 64 × Differenz der Flusswechselzahl je 1/64 Umdrehung, 68 Bytes (4.11); reine Abfrage, nie BUSY |
+| 43 | 1 | Provenienzblock: Board, MCU-ID, Firmware-Revision und Build, Generationen, Capture-ID, letzte Indexperiode, Laufwerkseinstellung, Laufzeit; 96 Bytes (4.12); reine Abfrage, nie BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

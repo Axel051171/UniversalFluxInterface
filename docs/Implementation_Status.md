@@ -1164,3 +1164,22 @@ prove is listed as well (decoder rates are not write rates, loopback is not magn
 content, one format or drive does not vouch for another). The old backlog section moved
 to 5. This closes UFT's third list: items 6, 5, 7, 1+3, 4 done, item 2 declined (the END
 generation block already carries the configuration generation).
+
+## Provenance block, ANALYSIS_JOB op 43 — 2026-10-18
+
+First item of the owner's fourth list (what the firmware can do for UFT's modules: forensic
+provenance first). `uft_fundus_provenance` needs board, firmware, drive setting, generations
+and the capture identity in one record; the pieces existed spread over INFO, STATUS, op 18,
+op 23, the END generation block and the capture context. Op 43 returns them as one 96-byte
+schema 1 block: board revision and BOARD_ID mV, MCU unique id / device id / silicon revision,
+firmware major.minor with git revision text and dirty flag and __DATE__, flux clock,
+configuration generation, current media generation, capture id and the media generation it
+was bound to, the last index period the flux timer saw, the last op 41 measurement, selected
+drive with rpm setting and profile source, uptime, plus lock and apple_sync flags. Pure query,
+answered during dump and jobs. The SHA-256 of the flashed image stays with the host (it has the
+file). `ufi_provenance_block()` lives in ufi_v2.c next to the INFO builder; the analysis job
+harness stubs it and checks op 43 size and refusal of a payload. Host `provenance()`,
+`ufi provenance [--json]` (JSON meant to be stored next to the raw file), FakeV2 op 43, test.
+Protocol doc 4.12 and op table, README. Open from the same list: READ flag bit 3 to append the
+block to the READ END (asked by the owner as "flag-driven"), re-seek flag for multi-reads,
+half-track positioning for Shugart, weak-bit position list, precomp profile per write.

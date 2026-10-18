@@ -407,6 +407,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[16]=0x28;out[17]=0x20;out[18]=8;
         *size=20;return UFI_OK;
     }
+    if(p[0]==43 && n==1){*size=ufi_provenance_block(out);return UFI_OK;}   /* provenance block (4.12) */
     if(p[0]==22 && n==1){
         uint8_t port[24];ufi_drive_port_report(port);
         ufi_capability_matrix(port,ufi_operation_busy() || ufi_job_live() || ufi_resources_owner()==UFI_OWNER_GW,out);
