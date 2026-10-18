@@ -2298,6 +2298,12 @@ bei 8: Erkennungsflagmaske 1023; bei 12: Ursachenmaske 32767; bei 16: maximal
 **Abschnitt 15:** 64 Bytes, letzte versuchte Aufnahme. Abruf über Op3 mit
 Job-ID, aktueller Jobgeneration, Offset und Seiten-CRC. Auch ein früher
 Aufnahmefehler ohne Qualitätsgeneration bleibt abrufbar (Generation dann 0).
+Host-Referenz (ufi_host, 1.18-dev): `analysis_start(job_id, track, side, …)` (Op 1 mit
+DETAIL), `analysis_status()` / `analysis_wait()` (Op 2), `analysis_abort()` (Op 4),
+`analysis_section(job_id, generation, section)` (Op 3 seitenweise mit Kopf- und
+CRC-Prüfung), `recognition_discovery()` (Op 21) und `recognition(job_id)` (Abschnitt 15
+dekodiert, `recognition.decode_recognition` plus Flagnamen); Kommandozeile
+`ufi recognize SPUR SEITE [--expect MASKE --chn C H N --attempts N --retry]`.
 
 | Offset | Typ | Inhalt |
 |---:|---|---|

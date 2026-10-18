@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -587,6 +587,16 @@ def main(argv: list[str] | None = None) -> int:
                    "(firmware 1.18, op 39); ask right after a refusal")
     sub.add_parser("verify-report", help="per-sector outcome of the last verified WRITE (firmware 1.18, op 40): CHRN and "
                    "missing / ok / CRC error / different content for every reference sector")
+    p = sub.add_parser("recognize", help="run one firmware analysis job on a track (ANALYSIS_JOB op 1 with DETAIL) and print "
+                       "its recognition block (result section 15 via op 3): format, flags, causes, expected/seen sector masks")
+    p.add_argument("track", type=int)
+    p.add_argument("side", type=int, choices=(0, 1))
+    p.add_argument("--revs", type=int, default=3)
+    p.add_argument("--attempts", type=int, default=1, help="capture attempts 1-8 including the first")
+    p.add_argument("--budget", type=int, default=10000, metavar="MS", help="job budget in ms (default 10000)")
+    p.add_argument("--expect", metavar="MASK", help="expected sector-ID mask (hex or decimal, bit R = sector R); sets EXPECT_SET")
+    p.add_argument("--chn", nargs=3, type=int, metavar=("C", "H", "N"), help="C H N the expected sectors carry (default: track side 2)")
+    p.add_argument("--retry", action="store_true", help="RETRY_ERRORS, with --expect also RETRY_MISSING, within --attempts")
     sub.add_parser("weak", help="weak windows of the last analyze (firmware 1.18, op 42): max-min transition count per 1/64 "
                    "revolution as a heat strip; --min N lists windows at or above N (default 1)").add_argument(
                    "--min", type=int, default=1, metavar="N")
@@ -907,6 +917,28 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "recognize":
+            import secrets
+            from . import recognition as R
+            expected = int(a.expect, 0) if a.expect else 0
+            c, h, n = a.chn if a.chn else (a.track, a.side, 2)
+            flags = (P2.JOB_RETRY_ERRORS | (P2.JOB_RETRY_MISSING if expected else 0)) if a.retry else 0
+            job_id = secrets.randbits(32) or 1
+            st = dev.analysis_start(job_id, a.track, a.side, a.revs, flags=flags, max_attempts=a.attempts,
+                                    budget_ms=a.budget, expected=expected, c=c, h=h, n=n)
+            if not st.done:
+                st = dev.analysis_wait(job_id, timeout=a.budget / 1000 + 10)
+            print(f"job {job_id}: {st.state_name}, status {st.status} ({P2.STATUS_TEXT.get(st.status, 'ok')}), "
+                  f"{st.attempts} attempt(s), {st.elapsed_ms} ms, generation {st.generation}")
+            rec = dev.recognition(job_id, st)
+            print(f"  format {R.FORMAT_NAMES.get(rec['format'], rec['format'])}, flags 0x{rec['flags']:x}: "
+                  f"{', '.join(rec['flag_names']) or '-'}")
+            print(f"  causes: {', '.join(rec['cause_names']) or '-'}; valid sector records {rec['valid_sector_records']}, "
+                  f"position mismatches {rec['position_mismatches']}")
+            print(f"  expected 0x{rec['expected']:x} seen 0x{rec['seen']:x} (C/H/N {rec['expected_c']}/{rec['expected_h']}/"
+                  f"{rec['expected_n']}{', explicit set' if rec['expected_set_supplied'] else ''})")
+            print(f"  attempt {rec['attempt']}, phase {rec['phase']}, decision "
+                  f"{R.DECISION_NAMES.get(rec['decision'], rec['decision'])}, capture id {rec['capture_id']}")
         elif a.cmd == "weak":
             ww = dev.weak_windows()
             if not ww["revs"]:

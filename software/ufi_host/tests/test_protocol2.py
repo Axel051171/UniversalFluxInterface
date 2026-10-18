@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import struct
+import zlib
 
 import pytest
 from test_protocol import FakeDevice, encode_stream
@@ -96,6 +97,8 @@ class FakeV2:
         self.dos_errors: dict[tuple[int, int], int] = {}
         self.soft_locked = False        # session write lock (op 37): engage-only, status 22 on disk/drive writes
         self.drive = 1                  # selected drive id (op 22 byte 20); SELECT replaces it
+        self.job = None                 # analysis job (ops 1-4): started jobs finish at once, sectors 1..verify_sectors seen
+        self.page_crc_error = 0         # xor into every op 3 page CRC (tests the host's page check)
         self.config_gen = 7             # generation block in READ/WRITE END (4.5): configuration generation; SELECT and accepted op 10/18 settings bump it
         self.media_gen = 42             # ... media generation (start and end are equal unless bumped mid-run)
         self.capture_id = 0x1234        # ... capture id reported by READ END (0 for WRITE)
@@ -163,6 +166,26 @@ class FakeV2:
         rows = b"".join(bytes([f, 15, 15, 10, 0, 3, 3, 7]) + struct.pack("<6I", rate, 440, 65536, 220, 0xFFFFFFFF, 3)
                         for f, rate in enumerate((0x0F, 0x0F, 0x37, 0x04, 0x1C1, 0x3E04), 1))
         return head + rows
+
+    def _job_status(self) -> bytes:
+        """64-byte analysis job status (6.1): one attempt, 123 ms, the job's masks and C/H/N, capture id."""
+        j = self.job
+        return struct.pack("<BBBBIIIQQQBBBxIBBBBBBBBII", 1, j["state"], j["status"], 1, j["id"], 123, j["generation"],
+                           j["expected"], j["seen"], j["expected"] & ~j["seen"], 0, 0, 0, 0, j["attempts"], j["flags"],
+                           j["c"], j["h"], j["n"], 0, 0, 0, j["budget"], self.capture_id)
+
+    def _recognition_block(self) -> bytes:
+        """Result section 15 (5.6) of the fake's job: IBM MFM observed, geometry unconfirmed, the explicit
+        set confirmed when every expected sector was seen, otherwise cause missing_sectors."""
+        j = self.job
+        missing = j["expected"] & ~j["seen"]
+        flags = 1 | 2 | 8 | (256 if j["flags"] & 4 else 0) | (4 if j["flags"] & 4 and not missing else 0)
+        profile = bytearray(12)
+        profile[6] = 2                                            # media profile observed
+        return (bytes([1, 1, 0, 0]) + struct.pack("<4I", flags, 1 if missing else 0, self.verify_sectors, 0)
+                + struct.pack("<QQ", j["expected"], j["seen"]) + bytes(profile)
+                + bytes([j["c"], j["h"], j["n"], 1 if j["flags"] & 4 else 0])
+                + struct.pack("<II", j["generation"], self.capture_id) + bytes([1, 2, 0, j["status"]]))
 
     @staticmethod
     def _locked_write(cmd, a):
@@ -248,6 +271,47 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             r(0, struct.pack("<BHII", 1, self.speed_tolerance, *self.speed_last))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 1:           # analysis job start (6.1): capture and analysis end at once
+            if len(a) < 28 or not a[27] & 1:                  # DETAIL required on the appended ANALYZE request
+                r(P2.BAD_ARGS)
+                return
+            job_id, flags, attempts, budget, expected, c, h, n, res = struct.unpack_from("<IHBIQBBBB", a, 1)
+            if not job_id or flags & ~0x3F or not 1 <= attempts <= 8 or not 1 <= budget <= 60000 or res or n > 3 \
+                    or (flags & 1 and not flags & 4) or bool(flags & 4) != bool(expected):
+                r(P2.BAD_ARGS)
+                return
+            seen = sum(1 << s for s in range(1, self.verify_sectors + 1))
+            missing = expected & ~seen
+            self.job = dict(id=job_id, flags=flags, attempts=attempts, budget=budget, expected=expected, c=c, h=h, n=n,
+                            track=a[24], side=a[25], revs=a[26] or 3, seen=seen, generation=1,
+                            status=6 if missing else 0, state=4 if missing else 3)    # 6: expected sectors missing
+            r(0, self._job_status())
+        elif cmd == P2.ANALYSIS_JOB and a[0] in (2, 4):      # job status / abort: the tool's job id, nothing else
+            if len(a) != 5 or not self.job or struct.unpack_from("<I", a, 1)[0] != self.job["id"]:
+                r(P2.BAD_ARGS)
+                return
+            if a[0] == 4 and self.job["state"] < 3:
+                self.job.update(state=4, status=20)
+            r(0, self._job_status())
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 3:           # result pages with header and CRC32 (6.1, op 3)
+            if len(a) != 16 or not self.job:
+                r(P2.BAD_ARGS)
+                return
+            job_id, gen, section, offset, count = struct.unpack_from("<IIBIH", a, 1)
+            body = {2: self._job_status, 15: self._recognition_block}.get(section)
+            if job_id != self.job["id"] or gen != self.job["generation"] or not 1 <= count <= 1024 or body is None:
+                r(P2.BAD_ARGS)
+                return
+            data = body()
+            if offset > len(data):
+                r(P2.BAD_ARGS)
+                return
+            page = data[offset:offset + count]
+            r(0, struct.pack("<BBHIIIII", 1, section, 0, job_id, gen, offset, len(data),
+                             zlib.crc32(page) ^ self.page_crc_error) + page)
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 21:          # recognition discovery (5.6)
+            r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
+              bytes([1, 15, 16, 20]) + struct.pack("<5I", 64, 1023, 32767, 8, 128))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 22:          # capability matrix (4.3), 224 bytes
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else self._capability_matrix())
         elif cmd == P2.ANALYSIS_JOB and a[0] == 23:          # configuration report (4.3): [23] or [23, expected u32]
@@ -1469,3 +1533,56 @@ def test_capability_matrix_and_configuration_against_fake():
         dev.request(0x0F, bytes([22, 0]))
     with pytest.raises(P2.DeviceError):
         dev.request(0x0F, bytes([23, 1, 2]))
+
+
+def test_analysis_job_client_and_recognition(monkeypatch, capsys):
+    """Ops 1/2/3/4/21 against the fake: the start returns the 64-byte status, pages are checked (header,
+    CRC32), the recognition block (section 15) decodes with flag names, missing expected sectors end with
+    status 6 and the cause, a foreign job id or generation is refused, and the CLI prints the summary."""
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    d = dev.recognition_discovery()
+    assert (d["section"], d["history_section"], d["history_entry_size"], d["report_size"], d["flag_mask"],
+            d["cause_mask"], d["max_attempts"], d["profile_check_flag"]) == (15, 16, 20, 64, 1023, 32767, 8, 128)
+    st = dev.analysis_start(0x1001, 5, 1, 3, expected=0x3FE, c=5, h=1, n=2)
+    req = fake.requests[-1].payload
+    assert req[0] == 1 and struct.unpack_from("<IHBIQBBBB", req, 1) == (0x1001, 4, 1, 10000, 0x3FE, 5, 1, 2, 0)
+    assert req[24:28] == bytes([5, 1, 3, 1]) and len(req) == 28
+    assert st.done and st.state_name == "done" and st.status == 0 and (st.expected, st.seen, st.missing) == (0x3FE, 0x3FE, 0)
+    assert st.job_id == 0x1001 and st.generation == 1 and st.capture_id == 0x1234 and st.flags == 4
+    assert dev.analysis_status(0x1001).job_id == 0x1001 and dev.analysis_wait(0x1001).generation == 1
+    assert dev.analysis_section(0x1001, 1, 2) == fake._job_status()
+    rec = dev.recognition(0x1001)
+    assert rec["flags"] == 1 | 2 | 4 | 8 | 256 and rec["flag_names"] == [
+        "PROFILE_PRESENT", "FORMAT_OBSERVED", "SECTOR_SET_CONFIRMED", "GEOMETRY_UNCONFIRMED", "POSITION_CHECKED"]
+    assert rec["expected"] == rec["seen"] == 0x3FE and rec["expected_set_supplied"] and rec["generation"] == 1
+    assert not rec["cause_names"] and rec["format"] == 1 and rec["valid_sector_records"] == 9
+    # small pages: every header checked; a wrong CRC or an unknown generation is refused before decoding
+    assert dev.analysis_section(0x1001, 1, 15, page=7) == fake._recognition_block()
+    pages = [q for q in fake.requests if q.cmd == P2.ANALYSIS_JOB and q.payload[0] == 3][-10:]
+    assert [struct.unpack_from("<I", q.payload, 10)[0] for q in pages] == [0, 7, 14, 21, 28, 35, 42, 49, 56, 63]
+    fake.page_crc_error = 1
+    with pytest.raises(ValueError):
+        dev.analysis_section(0x1001, 1, 15)
+    fake.page_crc_error = 0
+    with pytest.raises(P2.DeviceError):
+        dev.analysis_section(0x1001, 2, 15)
+    with pytest.raises(P2.DeviceError):
+        dev.analysis_status(0x1002)
+    with pytest.raises(ValueError):
+        dev.analysis_start(0, 5, 1)
+    with pytest.raises(ValueError):
+        dev.analysis_start(7, 5, 1, flags=P2.JOB_RETRY_MISSING)
+    with pytest.raises(ValueError):
+        dev.analysis_start(7, 5, 1, max_attempts=9)
+    # missing expected sectors: status 6, cause missing_sectors, no SECTOR_SET_CONFIRMED
+    st = dev.analysis_start(0x1003, 5, 1, expected=0xFFE, c=5, h=1, n=2)
+    assert st.state == 4 and st.status == 6 and st.missing == 0xC00 and st.done
+    rec = dev.recognition(0x1003, st)
+    assert rec["cause_names"] == ["missing_sectors"] and not rec["flags"] & 4 and rec["status"] == 6
+    assert dev.analysis_abort(0x1003).state == 4
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["recognize", "5", "1", "--expect", "0x3fe"]) == 0
+    out = capsys.readouterr().out
+    assert "done, status 0 (ok)" in out and "SECTOR_SET_CONFIRMED" in out and "expected 0x3fe seen 0x3fe" in out
+    assert "format IBM MFM" in out and "decision no retry" in out

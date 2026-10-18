@@ -12,6 +12,22 @@ INCOMPLETE = 128
 POSITION_CHECKED = 256
 PROFILE_DECLARED = 512
 
+FLAG_NAMES = {PROFILE_PRESENT: 'PROFILE_PRESENT', FORMAT_OBSERVED: 'FORMAT_OBSERVED',
+              SECTOR_SET_CONFIRMED: 'SECTOR_SET_CONFIRMED', GEOMETRY_UNCONFIRMED: 'GEOMETRY_UNCONFIRMED',
+              AMBIGUOUS: 'AMBIGUOUS', HEADER_POSITION_MISMATCH: 'HEADER_POSITION_MISMATCH',
+              CONTENT_CONFIRMED: 'CONTENT_CONFIRMED', INCOMPLETE: 'INCOMPLETE',
+              POSITION_CHECKED: 'POSITION_CHECKED', PROFILE_DECLARED: 'PROFILE_DECLARED'}
+FORMAT_NAMES = {0: 'none', 1: 'IBM MFM', 2: 'Amiga', 3: 'IBM FM', 4: 'HP M2FM', 5: 'CBM GCR',
+                6: 'Mac GCR', 7: 'Apple II GCR'}
+DECISION_NAMES = {0: 'no retry', 1: 'capture again', 2: 'content confirmed', 3: 'stagnation stop',
+                  4: 'attempt limit'}
+
+
+def flag_names(flags: int) -> list[str]:
+    """Names of the recognition flags set in `flags`, in bit order."""
+    return [name for bit, name in FLAG_NAMES.items() if flags & bit]
+
+
 CAUSE_NAMES = ('missing_sectors', 'header_errors', 'data_errors', 'coding_errors',
                'content_conflicts', 'transport_dma', 'buffer_full', 'position',
                'no_index', 'media_changed', 'timeout', 'cancelled',

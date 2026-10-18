@@ -111,6 +111,15 @@ mit gültigen Prüfsummen und identischen Daten zurückkommen, bei Amiga inklusi
 vor dem Schreiben abgewiesen. Dies prüft Sektorinhalte, keine Flux-Identität oder
 Kopierschutzstrukturen. WRITE_LIMITS gilt weiterhin für den klassischen Schreibpfad.
 
+Analysejobs der Firmware (ANALYSIS_JOB, USB_Protokoll 6.1) sind als Referenzabruf
+enthalten: `ufi recognize SPUR SEITE [--expect MASKE --chn C H N --attempts N --retry]`
+startet einen Job mit DETAIL (Op 1), wartet auf sein Ende (Op 2), holt den Erkennungsblock
+(Abschnitt 15 über Op 3, jede Seite mit Kopf- und CRC32-Prüfung) und nennt Format,
+Erkennungsflags, Ursachen und erwartete/gesehene Sektormasken. In der Bibliothek:
+`analysis_start`, `analysis_status`, `analysis_wait`, `analysis_abort`, `analysis_section`,
+`recognition_discovery`, `recognition`. Ein gefundener Sektor bestätigt weder Geometrie noch
+Vollständigkeit; `GEOMETRY_UNCONFIRMED` bleibt bei Einzelspuraufträgen immer gesetzt.
+
 IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
 prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
 Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein

@@ -21,6 +21,7 @@ import secrets
 import struct
 import sys
 import time
+import zlib
 from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -603,6 +604,53 @@ class ProtocolDescription:
         return cls(*DESCRIBE_FMT.unpack_from(data))
 
 
+JOB_RETRY_MISSING, JOB_RETRY_ERRORS, JOB_EXPECT_SET, JOB_RAW_INDEX, JOB_TRANSFER_TRACE, JOB_CHECK_PROFILE = 1, 2, 4, 8, 16, 32
+JOB_STATES = {0: "unused", 1: "capture", 2: "analysis", 3: "done", 4: "failed"}
+ANALYSIS_STATUS = struct.Struct("<BBBBIIIQQQBBBxIBBBBBBBBII")    # 64 bytes (USB_Protokoll 6.1, op 2)
+
+
+@dataclass
+class AnalysisStatus:
+    """64-byte analysis job status: op 1 reply, op 2 poll, op 4 after abort (USB_Protokoll 6.1)."""
+    state: int                  # 0 unused, 1 capture, 2 analysis, 3 done, 4 failed/aborted
+    status: int                 # positive UFI error number once the job ended
+    attempts: int
+    job_id: int
+    elapsed_ms: int
+    generation: int             # report generation of the last started attempt (0 without a report)
+    expected: int
+    seen: int
+    missing: int
+    phase: int
+    candidate: int
+    revolution: int
+    edges: int
+    max_attempts: int
+    flags: int
+    c: int
+    h: int
+    n: int
+    stop_reason: int
+    confirmed: int
+    stagnant: int
+    budget_ms: int
+    capture_id: int
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "AnalysisStatus":
+        if len(data) != ANALYSIS_STATUS.size or data[0] != 1:
+            raise ValueError("unsupported analysis job status")
+        return cls(*ANALYSIS_STATUS.unpack(data)[1:])
+
+    @property
+    def done(self) -> bool:
+        return self.state in (3, 4)
+
+    @property
+    def state_name(self) -> str:
+        return JOB_STATES.get(self.state, str(self.state))
+
+
 class DeviceError(P.DeviceError):
     """Non-zero v2 status; subclass of the v1 error so callers catch both."""
 
@@ -1168,6 +1216,98 @@ class Device2:
         p = self.request(IEC_NIB, bytes([halftrack, sync, mode, flags, device]), timeout=12.0)
         status, synclen, maxlen, ht = struct.unpack_from("<BBHB", p)
         return NibChunk(status, synclen, maxlen, ht, bytes(p[5:5 + 512]))
+
+    # -- analysis jobs (ANALYSIS_JOB ops 1-4 and 21; USB_Protokoll 6.1 and 5.6) --------------------
+    def analysis_start(self, job_id: int, track: int, side: int, revs: int = 3, *, quarter: int | None = None,
+                       flags: int = 0, max_attempts: int = 1, budget_ms: int = 10000,
+                       expected: int = 0, c: int = 0, h: int = 0, n: int = 0,
+                       detail_flags: int = 1) -> AnalysisStatus:
+        """Op 1: start one analysis job on a track and return its 64-byte status.  The capture runs
+        inside the request, the analysis continues on the board (poll analysis_status / analysis_wait).
+        job_id is chosen by the tool (nonzero u32).  flags: JOB_* bits; a nonzero `expected`
+        sector-ID mask (bit R = sector R) sets EXPECT_SET and names the c/h/n those sectors must
+        carry.  The appended ANALYZE request always carries DETAIL, as the firmware requires."""
+        if not 1 <= job_id <= 0xffffffff:
+            raise ValueError("job id must be a nonzero u32")
+        if flags & ~0x3F:
+            raise ValueError("unknown job flag bits")
+        if expected:
+            if not 0 < expected <= 0xffffffffffffffff:
+                raise ValueError("expected sector mask outside u64")
+            flags |= JOB_EXPECT_SET
+        elif flags & (JOB_EXPECT_SET | JOB_RETRY_MISSING):
+            raise ValueError("EXPECT_SET and RETRY_MISSING need a nonzero sector mask")
+        if not 1 <= max_attempts <= 8 or not 1 <= budget_ms <= 60000 or not 0 <= n <= 3:
+            raise ValueError("max_attempts 1..8, budget 1..60000 ms, n 0..3")
+        if quarter is not None and not 0 <= quarter <= 3:
+            raise ValueError("quarter must be 0..3")
+        side_byte = side | (0x80 | quarter << 4 if quarter is not None else 0)
+        req = struct.pack("<BIHBIQBBBB", 1, job_id, flags, max_attempts, budget_ms, expected, c, h, n, 0)
+        req += bytes([track, side_byte, revs, detail_flags | 0x01])
+        return AnalysisStatus.unpack(self.request(ANALYSIS_JOB, req, timeout=budget_ms / 1000 + 6.0))
+
+    def analysis_status(self, job_id: int) -> AnalysisStatus:
+        """Op 2: the 64-byte status of the job with this id (status 16 for any other id)."""
+        return AnalysisStatus.unpack(self.analysis_op(2, struct.pack("<I", job_id)))
+
+    def analysis_abort(self, job_id: int) -> AnalysisStatus:
+        """Op 4: abort that job; returns the status afterwards."""
+        return AnalysisStatus.unpack(self.analysis_op(4, struct.pack("<I", job_id)))
+
+    def analysis_wait(self, job_id: int, timeout: float = 70.0, poll: float = 0.2) -> AnalysisStatus:
+        """Poll op 2 until the job left its active states; TimeoutError after `timeout` seconds."""
+        deadline = time.monotonic() + timeout
+        while True:
+            st = self.analysis_status(job_id)
+            if st.done:
+                return st
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"analysis job {job_id} still in {st.state_name} after {timeout:.0f} s")
+            time.sleep(poll)
+
+    def analysis_section(self, job_id: int, generation: int, section: int, page: int = 1024) -> bytes:
+        """Op 3: one result section of a finished job, fetched in pages of up to 1024 bytes.  Every page
+        header (schema, section, job, generation, offset, total) and its payload CRC32 are checked;
+        a mismatch raises ValueError (the USB frame itself was intact, so this is not a DeviceError)."""
+        if not 1 <= page <= 1024:
+            raise ValueError("page size 1..1024")
+        data = bytearray()
+        total = None
+        while total is None or len(data) < total:
+            rep = self.analysis_op(3, struct.pack("<IIBIH", job_id, generation, section, len(data), page))
+            if len(rep) < 24:
+                raise ValueError("analysis section page shorter than its 24-byte header")
+            schema, sec, _res, jid, gen, off, tot, crc = struct.unpack_from("<BBHIIIII", rep)
+            payload = rep[24:]
+            if (schema, sec, jid, gen, off) != (1, section, job_id, generation, len(data)) or \
+                    (total is not None and tot != total) or zlib.crc32(payload) != crc:
+                raise ValueError(f"analysis section {section}: page header or CRC mismatch at offset {len(data)}")
+            total = tot
+            if not payload and len(data) < total:
+                raise ValueError(f"analysis section {section}: empty page before the end")
+            data += payload
+        return bytes(data)
+
+    def recognition_discovery(self) -> dict:
+        """Op 21: sizes and masks of the recognition block (USB_Protokoll 5.6)."""
+        d = self.analysis_op(21)
+        if len(d) != 24 or d[0] != 1:
+            raise ValueError("unsupported recognition discovery")
+        names = ("report_size", "flag_mask", "cause_mask", "max_attempts", "profile_check_flag")
+        return dict(section=d[1], history_section=d[2], history_entry_size=d[3],
+                    **dict(zip(names, struct.unpack_from("<5I", d, 4), strict=True)))
+
+    def recognition(self, job_id: int, status: AnalysisStatus | None = None) -> dict:
+        """Recognition block of a finished job (result section 15, 64 bytes) decoded with
+        recognition.decode_recognition plus `flag_names`.  The generation comes from the job
+        status; 0 after an early capture failure is a valid generation for this section."""
+        from .recognition import decode_recognition, flag_names
+        st = status or self.analysis_status(job_id)
+        if not st.done:
+            raise ValueError(f"analysis job {job_id} is still in {st.state_name}; sections follow after it ends")
+        rep = decode_recognition(self.analysis_section(job_id, st.generation, 15))
+        rep["flag_names"] = flag_names(rep["flags"])
+        return rep
 
     def analyze(self, track: int, side: int, revs: int = 3, quarter: int | None = None) -> dict:
         """Track analysis (firmware 1.14): rpm, interval peaks, encoding guess, bit cells,

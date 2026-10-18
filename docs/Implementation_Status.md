@@ -1104,3 +1104,24 @@ protocol or firmware change. Remaining from the list: 7 (host recognition fetche
 measurement sets which qualification bit, as a table); 2 (configuration change as an event)
 declined, the END generation block already carries the configuration generation for a local
 comparison.
+
+## Host reference client for analysis jobs and the recognition block — 2026-10-18
+
+Item 7 of UFT's third list. `recognition.py` decoded result section 15 but nothing in the host
+fetched it: there was no client for ANALYSIS_JOB ops 1-4 at all. Added to `protocol2.py`:
+`AnalysisStatus` (the 64-byte status of op 1/2/4 as a dataclass with `done` and `state_name`),
+`analysis_start()` (op 1: tool-chosen job id, JOB_* flags, attempts, budget, expected sector
+mask with C/H/N, the appended ANALYZE request always with DETAIL as the firmware requires),
+`analysis_status()`, `analysis_abort()`, `analysis_wait()` (op 2 polling), `analysis_section()`
+(op 3 in pages of up to 1024 bytes, each page's schema/section/job/generation/offset/total and
+payload CRC32 checked, ValueError on a mismatch), `recognition_discovery()` (op 21) and
+`recognition()` (section 15 decoded, plus `flag_names`). `recognition.py` gained the flag,
+format and decision name tables. CLI `ufi recognize TRACK SIDE [--expect MASK --chn C H N
+--attempts N --budget MS --retry]` runs one job and prints status, format, flags, causes and
+the masks. FakeV2 models ops 1/2/3/4/21: a started job ends at once with sectors
+1..verify_sectors seen, missing expected sectors give status 6 and cause missing_sectors,
+op 3 serves sections 2 and 15 with the real header and CRC (a test switch corrupts the CRC to
+prove the host check), foreign job ids and generations are refused. Test
+`test_analysis_job_client_and_recognition`; protocol doc 5.6 and README name the reference
+API. No protocol or firmware change. Remaining from the list: 1+3 (matrix schema 2), 4
+(qualification table).
