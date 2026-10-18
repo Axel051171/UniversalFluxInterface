@@ -1255,3 +1255,30 @@ default and explicit threshold and the refusal. Host `weak_positions(threshold)`
 ANALYZE, test. Protocol doc 4.13 and op table. Also in this commit: the ANALYZE quarter
 check now uses `ufi_drive_quarter_ok()` like READ/WRITE (the Shugart half track of a34aed1
 was still refused there). Open from the list: precomp profile per write.
+
+## Write precompensation per write and per zone — 2026-10-18
+
+Last item of the owner's fourth list. Precompensation came from TIMING `precomp_ns`
+(0xFFFF auto by data rate, 0 off, else ns) and a fixed track rule inside the codec (< 40
+none, 40..60 half, > 60 full) that counted the logical track as sent; under double_step
+that was the wrong radius, so the rule now runs on the physical track (logical n at 2n).
+The selection moved from the codec into `ufi_write_precomp_select()` in ufi_write.c and the
+codec got `precomp_fixed` (amount as given, no rule). Two new ways, classic path only
+(extended intervals are host-timed; flags2 bit 2 with bit 5 -> 11): per write, WRITE/GUARDED_
+WRITE flags2 bit 2 followed by precomp_ns u16 (0 = off on any track, 1..2000 as given;
+WRITE_LIMITS bit 6 announces it, flags2 mask 0x07, op 39 field 15 reasons 1 missing / 2
+range), which lets a host that compensated itself send 0 and avoid the double shift UFT
+pointed out; and a session-local zone profile through op 45 ([45] reads, [45, 0] clears,
+[45, 1, n, n x (from_physical_track u8, ns u16)] sets 1..4 ascending zones, the first at 0,
+ns <= 2000; set is BUSY during an operation, read never). The 19-byte reply names the source
+of the last write (0 TIMING/auto with the rule, 1 profile, 2 per-write override), the zones,
+the last applied ns and the last logical and physical track, so a write report can say
+"Board: off / profile / auto" literally. Precedence: override, zone, TIMING/auto. Native
+tests: write-flags harness (bit 2 values, missing bytes, 2001, extended -> 11, all three
+flags2 fields together, bit 3 refused), analysis job harness (op 45 read/set/length/zone
+refusal/clear/busy), codec check for the fixed amount on every track and 0 = off above 60,
+evidence runtime stub. Host write_track(precomp_ns=), precomp_profile(), ufi write
+--precomp NS, ufi precomp [--zones FROM:NS,... | --clear]; FakeV2 flags2 bit 2 and op 45;
+tests. Protocol doc 4.14, rows 0x08/0x22, 4.7 mask, op 39 field 15, op table. That closes
+the owner's fourth list: provenance block, READ provenance flag, RESEEK, Shugart half track,
+fine weak positions, precompensation.

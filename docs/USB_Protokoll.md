@@ -445,7 +445,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |
 | 0x05 | USB_MODE | `mode` u8 (0 Flux, 1 SD-Laufwerk, 2 USB-Floppy, 3 Greaseweazle, 4 Composite) | Antwort, danach Neuanmeldung |
 | 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80) | – |
-| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
+| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, Bit6 Präkompensation je Auftrag `flags2` Bit2, 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
 | 0x09 | DESCRIBE (1.18) | – | 36 Byte, Schema 1; siehe unten |
 | 0x0A | RESOURCE (1.18) | leer, 0 freigeben oder 1 beanspruchen | Besitzer u8; Abschnitt 1.4 |
 | 0x0B | JOB (1.18) | Status / Öffnen / Commit | 24 Byte; Abschnitt 2.6 |
@@ -478,7 +478,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt; andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt, Bit2 `precomp_ns` u16 folgt (0 = aus, 1–2000, nur klassischer Pfad, 4.14); andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4/Bit6) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -1318,7 +1318,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | 0 | u8 | Schema | 1 |
 | 1 | u8 | READ-Flags (0x20, 0x28) | 0x0F (0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
-| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz) | 0x03 |
+| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag) | 0x07 (0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
 | 5 | u8 | höchster Formathinweis | 7 |
 | 6 | u16 | Op-33-Flags (Apple-GCR) | 0x003F |
@@ -1373,6 +1373,7 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 | 12 | Mediengeneration | 1 = Null oder anderes Medium (Status 21) |
 | 13 | Analyseoptionen | ANALYZE-/Op-1-Optionsblock als Ganzes abgelehnt; Detail 0 |
 | 14 | Startversatz (`flags2` Bit1) | 1 = die vier Bytes fehlen, 2 = 0 oder über 275 000 000 |
+| 15 | Präkompensation (`flags2` Bit2) | 1 = die zwei Bytes fehlen, 2 = über 2000 ns |
 
 Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `last_refusal()`
 mit Feldnamen, `ufi refusal`.
@@ -1525,6 +1526,42 @@ Antwortlänge 10 + 4·n, höchstens 266 Byte. Die Zählung ist eine Differenz vo
 Flusswechselzahlen, keine Bitzuordnung: ein Fenster mit Differenz 1 bei 500 kbit/s MFM
 umfasst rund 25 Bitzellen. Host: `weak_positions(threshold=2)`, `ufi weak --positions
 [--threshold N]`.
+
+### 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
+
+Die Schreib-Präkompensation kam bisher allein aus TIMING `precomp_ns` (0xFFFF = nach
+Datenrate, 0 = aus, sonst ns) und einer festen Spurregel im Codec (Spur < 40 keine,
+40–60 die Hälfte, > 60 voll). Ab 1.18-dev zählt die Regel die **physische** Spur (bei
+Doppelschritt-Profil liegt logische Spur n auf 2n); vorher zählte sie die gesendete
+logische Spur, was unter Doppelschritt die falsche Zone traf. Zwei neue Wege, beide nur
+für den klassischen Schreibpfad (Extended-Intervalle sind hostseitig gezeitet; `flags2`
+Bit2 mit Bit5 → Status 11):
+
+- **Je Auftrag:** WRITE/GUARDED_WRITE `flags2` Bit2, dahinter `precomp_ns` u16: 0 = aus für
+  diesen Auftrag (keine Spurregel, auf jeder Spur), 1–2000 ns wie gesendet ohne Regel.
+  Angekündigt durch WRITE_LIMITS Flags Bit6; fehlende Bytes → 16 mit Op 39 Feld 15 Grund 1,
+  über 2000 → Grund 2. Ein Host, der selbst präkompensiert, sendet 0 und verhindert so die
+  doppelte Verschiebung.
+- **Zonenprofil (Op 45), sitzungslokal und flüchtig:** `[45]` liest; `[45, 1, n, n × (ab_physischer_Spur u8,
+  ns u16)]` setzt 1–4 Zonen in aufsteigender Reihenfolge, die erste ab Spur 0, ns 0 = aus in
+  der Zone, höchstens 2000; `[45, 0]` löscht das Profil. Setzen während eines laufenden
+  Vorgangs → BUSY, Lesen nie. Antwort 19 Bytes:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Quelle des letzten Schreibauftrags: 0 TIMING/automatisch mit Spurregel, 1 Zonenprofil, 2 Vorgabe je Auftrag |
+| 2 | u8 | Zonenanzahl 0–4 |
+| 3 | 4 × 3 | Zonen: ab physischer Spur u8, ns u16; ungenutzte Zonen 0 |
+| 15 | u16 | Zuletzt angewandte Präkompensation in ns |
+| 17 | u8 | Logische Spur des letzten Auftrags |
+| 18 | u8 | Physische Spur des letzten Auftrags |
+
+Rangfolge beim Packen: Vorgabe je Auftrag, sonst Zone der physischen Spur, sonst
+TIMING/automatisch mit Spurregel. Die Quelle (Byte 1) erlaubt dem Werkzeug, im
+Schreibbericht wörtlich „Board: aus / Profil / automatisch“ zu nennen. Host:
+`write_track(..., precomp_ns=)`, `precomp_profile()`, `ufi write --precomp NS`,
+`ufi precomp [--zones 0:125,40:62 | --clear]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -2661,6 +2698,7 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 42 | 1 | Weak-Fenster des letzten ANALYZE 0x25: Schema, Umdrehungen, Spur, Seitenbyte, 64 × Differenz der Flusswechselzahl je 1/64 Umdrehung, 68 Bytes (4.11); reine Abfrage, nie BUSY |
 | 43 | 1 | Provenienzblock: Board, MCU-ID, Firmware-Revision und Build, Generationen, Capture-ID, letzte Indexperiode, Laufwerkseinstellung, Laufzeit; 96 Bytes (4.12); reine Abfrage, nie BUSY |
 | 44 | 1 / 2 | Weak-Positionen fein des letzten ANALYZE: Fenster je 1/1024 Umdrehung, deren Maximum − Minimum der Flusswechselzahl die Schwelle (Vorgabe 2, optional u8 1–255) erreicht; Kopf 10 Byte plus n × 4, höchstens 266 (4.13); reine Abfrage, nie BUSY |
+| 45 | 1 / 2 / 3 + 3·n | Präkompensationsprofil (4.14): `[45]` liest, `[45, 0]` löscht, `[45, 1, n, Zonen]` setzt 1–4 Zonen (ab physischer Spur u8, ns u16); Antwort 19 Bytes mit Quelle, Zonen und letzter angewandter Präkompensation; Setzen während eines Vorgangs BUSY |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |

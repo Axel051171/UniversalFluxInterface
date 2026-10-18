@@ -485,7 +485,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -587,6 +587,11 @@ def main(argv: list[str] | None = None) -> int:
                    "(firmware 1.18, op 39); ask right after a refusal")
     sub.add_parser("verify-report", help="per-sector outcome of the last verified WRITE (firmware 1.18, op 40): CHRN and "
                    "missing / ok / CRC error / different content for every reference sector")
+    p = sub.add_parser("precomp", help="write precompensation profile (firmware 1.18, op 45): no argument shows the zones, the "
+                       "source of the last write and the amount it got; --zones FROM:NS,... sets 1-4 zones by physical track "
+                       "(first at 0, ns 0 = off, max 2000); --clear returns to TIMING/auto with the track rule")
+    p.add_argument("--zones", metavar="FROM:NS,...")
+    p.add_argument("--clear", action="store_true")
     sub.add_parser("provenance", help="provenance block (firmware 1.18, op 43): board, MCU id, firmware revision and build, "
                    "generations, capture id, last index period, drive setting, uptime; --json prints it as one JSON object "
                    "to store next to a raw file").add_argument("--json", action="store_true")
@@ -690,6 +695,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--start-offset", type=int, default=None, metavar="TICKS",
                    help="firmware >= 1.18: open the gate TICKS (275 MHz, 1..275000000) after the index instead of at the "
                         "index, so the track keeps its original splice position; the END reports the measured offset")
+    p.add_argument("--precomp", type=int, default=None, metavar="NS",
+                   help="firmware >= 1.18: write precompensation for this write only, 0 = off (no track rule, e.g. when the "
+                        "host already compensated), 1..2000 ns as given; default: board profile (ufi precomp) or TIMING/auto")
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -929,6 +937,18 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "tolerance":
             t = dev.decoder_tolerance(0 if a.flags == "reset" else a.flags)
             print(f"tolerance 0x{t['flags']:02x} {'+'.join(t['flag_names']) or 'strict'}")
+        elif a.cmd == "precomp":
+            if a.clear:
+                pp = dev.precomp_profile(clear=True)
+            elif a.zones:
+                zones = [(int(f), int(n)) for f, n in (z.split(":") for z in a.zones.split(","))]
+                pp = dev.precomp_profile(zones)
+            else:
+                pp = dev.precomp_profile()
+            src = {0: "TIMING/auto with the track rule", 1: "zone profile", 2: "per-write override"}.get(pp["source"], str(pp["source"]))
+            print("zones: " + (", ".join(f"from physical track {f}: {n} ns" for f, n in pp["zones"]) if pp["zones"]
+                  else "none (TIMING/auto with the track rule: < 40 none, 40-60 half, > 60 full, physical track)"))
+            print(f"last write: {pp['last_ns']} ns from {src}, logical track {pp['last_track']} = physical {pp['last_physical']}")
         elif a.cmd == "provenance":
             pv = dev.provenance()
             if a.json:
@@ -1106,7 +1126,8 @@ def main(argv: list[str] | None = None) -> int:
                                 hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
                                 clamp=a.clamp,
                                 **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000,
-                                    'erase_rest': a.erase_rest, 'start_offset': a.start_offset} if isinstance(dev,P2.Device2) else {}))
+                                    'erase_rest': a.erase_rest, 'start_offset': a.start_offset,
+                                    'precomp_ns': getattr(a, "precomp", None)} if isinstance(dev,P2.Device2) else {}))
             print(_write_text(r, a.verify) + (f", erased tail {r.erased_ticks / P.FLUX_CLOCK_HZ * 1e3:.1f} ms"
                                               if getattr(r, "erased_ticks", 0) else "")
                   + (f", started {r.start_offset_applied / P.FLUX_CLOCK_HZ * 1e6:.1f} us after the index"

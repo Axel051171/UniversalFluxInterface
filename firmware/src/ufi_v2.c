@@ -458,7 +458,7 @@ static bool uses_drive(uint8_t cmd)
 enum {
     REFUSE_LENGTH = 1, REFUSE_FLAGS, REFUSE_TRACK, REFUSE_SIDE, REFUSE_REVS, REFUSE_SECTORS,
     REFUSE_SCALE, REFUSE_INDEX_TICKS, REFUSE_EXPECTED, REFUSE_FLAGS2, REFUSE_CONFIG_GEN,
-    REFUSE_MEDIA_GEN, REFUSE_ANALYSIS_OPTIONS, REFUSE_START_OFFSET
+    REFUSE_MEDIA_GEN, REFUSE_ANALYSIS_OPTIONS, REFUSE_START_OFFSET, REFUSE_PRECOMP
 };
 static uint8_t note_field, note_detail;     /* set by the parser of the running request */
 static uint8_t refusal[5];                  /* cmd, seq, status, field, detail of the last refusal */
@@ -595,6 +595,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
      * WRITE_LIMITS flags bit3.  bit0 = erase the remainder of the track up to the index. */
     uint8_t flags2 = 0;
     uint32_t start_offset = 0;
+    int32_t precomp_ns = -1;                /* flags2 bit2: 0..2000 for this write, -1 = profile / TIMING */
     if (len >= at + 1u) {
         flags2 = p[at++];
         if (flags2 & ~UFI_V2_WRITE_FLAGS2_MASK) { refuse(REFUSE_FLAGS2, (uint8_t)(flags2 & ~UFI_V2_WRITE_FLAGS2_MASK)); return UFI_ERR_BAD_ARGS; }
@@ -604,6 +605,12 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
             start_offset = get32(p + at); at += 4u;
             if (!start_offset || start_offset > FLUX_TIMER_FREQ) { refuse(REFUSE_START_OFFSET, 2); return UFI_ERR_BAD_ARGS; }
             if (ufi_drive_is_apple() && !ufi_config_apple_sync()) return UFI_ERR_NOT_IMPL;   /* no reference pulse */
+        }
+        if (flags2 & 0x04u) {               /* bit2: precomp_ns u16 for this write (1.18), 0 = off, no track rule */
+            if (len < at + 2u) { refuse(REFUSE_PRECOMP, 1); return UFI_ERR_BAD_ARGS; }
+            precomp_ns = get16(p + at); at += 2u;
+            if (precomp_ns > 2000) { refuse(REFUSE_PRECOMP, 2); return UFI_ERR_BAD_ARGS; }
+            if (p[2] & 0x20u) return UFI_ERR_NOT_IMPL;   /* extended intervals are host-timed */
         }
     }
     if (len!=at) { refuse(REFUSE_LENGTH, (uint8_t)at); return UFI_ERR_BAD_ARGS; }
@@ -623,6 +630,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         ufi_write_set_clamp((p[2] & 0x10u) != 0);   /* bit4: clamp instead of status 18 (1.15) */
         ufi_write_set_erase_rest((flags2 & 0x01u) != 0);
         ufi_write_set_start_offset(start_offset);
+        ufi_write_set_precomp_ns(precomp_ns);
         if (p[2] & 0x01u) ufi_quality_verify_begin(p[0], p[1]);   /* op 40: new per-sector report */
         op_write = true;
         write_seq = seq;
@@ -870,7 +878,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             uint32_t words = 0;
             ufi_flux_store(&words);
             out[0] = 1;                     /* schema */
-            out[1] = 0x3F;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2 erase remainder, bit4 start offset, bit5 source period without verify (1.18) */
+            out[1] = 0x7F;                  /* bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2 erase remainder, bit4 start offset, bit5 source period without verify, bit6 per-write precomp (1.18) */
             put32(&out[2], FLUX_TIMER_FREQ);
             put32(&out[6], words);          /* max flux_count */
             put32(&out[10], WRITE_MIN_DELTA);

@@ -342,7 +342,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x0F, 0xFF, 0x03, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x0F, 0xFF, 0x07, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -468,7 +468,7 @@ class FakeV2:
             r(P2.BAD_ARGS if a else 0, b"" if a else P2.DESCRIBE_FMT.pack(1, 3, 3, 65536, 275_000_000, 68_750_000,
                                                                           1 << 21, 1024, 200, 0x3fffffff, 110, 100000))
         elif cmd == P2.WRITE_LIMITS:
-            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 63 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 127 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -490,6 +490,26 @@ class FakeV2:
                 r(P2.BAD_ARGS)
                 return
             r(0, self._provenance_block())
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 45:          # precomp profile (4.14): [45] reads, [45, 0] clears, [45, 1, n, zones] sets
+            zones = getattr(self, "precomp_zones", [])
+            if len(a) == 2 and a[1] == 0:
+                zones = []
+            elif len(a) >= 3 and a[1] == 1 and 1 <= a[2] <= 4 and len(a) == 3 + 3 * a[2]:
+                new = [struct.unpack_from("<BH", a, 3 + 3 * i) for i in range(a[2])]
+                if new[0][0] != 0 or any(b[0] <= x[0] for x, b in zip(new, new[1:], strict=False)) or any(ns > 2000 for _, ns in new):
+                    r(P2.BAD_ARGS)
+                    return
+                zones = new
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            self.precomp_zones = zones
+            last = getattr(self, "last_precomp", None)
+            track = getattr(self, "last_write_track", 0)
+            source = 2 if last is not None else 1 if zones else 0
+            ns = last if last is not None else next((ns for f, ns in reversed(zones) if track >= f), 0) if zones else (125 if track > 60 else 62 if track >= 40 else 0)
+            body = bytes([1, source, len(zones)]) + b"".join(struct.pack("<BH", f, n) for f, n in zones)
+            r(0, body.ljust(15, b"\0") + struct.pack("<HBB", ns, track, track))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 44:          # weak positions of the last ANALYZE (4.13): [44] or [44, threshold]
             if len(a) > 2 or (len(a) == 2 and a[1] == 0):
                 r(P2.BAD_ARGS)
@@ -554,12 +574,22 @@ class FakeV2:
             want = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0) + (4 if flags & 0x40 else 0) + (12 if flags & 0x80 else 0)
             flags2 = a[want] if len(a) > want else 0
             start_offset = struct.unpack_from("<I", a, want + 1)[0] if flags2 & 2 and len(a) >= want + 5 else 0
-            expect = want + (5 if flags2 & 2 else 1 if len(a) > want else 0)
-            if flags2 & ~0x03 or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000):
-                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x03) if flags2 & ~0x03 else
-                                                          (14, 2) if flags2 & 2 and len(a) == expect else (1, expect))
+            at2 = want + (5 if flags2 & 2 else 1)                                 # after the flags2 byte and the offset
+            precomp = struct.unpack_from("<H", a, at2)[0] if flags2 & 4 and len(a) >= at2 + 2 else None
+            expect = (at2 + (2 if flags2 & 4 else 0)) if len(a) > want else want
+            if flags2 & ~0x07 or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000) \
+                    or (precomp is not None and precomp > 2000):
+                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x07) if flags2 & ~0x07 else
+                                                          (15, 2) if precomp is not None and precomp > 2000 else
+                                                          (14, 2) if flags2 & 2 and len(a) == expect else
+                                                          (15, 1) if flags2 & 4 and len(a) < expect else (1, expect))
                 r(P2.BAD_ARGS)
                 return
+            if precomp is not None and flags & 0x20:
+                r(11)                                                          # NOT_IMPL: extended intervals are host-timed
+                return
+            self.last_precomp = precomp                                        # None: profile / TIMING decides
+            self.last_write_track = a[0]
             self.last_start_offset = start_offset
             at = 11 + (1 if flags & 0x02 else 0) + (2 if flags & 0x08 else 0)
             source = struct.unpack_from("<I", a, at)[0] if flags & 0x40 else 0   # bit6: source index period
@@ -1082,7 +1112,7 @@ def test_write_limits_and_preflight():
     dev = P2.Device2(fake)
     lim = dev.write_limits()
     assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
-        (1, 63, 275_000_000, 1 << 21, 440, 65536)
+        (1, 127, 275_000_000, 1 << 21, 440, 65536)
     n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
     with pytest.raises(ValueError):
         dev.write_track(1, 0, [1000, 439, 1000])
@@ -1302,13 +1332,13 @@ def test_last_refusal(monkeypatch, capsys):
         dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
     rf = dev.last_refusal()
     assert (rf["command"], rf["status"], rf["field"], rf["field_name"]) == (P2.GUARDED_WRITE, P2.MEDIA_CHANGED, 12, "media generation")
-    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x04")   # flags2 bit2: unknown
+    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x08")   # flags2 bit3: unknown
     assert dev._wait(P2.WRITE, 77, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
     rf = dev.last_refusal()
-    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 4)
+    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 8)
     assert len(dev.read_track(0, 0, 1).revolutions) == 1 and dev.last_refusal()["seq"] == 77   # an accepted request keeps the note
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
-    assert cli.main(["refusal"]) == 0 and "flags2, detail 4" in capsys.readouterr().out
+    assert cli.main(["refusal"]) == 0 and "flags2, detail 8" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
@@ -1317,7 +1347,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x0F, "write_flags": 0xFF, "write_flags2": 0x03, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x0F, "write_flags": 0xFF, "write_flags2": 0x07, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1326,7 +1356,7 @@ def test_flag_masks(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["masks"]) == 0
     out = capsys.readouterr().out
-    assert "write_flags2       0x0003" in out and "format_hint_max    7" in out
+    assert "write_flags2       0x0007" in out and "format_hint_max    7" in out
 
 
 def test_end_generation_block():
@@ -1727,3 +1757,42 @@ def test_weak_positions(monkeypatch, capsys):
     assert cli.main(["weak", "--positions", "--threshold", "3"]) == 0
     out = capsys.readouterr().out
     assert "2 fine windows (1/1024 revolution) with max-min >= 3: 72:10+3, 290:9+5" in out
+
+
+def test_precomp_per_write_and_profile(monkeypatch, capsys):
+    """flags2 bit 2 and op 45 against the fake: write_track(precomp_ns=) sends the u16 behind the flags2 byte
+    (0 = off), the fake records it and reports source 2, a zone profile is set/read/cleared with source 1/0,
+    local checks refuse 2001, the extended path and bad zones, WRITE_LIMITS announces bit 6, and the CLI prints
+    the profile."""
+    fake = FakeV2()
+    dev = P2.Device2(fake)
+    assert dev.write_limits().flags & 64
+    deltas = [1100] * 2000
+    r = dev.write_track(70, 0, deltas, precomp_ns=0)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert r.clamped == 0 and req[11] == 0x04 and req[12:14] == struct.pack("<H", 0) and fake.last_precomp == 0
+    pp = dev.precomp_profile()
+    assert (pp["source"], pp["zones"], pp["last_ns"], pp["last_track"], pp["last_physical"]) == (2, [], 0, 70, 70)
+    dev.write_track(70, 0, deltas, precomp_ns=125, erase_rest=True)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[11] == 0x05 and req[12:14] == struct.pack("<H", 125) and dev.precomp_profile()["last_ns"] == 125
+    for bad in dict(precomp_ns=2001), dict(precomp_ns=-1), dict(precomp_ns=125, extended=True):
+        with pytest.raises(ValueError):
+            dev.write_track(70, 0, deltas, **bad)
+    dev.write_track(70, 0, deltas)                                           # no override: fake applies its rule
+    assert fake.last_precomp is None and dev.precomp_profile()["source"] == 0 and dev.precomp_profile()["last_ns"] == 125
+    pp = dev.precomp_profile([(0, 0), (40, 62), (80, 125)])
+    assert fake.requests[-1].payload == bytes([45, 1, 3, 0, 0, 0, 40, 62, 0, 80, 125, 0])
+    assert pp["zones"] == [(0, 0), (40, 62), (80, 125)] and pp["source"] == 1 and pp["last_ns"] == 62
+    for bad in ([], [(1, 10)], [(0, 10), (0, 20)], [(0, 2001)], [(0, 1)] * 5):
+        with pytest.raises(ValueError):
+            dev.precomp_profile(bad)
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([45, 1, 1, 5, 0, 0]))                       # first zone must start at 0
+    assert dev.precomp_profile(clear=True)["zones"] == [] and fake.requests[-1].payload == bytes([45, 0])
+    assert dev.flag_masks()["write_flags2"] == 0x07
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["precomp", "--zones", "0:125,40:62"]) == 0
+    out = capsys.readouterr().out
+    assert "from physical track 0: 125 ns, from physical track 40: 62 ns" in out and "from zone profile" in out
+    assert cli.main(["precomp", "--clear"]) == 0 and "none (TIMING/auto" in capsys.readouterr().out

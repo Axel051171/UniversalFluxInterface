@@ -618,6 +618,10 @@ uint32_t ufi_write_start_applied(void);              // END payload: measured ga
 void ufi_write_delayed_start(uint32_t t);            // TIM2 compare channel 4 reached index + start_offset (ufi_flux.c ISR)
 void ufi_write_set_speed_check(uint16_t permille);   // op 41 (1.18): tolerance around the source index period, 0 = off
 void ufi_write_speed_state(uint16_t* permille, uint32_t* measured, uint32_t* source);  // op 41 reply: last check
+uint32_t ufi_write_precomp_select(uint8_t track);       // 1.18: override / profile zone / TIMING+rule, physical track
+void ufi_write_set_precomp_ns(int32_t ns);              // flags2 bit2: 0..2000 for this write, < 0 = no override
+int ufi_write_precomp_profile_set(const uint8_t* zones, uint8_t n);   // op 45: n x (from_phys u8, ns u16), 0 clears
+uint16_t ufi_write_precomp_profile(uint8_t* out);       // op 45 reply, 19 bytes
 uint32_t ufi_capture_media_token(void);         // media generation the capture was bound to (ufi_main.c, END block)
 #define UFI_V2_GEN_BLOCK 17u                    // END generation block: schema u8, config/media start/media end/capture id u32
 uint16_t ufi_v2_generations(uint8_t* out, uint32_t media_start, uint32_t capture_id);  // ufi_v2.c, writes UFI_V2_GEN_BLOCK bytes

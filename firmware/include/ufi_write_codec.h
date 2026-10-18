@@ -58,6 +58,7 @@ typedef struct {
     uint32_t precomp_ns;        /* late/early shift of the outer bit of a short-long pair */
     uint8_t track;              /* precompensation from track 40 (half) and 61 (full) */
     bool clamp;                 /* true: clamp out-of-range periods and count them */
+    bool precomp_fixed;         /* 1.18: precomp_ns applies as given, no track rule (caller chose it) */
 } pack_cfg_t;
 
 /* Precompensation amount from the data: ED (1 Mbit/s) has intervals below 1.5 us */

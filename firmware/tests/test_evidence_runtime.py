@@ -145,8 +145,7 @@ static uint32_t write_buffer[]={220,1100,550};
 static uint16_t write_arr[3];
 static uint32_t wave_segments,write_timeout_ms,active_pre_ticks,active_post_ticks;
 static wave_cursor_t wave_cursor;
-typedef struct {uint16_t precomp_ns;} timing_t;
-static timing_t ufi_drive_get_timing(void){return (timing_t){0};}
+static uint32_t ufi_write_precomp_select(uint8_t t){(void)t;return 0;}   /* 1.18: selection lives in ufi_write.c */
 static void SCB_CleanDCache_by_Addr(uint32_t* p,int32_t n){(void)p;(void)n;}
 '''
     code+=function('ufi_drive.c','motor_step_wait')+function('ufi_drive.c','ufi_drive_lines_set')

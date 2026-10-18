@@ -197,6 +197,22 @@ static void test_pack_precomp(void)
         }
         CHECK(same, "precomp values track %u", tracks[k]);
     }
+    /* precomp_fixed (1.18): the amount applies as given on any track, no rule; 0 means off even above 60 */
+    for (int k = 0; k < 6; k++) {
+        const pack_cfg_t fixed = {.scale = 1000, .precomp_ns = 125, .track = tracks[k], .clamp = false, .precomp_fixed = true};
+        CHECK(write_pack(d, 64, &fixed, arr, &clamped) == 0, "fixed precomp track %u", tracks[k]);
+        int same = 1;
+        for (uint32_t i = 0; i < 64; i++) {
+            const uint32_t want = (i > 0 && i + 1 < 64) ? ref_precomp(d[i], d[i - 1], d[i + 1], 79, 125) : d[i];
+            same &= arr[i] == (uint16_t)(want - 1);
+        }
+        CHECK(same, "fixed precomp values track %u", tracks[k]);
+        const pack_cfg_t off = {.scale = 1000, .precomp_ns = 0, .track = tracks[k], .clamp = false, .precomp_fixed = true};
+        CHECK(write_pack(d, 64, &off, arr, &clamped) == 0, "fixed off track %u", tracks[k]);
+        int plain_same = 1;
+        for (uint32_t i = 0; i < 64; i++) plain_same &= arr[i] == (uint16_t)(d[i] - 1);
+        CHECK(plain_same, "fixed off values track %u", tracks[k]);
+    }
     /* in-place packing (arr aliases the deltas) gives the same result */
     uint32_t copy[64];
     memcpy(copy, d, sizeof(copy));

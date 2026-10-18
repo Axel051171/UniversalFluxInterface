@@ -21,6 +21,9 @@ static uint8_t weak_threshold;
 uint16_t ufi_analyze_weak_positions(uint8_t threshold,uint8_t* out){memset(out,0,14);out[0]=1;out[6]=threshold;out[8]=1;out[10]=0x11;out[11]=1;out[12]=3;weak_threshold=threshold;return 14;}
 void ufi_write_set_speed_check(uint16_t p){speed_tol=p;}
 void ufi_write_speed_state(uint16_t* p,uint32_t* m,uint32_t* s){*p=speed_tol;*m=speed_meas;*s=speed_src;}
+static uint8_t pz_n,pz[12];static int pz_ret;
+int ufi_write_precomp_profile_set(const uint8_t* z,uint8_t n){if(pz_ret)return pz_ret;pz_n=n;memcpy(pz,z,3u*n);return 0;}
+uint16_t ufi_write_precomp_profile(uint8_t* out){memset(out,0,19);out[0]=1;out[1]=pz_n?1:0;out[2]=pz_n;memcpy(out+3,pz,3u*pz_n);return 19;}
 void ufi_v2_last_refusal(uint8_t out[6]){memcpy(out,refusal_stub,6);}
 void ufi_board_soft_lock(void){soft_lock=true;}
 bool ufi_board_soft_locked(void){return soft_lock;}
@@ -153,6 +156,13 @@ int main(void){
     { uint8_t wp[2]={44,0};assert(!ufi_analysis_command(wp,1,out,&size) && size==14 && weak_threshold==2 && out[8]==1);   /* op 44 default threshold 2 */
       wp[1]=5;assert(!ufi_analysis_command(wp,2,out,&size) && weak_threshold==5);
       wp[1]=0;assert(ufi_analysis_command(wp,2,out,&size)==UFI_ERR_BAD_ARGS); }                                           /* threshold 0 refused */
+    { uint8_t pp[12]={45};assert(!ufi_analysis_command(pp,1,out,&size) && size==19 && out[0]==1 && !out[2]);           /* op 45 read */
+      uint8_t ps[9]={45,1,2, 0,0x7d,0, 40,0xfa,0};assert(!ufi_analysis_command(ps,9,out,&size) && size==19 && pz_n==2 && out[1]==1 && out[2]==2 && out[7]==0xfa);
+      assert(ufi_analysis_command(ps,8,out,&size)==UFI_ERR_BAD_ARGS && ufi_analysis_command(ps,10,out,&size)==UFI_ERR_BAD_ARGS);   /* length must match n */
+      ps[2]=5;assert(ufi_analysis_command(ps,18,out,&size)==UFI_ERR_BAD_ARGS);ps[2]=2;                                 /* at most four zones */
+      pz_ret=UFI_ERR_BAD_ARGS;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BAD_ARGS);pz_ret=0;                 /* zone check refused */
+      pp[1]=0;assert(!ufi_analysis_command(pp,2,out,&size) && !pz_n && !out[2]);                                       /* clear */
+      busy=true;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BUSY && !ufi_analysis_command(pp,1,out,&size));busy=false; }   /* set waits, read never */
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;

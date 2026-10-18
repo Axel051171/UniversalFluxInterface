@@ -139,7 +139,8 @@ static uint32_t precomp(uint32_t cur, uint32_t prev, uint32_t next, uint32_t tic
 static int run(const uint32_t* deltas, uint32_t n, const pack_cfg_t* cfg, uint16_t* arr,
                uint32_t* clamped)
 {
-    const uint32_t pc_ns = (cfg->track < 40u) ? 0u
+    const uint32_t pc_ns = cfg->precomp_fixed ? cfg->precomp_ns
+                         : (cfg->track < 40u) ? 0u
                          : (cfg->track > 60u) ? cfg->precomp_ns : cfg->precomp_ns / 2u;
     const uint32_t pc_ticks = (pc_ns * (FLUX_TIMER_FREQ / 1000000UL)) / 1000UL;
     scaler_t s = {.d = deltas, .n = n, .scale = cfg->scale ? cfg->scale : 1000u};

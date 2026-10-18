@@ -234,10 +234,12 @@ static bool ufi_drive_is_apple(void) {return apple_drive;}
 static bool half_track_ok;                                   /* Shugart double-step profile active */
 static bool ufi_drive_quarter_ok(uint8_t q) {return !q || (apple_drive ? q <= 3 : (q == 2 && half_track_ok));}
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
-      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS,REFUSE_START_OFFSET};
+      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS,REFUSE_START_OFFSET,REFUSE_PRECOMP};
 static uint8_t note_f,note_d;
 static void refuse(uint8_t f,uint8_t d){note_f=f;note_d=d;}
 static void ufi_write_set_erase_rest(bool x) {erase_rest=x;}
+static int32_t precomp_set=-2;
+static void ufi_write_set_precomp_ns(int32_t n) {precomp_set=n;}
 static void ufi_flux_hard_sectors(uint8_t x) {hard_sectors=x;line_calls++;}
 static bool ufi_drive_media_matches(uint32_t token){return token==42 && !(change_during_prepare && media_checks++);}
 static void ufi_write_abort(void){write_aborts++;}
@@ -283,7 +285,7 @@ int main(void) {
     uint8_t f2[18]={0,0,0x21,3,0,0,0,3,0,0,0,1};
     assert(cmd_write(8,f2,12)==0 && erase_rest);
     f2[11]=0;assert(cmd_write(8,f2,12)==0 && !erase_rest);
-    f2[11]=4;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_FLAGS2 && note_d==4);
+    f2[11]=8;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_FLAGS2 && note_d==8);
     f2[11]=1;apple_drive=true;assert(cmd_write(8,f2,12)==UFI_ERR_NOT_IMPL && prepare_calls==before);apple_drive=false;
     f2[2]=0x61;memcpy(f2+11,"\xc0\x3b\x47\x03",4);f2[15]=1;      /* behind index_ticks */
     assert(cmd_write(8,f2,16)==0 && erase_rest && source_ticks==55000000);
@@ -300,7 +302,17 @@ int main(void) {
       so[15]=0x00;so[12]=0x10;so[13]=0x27;so[14]=0;so[11]=0x02;so[2]=0;   /* classic path: Apple allowed */
       apple_drive=true;assert(cmd_write(8,so,16)==UFI_ERR_NOT_IMPL);          /* Disk II without sync sensor */
       apple_sync=true;assert(cmd_write(8,so,16)==0 && start_offset_set==10000);apple_drive=apple_sync=false;
-      so[11]=0;assert(cmd_write(8,so,12)==0 && !start_offset_set);          /* flags2 without bit1: offset 0 */
+      so[11]=0;assert(cmd_write(8,so,12)==0 && !start_offset_set && precomp_set==-1);   /* flags2 without bit1: offset 0, no precomp override */
+      /* flags2 bit2 (1.18): precomp_ns u16 follows; 0 = off for this write, 1..2000 as given, extended path -> 11 */
+      uint8_t pc[18]={0,0,0x00,3,0,0,0,3,0,0,0,0x04,0x7d,0x00};          /* 125 ns */
+      assert(cmd_write(8,pc,14)==0 && precomp_set==125);
+      pc[12]=0;assert(cmd_write(8,pc,14)==0 && precomp_set==0);           /* 0 = off, no track rule */
+      assert(cmd_write(8,pc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_PRECOMP && note_d==1);   /* bytes missing */
+      pc[12]=0xd1;pc[13]=0x07;assert(cmd_write(8,pc,14)==UFI_ERR_BAD_ARGS && note_f==REFUSE_PRECOMP && note_d==2);   /* 2001 */
+      pc[12]=0xd0;assert(cmd_write(8,pc,14)==0 && precomp_set==2000);
+      pc[2]=0x20;assert(cmd_write(8,pc,14)==UFI_ERR_NOT_IMPL);              /* extended intervals are host-timed */
+      pc[2]=0;pc[11]=0x07;memcpy(pc+12,"\x10\x27\0\0\x7d\0",6);assert(cmd_write(8,pc,18)==0 && erase_rest && start_offset_set==10000 && precomp_set==125);   /* all three */
+      pc[11]=0x08;assert(cmd_write(8,pc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_FLAGS2 && note_d==0x08);   /* bit3 unknown */
       assert(cmd_write(8,so,16)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==12); }  /* trailing bytes without bit1 */
     uint8_t strict[23]={0,0,0xa1,3,0,0,0,3,0,0,0,0xfe,0x0f,0,0,0,0,0,0,0,0,2,0};
     assert(cmd_write(9,strict,23)==0 && requested_set==4094);

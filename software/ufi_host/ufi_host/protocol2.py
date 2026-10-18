@@ -338,7 +338,7 @@ class DeviceInfo:
 class WriteLimits:
     """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
     schema: int
-    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset, bit5 index_ticks without verify (1.18)
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset, bit5 index_ticks without verify, bit6 per-write precomp (1.18)
     sample_hz: int
     max_flux: int               # flux_count limit (flux store)
     min_ticks: int
@@ -455,7 +455,8 @@ VERIFY_FORMATS = {0: "no reference", 1: "IBM MFM", 2: "Amiga", 3: "IBM FM", 4: "
 # op 39 (4.8): field codes of the last refusal, shared by READ/0x28, WRITE/0x27 and ANALYZE
 REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
                   6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
-                  11: "configuration generation", 12: "media generation", 13: "analysis options", 14: "start offset"}
+                  11: "configuration generation", 12: "media generation", 13: "analysis options", 14: "start offset",
+                  15: "precomp"}
 
 
 def generation_block(payload: bytes, offset: int) -> dict | None:
@@ -1067,6 +1068,27 @@ class Device2:
         return dict(revs=d[1], track=d[2], side_byte=d[3], windows=windows, threshold=d[6],
                     truncated=bool(d[7] & 1), entries=entries)
 
+    def precomp_profile(self, zones: list[tuple[int, int]] | None = None, clear: bool = False) -> dict:
+        """Write precompensation profile (firmware 1.18, op 45, USB_Protokoll 4.14), session-local.
+        zones: 1..4 (from_physical_track, ns) in ascending order, the first at 0, ns 0 = off in that
+        zone, max 2000; clear=True returns to TIMING/auto with the track rule; neither reads.
+        Returns source of the last write (0 TIMING/auto, 1 profile, 2 per-write), zones, last_ns,
+        last_track (logical) and last_physical."""
+        if clear:
+            d = self.analysis_op(45, bytes([0]))
+        elif zones is not None:
+            if not 1 <= len(zones) <= 4 or zones[0][0] != 0 or any(b[0] <= a[0] for a, b in zip(zones, zones[1:], strict=False)) \
+                    or any(not 0 <= f <= 255 or not 0 <= ns <= 2000 for f, ns in zones):
+                raise ValueError("zones: 1..4 (from_physical_track, ns) ascending, first at 0, ns 0..2000")
+            d = self.analysis_op(45, bytes([1, len(zones)]) + b"".join(struct.pack("<BH", f, ns) for f, ns in zones))
+        else:
+            d = self.analysis_op(45)
+        if len(d) != 19 or d[0] != 1:
+            raise ValueError("unsupported precomp profile reply")
+        n = d[2]
+        return dict(source=d[1], zones=[struct.unpack_from("<BH", d, 3 + 3 * i) for i in range(n)],
+                    last_ns=struct.unpack_from("<H", d, 15)[0], last_track=d[17], last_physical=d[18])
+
     def speed_check(self, tolerance_permille: int | None = None) -> dict:
         """Op 41 (firmware 1.18, 4.10): speed check before writing.  tolerance_permille None reads,
         0 switches the check off, 1..500 sets the allowed deviation of the drive's index period
@@ -1507,8 +1529,12 @@ class Device2:
                     clamp: bool = False, integrity: bool | None = None, extended: bool | None = None,
                     index_ticks: int | None = None, firmware_verify: bool = False,
                     expected_config: int | None = None, expected_media: int | None = None,
-                    erase_rest: bool = False, start_offset: int | None = None) -> WriteResult:
+                    erase_rest: bool = False, start_offset: int | None = None,
+                    precomp_ns: int | None = None) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
+        precomp_ns (firmware 1.18, WRITE_LIMITS flags bit6, flags2 bit2): write precompensation for
+        this write only, 0 = off (no track rule, on any track), 1..2000 ns applied as given; None
+        leaves the board's profile (op 45) or TIMING/auto rule in charge.  Classic path only.
         erase_rest (firmware 1.18, WRITE_LIMITS flags bit3): after the last interval keep the
         gate on with no transitions up to the next index, so nothing of the old track survives
         behind the new data; the result reports the erased tail in erased_ticks.
@@ -1574,8 +1600,15 @@ class Device2:
         if extended and index_ticks is not None:
             flags |= 0x40                   # bit6: source index period (verify reference, speed check)
             extra += struct.pack("<I", index_ticks)
-        if erase_rest or start_offset is not None:
+        if erase_rest or start_offset is not None or precomp_ns is not None:
             limit_flags = self.write_limits().flags
+            if precomp_ns is not None:
+                if not limit_flags & 64:
+                    raise ValueError("firmware does not announce per-write precompensation (WRITE_LIMITS bit 6)")
+                if not 0 <= precomp_ns <= 2000:
+                    raise ValueError("precomp_ns: 0 (off) .. 2000 ns")
+                if extended:
+                    raise ValueError("per-write precompensation applies to the classic path; extended intervals are host-timed")
             if erase_rest and not limit_flags & 8:
                 raise ValueError("firmware does not announce the erase-remainder option (WRITE_LIMITS bit 3)")
             if start_offset is not None:
@@ -1583,9 +1616,11 @@ class Device2:
                     raise ValueError("firmware does not announce the start-offset option (WRITE_LIMITS bit 4)")
                 if not 1 <= start_offset <= 275_000_000:
                     raise ValueError("start offset: 1..275000000 ticks (up to one second after the index)")
-            extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0)])   # flags2
+            extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0) | (4 if precomp_ns is not None else 0)])   # flags2
             if start_offset is not None:
                 extra += struct.pack("<I", start_offset)
+            if precomp_ns is not None:
+                extra += struct.pack("<H", precomp_ns)
         payload = WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra
         command = GUARDED_WRITE if guarded else WRITE
         if guarded:

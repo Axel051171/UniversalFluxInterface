@@ -88,6 +88,14 @@ static uint32_t speed_measured, speed_source;
  * its interrupt opens the gate; start_applied = measured gate-open time minus index time. */
 static bool start_pending;
 static uint32_t start_index_time, start_applied;
+/* Precompensation selection (1.18, op 45 / flags2 bit2): per-write override, else the profile zone of
+ * the physical track, else TIMING / auto with the built-in rule on the physical track. */
+static bool precomp_override;
+static uint16_t precomp_override_ns;
+static uint8_t precomp_zones, precomp_zone_from[4];
+static uint16_t precomp_zone_ns[4];
+static uint16_t precomp_last_ns;
+static uint8_t precomp_last_track, precomp_last_phys, precomp_source;
 static volatile bool receive_failed; /* IRQ -> main loop; never send USB from the IRQ */
 
 static write_context_t g_write;
@@ -250,13 +258,12 @@ static int pack_deltas(void) {
         return UFI_OK;
     }
     write_timeout_ms = 2000u;
-    const uint16_t pc = ufi_drive_get_timing().precomp_ns;    /* host override (B11) */
     const pack_cfg_t cfg = {
         .scale = g_write.scale,
-        .precomp_ns = (!g_write.use_precomp || g_write.apple) ? 0u
-                    : (pc == PRECOMP_AUTO) ? write_precomp_auto_ns(write_buffer, g_write.flux_count) : pc,
+        .precomp_ns = (!g_write.use_precomp || g_write.apple) ? 0u : ufi_write_precomp_select(g_write.track),
         .track = g_write.track,
         .clamp = g_write.clamp,
+        .precomp_fixed = true,              /* the rule already ran on the physical track (1.18) */
     };
     const int ret = write_pack(write_buffer, g_write.flux_count, &cfg, write_arr, &g_write.clamped);
     if (ret != 0) {
@@ -360,6 +367,57 @@ uint32_t ufi_write_erased_ticks(void) {
 /* op 41: tolerance in 1/1000 of the source index period (0 = check off), last measurement */
 void ufi_write_set_speed_check(uint16_t permille) {
     speed_tolerance_permille = permille;
+}
+
+/* Precompensation for this write (1.18): override, profile zone, or TIMING/auto with the rule;
+ * all three count the physical track (double step: logical n sits at 2n). */
+uint32_t ufi_write_precomp_select(uint8_t track) {
+    const drive_timing_t t = ufi_drive_get_timing();
+    const uint32_t phys = t.double_step ? 2u * track : track;
+    uint32_t ns;
+    if (precomp_override) {
+        ns = precomp_override_ns; precomp_source = 2;
+    } else if (precomp_zones) {
+        ns = 0;
+        for (uint8_t i = 0; i < precomp_zones; i++) if (phys >= precomp_zone_from[i]) ns = precomp_zone_ns[i];
+        precomp_source = 1;
+    } else {
+        const uint16_t pc = t.precomp_ns;
+        const uint32_t base = (pc == PRECOMP_AUTO) ? write_precomp_auto_ns(write_buffer, g_write.flux_count) : pc;
+        ns = (phys < 40u) ? 0u : (phys > 60u) ? base : base / 2u;
+        precomp_source = 0;
+    }
+    precomp_last_ns = (uint16_t)ns; precomp_last_track = track; precomp_last_phys = phys > 255u ? 255u : (uint8_t)phys;
+    return ns;
+}
+
+void ufi_write_set_precomp_ns(int32_t ns) {           /* < 0: no per-write override */
+    precomp_override = ns >= 0;
+    precomp_override_ns = ns >= 0 ? (uint16_t)ns : 0u;
+}
+
+int ufi_write_precomp_profile_set(const uint8_t* zones, uint8_t n) {   /* n x (from_phys u8, ns u16), n 0..4 */
+    if (n > 4u) return UFI_ERR_BAD_ARGS;
+    uint8_t from[4]; uint16_t ns[4];
+    for (uint8_t i = 0; i < n; i++) {
+        from[i] = zones[3u * i]; ns[i] = (uint16_t)(zones[3u * i + 1u] | (uint16_t)zones[3u * i + 2u] << 8);
+        if ((i == 0 && from[0] != 0) || (i && from[i] <= from[i - 1u]) || ns[i] > 2000u) return UFI_ERR_BAD_ARGS;
+    }
+    precomp_zones = n;
+    memcpy(precomp_zone_from, from, n); memcpy(precomp_zone_ns, ns, n * sizeof ns[0]);
+    return UFI_OK;
+}
+
+uint16_t ufi_write_precomp_profile(uint8_t* out) {   /* op 45 reply, 19 bytes */
+    memset(out, 0, 19);
+    out[0] = 1; out[1] = precomp_source; out[2] = precomp_zones;
+    for (uint8_t i = 0; i < precomp_zones; i++) {
+        out[3 + 3 * i] = precomp_zone_from[i];
+        out[4 + 3 * i] = (uint8_t)(precomp_zone_ns[i] & 0xFFu); out[5 + 3 * i] = (uint8_t)(precomp_zone_ns[i] >> 8);
+    }
+    out[15] = (uint8_t)(precomp_last_ns & 0xFFu); out[16] = (uint8_t)(precomp_last_ns >> 8);
+    out[17] = precomp_last_track; out[18] = precomp_last_phys;
+    return 19;
 }
 
 void ufi_write_speed_state(uint16_t* permille, uint32_t* measured, uint32_t* source) {

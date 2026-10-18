@@ -418,6 +418,13 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
     }
     if(p[0]==43 && n==1){*size=ufi_provenance_block(out);return UFI_OK;}   /* provenance block (4.12) */
     if(p[0]==44 && (n==1 || (n==2 && p[1]))){*size=ufi_analyze_weak_positions(n==2?p[1]:2u,out);return UFI_OK;}   /* weak positions (4.13) */
+    if(p[0]==45){                                                            /* precomp profile (4.14): [45] reads, [45,0] clears, [45,1,n,zones] sets */
+        if(n==1){*size=ufi_write_precomp_profile(out);return UFI_OK;}
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        if(n==2 && p[1]==0){(void)ufi_write_precomp_profile_set(p,0);*size=ufi_write_precomp_profile(out);return UFI_OK;}
+        if(n>=3 && p[1]==1 && p[2]>=1 && p[2]<=4 && n==3u+3u*p[2] && !ufi_write_precomp_profile_set(p+3,p[2])){*size=ufi_write_precomp_profile(out);return UFI_OK;}
+        return UFI_ERR_BAD_ARGS;
+    }
     if(p[0]==22 && n==1){
         uint8_t port[24];ufi_drive_port_report(port);
         ufi_capability_matrix(port,ufi_operation_busy() || ufi_job_live() || ufi_resources_owner()==UFI_OWNER_GW,out);

@@ -16,7 +16,7 @@
 /* Request flag masks the v2 parsers accept; ANALYSIS_JOB op 38 reports them (4.7, 1.18). */
 #define UFI_V2_READ_FLAG_MASK    0x0Fu   /* READ: no index, hard sectors, quarter tracks, provenance in END (4.12) */
 #define UFI_V2_WRITE_FLAG_MASK   0xFFu   /* WRITE: every bit assigned (bit 7 = EXPECT_SET) */
-#define UFI_V2_WRITE_FLAGS2_MASK 0x03u   /* WRITE flags2: erase remainder, start offset u32 follows */
+#define UFI_V2_WRITE_FLAGS2_MASK 0x07u   /* WRITE flags2: erase remainder, start offset u32 follows, precomp_ns u16 follows */
 #define UFI_V2_ANALYZE_FLAG_MASK 0xFFu   /* analysis flags; bits 1..7 need DETAIL (bit 0) */
 #define UFI_V2_POSITION_MASK     0xB1u   /* analysis byte 1: side, quarter mode, quarter 0..3 */
 #define UFI_V2_FORMAT_HINT_MAX   7u
