@@ -507,7 +507,7 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     /* bit2: track field in quarter tracks (Apple), 1.14 */
     const uint8_t track = (len >= 4u && (p[3] & 0x04u)) ? p[0] >> 2 : p[0];
     const uint8_t quarter = (len >= 4u && (p[3] & 0x04u)) ? p[0] & 3u : 0u;
-    if(quarter && !ufi_drive_is_apple()){refuse(REFUSE_TRACK,1);return UFI_ERR_BAD_ARGS;}
+    if(quarter && !ufi_drive_quarter_ok(quarter)){refuse(REFUSE_TRACK,ufi_drive_is_apple()?1:2);return UFI_ERR_BAD_ARGS;}   /* 2: Shugart half track needs double step, q = 2 */
     uint8_t previous[6];ufi_flux_evidence_context(previous);
     ufi_flux_hard_sectors(sectors);
     const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
@@ -567,8 +567,8 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
     }
     const uint8_t track = (p[2] & 0x04u) ? p[0] >> 2 : p[0];    /* bit2: quarter tracks (1.14) */
     const uint8_t quarter = (p[2] & 0x04u) ? p[0] & 3u : 0u;
-    if (quarter && !ufi_drive_is_apple()) {
-        refuse(REFUSE_TRACK, 1);
+    if (quarter && !ufi_drive_quarter_ok(quarter)) {       /* 2: Shugart half track needs double step, q = 2 */
+        refuse(REFUSE_TRACK, ufi_drive_is_apple() ? 1 : 2);
         return UFI_ERR_BAD_ARGS;
     }
     uint32_t source_index=0;

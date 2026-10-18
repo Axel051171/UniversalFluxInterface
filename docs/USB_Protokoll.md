@@ -457,7 +457,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | **Laufwerk** | | | |
 | 0x10 | SELECT | `drive` u8 | – |
 | 0x11 | MOTOR | `on` u8 | – (wartet die Anlaufzeit ab) |
-| 0x12 | SEEK | `track` u8 [, `quarter` u8 0–3 (Apple-Viertelspur, 1.14)] | – |
+| 0x12 | SEEK | `track` u8 [, `quarter` u8 0–3 (Apple-Viertelspur, 1.14; ab 1.18 auch Shugart-Halbspur: `quarter` 2 nur bei Doppelschritt-Profil, physische Spur 2·`track`+1, sonst 16)] | – |
 | 0x13 | RECAL | – | – |
 | 0x14 | SIDE | `side` u8 | – |
 | 0x15 | TIMING | – oder bis 11 × u16 (wie v1 0x17; nur die gesendeten Felder werden gesetzt) | aktuelle 11 × u16 (ab 1.16; zuvor 10) |
@@ -474,11 +474,11 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Provenienzblock im Ende-Rahmen, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt; andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt; andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -1361,7 +1361,7 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 | 0 | unbekannt | der Parser liefert keine Aufschlüsselung |
 | 1 | Länge | Mindestlänge, die die Flags verlangen (READ: 3 = keine gültige Länge, 6/7 = Form mit Periode/Sektoren) |
 | 2 | Flags | die unbekannten Bits |
-| 3 | Spur/Viertel | 1 = Viertelspur ohne Apple-Port |
+| 3 | Spur/Viertel | 1 = Viertelspur auf dem Apple-Port ungültig, 2 = Shugart-Laufwerk: „half track needs the double-step profile“ (Viertelform nur als Halbspur 2 und nur mit `double_step` = 1, 1.18) |
 | 4 | Seite/Position | das Byte |
 | 5 | Umdrehungen/Periode | 1 = Periode > 2000 ms |
 | 6 | Sektoren | der übergebene Wert (< 2) |
@@ -1575,7 +1575,7 @@ Bestehende Requests mit 2 oder 3 Bytes bleiben gültig und liefern unverändert
 | Offset | Typ | Bedeutung |
 |---:|---|---|
 | 0 | u8 | Zylinder/Spur, wie bisher (ganze Spur, auch im Viertelspurmodus) |
-| 1 | u8 | Bit 0 Seite. Ab 1.18-dev zusätzlich Bit 7 = Viertelspurmodus (nur Apple-Laufwerke, sonst BAD_ARGS) mit dem Viertel 0–3 in Bits 4–5: `side | 0x80 | quarter << 4`. Andere Bits oder Werte > 1 ohne Bit 7 → BAD_ARGS. Gilt ebenso für die ANALYZE-Nutzlast im Analysejob (Op 1, Byte 25) |
+| 1 | u8 | Bit 0 Seite. Ab 1.18-dev zusätzlich Bit 7 = Viertelspurmodus (Apple-Laufwerke 0–3; Shugart nur Halbspur 2 bei Doppelschritt-Profil, sonst BAD_ARGS) mit dem Viertel 0–3 in Bits 4–5: `side | 0x80 | quarter << 4`. Andere Bits oder Werte > 1 ohne Bit 7 → BAD_ARGS. Gilt ebenso für die ANALYZE-Nutzlast im Analysejob (Op 1, Byte 25) |
 | 2 | u8 | Umdrehungen: 0 = 3, maximal 8 |
 | 3 | u8 | Analyseflags, siehe unten |
 | 4 | u8, optional | Formathinweis: 0 automatisch, 1 IBM-MFM, 2 Amiga-MFM, 3 IBM-FM, 4 HP-MMFM, 5 Commodore-GCR, 6 Macintosh-GCR (INFO Bit29, 5.4), 7 Apple-II-5,25-Zoll-GCR (5.7, nur ausdrücklich) |

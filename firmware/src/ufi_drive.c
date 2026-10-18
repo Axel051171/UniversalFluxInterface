@@ -188,7 +188,21 @@ int ufi_drive_apple_step(int direction)
     return UFI_OK;
 }
 
-/* Seek with a quarter-track offset (Apple only; quarter 0 = plain seek on any drive) */
+static int seek_physical(uint32_t phys);
+
+/* Quarter form accepted for the selected drive: Apple 0..3; Shugart only the half track (2)
+ * when the profile double-steps, where logical track n sits at physical 2n and the half track
+ * at 2n+1 (1.18).  A plain stepper has no position between its steps otherwise. */
+bool ufi_drive_quarter_ok(uint8_t quarter)
+{
+    if (quarter == 0) return true;
+    if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) return false;
+    if (is_apple(g_current_drive)) return quarter <= 3u;
+    return quarter == 2u && g_timing.double_step != 0;
+}
+
+/* Seek with a quarter-track offset (Apple 0..3; Shugart half track with double step; quarter 0 =
+ * plain seek on any drive) */
 int ufi_drive_seek_q(uint8_t track, uint8_t quarter)
 {
     if (quarter == 0) {
@@ -197,8 +211,11 @@ int ufi_drive_seek_q(uint8_t track, uint8_t quarter)
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
-    if (!is_apple(g_current_drive) || quarter > 3u) {
+    if (!ufi_drive_quarter_ok(quarter)) {
         return UFI_ERR_BAD_ARGS;
+    }
+    if (!is_apple(g_current_drive)) {
+        return seek_physical(2u * track + 1u);      /* half track between logical n and n+1 */
     }
     return apl_seek_qt(4 * track + quarter);
 }
@@ -472,14 +489,19 @@ int ufi_drive_seek(uint8_t track)
     if (is_apple(g_current_drive)) {
         return apl_seek(track);
     }
-    const uint8_t max_track = media[g_current_drive].drive[1];
     /* double step: logical track n sits at physical track 2n (40-track disk, 80-track drive);
      * current_track counts physical tracks */
-    const uint32_t phys = g_timing.double_step ? 2u * track : track;
+    return seek_physical(g_timing.double_step ? 2u * track : track);
+}
+
+/* Shugart step sequence to a physical track (half tracks of a double-step profile included) */
+static int seek_physical(uint32_t phys)
+{
+    const uint8_t max_track = media[g_current_drive].drive[1];
     if (phys > max_track) {
         return UFI_ERR_SEEK_FAIL;
     }
-    track = (uint8_t)phys;
+    uint8_t track = (uint8_t)phys;
 
     drive_status_t* status = &g_drive_status[g_current_drive];
     if (!media[g_current_drive].position_valid) {

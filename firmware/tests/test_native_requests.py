@@ -15,6 +15,8 @@ static unsigned starts,line_calls;
 static int start_error;
 static bool ufi_job_live(void){return false;}
 static bool ufi_drive_is_apple(void){return false;}
+static bool half_track_ok;                                   /* Shugart double-step profile active */
+static bool ufi_drive_quarter_ok(uint8_t q){return !q || (q==2 && half_track_ok);}
 static uint32_t get16(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8;}
 static void ufi_flux_hard_sectors(uint8_t n){hard_sectors=n;line_calls++;}
 static void ufi_flux_evidence_context(uint8_t p[6]){memset(p,0,6);p[4]=hard_sectors;}
@@ -72,7 +74,10 @@ int main(void){
     p[3]=2;assert(!cmd_read(8,p,7) && hard_sectors==5);
     assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==7);        /* HARD_SECTORS without the sectors byte */
     p[6]=1;calls=line_calls;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && line_calls==calls && note_f==REFUSE_SECTORS && note_d==1);
-    p[3]=4;p[0]=2;assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==1);p[0]=0;p[3]=2;
+    p[3]=4;p[0]=2;assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==2);   /* Shugart: half track needs double step */
+    half_track_ok=true;p[0]=4*17+2;assert(!cmd_read(8,p,4));                                        /* 17.5 with the double-step profile */
+    p[0]=4*17+1;assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==2);    /* only the half track, never 1/4 */
+    half_track_ok=false;p[0]=0;p[3]=2;hard_sectors=5;                                              /* the accepted plain reads reset the stub */
     p[6]=7;start_error=UFI_ERR_SEEK_FAIL;
     assert(cmd_read(8,p,7)==UFI_ERR_SEEK_FAIL && hard_sectors==5);start_error=0;
     for(unsigned flags=0;flags<256;flags++)for(unsigned len=0;len<=sizeof(p);len++){

@@ -616,7 +616,8 @@ def main(argv: list[str] | None = None) -> int:
         "action", nargs="?", choices=("standard", "konservativ", "save"))
     sub.add_parser("select").add_argument("drive", choices=list(P.DRIVES))
     sub.add_parser("motor").add_argument("state", choices=("on", "off"))
-    q_help = "Apple Disk II quarter-track offset 0-3 (2 = half track), firmware >= 1.14"
+    q_help = ("Apple Disk II quarter-track offset 0-3 (2 = half track), firmware >= 1.14; Shugart drives (firmware 1.18) "
+              "accept only 2 and only with the double-step profile (ufi timing double_step=1): physical track 2n+1")
     p = sub.add_parser("seek")
     p.add_argument("track", type=int)
     p.add_argument("--quarter", type=int, default=0, choices=(0, 1, 2, 3), help=q_help)

@@ -523,6 +523,7 @@ void ufi_drive_safe_state(void);    // motor off, deselect, all write lines rele
 int ufi_drive_seek_test(uint8_t a, uint8_t b, uint8_t cycles);
 int ufi_drive_apple_step(int direction);    // one track in/out (two half steps)
 bool ufi_drive_is_apple(void);              // current drive is on the Apple port J14/J15
+bool ufi_drive_quarter_ok(uint8_t quarter); // quarter form allowed: Apple 0..3, Shugart half track (2) with double_step (1.18)
 void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead of RDATA
 
 // IEC Bus (C64)

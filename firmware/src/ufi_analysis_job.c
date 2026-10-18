@@ -630,7 +630,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         memcpy(job.recovery,recovery_config,11);
         options.report_mask=recovery_config[1];options.compare_tolerance=rd(recovery_config+7);
         job.c=p[20];job.h=p[21];job.n=p[22];job.max_attempts=p[7];job.budget=rd(p+8);
-        if(options.position && !ufi_drive_is_apple())return UFI_ERR_BAD_ARGS;    /* quarter tracks: Apple only */
+        if(options.position && !ufi_drive_quarter_ok((uint8_t)((options.position>>4)&3u)))return UFI_ERR_BAD_ARGS;    /* quarter form: Apple, or Shugart half track with double step */
         job.track=p[24];job.side=options.side;job.position=options.position;job.revs=p[26]?p[26]:3;if(job.revs>8)job.revs=8;
         job.options=options;job.started=HAL_GetTick();ufi_cancel_clear();
         int ret=capture();*size=status(out);return ret;

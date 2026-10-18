@@ -41,7 +41,7 @@ int ufi_drive_recalibrate(void);
 '''
     for name in ('ufi_drive_media_token','ufi_drive_media_matches','ufi_drive_media_status',
                  'ufi_drive_profile_set','ufi_drive_media_set','ufi_drive_media_notify',
-                 'ufi_drive_position_invalidate','ufi_drive_media_observed','ufi_drive_step','ufi_drive_seek',
+                 'ufi_drive_position_invalidate','ufi_drive_media_observed','ufi_drive_step','seek_physical','ufi_drive_seek',
                  'ufi_drive_recalibrate','ufi_drive_select_side'):
         code+=function('ufi_drive.c',name)
     code+=r'''

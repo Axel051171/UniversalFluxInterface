@@ -890,7 +890,8 @@ class Device2:
         self.request(MOTOR, bytes([int(on)]), timeout=3.0)
 
     def seek(self, track: int, quarter: int = 0) -> None:
-        """quarter 1-3: Apple Disk II quarter-track offset (firmware 1.14)."""
+        """quarter 1-3: Apple Disk II quarter-track offset (firmware 1.14); on a Shugart drive only
+        quarter 2 (the half track, physical 2n+1) and only with the double-step profile (1.18)."""
         if quarter:
             self.request(SEEK, bytes([track, quarter]), timeout=5.0)
             return
@@ -1347,7 +1348,8 @@ class Device2:
     def analyze(self, track: int, side: int, revs: int = 3, quarter: int | None = None) -> dict:
         """Track analysis (firmware 1.14): rpm, interval peaks, encoding guess, bit cells,
         weak-bit windows, MFM sectors and the index-to-first-sector time.  quarter 0-3 (Apple
-        drives, firmware 1.18) analyses the quarter track: side byte = side | 0x80 | quarter << 4."""
+        drives, firmware 1.18; Shugart drives only 2 = half track with the double-step profile)
+        analyses that position: side byte = side | 0x80 | quarter << 4."""
         if quarter is not None and not 0 <= quarter <= 3:
             raise ValueError("quarter must be 0..3")
         side_byte = side | (0x80 | quarter << 4 if quarter is not None else 0)
@@ -1398,7 +1400,8 @@ class Device2:
         block of op 43, decoded into Capture.provenance, so the raw data and the device state it
         came from arrive in one transaction.
         hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
-        quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5).
+        quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5); Shugart drives
+        accept only 2 (the half track at physical 2n+1) and only with the double-step profile (1.18).
         expected_config/expected_media (both, firmware 1.18): start with GUARDED_READ 0x28, which
         refuses a stale configuration (16) or another medium (21) before any DATA frame."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))

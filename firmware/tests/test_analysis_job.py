@@ -87,6 +87,8 @@ static uint8_t ufi_flux_get_revolution_count(void){return 1;}
 static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i?NULL:&revolution;}
 static bool apple_drive;
 bool ufi_drive_is_apple(void){return apple_drive;}
+static bool half_track_ok;
+bool ufi_drive_quarter_ok(uint8_t q){return !q || (apple_drive?q<=3:(q==2 && half_track_ok));}
 static uint32_t reseeks;static uint8_t reseek_track,reseek_quarter;static int reseek_error;
 int ufi_drive_seek_q(uint8_t t,uint8_t q){reseeks++;reseek_track=t;reseek_quarter=q;return reseek_error;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t r,uint32_t period,uint8_t q){

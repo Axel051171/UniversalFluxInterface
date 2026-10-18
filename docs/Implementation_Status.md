@@ -1217,3 +1217,22 @@ track and quarter, none without the flag, re-seek failure path, bit 7 refused, o
 Host JOB_RESEEK / JOB_FLAG_MASK, `ufi recognize --reseek`; FakeV2 accepts 0x40 and counts one
 re-seek per retry in `reseeks`; test. Protocol doc: op 1 flag table, op 0 row. Open from the
 list: half-track positioning for Shugart, weak-bit position list, precomp profile per write.
+
+## Half-track positioning on Shugart drives — 2026-10-18
+
+Third item of the owner's fourth list (protection analysis wants positions between tracks).
+A PC stepper has no position between its steps, so a half track exists only where the profile
+double-steps (48-tpi medium in a 96-tpi drive, `double_step` = 1): logical track n at physical
+2n, the half track at 2n+1. The existing quarter form is reused instead of a new flag: READ /
+WRITE flags bit 2 with track = 4n + q, ANALYZE and op 1 side byte 0x80 | q << 4, SEEK with the
+quarter byte. On a non-Apple drive the form is accepted only for q = 2 and only with the
+double-step profile; `ufi_drive_quarter_ok()` holds that rule, `ufi_drive_seek_q()` steps to
+physical 2n+1 through the Shugart step sequence factored out as `seek_physical()`, and the
+parsers refuse everything else with 16 and op 39 field 3 reason 2 ("half track needs the
+double-step profile", documented verbatim at UFT's request; reason 1 stays for an invalid
+quarter on the Apple port). Reports keep the quarter form as sent. Native harnesses: READ
+(reason 2, 17.5 accepted with the profile, 17.25 refused), WRITE flags (same), analysis job op
+1 check, media runtime seek extraction. Host docstrings and the quarter help name the rule;
+no wire change for Apple, nothing moves for a tool that never sends the quarter form on
+Shugart. Acceptance plan row with the step count at the logic analyser. Open from the list:
+weak-bit position list, precomp profile per write.

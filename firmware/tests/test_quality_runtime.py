@@ -231,6 +231,8 @@ static void ufi_write_set_start_offset(uint32_t t){start_offset_set=t;}
 static bool ufi_config_apple_sync(void){return apple_sync;}
 #define FLUX_TIMER_FREQ 275000000u
 static bool ufi_drive_is_apple(void) {return apple_drive;}
+static bool half_track_ok;                                   /* Shugart double-step profile active */
+static bool ufi_drive_quarter_ok(uint8_t q) {return !q || (apple_drive ? q <= 3 : (q == 2 && half_track_ok));}
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
       REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS,REFUSE_START_OFFSET};
 static uint8_t note_f,note_d;
@@ -274,7 +276,9 @@ int main(void) {
     { uint8_t sc[13]={0,0,0x08,3,0,0,0,3,0,0,0,0xff,0x0f};              /* scale 4095 */
       assert(cmd_write(8,sc,13)==UFI_ERR_BAD_ARGS && note_f==REFUSE_SCALE && note_d==1);
       sc[2]=0x02;sc[11]=1;assert(cmd_write(8,sc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_SECTORS && note_d==1);
-      sc[2]=0x04;sc[0]=1;assert(cmd_write(8,sc,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==1); }
+      sc[2]=0x04;sc[0]=1;assert(cmd_write(8,sc,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==2);   /* Shugart quarter: reason 2 */
+      half_track_ok=true;sc[0]=4*20+2;assert(cmd_write(8,sc,11)==0);                                             /* 20.5 with double step */
+      sc[0]=4*20+3;assert(cmd_write(8,sc,11)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && note_d==2);half_track_ok=false; }
     /* flags2 (1.18): one trailing byte behind the flag-driven fields; bit0 erase remainder */
     uint8_t f2[18]={0,0,0x21,3,0,0,0,3,0,0,0,1};
     assert(cmd_write(8,f2,12)==0 && erase_rest);
