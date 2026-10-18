@@ -137,6 +137,16 @@ Tabelle ohne neuen Start, `--abort` beendet einen laufenden. Bibliothek: `track_
 `track_survey_status()`, `track_survey_wait()`, `track_survey_abort()`; der Kopf trägt
 Konfigurations- und Mediengeneration des Starts.
 
+`ufi --extended write IMAGE T S --weak-jitter TICKS [--weak-seed SEED] --weak-window START:END[,...]
+[--weak-drop-window START:END[,...]]` (Firmware 1.18, `flags2` Bit 3) schreibt schwache Zellen:
+Flusswechsel, die in einem Fenster (Takte ab Index) enden, bekommen den Jitter-Marker (das
+Board verschiebt sie je Schreibvorgang zufällig um bis zu ±TICKS, spätere Wechsel bleiben an
+ihrem Platz) oder den Drop-Marker (der Wechsel fehlt mit Wahrscheinlichkeit 1/2). Die
+Ausgabe nennt die Zahl der veränderten Wechsel und den Startwert; mit demselben `--weak-seed`
+entsteht dasselbe Muster, `apply_weak()` rechnet es offline nach. Nur im erweiterten Pfad,
+nicht mit `--verify`. Bibliothek: `mark_weak()`, `apply_weak()`, `write_track(weak_jitter=,
+weak_seed=)`, `WriteResult.weak_applied` / `weak_seed`, Konstanten `WEAK_JITTER`, `WEAK_DROP`.
+
 IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
 prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
 Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein

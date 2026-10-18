@@ -258,8 +258,12 @@ class FakeV2:
                         self.verify_report = bytes([1, 1, self.verify_sectors, 4, track, side]) + b"".join(
                             bytes([track, side, r, 2, 1]) for r in range(1, self.verify_sectors + 1))
                 applied = self.last_start_offset + 7 if self.last_start_offset else 0   # measured: compare latency included
+                weak_applied, weak_seed = 0, 0
+                if getattr(self, "last_weak", None) is not None:                 # 4.16: replay the board's pass on the received data
+                    weak_seed = self.last_weak[1] or 0xC0FFEE42                  # seed 0: the board picks one
+                    weak_applied = P2.apply_weak(decode_write(bytes(self.write_code)), self.last_weak[0], weak_seed)[1]
                 self._frame(P2.T_END, P2.WRITE, f.seq, status, struct.pack("<BI", level, 3 if flags & P2.WRITE_CLAMP else 0)
-                            + self._gen_block(0) + struct.pack("<II", erased, applied))
+                            + self._gen_block(0) + struct.pack("<IIII", erased, applied, weak_applied, weak_seed))
                 self.write_req = None
             return
         assert f.type == P2.T_REQUEST and f.status == 0
@@ -342,7 +346,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x1F, 0xFF, 0x07, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x1F, 0xFF, 0x0F, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -469,7 +473,7 @@ class FakeV2:
             r(P2.BAD_ARGS if a else 0, b"" if a else P2.DESCRIBE_FMT.pack(1, 3, 3, 65536, 275_000_000, 68_750_000,
                                                                           1 << 21, 1024, 200, 0x3fffffff, 110, 100000))
         elif cmd == P2.WRITE_LIMITS:
-            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 127 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
+            r(P2.BAD_ARGS if a else 0, b"" if a else P2.WRITE_LIMITS_FMT.pack(1, 255 if self.firmware >= (1, 18) else 7, 275_000_000, 1 << 21, 440, 65536))
         elif cmd == P2.SELFTEST:
             r(0, bytes([3]) + struct.pack("<BBI", 1, 0, 275000) + struct.pack("<BBI", 2, 0, 0xFFFFFFF6)
               + struct.pack("<BBI", 14, 1, 0))
@@ -616,10 +620,17 @@ class FakeV2:
             start_offset = struct.unpack_from("<I", a, want + 1)[0] if flags2 & 2 and len(a) >= want + 5 else 0
             at2 = want + (5 if flags2 & 2 else 1)                                 # after the flags2 byte and the offset
             precomp = struct.unpack_from("<H", a, at2)[0] if flags2 & 4 and len(a) >= at2 + 2 else None
-            expect = (at2 + (2 if flags2 & 4 else 0)) if len(a) > want else want
-            if flags2 & ~0x07 or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000) \
-                    or (precomp is not None and precomp > 2000):
-                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x07) if flags2 & ~0x07 else
+            at3 = at2 + (2 if flags2 & 4 else 0)                                   # flags2 bit3 (4.16): jitter u16 + seed u32
+            weak = struct.unpack_from("<HI", a, at3) if flags2 & 8 and len(a) >= at3 + 6 else None
+            expect = (at3 + (6 if flags2 & 8 else 0)) if len(a) > want else want
+            bad_weak = weak is not None and (weak[0] > 8192 or not flags & 0x20 or flags & 1)
+            if flags2 & ~0x0F or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000) \
+                    or (precomp is not None and precomp > 2000) or bad_weak:
+                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x0F) if flags2 & ~0x0F else
+                                                          (16, 1) if flags2 & 8 and weak is None else
+                                                          (16, 2) if bad_weak and weak[0] > 8192 else
+                                                          (16, 3) if bad_weak and not flags & 0x20 else
+                                                          (16, 4) if bad_weak else
                                                           (15, 2) if precomp is not None and precomp > 2000 else
                                                           (14, 2) if flags2 & 2 and len(a) == expect else
                                                           (15, 1) if flags2 & 4 and len(a) < expect else (1, expect))
@@ -628,6 +639,7 @@ class FakeV2:
             if precomp is not None and flags & 0x20:
                 r(11)                                                          # NOT_IMPL: extended intervals are host-timed
                 return
+            self.last_weak = weak                                              # (jitter, seed) or None
             self.last_precomp = precomp                                        # None: profile / TIMING decides
             self.last_write_track = a[0]
             self.last_start_offset = start_offset
@@ -1152,7 +1164,7 @@ def test_write_limits_and_preflight():
     dev = P2.Device2(fake)
     lim = dev.write_limits()
     assert (lim.schema, lim.flags, lim.sample_hz, lim.max_flux, lim.min_ticks, lim.max_ticks) == \
-        (1, 127, 275_000_000, 1 << 21, 440, 65536)
+        (1, 255, 275_000_000, 1 << 21, 440, 65536)
     n_before = len([q for q in fake.requests if q.cmd == P2.WRITE])
     with pytest.raises(ValueError):
         dev.write_track(1, 0, [1000, 439, 1000])
@@ -1250,6 +1262,65 @@ def test_session_write_lock(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake2)
     assert cli.main(["write-lock"]) == 0 and "session lock off" in capsys.readouterr().out
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
+
+
+def test_weak_markers(monkeypatch, capsys, tmp_path):
+    """flags2 bit3 (4.16) against the fake: mark_weak() sets the markers inside absolute windows, apply_weak()
+    replays the board's pass (length kept, 220-tick floor, drops shorten the list), write_track(weak_jitter=)
+    sends jitter u16 + seed u32 behind flags2 and the END returns the count and the seed (host's or board's),
+    local refusals, the firmware's field 16 reasons, old END frames, and ufi write --weak-window."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.write_limits().flags & 128
+    deltas = [1100] * 3000
+    marked = P2.mark_weak(deltas, [(100_000, 120_000)])
+    assert [i for i, d in enumerate(marked) if d & P2.WEAK_JITTER] == list(range(90, 109))   # transitions at 1100 * (i + 1)
+    marked = P2.mark_weak(marked, [(2_000_000, 2_010_000), (3_299_000, 3_300_001)], drop=True)
+    assert marked[-1] == 1100 and marked[2999 - 1] & P2.WEAK_DROP == 0            # the last interval is never marked
+    assert sum(1 for d in marked if d & P2.WEAK_DROP) == 9
+    local, applied = P2.apply_weak(marked, 300, 0x12345678)
+    assert sum(local) == sum(deltas) and len(local) <= 3000 and min(local) >= 220 and applied >= 3000 - len(local) > 0
+    assert local[:90] == [1100] * 90 and local[-1] == 1100 and P2.apply_weak(marked, 300, 0x12345678) == (local, applied)
+    assert P2.apply_weak(deltas, 300, 1) == (deltas, 0) and P2.apply_weak(marked, 0, 0) == P2.apply_weak(marked, 0, 0x9E3779B9)
+    r = dev.write_track(5, 0, marked, extended=True, index_ticks=55_000_000, weak_jitter=300, weak_seed=0x12345678)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[2] == 0x60 and req[15] == 0x08 and req[16:22] == struct.pack("<HI", 300, 0x12345678) and len(req) == 22
+    assert decode_write(bytes(fake.write_code)) == marked                      # markers travel inside the u32 intervals
+    assert (r.weak_applied, r.weak_seed, r.start_offset_applied, r.erased_ticks) == (applied, 0x12345678, 0, 0)
+    r = dev.write_track(5, 0, marked, extended=True, weak_jitter=0)               # board seed, drop markers only
+    assert r.weak_seed == 0xC0FFEE42 and r.weak_applied == P2.apply_weak(marked, 0, 0xC0FFEE42)[1] > 0
+    assert dev.write_track(5, 0, deltas, extended=True).weak_seed == 0           # no markers: nothing reported
+    for kw in (dict(weak_jitter=8193), dict(weak_jitter=5, verify=True), dict(weak_jitter=5, firmware_verify=True),
+               dict(weak_jitter=5, extended=False), dict(weak_jitter=5, weak_seed=1 << 32), dict(weak_jitter=-1)):
+        with pytest.raises(ValueError):
+            dev.write_track(5, 0, marked, **{**dict(extended=True), **kw})
+    with pytest.raises(ValueError):
+        dev.write_track(5, 0, [1100, P2.WEAK_VALUE + 1, 1100], extended=True, weak_jitter=5)   # value beyond 30 bits
+    with pytest.raises(ValueError):
+        P2.Device2(FakeV2(revolutions=REVS, firmware=(1, 15), caps=0x7FFF)).write_track(5, 0, marked, extended=True, weak_jitter=5)
+    head = P2.WRITE_REQ.pack(5, 0, 0x20, 3, 3)
+    for tail, detail in ((bytes([8, 5, 0]), 1), (bytes([8]) + struct.pack("<HI", 8193, 0), 2),
+                         (bytes([8]) + struct.pack("<HI", 5, 0), 3), (bytes([8]) + struct.pack("<HI", 5, 0), 4)):
+        payload = (P2.WRITE_REQ.pack(5, 0, 0x00 if detail == 3 else 0x21 if detail == 4 else 0x20, 3, 3)) + tail
+        with pytest.raises(P2.DeviceError):
+            dev.request(P2.WRITE, payload)
+        lr = dev.last_refusal()
+        assert (lr["field"], lr["field_name"], lr["detail"]) == (16, "weak markers", detail)
+    assert head  # the plain head is accepted elsewhere
+    end = struct.pack("<BI", 0, 0) + P2.GEN_BLOCK.pack(1, 7, 42, 42, 0) + struct.pack("<IIII", 0, 0, 7, 0xABCD)
+    assert (P2.WriteResult.unpack(end).weak_applied, P2.WriteResult.unpack(end).weak_seed) == (7, 0xABCD)
+    assert P2.WriteResult.unpack(end[:30]).weak_seed == 0 and P2.WriteResult.unpack(end[:30]).start_offset_applied == 0
+    cap = P2.Device2(FakeV2(REVS)).read_track(2, 1, 2)
+    path = tmp_path / "t.scp"
+    cli.write_scp(str(path), {10: [cli._to_scp(rv) for rv in cap.revolutions]}, 2)
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["--extended", "write", str(path), "5", "0", "--weak-jitter", "300", "--weak-seed", "0x12345678",
+                     "--weak-window", "100000:120000,200000:210000", "--weak-drop-window", "300000:310000"]) == 0
+    out = capsys.readouterr().out
+    assert "written" in out and "transitions randomized (seed 0x12345678)" in out and fake.last_weak == (300, 0x12345678)
+    with pytest.raises(SystemExit) as stop:                                        # windows need --weak-jitter
+        cli.main(["--extended", "write", str(path), "5", "0", "--weak-window", "1:2"])
+    assert "--weak-jitter" in str(stop.value)
 
 
 def test_start_offset():
@@ -1376,13 +1447,13 @@ def test_last_refusal(monkeypatch, capsys):
         dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
     rf = dev.last_refusal()
     assert (rf["command"], rf["status"], rf["field"], rf["field_name"]) == (P2.GUARDED_WRITE, P2.MEDIA_CHANGED, 12, "media generation")
-    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x08")   # flags2 bit3: unknown
+    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x10")   # flags2 bit4: unknown
     assert dev._wait(P2.WRITE, 77, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
     rf = dev.last_refusal()
-    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 8)
+    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 16)
     assert len(dev.read_track(0, 0, 1).revolutions) == 1 and dev.last_refusal()["seq"] == 77   # an accepted request keeps the note
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
-    assert cli.main(["refusal"]) == 0 and "flags2, detail 8" in capsys.readouterr().out
+    assert cli.main(["refusal"]) == 0 and "flags2, detail 16" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
@@ -1391,7 +1462,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x07, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x0F, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1400,7 +1471,7 @@ def test_flag_masks(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["masks"]) == 0
     out = capsys.readouterr().out
-    assert "write_flags2       0x0007" in out and "format_hint_max    7" in out
+    assert "write_flags2       0x000f" in out and "format_hint_max    7" in out
 
 
 def test_end_generation_block():
@@ -1880,7 +1951,7 @@ def test_precomp_per_write_and_profile(monkeypatch, capsys):
     with pytest.raises(P2.DeviceError):
         dev.request(0x0F, bytes([45, 1, 1, 5, 0, 0]))                       # first zone must start at 0
     assert dev.precomp_profile(clear=True)["zones"] == [] and fake.requests[-1].payload == bytes([45, 0])
-    assert dev.flag_masks()["write_flags2"] == 0x07
+    assert dev.flag_masks()["write_flags2"] == 0x0F
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["precomp", "--zones", "0:125,40:62"]) == 0
     out = capsys.readouterr().out

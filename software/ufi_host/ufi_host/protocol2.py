@@ -154,6 +154,11 @@ HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count fol
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
 WRITE_CLAMP = 0x10                      # WRITE flag: clamp out-of-range periods instead of status 18 (1.15)
+# WRITE flags2 bit3 (1.18, 4.16): weak-cell markers in the u32 intervals of an extended write
+WEAK_JITTER = 1 << 31                   # the transition ending this interval moves by a random +-jitter
+WEAK_DROP = 1 << 30                     # the transition ending this interval is omitted with probability 1/2
+WEAK_VALUE = 0x3FFFFFFF                 # the interval itself when markers are enabled
+WEAK_JITTER_MAX = 8192
 VERIFY_LEVELS = {0: "none", 1: "write completed", 2: "read-back plausible (count only)",
                  3: "content verified", 4: "unverifiable"}
 FILE_CREATE = 0x01
@@ -290,6 +295,70 @@ def encode_flux(deltas: list[int]) -> bytes:
     return bytes(out)
 
 
+def _weak_seed_mix(seed: int) -> int:
+    v = (seed or 0x9E3779B9) & 0xFFFFFFFF
+    v = (v * 0x9E3779B1) & 0xFFFFFFFF
+    v ^= v >> 16
+    v = (v * 0x85EBCA6B) & 0xFFFFFFFF
+    v ^= v >> 13
+    return v or 0x9E3779B9
+
+
+def _weak_step(v: int) -> int:
+    v ^= (v << 13) & 0xFFFFFFFF
+    v ^= v >> 17
+    v ^= (v << 5) & 0xFFFFFFFF
+    return v
+
+
+def apply_weak(deltas: list[int], jitter: int, seed: int) -> tuple[list[int], int]:
+    """Replay the board's weak-cell pass (USB_Protokoll 4.16) offline: the intervals the firmware will
+    write for these marked deltas, this jitter and this seed (the one sent, or the board's from
+    WriteResult.weak_seed), and the number of transitions displaced or dropped.  Same stream as the
+    firmware: mixed seed, one xorshift32 step per decision, bit 16 decides a drop, bits 8.. the
+    offset; the last interval is never changed, offsets keep both neighbours at or above 220 ticks."""
+    out, rng, applied = [], _weak_seed_mix(seed), 0
+    n = len(deltas)
+    i = 0
+    vals = [d & WEAK_VALUE for d in deltas]
+    marks = [d & ~WEAK_VALUE for d in deltas]
+    while i < n:
+        value, mark = vals[i], marks[i]
+        if mark and i + 1 < n:
+            if mark & WEAK_DROP:
+                rng = _weak_step(rng)
+                if (rng >> 16) & 1:
+                    vals[i + 1] = (vals[i + 1] + value) & WEAK_VALUE
+                    applied += 1
+                    i += 1
+                    continue
+            if mark & WEAK_JITTER and jitter:
+                rng = _weak_step(rng)
+                r = (rng >> 8) % (2 * jitter + 1) - jitter
+                lo = -(value - 220) if value > 220 else 0
+                hi = vals[i + 1] - 220 if vals[i + 1] > 220 else 0
+                r = max(lo, min(hi, r))
+                if r:
+                    value += r
+                    vals[i + 1] = (vals[i + 1] - r) & WEAK_VALUE
+                    applied += 1
+        out.append(value)
+        i += 1
+    return out, applied
+
+
+def mark_weak(deltas: list[int], windows: list[tuple[int, int]], drop: bool = False) -> list[int]:
+    """Set the weak-cell marker (WEAK_JITTER, or WEAK_DROP with drop=True) on every interval whose ending
+    transition lies inside one of the absolute tick windows [start, end) measured from the index; the
+    last interval of the track is never marked (the firmware ignores it anyway).  Existing markers stay."""
+    out, t = [], 0
+    for i, d in enumerate(deltas):
+        t += d & WEAK_VALUE
+        mark = i + 1 < len(deltas) and any(s <= t < e for s, e in windows)
+        out.append(d | ((WEAK_DROP if drop else WEAK_JITTER) if mark else 0))
+    return out
+
+
 # -- payload helpers -----------------------------------------------------------
 @dataclass
 class BoardStatus:
@@ -340,7 +409,7 @@ class DeviceInfo:
 class WriteLimits:
     """WRITE_LIMITS reply (firmware 1.15): what the write backend accepts."""
     schema: int
-    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset, bit5 index_ticks without verify, bit6 per-write precomp (1.18)
+    flags: int                  # bit0 content verify, bit1 long tracks stream, bit2 clamp flag, bit3 flags2/erase remainder, bit4 start offset, bit5 index_ticks without verify, bit6 per-write precomp, bit7 weak-cell markers (1.18)
     sample_hz: int
     max_flux: int               # flux_count limit (flux store)
     min_ticks: int
@@ -458,7 +527,7 @@ VERIFY_FORMATS = {0: "no reference", 1: "IBM MFM", 2: "Amiga", 3: "IBM FM", 4: "
 REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
                   6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
                   11: "configuration generation", 12: "media generation", 13: "analysis options", 14: "start offset",
-                  15: "precomp"}
+                  15: "precomp", 16: "weak markers"}
 
 
 def generation_block(payload: bytes, offset: int) -> dict | None:
@@ -485,6 +554,8 @@ class WriteResult:
     generations: dict | None = None
     erased_ticks: int = 0               # flags2 bit0 (1.18): length of the erased tail up to the index, 275 MHz ticks
     start_offset_applied: int = 0       # flags2 bit1 (1.18): measured gate-open time after the index, 0 = at the index
+    weak_applied: int = 0               # flags2 bit3 (1.18, 4.16): marked transitions displaced or dropped in this write
+    weak_seed: int = 0                  # flags2 bit3: seed of the write's random stream (host's or the board's), 0 without markers
 
     @property
     def verify_text(self) -> str:
@@ -499,8 +570,9 @@ class WriteResult:
         tail = 5 + GEN_BLOCK.size
         erased = struct.unpack_from("<I", b, tail)[0] if len(b) >= tail + 4 else 0
         applied = struct.unpack_from("<I", b, tail + 4)[0] if len(b) >= tail + 8 else 0
+        weak_applied, weak_seed = struct.unpack_from("<II", b, tail + 8) if len(b) >= tail + 16 else (0, 0)
         return cls(b[0], struct.unpack_from("<I", b, 1)[0], generations=generation_block(b, 5),
-                   erased_ticks=erased, start_offset_applied=applied)
+                   erased_ticks=erased, start_offset_applied=applied, weak_applied=weak_applied, weak_seed=weak_seed)
 
 
 @dataclass
@@ -1608,7 +1680,8 @@ class Device2:
                     index_ticks: int | None = None, firmware_verify: bool = False,
                     expected_config: int | None = None, expected_media: int | None = None,
                     erase_rest: bool = False, start_offset: int | None = None,
-                    precomp_ns: int | None = None) -> WriteResult:
+                    precomp_ns: int | None = None, weak_jitter: int | None = None,
+                    weak_seed: int = 0) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
         precomp_ns (firmware 1.18, WRITE_LIMITS flags bit6, flags2 bit2): write precompensation for
         this write only, 0 = off (no track rule, on any track), 1..2000 ns applied as given; None
@@ -1629,6 +1702,19 @@ class Device2:
         for reference decoding when verifying and for the speed check of op 41 either way.
         Classic writes ignore it (the firmware refuses bit 6 without extended timing)."""
         extended = self.extended if extended is None else extended
+        weak = weak_jitter is not None
+        if weak:
+            # flags2 bit3 (1.18, 4.16): the markers WEAK_JITTER / WEAK_DROP sit in the deltas themselves,
+            # the board randomizes the marked cells once per write; apply_weak() replays it offline
+            if not extended:
+                raise ValueError("weak-cell markers need the extended write path (extended=True)")
+            if verify or firmware_verify:
+                raise ValueError("weak-cell markers cannot be combined with verification")
+            if not 0 <= weak_jitter <= WEAK_JITTER_MAX or not 0 <= weak_seed <= 0xffffffff:
+                raise ValueError("weak_jitter 0..8192 ticks, weak_seed u32 (0 = the board picks one)")
+            if not self.write_limits().flags & 128:
+                raise ValueError("firmware does not announce weak-cell markers (WRITE_LIMITS bit 7)")
+        plain = [d & WEAK_VALUE for d in deltas] if weak else deltas
         guarded = expected_config is not None or expected_media is not None
         if guarded and (expected_config is None or expected_media is None or
                         not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
@@ -1648,8 +1734,8 @@ class Device2:
                 raise ValueError("firmware does not advertise the extended write backend")
             if len(deltas) < 3 or len(deltas) > limits.store_words:
                 raise ValueError("extended write exceeds flux store capacity")
-            if any(d < 220 or d > 0xffffffff for d in deltas):
-                raise ValueError("extended interval outside 220..4294967295 ticks")
+            if any(d < 220 or d > (WEAK_VALUE if weak else 0xffffffff) for d in plain):
+                raise ValueError("extended interval outside 220..4294967295 ticks (220..1073741823 with weak markers)")
             if verify:
                 from .readback import reference
                 rate,expected=reference(deltas,index_ticks=index_ticks)  # refuse unsupported verification before writing
@@ -1678,7 +1764,7 @@ class Device2:
         if extended and index_ticks is not None:
             flags |= 0x40                   # bit6: source index period (verify reference, speed check)
             extra += struct.pack("<I", index_ticks)
-        if erase_rest or start_offset is not None or precomp_ns is not None:
+        if erase_rest or start_offset is not None or precomp_ns is not None or weak:
             limit_flags = self.write_limits().flags
             if precomp_ns is not None:
                 if not limit_flags & 64:
@@ -1694,11 +1780,14 @@ class Device2:
                     raise ValueError("firmware does not announce the start-offset option (WRITE_LIMITS bit 4)")
                 if not 1 <= start_offset <= 275_000_000:
                     raise ValueError("start offset: 1..275000000 ticks (up to one second after the index)")
-            extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0) | (4 if precomp_ns is not None else 0)])   # flags2
+            extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0) | (4 if precomp_ns is not None else 0)
+                            | (8 if weak else 0)])   # flags2
             if start_offset is not None:
                 extra += struct.pack("<I", start_offset)
             if precomp_ns is not None:
                 extra += struct.pack("<H", precomp_ns)
+            if weak:
+                extra += struct.pack("<HI", weak_jitter, weak_seed)
         payload = WRITE_REQ.pack(track, side, flags, len(deltas), len(code)) + extra
         command = GUARDED_WRITE if guarded else WRITE
         if guarded:
@@ -1720,7 +1809,7 @@ class Device2:
             self.send(T_DATA, WRITE, seq, job.encode(chunk) if job else chunk)
         if job:
             self.request(JOB, struct.pack("<BI", 2, job.crc))
-        f = self._wait(WRITE, seq, (T_END,), max(10.0,sum(deltas)/P.FLUX_CLOCK_HZ+3.0) if extended else 10.0)
+        f = self._wait(WRITE, seq, (T_END,), max(10.0,sum(plain)/P.FLUX_CLOCK_HZ+3.0) if extended else 10.0)
         if f.status:
             raise DeviceError(WRITE, f.status)
         result=WriteResult.unpack(job.finish(f.payload) if job else f.payload)

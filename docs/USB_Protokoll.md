@@ -43,6 +43,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.13 Weak-Positionen fein (Op 44, 1.18-dev)
   - 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
   - 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
+  - 4.16 Schwache Zellen schreiben (`flags2` Bit3, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -450,7 +451,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |
 | 0x05 | USB_MODE | `mode` u8 (0 Flux, 1 SD-Laufwerk, 2 USB-Floppy, 3 Greaseweazle, 4 Composite) | Antwort, danach Neuanmeldung |
 | 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80) | – |
-| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, Bit6 Präkompensation je Auftrag `flags2` Bit2, 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
+| 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, Bit6 Präkompensation je Auftrag `flags2` Bit2, Bit7 Weak-Marker `flags2` Bit3 (4.16), 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
 | 0x09 | DESCRIBE (1.18) | – | 36 Byte, Schema 1; siehe unten |
 | 0x0A | RESOURCE (1.18) | leer, 0 freigeben oder 1 beanspruchen | Besitzer u8; Abschnitt 1.4 |
 | 0x0B | JOB (1.18) | Status / Öffnen / Commit | 24 Byte; Abschnitt 2.6 |
@@ -483,7 +484,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt, Bit2 `precomp_ns` u16 folgt (0 = aus, 1–2000, nur klassischer Pfad, 4.14); andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4/Bit6) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32 und `start_offset_applied` u32 |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt, Bit2 `precomp_ns` u16 folgt (0 = aus, 1–2000, nur klassischer Pfad, 4.14), Bit3 Weak-Marker: `weak_jitter_ticks` u16 und `weak_seed` u32 folgen (nur erweiterter Pfad, nicht mit Bit0, 4.16); andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4/Bit6/Bit7) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32, `start_offset_applied` u32, `weak_applied` u32 und `weak_seed` u32 (38 Byte; 30 vor 4.16) |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -1336,7 +1337,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | 0 | u8 | Schema | 1 |
 | 1 | u8 | READ-Flags (0x20, 0x28) | 0x1F (0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
-| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag) | 0x07 (0x03 vor 4.14) |
+| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker) | 0x0F (0x07 vor 4.16, 0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
 | 5 | u8 | höchster Formathinweis | 7 |
 | 6 | u16 | Op-33-Flags (Apple-GCR) | 0x003F |
@@ -1392,6 +1393,7 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 | 13 | Analyseoptionen | ANALYZE-/Op-1-Optionsblock als Ganzes abgelehnt; Detail 0 |
 | 14 | Startversatz (`flags2` Bit1) | 1 = die vier Bytes fehlen, 2 = 0 oder über 275 000 000 |
 | 15 | Präkompensation (`flags2` Bit2) | 1 = die zwei Bytes fehlen, 2 = über 2000 ns |
+| 16 | Weak-Marker (`flags2` Bit3) | 1 = die sechs Bytes fehlen, 2 = Jitter über 8192 Takte, 3 = ohne erweiterten Pfad (Bit5), 4 = zusammen mit Prüflesen (Bit0) |
 
 Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `last_refusal()`
 mit Feldnamen, `ufi refusal`.
@@ -1658,6 +1660,55 @@ etwa eine Minute. Die Tabelle liegt in D2-SRAM1 neben dem Aufnahmebeleg (3360 By
 Reserve und DTCM-Stapel bleiben unberührt. Host: `track_survey(first, last, sides=3,
 sectors=False)`, `track_survey_status()`, `track_survey_wait()`, `track_survey_abort()`,
 `ufi survey [FIRST LAST] [--side 0|1] [--sectors] [--status | --abort]`.
+
+### 4.16 Schwache Zellen schreiben (`flags2` Bit3, 1.18-dev)
+
+Kopierschutzspuren leben von Zellen, die bei jedem Lesen anders ausfallen. Erkennen konnte
+das Board sie (ANALYZE, Op 42/44); schreiben konnte es nur deterministische Flusswechsel,
+dazu seit dem erweiterten Pfad (2.4, WRITE Bit5) beliebig lange stille Lücken ohne
+Kunstimpulse. Ab 1.18-dev kann der Host im erweiterten Pfad einzelne Flusswechsel
+**markieren**, und das Board würfelt sie bei jedem Schreibvorgang neu.
+
+Anfrage: WRITE/GUARDED_WRITE `flags2` Bit3, dahinter `weak_jitter_ticks` u16 (0–8192 Takte
+zu 275 MHz, also bis rund 30 µs) und `weak_seed` u32 (0 = das Board wählt einen Startwert,
+sonst genau dieser). Angekündigt durch WRITE_LIMITS Flags Bit7; `flags2`-Maske 0x0F; Op 39
+Feld 16 mit den Gründen 1 (sechs Bytes fehlen), 2 (Jitter über 8192), 3 (ohne Bit5: die
+klassischen u16-Perioden tragen keine Marker), 4 (mit Bit0: eine Inhaltsreferenz kann
+gewürfelte Zellen nicht beurteilen). Greaseweazle-Schreibbefehle sind nicht betroffen.
+
+Mit Bit3 trägt jedes u32-Intervall der Daten zwei Markerbits, die Bits 0–29 das Intervall
+selbst (220 … 2³⁰−1 Takte; die Bereichsprüfung läuft auf dem maskierten Wert):
+
+- **Bit31 JITTER:** der Flusswechsel am Ende dieses Intervalls wird um einen zufälligen
+  Versatz r aus [−jitter, +jitter] verschoben; das folgende Intervall ändert sich um −r, alle
+  späteren Wechsel behalten ihre absolute Lage. r wird so begrenzt, dass beide Intervalle
+  ≥ 220 Takte bleiben.
+- **Bit30 DROP:** der Flusswechsel am Ende dieses Intervalls entfällt mit Wahrscheinlichkeit
+  1/2; das Intervall geht im nächsten auf. Beide Marker zusammen: erst die Drop-Entscheidung,
+  Jitter nur, wenn der Wechsel bleibt.
+- Das letzte Intervall der Spur wird nie verändert; seine Marker werden verworfen.
+
+Der Durchgang läuft einmal je Schreibauftrag auf dem Board, vor Bereichsprüfung, Seek und
+Schreibtor; eine Spur, die dabei unter drei Intervalle fällt, wird mit Status 18 abgewiesen.
+Der Zufallsstrom ist festgelegt, damit ein Werkzeug das Muster offline nachrechnen oder mit
+demselben Startwert exakt wiederholen kann (zwei Laufwerke gleich beschreiben): Startwert
+s (0 → 0x9E3779B9) wird gemischt (`s *= 0x9E3779B1; s ^= s >> 16; s *= 0x85EBCA6B;
+s ^= s >> 13`, 32 Bit; 0 → 0x9E3779B9), jede Entscheidung ist ein xorshift32-Schritt
+(`x ^= x << 13; x ^= x >> 17; x ^= x << 5`): bei DROP entscheidet Bit16 der Ausgabe, bei
+JITTER ist r = ((Ausgabe >> 8) mod (2·jitter + 1)) − jitter. Die Marker werden in Reihenfolge
+der Intervalle abgearbeitet; ein Intervall ohne Marker verbraucht keinen Schritt.
+
+Ende-Rahmen: hinter `start_offset_applied` folgen `weak_applied` u32 (verschobene plus
+entfallene Flusswechsel dieses Auftrags, 0 ohne Bit3) und `weak_seed` u32 (der verwendete
+Startwert, gleich dem gesendeten oder der vom Board gewählte; 0 ohne Bit3); die
+Ende-Nutzdaten wachsen von 30 auf 38 Byte, ältere Hosts lesen weiterhin nur die vorderen
+Felder. Gegenprobe am Gerät: die Spur mit ANALYZE (≥ 3 Umdrehungen) lesen und mit Op 44 die
+feinen Weak-Positionen holen; die Differenzen müssen in den markierten Fenstern liegen
+(Abnahmeplan). Host: `write_track(deltas, extended=True, weak_jitter=, weak_seed=)` mit den
+Konstanten `WEAK_JITTER`/`WEAK_DROP` in den Intervallen, `mark_weak(deltas, fenster, drop=)`,
+`apply_weak(deltas, jitter, seed)` als Nachrechnung, `WriteResult.weak_applied`/`weak_seed`,
+`ufi --extended write … --weak-jitter N [--weak-seed S] --weak-window A:B[,…]
+[--weak-drop-window A:B[,…]]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 

@@ -92,6 +92,10 @@ static uint32_t start_index_time, start_applied;
  * the physical track, else TIMING / auto with the built-in rule on the physical track. */
 static bool precomp_override;
 static uint16_t precomp_override_ns;
+/* weak-cell markers (flags2 bit3, 4.16): jitter in ticks for this write (< 0 = off), the seed of the
+ * write's random stream and the number of transitions displaced or dropped (END payload) */
+static int32_t weak_jitter = -1;
+static uint32_t weak_seed, weak_applied;
 static uint8_t precomp_zones, precomp_zone_from[4];
 static uint16_t precomp_zone_ns[4];
 static uint16_t precomp_last_ns;
@@ -244,6 +248,11 @@ void ufi_write_init(void) {
 static int pack_deltas(void) {
     if (g_write.wave_mode) {
         uint64_t duration;
+        weak_applied = 0;
+        if (weak_jitter >= 0 && !g_write.gw_mode) {   /* flags2 bit3 (4.16): randomize the marked cells once per write */
+            g_write.flux_count = wave_weak_apply(write_buffer, g_write.flux_count, (uint16_t)weak_jitter, weak_seed, &weak_applied);
+            if (g_write.flux_count < 3u) return UFI_ERR_RANGE;
+        }
         if (!wave_plan(write_buffer, g_write.flux_count, &wave_segments, &duration))
             return UFI_ERR_RANGE;
         const uint64_t ms = duration / (FLUX_TIMER_FREQ / 1000u) + 2000u;
@@ -389,6 +398,18 @@ uint32_t ufi_write_precomp_select(uint8_t track) {
     }
     precomp_last_ns = (uint16_t)ns; precomp_last_track = track; precomp_last_phys = phys > 255u ? 255u : (uint8_t)phys;
     return ns;
+}
+
+void ufi_write_set_weak(int32_t jitter, uint32_t seed) {   /* jitter < 0: markers off; seed 0: the board picks one */
+    weak_jitter = jitter;
+    weak_applied = 0;
+    weak_seed = jitter < 0 ? 0u : seed ? seed : (ufi_flux_now() ^ (HAL_GetTick() * 2654435761u) ^ 0xA5A5F00Du);
+    if (jitter >= 0 && !weak_seed) weak_seed = 0x9E3779B9u;
+}
+
+void ufi_write_weak_result(uint32_t* applied, uint32_t* seed) {   /* END payload (4.16) */
+    *applied = weak_applied;
+    *seed = weak_jitter >= 0 ? weak_seed : 0u;
 }
 
 void ufi_write_set_precomp_ns(int32_t ns) {           /* < 0: no per-write override */

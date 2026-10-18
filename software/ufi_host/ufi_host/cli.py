@@ -198,6 +198,18 @@ def cmd_read_native(dev, a) -> None:
     print(f"saved native ticks and validated frames to {a.output}")
 
 
+def _parse_windows(spec: str) -> list[tuple[int, int]]:
+    """'START:END[,START:END...]' in 275 MHz ticks from the index -> [(start, end), ...]."""
+    out = []
+    for item in spec.split(","):
+        a, b = item.split(":")
+        start, end = int(a, 0), int(b, 0)
+        if start < 0 or end <= start:
+            raise SystemExit(f"weak window {item}: END must be greater than START")
+        out.append((start, end))
+    return out
+
+
 def _write_text(r, verify: bool) -> str:
     """One line for a WRITE result: never 'verified' for a count-only read-back."""
     if r is None:                                   # v1 device
@@ -708,6 +720,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--precomp", type=int, default=None, metavar="NS",
                    help="firmware >= 1.18: write precompensation for this write only, 0 = off (no track rule, e.g. when the "
                         "host already compensated), 1..2000 ns as given; default: board profile (ufi precomp) or TIMING/auto")
+    p.add_argument("--weak-jitter", type=int, default=None, metavar="TICKS",
+                   help="firmware >= 1.18, with --extended: weak-cell markers (flags2 bit 3); marked transitions move by a "
+                        "random +-TICKS (0..8192 of 275 MHz; 0 = drop markers only), the board randomizes once per write "
+                        "and the END reports count and seed")
+    p.add_argument("--weak-seed", type=lambda s: int(s, 0), default=0, metavar="SEED",
+                   help="u32 seed of the weak pattern (0 = the board picks one); the same seed repeats the same pattern")
+    p.add_argument("--weak-window", default=None, metavar="START:END[,...]",
+                   help="ticks from the index: transitions ending inside get the jitter marker")
+    p.add_argument("--weak-drop-window", default=None, metavar="START:END[,...]",
+                   help="ticks from the index: transitions ending inside are omitted with probability 1/2 per write")
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -1160,16 +1182,27 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(f"track {a.track}.{a.side} not in {a.image}")
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))
-            r = dev.write_track(a.track, a.side, scp_to_ticks(tracks[n][0].cells), a.verify,
+            deltas = scp_to_ticks(tracks[n][0].cells)
+            if a.weak_window or a.weak_drop_window:                 # 4.16: markers inside absolute windows
+                if a.weak_jitter is None:
+                    raise SystemExit("--weak-window / --weak-drop-window need --weak-jitter (0 = drop markers only)")
+                if a.weak_window:
+                    deltas = P2.mark_weak(deltas, _parse_windows(a.weak_window))
+                if a.weak_drop_window:
+                    deltas = P2.mark_weak(deltas, _parse_windows(a.weak_drop_window), drop=True)
+            r = dev.write_track(a.track, a.side, deltas, a.verify,
                                 hard_sectors=a.hard_sectors, quarter=a.quarter, scale=a.scale,
                                 clamp=a.clamp,
                                 **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000,
                                     'erase_rest': a.erase_rest, 'start_offset': a.start_offset,
-                                    'precomp_ns': getattr(a, "precomp", None)} if isinstance(dev,P2.Device2) else {}))
+                                    'precomp_ns': getattr(a, "precomp", None),
+                                    'weak_jitter': a.weak_jitter, 'weak_seed': a.weak_seed} if isinstance(dev,P2.Device2) else {}))
             print(_write_text(r, a.verify) + (f", erased tail {r.erased_ticks / P.FLUX_CLOCK_HZ * 1e3:.1f} ms"
                                               if getattr(r, "erased_ticks", 0) else "")
                   + (f", started {r.start_offset_applied / P.FLUX_CLOCK_HZ * 1e6:.1f} us after the index"
-                     if getattr(r, "start_offset_applied", 0) else ""))
+                     if getattr(r, "start_offset_applied", 0) else "")
+                  + (f", weak: {r.weak_applied} transitions randomized (seed 0x{r.weak_seed:08x})"
+                     if getattr(r, "weak_seed", 0) else ""))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
         elif a.cmd == "erase":

@@ -146,6 +146,7 @@ static uint16_t write_arr[3];
 static uint32_t wave_segments,write_timeout_ms,active_pre_ticks,active_post_ticks;
 static wave_cursor_t wave_cursor;
 static uint32_t ufi_write_precomp_select(uint8_t t){(void)t;return 0;}   /* 1.18: selection lives in ufi_write.c */
+static int32_t weak_jitter=-1;static uint32_t weak_seed,weak_applied;   /* 4.16: markers off unless a test sets them */
 static void SCB_CleanDCache_by_Addr(uint32_t* p,int32_t n){(void)p;(void)n;}
 '''
     code+=function('ufi_drive.c','motor_step_wait')+function('ufi_drive.c','ufi_drive_lines_set')
@@ -170,6 +171,21 @@ int main(void){
     g_write.gw_mode=true;active_post_ticks=27500;
     assert(pack_deltas()==0 && wave_segments==3 && active_post_ticks==27500);
     assert(wave_cursor.lead==0 && wave_cursor.tail==0);
+    /* weak-cell markers (4.16): the pass runs before the plan, keeps the track length, and a track
+     * that shrinks below three intervals is refused with RANGE; GW writes never see the pass */
+    g_write.gw_mode=false;active_pre_ticks=active_post_ticks=0;
+    weak_jitter=100;weak_seed=5;write_buffer[0]=220u|WAVE_WEAK_JITTER;write_buffer[1]=1100u|WAVE_WEAK_JITTER;
+    assert(pack_deltas()==0 && g_write.flux_count==3 && write_buffer[0]+write_buffer[1]+write_buffer[2]==1870 && write_buffer[0]>=220 && write_buffer[1]>=220 && weak_applied<=2 && !(write_buffer[0]&~WAVE_WEAK_VALUE));
+    { unsigned seen=0;for(unsigned seed=1;seed<64;seed++){
+          weak_seed=seed;g_write.flux_count=3;write_buffer[0]=220u|WAVE_WEAK_DROP;write_buffer[1]=1100u|WAVE_WEAK_DROP;write_buffer[2]=550;
+          const int r=pack_deltas();uint32_t sum=0;for(unsigned i=0;i<g_write.flux_count;i++)sum+=write_buffer[i];
+          assert(sum==1870 && r==(g_write.flux_count<3?UFI_ERR_RANGE:0) && weak_applied==3-g_write.flux_count);
+          seen|=1u<<(3-g_write.flux_count);
+      } assert(seen==7); }                                            /* 0, 1 and 2 drops all occur over the seeds */
+    g_write.flux_count=3;write_buffer[0]=220u|WAVE_WEAK_DROP;write_buffer[1]=1100;write_buffer[2]=550;
+    g_write.gw_mode=true;weak_jitter=0;
+    assert(pack_deltas()==0 && write_buffer[0]==(220u|WAVE_WEAK_DROP) && !weak_applied && wave_segments>16000);   /* GW: the marker is a plain long gap, never applied */
+    write_buffer[0]=220;weak_jitter=-1;g_write.gw_mode=false;
     puts("drive timings: remaining motor delay, wrap, line ordering and production gate waveform passed");
 }
 '''

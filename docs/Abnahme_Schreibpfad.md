@@ -74,6 +74,7 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | HFE-Dump (1.17) | `ufi dump --format hfe` von einer 720K-Diskette, Datei per `ufi get`, dann `ufi read-disk -o x.hfe` derselben Diskette | `DUMPnnnn.HFE` startet in einem HxC-/Gotek-Emulator (FlashFloppy) und wird vom PC gelesen; `.JSN` nennt `rate_bps` 250000; `hxcfe`/HxC-Software zeigt 9 Sektoren je Spur ohne Fehler |
 | HFE schreiben (1.17) | `ufi put x.hfe` → `ufi sd-write X.HFE` und `ufi write-disk x.hfe --verify` auf eine zweite Diskette | `WRITE.LOG` je Spur `ok (scale …)` zwischen 0,970 und 1,030 ohne `BAD`; Diskette im PC lesbar; Verify Stufe 3 bei `write-disk --verify` |
 | Verify 1024-Byte-Sektoren (1.17) | 8 × 1024-Byte-Spur per `ufi write --verify`, danach dieselbe Spur mit einem geänderten Byte > 512 | zweiter Durchlauf endet mit Status 6, nicht mit Stufe 3 |
+| Schwache Zellen (1.18, `flags2` Bit3) | `ufi --extended write x.scp 40 0 --weak-jitter 2000 --weak-window A:B --weak-drop-window C:D`, danach `ufi analyze 40 0 -r 5` und `ufi weak --positions` | die Op-44-Fenster mit Differenz ≥ 2 liegen in A:B und C:D, außerhalb keine; zweimal mit demselbem `--weak-seed` geschrieben: `weak_applied` gleich und Rücklesen gleich; ohne Startwert: zwei Schreibvorgänge unterscheiden sich im Fenster |
 
 ## 4 Hardware-Qualifikation: welche Messung setzt welches Bit
 

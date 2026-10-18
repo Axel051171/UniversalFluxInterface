@@ -1366,3 +1366,34 @@ single peak, empty revolution, cancel). Host `track_survey()`, `track_survey_sta
 with a NO_INDEX step, test. Protocol doc 4.15, op table row 46, command row 0x0F, 6.1 note,
 TOC rows 4.12–4.15; host README. Open from the list: 6 + 7 weak-bit writing with long gaps,
 4 and 8 after the bench run, 1 parked (needs a v2 encoder for stored revolutions).
+
+## Weak-cell markers in the extended WRITE, flags2 bit 3 — 2026-10-18
+
+Owner's fifth list, items 6 and 7. Item 7 (gaps longer than 238 us without artificial
+pulses) already existed in the extended path (WRITE bit 5: 220 .. 2^32 ticks, silent
+timer-DMA segments, 2.4), so item 6 builds on it: with flags2 bit 3, followed by
+weak_jitter_ticks u16 (0..8192) and weak_seed u32 (0 = the board picks one; Sitzung-1's
+request, so a forensic write report can name the pattern before writing and a second drive
+can be written identically), every u32 interval carries two marker bits: bit 31 JITTER moves
+the transition ending the interval by a random offset within +-jitter (the next interval
+absorbs -r, later transitions stay put, both stay >= 220 ticks), bit 30 DROP omits it with
+probability 1/2 (the interval merges into the next). The last interval is never touched. The
+pass runs once per write on the board before the range check (`wave_weak_apply()` in
+ufi_write_wave.c, called from pack_deltas(); a track that shrinks below three intervals ends
+with 18), with a documented stream (mixed seed, xorshift32, bit 16 for drops, bits 8.. for
+the offset; the plain low bit of xorshift32 was found to be fully correlated for small seeds
+and is not used). Refusals: op 39 field 16 with reasons 1 bytes missing, 2 jitter > 8192,
+3 without the extended path, 4 together with verify; flags2 mask 0x0F, WRITE_LIMITS bit 7.
+END grows from 30 to 38 bytes: weak_applied (transitions displaced or dropped) and weak_seed.
+Native: wave unit test (length kept, 220 floor, determinism per seed, inert markers at
+jitter 0, last interval untouched, drop statistics over 200 markers, seed 0 = default
+stream), write-flags parser harness (accepted, 8193, missing bytes, classic path, with
+verify, off without bit 3), pack_deltas harness (pass before the plan, RANGE below three
+intervals, all drop outcomes over seeds, GW untouched). Host `write_track(weak_jitter=,
+weak_seed=)`, `mark_weak()`, `apply_weak()` (offline replay, used by FakeV2 for the END
+count), `WriteResult.weak_applied/weak_seed`, refusal field 16 name, `ufi --extended write
+--weak-jitter --weak-seed --weak-window --weak-drop-window`, FakeV2 and test. Protocol doc
+4.16, rows 0x22 / 0x08 / op 38 / op 39, TOC; acceptance plan row (op 44 as the
+counter-check); host README. Open from the list: 4 raw verify for USB writes and 8
+hard-sector write window after the bench run, 1 parked (needs a v2 encoder for stored
+revolutions).
