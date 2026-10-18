@@ -1148,3 +1148,19 @@ by id, returns `rows` (format rows 1..7), `raw_flux` and `iec`; FakeV2 answers s
 tests for both schemas. UFT (Sitzung 1) agreed to the layout beforehand and adapts its
 parser to both schemas once the hash is known. Protocol doc 1.3 (tables, row paragraph,
 masks), op table 6.1; README. Remaining from the list: item 4 (qualification table).
+
+## Which bench measurement sets which qualification bit — 2026-10-18
+
+Item 4 of UFT's third list, documentation only. `hardware_qualified` is 0 in every matrix
+row and the head flags CAPABILITY_UNCONFIRMED / WRITE_MODE_UNQUALIFIED are always set,
+because nothing was measured on the device yet. The acceptance plan gained section 4: per
+row and path bit (raw flux capture / raw write, format rows capture / decoder / raw write /
+content verify, Apple raw write, IEC read / write / verify, the two head flags) the
+measurement from sections 1-3 that qualifies it and the pass criterion, with UFT's `.ufec`
+transport capture or the `ufi` log plus raw file as the evidence to archive. The firmware
+side (storing set bits in UFI.CFG and showing them in op 22) is explicitly not built; the
+table fixes the procedure so a later bit means something. What a measurement does not
+prove is listed as well (decoder rates are not write rates, loopback is not magnetic
+content, one format or drive does not vouch for another). The old backlog section moved
+to 5. This closes UFT's third list: items 6, 5, 7, 1+3, 4 done, item 2 declined (the END
+generation block already carries the configuration generation).

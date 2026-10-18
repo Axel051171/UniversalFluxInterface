@@ -73,7 +73,39 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | HFE schreiben (1.17) | `ufi put x.hfe` → `ufi sd-write X.HFE` und `ufi write-disk x.hfe --verify` auf eine zweite Diskette | `WRITE.LOG` je Spur `ok (scale …)` zwischen 0,970 und 1,030 ohne `BAD`; Diskette im PC lesbar; Verify Stufe 3 bei `write-disk --verify` |
 | Verify 1024-Byte-Sektoren (1.17) | 8 × 1024-Byte-Spur per `ufi write --verify`, danach dieselbe Spur mit einem geänderten Byte > 512 | zweiter Durchlauf endet mit Status 6, nicht mit Stufe 3 |
 
-## 4 Offene Punkte aus der Recherche (Backlog, keine Zusage)
+## 4 Hardware-Qualifikation: welche Messung setzt welches Bit
+
+Die Fähigkeitsmatrix (`0x0F [22]`, USB_Protokoll 1.3) meldet je Zeile in Byte 4
+`hardware_qualified` mit den Pfadbits Bit0 Capture, Bit1 Decodierung, Bit2
+Raw-Flux-Schreiben, Bit3 Inhalts-Prüflesen; dazu die Kopfflags
+`CAPABILITY_UNCONFIRMED` (1) und `WRITE_MODE_UNQUALIFIED` (2). Alle Bits stehen in
+1.18-dev auf 0 beziehungsweise die Flags auf gesetzt, weil noch keine Messung am Gerät
+abgenommen ist. Diese Tabelle legt fest, welche Abnahme welches Bit freigibt. Ein Bit
+gilt je Zeile (Format beziehungsweise Rohfluss/IEC), je Board-Revision und je
+Firmware-SHA256; ein Mitschnitt der Messung (UFT `.ufec` aus dem CapturingTransport
+oder `ufi`-Protokoll mit Rohdatei) gehört als Beleg in `Erkenntnisse/Abnahme/`.
+Ablage und Meldung der gesetzten Bits durch die Firmware (Eintrag in `UFI.CFG`,
+Anzeige in Op 22) sind noch nicht gebaut; bis dahin dokumentiert diese Tabelle nur den
+Weg.
+
+| Zeile, Bit | Messung (Abschnitte oben) | Freigabekriterium |
+|---|---|---|
+| 0 Rohfluss, Bit0 Capture | Abschnitt 3: `ufi read-disk` einer Referenzdiskette, drei Umdrehungen, beide Köpfe, Spur 0 und innerste Spur; Vergleich mit einem zweiten Lesegerät (KryoFlux/Greaseweazle) derselben Diskette | Intervallhistogramme deckungsgleich (Spitzen ± 2 %), Indexdauer ± 0,2 %, kein `transport_dma`/`buffer_full` im Aufnahmekontext (Abschnitt 4 des Jobergebnisses) |
+| 0 Rohfluss, Bit2 Raw-Flux-Schreiben | Abschnitt 1: Loopback N−1/N/N+1, Streaming 65 537/100 000/200 000, Unterlauf-Provokation; Abschnitt 3: Rohspur zurückschreiben und mit Bit0-Aufnahme vergleichen | Loopback impulsgenau (± 1 Takt), Unterlauf endet mit Status 10 ohne WGATE-Rest; zurückgeschriebene Spur liest sich mit identischem Histogramm und Sektorsatz |
+| 1–7 Format, Bit0 Capture | wie Zeile 0 Bit0 mit einer Diskette dieses Formats (IBM-MFM DD/HD/ED, Amiga DD/HD, FM, HP-MMFM, CBM-GCR 1541, Mac-GCR 400K/800K, Apple II 5,25″) | Decoder meldet alle Sektoren mit gültigen Prüfsummen in zwei Umdrehungen; `GEOMETRY_UNCONFIRMED` bleibt (Einzelspur), aber keine `INCOMPLETE`-Flags |
+| 1–7 Format, Bit1 Decodierung | ANALYZE DETAIL und Prüflese-Referenz auf derselben Aufnahme gegen Host-Dekodierung (`ufi analyze`, `ufi recognize`, Host-Decoder derselben Rohdatei) | Sektorsatz, CHRN und Daten-CRC-Befunde identisch mit dem Host-Decoder; Apple und Mac zusätzlich Prüfsummen je Sektor |
+| 1–6 Format, Bit2 Raw-Flux-Schreiben | Abschnitt 3: `ufi write-disk --verify` eines Abbilds dieses Formats, Rücklesen auf einem zweiten Laufwerk | Rücklesen byteidentisch; bei Amiga Labels eingeschlossen; Spur 0 und innerste Spur, beide Köpfe |
+| 1–5 Format, Bit3 Inhalts-Prüflesen | Abschnitt 3 „Verify 1024-Byte-Sektoren“ und „Verify mit geändertem Byte“ für das Format (Op 40 Bericht) | gleiche Impulszahl mit falschem Inhalt fällt durch (Stufe < 3, Sektor „different“), unveränderte Spur erreicht Stufe 3 |
+| 7 Apple-II-GCR, Bit2 | Rohspur einer Apple-Diskette am Apple-Port zurückschreiben (klassisches Backend), Rücklesen am Apple II oder zweiten Gerät | 16 Sektoren mit gültigen 6-and-2-Prüfsummen, Prolog-/Epilogmarken erhalten |
+| 8 IEC, Bit0/Bit2/Bit3 | Abschnitt 3 „IEC schreiben“ mit `--verify`, danach `ufi iec-read`; Fehlerkanal 15 je Block | Rücklesen byteidentisch, `iec-status` `00, OK`; ein absichtlich beschädigter Block wird im Rücklesen gemeldet |
+| Kopf `WRITE_MODE_UNQUALIFIED` | erlischt, wenn Zeile 0 Bit2 und mindestens eine Formatzeile Bit2+Bit3 abgenommen sind | beide Backends (klassisch, Extended) mit Loopback und Medium |
+| Kopf `CAPABILITY_UNCONFIRMED` | erlischt, wenn für das angeschlossene Laufwerksprofil (Op 18) jede Zeile mit `zulässig ≠ 0` ihr Bit0 trägt | gilt nur für diese Kombination aus Board, Firmware und Laufwerksprofil |
+
+Was eine Messung nicht freigibt: Decoderraten sind keine Schreibraten (1 Mbit/s
+dekodieren bestätigt keinen ED-Schreibpfad), ein Loopback bestätigt keinen magnetischen
+Inhalt, ein Format bestätigt kein anderes, und ein Laufwerk bestätigt kein zweites.
+
+## 5 Offene Punkte aus der Recherche (Backlog, keine Zusage)
 
 - Präkompensation je Kodierung (FM/MFM/GCR/M2FM), Kopf und Radius messen statt pauschaler Heuristik; Kalibrierung mit Rücklesen.
 - Laufwerksprofile mit Herkunft und Datum (Schrittzeiten, Settle, Spin-up, höchste Spur) statt Blindwerte.
