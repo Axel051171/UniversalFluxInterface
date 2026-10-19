@@ -308,6 +308,11 @@ int main(void) {
     prepare(); locked = true; assert(ufi_write_start() == UFI_ERR_WRITE_PROT && !gate); locked = false;
     /* session write lock engaged between acceptance and start: status 22, nothing written */
     prepare(); soft_locked = true; assert(ufi_write_start() == UFI_ERR_SOFT_LOCK && !gate && g_write.state == WRITE_ERROR);
+    prepare(); soft_locked = false; g_write.raw_check = true;   /* 4.17: the fingerprint needs the extended path with a source period */
+    assert(ufi_write_start() == UFI_ERR_BAD_ARGS && !gate && g_write.state == WRITE_ERROR);
+    prepare(); g_write.raw_check = true; g_write.wave_mode = true; source_index_ticks = 55000000u;
+    write_buffer[0] = write_buffer[1] = write_buffer[2] = 1000;
+    assert(ufi_write_start() == 0 && raw_source.valid && raw_source.period == 55000000u); ufi_write_abort(); source_index_ticks = 0;
     soft_locked = false;
     /* flags2 bit0 (1.18): after the data the gate stays on, WDATA idle, until the index;
      * the END reports the erased tail; without the option the gate drops at once. */

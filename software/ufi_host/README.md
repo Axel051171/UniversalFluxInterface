@@ -147,6 +147,14 @@ entsteht dasselbe Muster, `apply_weak()` rechnet es offline nach. Nur im erweite
 nicht mit `--verify`. Bibliothek: `mark_weak()`, `apply_weak()`, `write_track(weak_jitter=,
 weak_seed=)`, `WriteResult.weak_applied` / `weak_seed`, Konstanten `WEAK_JITTER`, `WEAK_DROP`.
 
+`ufi --extended write IMAGE T S --raw-check` (Firmware 1.18, `flags2` Bit 4) lässt das Board
+nach dem Schreiben eine Umdrehung zurücklesen und deren Zeit-/Dichte-Fingerabdruck (64 Fenster ×
+8 Intervallklassen, Op 31/32) mit der Quelle vergleichen, ohne dekodierbare Sektoren; die
+Ausgabe nennt das Urteil (plausibel/abweichend), die Distanz, Impulszahlen und Umdrehungen.
+`ufi raw-check [--tolerance PROMILLE] [--profile] [--require] [--off]` zeigt oder setzt die
+Op-31-Optionen (`--require`: Abweichung endet mit Status 6) und den letzten Bericht.
+Bibliothek: `write_track(raw_check=True)`, `raw_verify_options()`, `raw_verify_report()`.
+
 IEC-Schreiben mit `--checkpoint` prüft jeden Sektor bytegenau zurück. `--resume`
 prüft zuerst die Quellidentität und alle bereits bestätigten Sektoren auf der
 Diskette. Die Diskette muss dieselbe bleiben; ohne bestätigte Sektoren ist ein

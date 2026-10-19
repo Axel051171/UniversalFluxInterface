@@ -68,6 +68,7 @@ typedef struct {
     uint16_t scale;             // time scale of the deltas in 1/1000 (1000 = as sent), 1.14
     bool erase_rest;            // flags2 bit0 (1.18): keep WGATE on, WDATA idle, until the next index
     uint32_t start_offset;      // flags2 bit1 (1.18): open the gate this many ticks after the index, 0 = at the index
+    bool raw_check;             // flags2 bit4 (1.18, 4.17): raw fingerprint read-back without a content reference
 } write_context_t;
 
 /* Greaseweazle pre_write / post_write (ufi_gw.c SET_PARAMS), ticks; 0 = off.  Configuration,
@@ -322,6 +323,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.verify_level = 0;
     g_write.erase_rest = false;
     g_write.start_offset = 0;
+    g_write.raw_check = false;
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -398,6 +400,10 @@ uint32_t ufi_write_precomp_select(uint8_t track) {
     }
     precomp_last_ns = (uint16_t)ns; precomp_last_track = track; precomp_last_phys = phys > 255u ? 255u : (uint8_t)phys;
     return ns;
+}
+
+void ufi_write_set_raw_check(bool on) {               /* flags2 bit4 (4.17): fingerprint read-back, no content reference needed */
+    g_write.raw_check = on;
 }
 
 void ufi_write_set_weak(int32_t jitter, uint32_t seed) {   /* jitter < 0: markers off; seed 0: the board picks one */
@@ -538,6 +544,13 @@ int ufi_write_start(void) {
         if (pret != UFI_OK) {
             g_write.state = WRITE_ERROR;
             return pret;
+        }
+    }
+    if (g_write.raw_check) {                /* flags2 bit4 (4.17): source fingerprint after the weak pass, u32 deltas intact */
+        if (!g_write.wave_mode || !source_index_ticks ||
+            !raw_profile_build(&raw_source, write_buffer, g_write.flux_count, source_index_ticks, false)) {
+            g_write.state = WRITE_ERROR;
+            return UFI_ERR_BAD_ARGS;
         }
     }
     if (ufi_board_soft_locked()) {          /* session lock engaged after acceptance (op 37) */
@@ -1015,8 +1028,20 @@ int ufi_write_verify(void) {
         return UFI_ERR_DMA;
     }
 
-    /* plausibility: transition count of revolution 0 within 5 % (at least 100) */
     const flux_revolution_t* r0 = ufi_flux_get_revolution(0);
+    if (g_write.raw_check) {
+        /* flags2 bit4 (4.17): the fingerprint is the verdict; level 2 on a match, level 1 (write
+         * completed) on a deviation, status 6 only when op 31 flag 0x02 demands the match */
+        raw_profile_t observed;
+        (void)raw_profile_build(&observed,(const uint32_t*)r0->samples,r0->count,r0->index_time,true);
+        const bool matches=raw_profile_compare(&raw_source,&observed,raw_tolerance,raw_report);
+        raw_available=true;
+        if(!matches && (raw_flags&2)){g_write.state=WRITE_ERROR;return UFI_ERR_DMA;}
+        g_write.verify_level=matches?VERIFY_READBACK_PLAUSIBLE:1u;
+        g_write.state=WRITE_IDLE;
+        return UFI_OK;
+    }
+    /* plausibility: transition count of revolution 0 within 5 % (at least 100) */
     int32_t diff = (int32_t)r0->count - (int32_t)g_write.flux_count;
     if (diff < 0) diff = -diff;
     uint32_t tolerance = g_write.flux_count / 20;
@@ -1124,7 +1149,7 @@ void ufi_write_service(void) {
         int ret = index_cut ? UFI_ERR_TRACK_LONG : UFI_ERR_DMA;
         if (g_write.state == WRITE_COMPLETE) {
             g_write.verify_level = 1;           /* timer and DMA finished */
-            ret = g_write.verify_after ? ufi_write_verify() : UFI_OK;
+            ret = (g_write.verify_after || g_write.raw_check) ? ufi_write_verify() : UFI_OK;
         }
         g_capture.state = CAPTURE_IDLE;     /* verify capture is internal, not sent */
         g_write.state = WRITE_IDLE;

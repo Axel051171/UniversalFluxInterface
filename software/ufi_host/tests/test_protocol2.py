@@ -262,6 +262,15 @@ class FakeV2:
                 if getattr(self, "last_weak", None) is not None:                 # 4.16: replay the board's pass on the received data
                     weak_seed = self.last_weak[1] or 0xC0FFEE42                  # seed 0: the board picks one
                     weak_applied = P2.apply_weak(decode_write(bytes(self.write_code)), self.last_weak[0], weak_seed)[1]
+                if getattr(self, "last_raw_check", False):                      # 4.17: fingerprint verdict, track 7 deviates
+                    count = len(decode_write(bytes(self.write_code)))
+                    ok = track != 7
+                    opts = getattr(self, "raw_options", (0, 30))
+                    self.raw_report = (bytes([1, 64, 1 if ok else 2, 1]) + struct.pack("<IIIII", source, self.index_ticks, count, count, 0 if ok else 900)
+                                       + struct.pack("<H", opts[1]) + bytes(6) + bytes(256))
+                    level = 2 if ok else 1
+                    if not ok and opts[0] & 2:
+                        status = 6
                 self._frame(P2.T_END, P2.WRITE, f.seq, status, struct.pack("<BI", level, 3 if flags & P2.WRITE_CLAMP else 0)
                             + self._gen_block(0) + struct.pack("<IIII", erased, applied, weak_applied, weak_seed))
                 self.write_req = None
@@ -346,7 +355,28 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x1F, 0xFF, 0x0F, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x1F, 0xFF, 0x1F, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 31:          # raw fingerprint options (6.3): [31] reads, [31, 1, flags, tol u16] sets
+            opts = getattr(self, "raw_options", (0, 30))
+            if len(a) == 5 and a[1] == 1:
+                flags, tol = a[2], struct.unpack_from("<H", a, 3)[0]
+                if flags not in (0, 1, 3) or not 1 <= tol <= 1000:
+                    r(P2.BAD_ARGS)
+                    return
+                opts = self.raw_options = (flags, tol)
+                self.config_gen += 1
+            elif len(a) != 1:
+                r(P2.BAD_ARGS)
+                return
+            r(0, bytes([1, opts[0]]) + struct.pack("<H", opts[1]) + bytes([3, 32, 64, 0]))
+        elif cmd == P2.ANALYSIS_JOB and a[0] == 32:          # last raw fingerprint report (6.3), 288 bytes or NOT_FOUND
+            rep = getattr(self, "raw_report", None)
+            if len(a) != 1:
+                r(P2.BAD_ARGS)
+            elif rep is None:
+                r(17)
+            else:
+                r(0, rep)
         elif cmd == P2.ANALYSIS_JOB and a[0] == 37:          # session write lock (4.6): [37] reads, [37, 1] engages
             if len(a) == 2 and a[1] == 1:
                 self.soft_locked = True
@@ -624,9 +654,12 @@ class FakeV2:
             weak = struct.unpack_from("<HI", a, at3) if flags2 & 8 and len(a) >= at3 + 6 else None
             expect = (at3 + (6 if flags2 & 8 else 0)) if len(a) > want else want
             bad_weak = weak is not None and (weak[0] > 8192 or not flags & 0x20 or flags & 1)
-            if flags2 & ~0x0F or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000) \
-                    or (precomp is not None and precomp > 2000) or bad_weak:
-                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x0F) if flags2 & ~0x0F else
+            bad_raw = bool(flags2 & 0x10) and (not flags & 0x40 or flags & 1)          # flags2 bit4 (4.17): needs index_ticks, not with verify
+            if flags2 & ~0x1F or len(a) != expect or (flags2 & 2 and not 1 <= start_offset <= 275_000_000) \
+                    or (precomp is not None and precomp > 2000) or bad_weak or bad_raw:
+                self.refusal = (cmd, seq, P2.BAD_ARGS) + ((10, flags2 & ~0x1F) if flags2 & ~0x1F else
+                                                          (17, 1) if bad_raw and not flags & 0x40 else
+                                                          (17, 2) if bad_raw else
                                                           (16, 1) if flags2 & 8 and weak is None else
                                                           (16, 2) if bad_weak and weak[0] > 8192 else
                                                           (16, 3) if bad_weak and not flags & 0x20 else
@@ -640,6 +673,7 @@ class FakeV2:
                 r(11)                                                          # NOT_IMPL: extended intervals are host-timed
                 return
             self.last_weak = weak                                              # (jitter, seed) or None
+            self.last_raw_check = bool(flags2 & 0x10)
             self.last_precomp = precomp                                        # None: profile / TIMING decides
             self.last_write_track = a[0]
             self.last_start_offset = start_offset
@@ -1264,6 +1298,63 @@ def test_session_write_lock(monkeypatch, capsys):
     assert cli.main(["write-lock", "engage"]) == 0 and fake2.soft_locked and "engaged" in capsys.readouterr().out
 
 
+def test_raw_check(monkeypatch, capsys, tmp_path):
+    """flags2 bit4 (4.17) and op 31/32 against the fake: options read/set/refused, no report before a write,
+    write_track(raw_check=True) sends flags2 0x10 behind the index period, the END carries level 2 on a match
+    and level 1 (status 0) on a deviation unless REQUIRE_TIMING_MATCH turns it into status 6, the report
+    decodes, local and board-side refusals (field 17), and the CLI commands."""
+    fake = FakeV2(revolutions=REVS)
+    dev = P2.Device2(fake)
+    assert dev.raw_verify_report() is None
+    o = dev.raw_verify_options()
+    assert (o["flags"], o["tolerance_permille"], o["supported_mask"], o["report_op"], o["windows"]) == (0, 30, 3, 32, 64)
+    gen = fake.config_gen
+    assert dev.raw_verify_options(tolerance_permille=50)["tolerance_permille"] == 50 and fake.requests[-1].payload == bytes([31, 1, 0, 50, 0])
+    assert dev.raw_verify_options(flags=P2.REQUIRE_TIMING_MATCH | P2.RAW_TIMING_PROFILE)["flags"] == 3 and fake.config_gen == gen + 2
+    for bad in (dict(flags=4), dict(tolerance_permille=0), dict(tolerance_permille=1001)):
+        with pytest.raises(ValueError):
+            dev.raw_verify_options(**bad)
+    with pytest.raises(P2.DeviceError):
+        dev.request(0x0F, bytes([31, 1, 2, 30, 0]))                      # REQUIRE without PROFILE: board refuses
+    dev.raw_verify_options(flags=0, tolerance_permille=30)
+    deltas = [1100] * 3000
+    r = dev.write_track(5, 0, deltas, extended=True, index_ticks=55_000_000, raw_check=True)
+    req = [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload
+    assert req[2] == 0x60 and req[15] == 0x10 and len(req) == 16 and r.verify_level == 2
+    rep = dev.raw_verify_report()
+    assert (rep["verdict_name"], rep["lossy"], rep["source_period"], rep["source_count"], rep["distance"], rep["tolerance_permille"], len(rep["windows"])) == \
+        ("plausible", True, 55_000_000, 3000, 0, 30, 64)
+    r = dev.write_track(7, 0, deltas, extended=True, index_ticks=55_000_000, raw_check=True)       # fake: track 7 deviates
+    assert r.verify_level == 1 and dev.raw_verify_report()["verdict"] == 2
+    dev.raw_verify_options(flags=3)
+    with pytest.raises(P2.DeviceError) as err:
+        dev.write_track(7, 0, deltas, extended=True, index_ticks=55_000_000, raw_check=True)
+    assert err.value.status == 6
+    dev.raw_verify_options(flags=0)
+    r = dev.write_track(5, 0, P2.mark_weak(deltas, [(100_000, 120_000)]), extended=True, index_ticks=55_000_000,
+                        raw_check=True, weak_jitter=100)                                           # with weak markers
+    assert r.verify_level == 2 and r.weak_applied > 0 and [q for q in fake.requests if q.cmd == P2.WRITE][-1].payload[15] == 0x18
+    for kw in (dict(extended=True), dict(extended=False, index_ticks=None), dict(extended=True, index_ticks=55_000_000, verify=True),
+               dict(extended=True, index_ticks=55_000_000, firmware_verify=True)):
+        with pytest.raises(ValueError):
+            dev.write_track(5, 0, deltas, raw_check=True, **kw)
+    for flags, detail in ((0x20, 1), (0x61, 2)):
+        with pytest.raises(P2.DeviceError):
+            dev.request(P2.WRITE, P2.WRITE_REQ.pack(5, 0, flags, 3, 3) + (struct.pack("<I", 1) if flags & 0x40 else b"") + bytes([0x10]))
+        lr = dev.last_refusal()
+        assert (lr["field"], lr["field_name"], lr["detail"]) == (17, "raw check", detail)
+    cap = P2.Device2(FakeV2(REVS)).read_track(2, 1, 2)
+    path = tmp_path / "t.scp"
+    cli.write_scp(str(path), {10: [cli._to_scp(rv) for rv in cap.revolutions]}, 2)
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["--extended", "write", str(path), "5", "0", "--raw-check"]) == 0
+    out = capsys.readouterr().out
+    assert "raw fingerprint: plausible" in out and "64 windows" in out
+    assert cli.main(["raw-check", "--tolerance", "40", "--require"]) == 0
+    out = capsys.readouterr().out
+    assert "tolerance 40" in out and "required" in out and "plausible" in out
+
+
 def test_weak_markers(monkeypatch, capsys, tmp_path):
     """flags2 bit3 (4.16) against the fake: mark_weak() sets the markers inside absolute windows, apply_weak()
     replays the board's pass (length kept, 220-tick floor, drops shorten the list), write_track(weak_jitter=)
@@ -1447,13 +1538,13 @@ def test_last_refusal(monkeypatch, capsys):
         dev.write_track(3, 1, [1100] * 2000, expected_config=7, expected_media=42)
     rf = dev.last_refusal()
     assert (rf["command"], rf["status"], rf["field"], rf["field_name"]) == (P2.GUARDED_WRITE, P2.MEDIA_CHANGED, 12, "media generation")
-    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x10")   # flags2 bit4: unknown
+    dev.send(P2.T_REQUEST, P2.WRITE, 77, P2.WRITE_REQ.pack(0, 0, 0, 3, 4) + b"\x20")   # flags2 bit5: unknown
     assert dev._wait(P2.WRITE, 77, (P2.T_RESPONSE,), 1.0).status == P2.BAD_ARGS
     rf = dev.last_refusal()
-    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 16)
+    assert (rf["command"], rf["seq"], rf["field_name"], rf["detail"]) == (P2.WRITE, 77, "flags2", 32)
     assert len(dev.read_track(0, 0, 1).revolutions) == 1 and dev.last_refusal()["seq"] == 77   # an accepted request keeps the note
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
-    assert cli.main(["refusal"]) == 0 and "flags2, detail 16" in capsys.readouterr().out
+    assert cli.main(["refusal"]) == 0 and "flags2, detail 32" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
@@ -1462,7 +1553,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x0F, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x1F, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1471,7 +1562,7 @@ def test_flag_masks(monkeypatch, capsys):
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["masks"]) == 0
     out = capsys.readouterr().out
-    assert "write_flags2       0x000f" in out and "format_hint_max    7" in out
+    assert "write_flags2       0x001f" in out and "format_hint_max    7" in out
 
 
 def test_end_generation_block():
@@ -1951,7 +2042,7 @@ def test_precomp_per_write_and_profile(monkeypatch, capsys):
     with pytest.raises(P2.DeviceError):
         dev.request(0x0F, bytes([45, 1, 1, 5, 0, 0]))                       # first zone must start at 0
     assert dev.precomp_profile(clear=True)["zones"] == [] and fake.requests[-1].payload == bytes([45, 0])
-    assert dev.flag_masks()["write_flags2"] == 0x0F
+    assert dev.flag_masks()["write_flags2"] == 0x1F
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["precomp", "--zones", "0:125,40:62"]) == 0
     out = capsys.readouterr().out

@@ -1397,3 +1397,27 @@ count), `WriteResult.weak_applied/weak_seed`, refusal field 16 name, `ufi --exte
 counter-check); host README. Open from the list: 4 raw verify for USB writes and 8
 hard-sector write window after the bench run, 1 parked (needs a v2 encoder for stored
 revolutions).
+
+## Raw fingerprint read-back per write, flags2 bit 4 — 2026-10-19
+
+Owner's fifth list, item 4. The 64x8 timing/density fingerprint of op 31/32 existed, but
+only together with firmware verify (WRITE bit 0), and the extended path refuses verify for
+sources without decodable reference sectors, so protection and raw tracks never got the
+format-independent comparison. flags2 bit 4 requests the fingerprint on its own: needs
+bit 6 index_ticks (the profile is normalised to the source revolution), not with bit 0, op
+39 field 17 (1 without bit 6, 2 with bit 0), a source that yields no profile is refused
+with 16 before seek and WGATE, flags2 mask 0x1F (WRITE_LIMITS flags are full, op 38 is the
+discovery). The source profile is built after the weak pass from the u32 deltas the board
+writes; after the write, ufi_write_verify() reads two revolutions back, compares revolution
+0 with the op 31 tolerance and fills the op 32 report; END verify_level 2 on a match,
+verify_level 1 with status 0 on a deviation, status 6 when op 31 REQUIRE_TIMING_MATCH is
+set; the count plausibility is not applied on this path. Native: write-flags parser harness
+(accepted with 0x60, off, with weak markers, refused without index_ticks and with verify),
+read-back harness (deviation -> level 1 / status 0, with flag 0x02 -> 6, match -> level 2,
+op 31 flag 0x01 not needed), write-start harness (classic path refused, extended path builds
+the source profile). Host: raw_verify_options() / raw_verify_report() (op 31/32 had no host
+support), write_track(raw_check=True), refusal field 17, ufi write --raw-check, ufi
+raw-check [--tolerance] [--profile] [--require] [--off], FakeV2 with op 31/32 and a
+deviating track 7, test. Protocol doc 4.17, rows 0x22 / op 38 / op 39, 6.3 note, TOC;
+acceptance plan row; host README. Open from the list: 8 hard-sector write window (after the
+bench run), 1 parked (needs a v2 encoder for stored revolutions).

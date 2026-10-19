@@ -458,7 +458,7 @@ static bool uses_drive(uint8_t cmd)
 enum {
     REFUSE_LENGTH = 1, REFUSE_FLAGS, REFUSE_TRACK, REFUSE_SIDE, REFUSE_REVS, REFUSE_SECTORS,
     REFUSE_SCALE, REFUSE_INDEX_TICKS, REFUSE_EXPECTED, REFUSE_FLAGS2, REFUSE_CONFIG_GEN,
-    REFUSE_MEDIA_GEN, REFUSE_ANALYSIS_OPTIONS, REFUSE_START_OFFSET, REFUSE_PRECOMP, REFUSE_WEAK
+    REFUSE_MEDIA_GEN, REFUSE_ANALYSIS_OPTIONS, REFUSE_START_OFFSET, REFUSE_PRECOMP, REFUSE_WEAK, REFUSE_RAW_CHECK
 };
 static uint8_t note_field, note_detail;     /* set by the parser of the running request */
 static uint8_t refusal[5];                  /* cmd, seq, status, field, detail of the last refusal */
@@ -624,6 +624,10 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
             if (!(p[2] & 0x20u)) { refuse(REFUSE_WEAK, 3); return UFI_ERR_BAD_ARGS; }
             if (p[2] & 0x01u) { refuse(REFUSE_WEAK, 4); return UFI_ERR_BAD_ARGS; }
         }
+        if (flags2 & 0x10u) {               /* bit4: raw fingerprint read-back (4.17); needs index_ticks (bit6), not with verify (bit0) */
+            if (!(p[2] & 0x40u)) { refuse(REFUSE_RAW_CHECK, 1); return UFI_ERR_BAD_ARGS; }
+            if (p[2] & 0x01u) { refuse(REFUSE_RAW_CHECK, 2); return UFI_ERR_BAD_ARGS; }
+        }
     }
     if (len!=at) { refuse(REFUSE_LENGTH, (uint8_t)at); return UFI_ERR_BAD_ARGS; }
     /* Extended data is already timed by the sender. Firmware verification is
@@ -644,6 +648,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
         ufi_write_set_start_offset(start_offset);
         ufi_write_set_precomp_ns(precomp_ns);
         ufi_write_set_weak(weak_jitter, weak_seed);
+        ufi_write_set_raw_check((flags2 & 0x10u) != 0);
         if (p[2] & 0x01u) ufi_quality_verify_begin(p[0], p[1]);   /* op 40: new per-sector report */
         op_write = true;
         write_seq = seq;

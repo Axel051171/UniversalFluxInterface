@@ -44,6 +44,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
   - 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
   - 4.16 Schwache Zellen schreiben (`flags2` Bit3, 1.18-dev)
+  - 4.17 Rohprüfung je Schreibauftrag (`flags2` Bit4, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -484,7 +485,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
-| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt, Bit2 `precomp_ns` u16 folgt (0 = aus, 1–2000, nur klassischer Pfad, 4.14), Bit3 Weak-Marker: `weak_jitter_ticks` u16 und `weak_seed` u32 folgen (nur erweiterter Pfad, nicht mit Bit0, 4.16); andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4/Bit6/Bit7) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32, `start_offset_applied` u32, `weak_applied` u32 und `weak_seed` u32 (38 Byte; 30 vor 4.16) |
+| 0x22 | WRITE | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren, Bit3 Zeitskala, Bit4 Kappen erlaubt, Bit5 erweiterter Schreibpfad, Bit6 Quell-Indexdauer (nur mit Bit5; für Prüflesen und Drehzahlprüfung 4.10), Bit7 erwartete Sektormenge EXPECT_SET; Bit2 wie bei READ: Apple 0–3, Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), `flux_count` u32, `byte_count` u32, dann in dieser Reihenfolge: bei Bit1 `sectors` u8, bei Bit3 `scale` u16 (1/1000, 500–2000), bei Bit6 `index_ticks` u32, bei Bit7 `expected` 12 Byte (Abschnitt 5.2), zuletzt optional `flags2` u8 (1.18: Bit0 Spurrest bis zum Index löschen, Bit1 `start_offset_ticks` u32 folgt, Bit2 `precomp_ns` u16 folgt (0 = aus, 1–2000, nur klassischer Pfad, 4.14), Bit3 Weak-Marker: `weak_jitter_ticks` u16 und `weak_seed` u32 folgen (nur erweiterter Pfad, nicht mit Bit0, 4.16), Bit4 Rohprüfung: Fingerabdruck-Rücklesen ohne Inhaltsreferenz (verlangt Bit6, nicht mit Bit0, 4.17); andere Bits BAD_ARGS; angekündigt durch WRITE_LIMITS Bit3/Bit4/Bit6/Bit7) | Annahme; dann sendet der Host Daten-Rahmen (type 4, cmd 0x22) mit zusammen `byte_count` Byte; Ende-Rahmen nach dem Schreiben mit `verify_level` u8, `clamped` u32 (1.15), ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), `erased_ticks` u32, `start_offset_applied` u32, `weak_applied` u32 und `weak_seed` u32 (38 Byte; 30 vor 4.16) |
 | 0x23 | ERASE | `track, side` u8 | – (eine Umdrehung) |
 | 0x24 | PATTERN | `track, side` u8, `interval_ns` u16, `duration_ms` u16 | – |
 | **Commodore IEC** | | | |
@@ -1337,7 +1338,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | 0 | u8 | Schema | 1 |
 | 1 | u8 | READ-Flags (0x20, 0x28) | 0x1F (0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
-| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker) | 0x0F (0x07 vor 4.16, 0x03 vor 4.14) |
+| 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker, Bit4 Rohprüfung) | 0x1F (0x0F vor 4.17, 0x07 vor 4.16, 0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
 | 5 | u8 | höchster Formathinweis | 7 |
 | 6 | u16 | Op-33-Flags (Apple-GCR) | 0x003F |
@@ -1394,6 +1395,7 @@ Felder, gemeinsam für READ 0x20/0x28, WRITE 0x22/0x27 und ANALYZE 0x25:
 | 14 | Startversatz (`flags2` Bit1) | 1 = die vier Bytes fehlen, 2 = 0 oder über 275 000 000 |
 | 15 | Präkompensation (`flags2` Bit2) | 1 = die zwei Bytes fehlen, 2 = über 2000 ns |
 | 16 | Weak-Marker (`flags2` Bit3) | 1 = die sechs Bytes fehlen, 2 = Jitter über 8192 Takte, 3 = ohne erweiterten Pfad (Bit5), 4 = zusammen mit Prüflesen (Bit0) |
+| 17 | Rohprüfung (`flags2` Bit4) | 1 = ohne Quell-Indexdauer (Bit6), 2 = zusammen mit Prüflesen (Bit0) |
 
 Reine Abfrage, nie BUSY; Nutzlast nach dem Op-Byte → BAD_ARGS. Host: `last_refusal()`
 mit Feldnamen, `ufi refusal`.
@@ -1709,6 +1711,36 @@ Konstanten `WEAK_JITTER`/`WEAK_DROP` in den Intervallen, `mark_weak(deltas, fens
 `apply_weak(deltas, jitter, seed)` als Nachrechnung, `WriteResult.weak_applied`/`weak_seed`,
 `ufi --extended write … --weak-jitter N [--weak-seed S] --weak-window A:B[,…]
 [--weak-drop-window A:B[,…]]`.
+
+### 4.17 Rohprüfung je Schreibauftrag (`flags2` Bit4, 1.18-dev)
+
+Der Zeit-/Dichte-Fingerabdruck aus 6.3 (64 indexbezogene Fenster × 8 logarithmische
+Intervallklassen, Op 31/32) lief bisher nur zusammen mit dem Firmware-Prüflesen (WRITE
+Bit0). Der erweiterte Pfad weist Prüflesen aber ab, wenn die Quelle keine dekodierbaren
+Referenzsektoren hat, also gerade bei Schutz- und Rohspuren, für die ein formatunabhängiger
+Vergleich gedacht ist. `flags2` Bit4 fordert den Fingerabdruck ohne Inhaltsreferenz an:
+
+- Anfrage: WRITE/GUARDED_WRITE `flags2` Bit4, keine weiteren Bytes. Verlangt Bit6
+  (`index_ticks`, also den erweiterten Pfad): das Profil wird auf die Quellumdrehung
+  normiert. Nicht zusammen mit Bit0 (dort entsteht der Fingerabdruck über Op-31-Flag 0x01).
+  Op 39 Feld 17: 1 = ohne Bit6, 2 = mit Bit0. Eine Quelle, aus der kein Profil entsteht (ein
+  Intervall über die Indexdauer hinaus), wird **vor** Seek und Schreibtor mit Status 16
+  abgewiesen. Ankündigung: Op-38-Maske `flags2` 0x1F (WRITE_LIMITS-Flags sind voll belegt).
+  Mit Weak-Markern (Bit3) kombinierbar; das Profil entsteht dann aus den gewürfelten
+  Intervallen, die das Board tatsächlich schreibt.
+- Ablauf: Quellprofil nach dem Empfang der Daten, Schreiben, Rücklesen von zwei
+  Umdrehungen, Profil der Umdrehung 0, Vergleich mit der Op-31-Toleranz (Vorgabe 30 ‰;
+  Op-31-Flag 0x01 ist **nicht** nötig). Der Bericht steht danach in Op 32 (`[32]`, 288 Byte,
+  Aufbau wie in 6.3). Ende-Rahmen: `verify_level` 2, wenn der Fingerabdruck passt;
+  `verify_level` 1 (Schreiben abgeschlossen) mit Ende-Status 0, wenn er abweicht
+  (Diagnose, Vorgabe); Ende-Status 6, wenn Op-31-Flag 0x02 `REQUIRE_TIMING_MATCH` gesetzt
+  ist. Die Zählplausibilität (±5 %) wird auf diesem Weg nicht angewandt; die Impulszahlen
+  stehen im Bericht. Greaseweazle- und SD-Schreibaufträge sind nicht betroffen.
+- Grenzen wie in 6.3: Das Profil ist verlustbehaftet, gleiche Profile können verschiedene
+  Spuren haben, Indexversatz und Jitter erzeugen Unterschiede; kein Inhaltsbeweis, keine
+  Kopierschutzfreigabe. Host: `write_track(..., extended=True, index_ticks=, raw_check=True)`,
+  `raw_verify_options(flags=, tolerance_permille=)`, `raw_verify_report()`,
+  `ufi --extended write … --raw-check`, `ufi raw-check [--tolerance N] [--profile] [--require] [--off]`.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
@@ -3219,7 +3251,9 @@ geprüfter SD-Aufträge/Kopien. Quelle muss eine gültige Indexdauer haben; nati
 WRITE kann diese über das bestehende Source-Index-Feld übermitteln. Im Pflichtmodus
 führt eine unbrauchbare Quelle bereits **vor WGATE** zu BAD_ARGS. Ein unpassendes
 Rücklesen führt zu DMA-Fehler; Diagnosemodus liefert den Befund ohne dieses Veto.
-Ein positives Profil hebt Verify-Level2 niemals zu Inhalts-Level3 an.
+Ein positives Profil hebt Verify-Level2 niemals zu Inhalts-Level3 an. Seit 1.18-dev fordert
+WRITE `flags2` Bit4 (4.17) den Fingerabdruck auch ohne Prüflesen an; Flag 0x01 ist dafür
+nicht nötig, Flag 0x02 und die Toleranz gelten auch dort.
 
 Algorithmus:64 indexbezogene Winkelbereiche, jeweils8 logarithmische Klassen der
 auf die Umdrehung normierten Übergangsintervalle. Klassenobergrenzen in Einheiten

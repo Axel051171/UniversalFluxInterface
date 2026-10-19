@@ -198,6 +198,16 @@ def cmd_read_native(dev, a) -> None:
     print(f"saved native ticks and validated frames to {a.output}")
 
 
+def _raw_report_text(rep) -> str:
+    """One line for an op 32 fingerprint report (None = no report yet)."""
+    if rep is None:
+        return "none"
+    worst = max(range(len(rep["windows"])), key=lambda w: rep["windows"][w]) if rep["windows"] else 0
+    return (f"{rep['verdict_name']}, distance {rep['distance']} over {len(rep['windows'])} windows at {rep['tolerance_permille']} per mille, "
+            f"source {rep['source_count']} / read-back {rep['readback_count']} transitions, periods {rep['source_period']} / {rep['readback_period']} ticks"
+            + (f", largest difference in window {worst}" if rep["distance"] else ""))
+
+
 def _parse_windows(spec: str) -> list[tuple[int, int]]:
     """'START:END[,START:END...]' in 275 MHz ticks from the index -> [(start, end), ...]."""
     out = []
@@ -497,7 +507,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -639,6 +649,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("speed-check", help="speed check before writing (firmware 1.18, op 41): no argument shows tolerance and last "
                    "measurement, PERMILLE (1-500) sets the allowed deviation of the drive from the source index period "
                    "(writes with index_ticks end with status 23 outside it), 'off' disables").add_argument("tolerance", nargs="?")
+    p = sub.add_parser("raw-check", help="raw timing fingerprint of writes (firmware 1.18, op 31/32): no argument shows the options and the "
+                       "last report; --tolerance N sets the per-mille tolerance, --profile builds the fingerprint on every verified "
+                       "write, --require turns a deviation into status 6 (also for write --raw-check), --off clears both flags")
+    p.add_argument("--tolerance", type=int, default=None, metavar="PERMILLE")
+    p.add_argument("--profile", action="store_true")
+    p.add_argument("--require", action="store_true")
+    p.add_argument("--off", action="store_true")
     sub.add_parser("write-lock", help="session write lock (firmware 1.18, op 37): no argument shows lock and jumper state, 'engage' locks every disk "
                    "and drive write (status 22) until the board is reset; there is no disengage").add_argument("action", nargs="?", choices=["engage"])
     sub.add_parser("profile", help="effective drive settings of the selected drive; 'profile standard|konservativ|8zoll' applies a timing preset (8zoll: 8-inch drives, 8 ms steps),"
@@ -730,6 +747,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="ticks from the index: transitions ending inside get the jitter marker")
     p.add_argument("--weak-drop-window", default=None, metavar="START:END[,...]",
                    help="ticks from the index: transitions ending inside are omitted with probability 1/2 per write")
+    p.add_argument("--raw-check", action="store_true",
+                   help="firmware >= 1.18, with --extended: read one revolution back and compare its 64x8 timing fingerprint "
+                        "with the source (flags2 bit 4); no decodable sectors needed; verdict from op 32 is printed")
     p = sub.add_parser("write-disk")
     p.add_argument("image")
     p.add_argument("--hard-sectors", type=int, default=0, metavar="N", help=hs_help)
@@ -1096,6 +1116,17 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "masks":
             for k, v in dev.flag_masks().items():
                 print(f"{k:18} 0x{v:04x}" if k != "format_hint_max" else f"{k:18} {v}")
+        elif a.cmd == "raw-check":
+            flags = None
+            if a.off:
+                flags = 0
+            elif a.require or a.profile:
+                flags = (P2.RAW_TIMING_PROFILE if a.profile else 0) | (P2.REQUIRE_TIMING_MATCH | P2.RAW_TIMING_PROFILE if a.require else 0)
+            o = dev.raw_verify_options(flags, a.tolerance) if flags is not None or a.tolerance is not None else dev.raw_verify_options()
+            print(f"raw fingerprint: tolerance {o['tolerance_permille']} per mille, "
+                  f"{'profile on verified writes' if o['flags'] & 1 else 'no profile on verified writes'}, "
+                  f"match {'required' if o['flags'] & 2 else 'advisory'}")
+            print("  last report: " + _raw_report_text(dev.raw_verify_report()))
         elif a.cmd == "write-lock":
             lk = dev.write_lock(engage=a.action == "engage")
             print(f"session lock {'engaged (until MCU reset)' if lk['session'] else 'off'}, "
@@ -1196,13 +1227,16 @@ def main(argv: list[str] | None = None) -> int:
                                 **({'index_ticks': (tracks[n][0].index_time*P.FLUX_CLOCK_HZ+20000000)//40000000,
                                     'erase_rest': a.erase_rest, 'start_offset': a.start_offset,
                                     'precomp_ns': getattr(a, "precomp", None),
-                                    'weak_jitter': a.weak_jitter, 'weak_seed': a.weak_seed} if isinstance(dev,P2.Device2) else {}))
+                                    'weak_jitter': a.weak_jitter, 'weak_seed': a.weak_seed,
+                                    'raw_check': a.raw_check} if isinstance(dev,P2.Device2) else {}))
             print(_write_text(r, a.verify) + (f", erased tail {r.erased_ticks / P.FLUX_CLOCK_HZ * 1e3:.1f} ms"
                                               if getattr(r, "erased_ticks", 0) else "")
                   + (f", started {r.start_offset_applied / P.FLUX_CLOCK_HZ * 1e6:.1f} us after the index"
                      if getattr(r, "start_offset_applied", 0) else "")
                   + (f", weak: {r.weak_applied} transitions randomized (seed 0x{r.weak_seed:08x})"
                      if getattr(r, "weak_seed", 0) else ""))
+            if getattr(a, "raw_check", False) and isinstance(dev, P2.Device2):
+                print("  raw fingerprint: " + _raw_report_text(dev.raw_verify_report()))
         elif a.cmd == "write-disk":
             cmd_write_disk(dev, a)
         elif a.cmd == "erase":

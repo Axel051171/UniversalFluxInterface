@@ -75,6 +75,7 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | HFE schreiben (1.17) | `ufi put x.hfe` → `ufi sd-write X.HFE` und `ufi write-disk x.hfe --verify` auf eine zweite Diskette | `WRITE.LOG` je Spur `ok (scale …)` zwischen 0,970 und 1,030 ohne `BAD`; Diskette im PC lesbar; Verify Stufe 3 bei `write-disk --verify` |
 | Verify 1024-Byte-Sektoren (1.17) | 8 × 1024-Byte-Spur per `ufi write --verify`, danach dieselbe Spur mit einem geänderten Byte > 512 | zweiter Durchlauf endet mit Status 6, nicht mit Stufe 3 |
 | Schwache Zellen (1.18, `flags2` Bit3) | `ufi --extended write x.scp 40 0 --weak-jitter 2000 --weak-window A:B --weak-drop-window C:D`, danach `ufi analyze 40 0 -r 5` und `ufi weak --positions` | die Op-44-Fenster mit Differenz ≥ 2 liegen in A:B und C:D, außerhalb keine; zweimal mit demselbem `--weak-seed` geschrieben: `weak_applied` gleich und Rücklesen gleich; ohne Startwert: zwei Schreibvorgänge unterscheiden sich im Fenster |
+| Rohprüfung (1.18, `flags2` Bit4) | GCR- oder Schutzspur (nicht dekodierbar) mit `ufi --extended write x.scp 10 0 --raw-check`, danach dieselbe Spur mit einem Abbild anderer Dichte (z. B. HD statt DD) und `--raw-check` | erster Lauf: `verify_level` 2, Op 32 `plausibel`; zweiter Lauf: `verify_level` 1 und Op 32 `abweichend` mit Status 0, mit `ufi raw-check --require` Status 6; Fingerabdruck einer Spur mit Weak-Markern bleibt `plausibel` |
 
 ## 4 Hardware-Qualifikation: welche Messung setzt welches Bit
 

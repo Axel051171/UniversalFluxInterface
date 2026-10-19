@@ -621,6 +621,7 @@ uint32_t ufi_write_erased_ticks(void);          // END payload: length of the er
 void ufi_write_set_start_offset(uint32_t ticks);     // flags2 bit1 (1.18): gate opens at index + ticks (native WRITE)
 uint32_t ufi_write_start_applied(void);              // END payload: measured gate-open time minus index time, 0 = at the index
 void ufi_write_set_weak(int32_t jitter, uint32_t seed);   // flags2 bit3 (4.16): weak-cell markers, jitter ticks (< 0 off), seed 0 = board picks
+void ufi_write_set_raw_check(bool on);               // flags2 bit4 (4.17): raw fingerprint read-back (op 32 report), extended path with index_ticks
 void ufi_write_weak_result(uint32_t* applied, uint32_t* seed);   // END payload: transitions displaced or dropped, seed of this write
 void ufi_write_delayed_start(uint32_t t);            // TIM2 compare channel 4 reached index + start_offset (ufi_flux.c ISR)
 void ufi_write_set_speed_check(uint16_t permille);   // op 41 (1.18): tolerance around the source index period, 0 = off

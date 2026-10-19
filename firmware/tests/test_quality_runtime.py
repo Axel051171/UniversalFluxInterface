@@ -235,7 +235,7 @@ static bool ufi_drive_is_apple(void) {return apple_drive;}
 static bool half_track_ok;                                   /* Shugart double-step profile active */
 static bool ufi_drive_quarter_ok(uint8_t q) {return !q || (apple_drive ? q <= 3 : (q == 2 && half_track_ok));}
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
-      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS,REFUSE_START_OFFSET,REFUSE_PRECOMP,REFUSE_WEAK};
+      REFUSE_INDEX_TICKS,REFUSE_EXPECTED,REFUSE_FLAGS2,REFUSE_CONFIG_GEN,REFUSE_MEDIA_GEN,REFUSE_ANALYSIS_OPTIONS,REFUSE_START_OFFSET,REFUSE_PRECOMP,REFUSE_WEAK,REFUSE_RAW_CHECK};
 static uint8_t note_f,note_d;
 static void refuse(uint8_t f,uint8_t d){note_f=f;note_d=d;}
 static void ufi_write_set_erase_rest(bool x) {erase_rest=x;}
@@ -243,6 +243,8 @@ static int32_t precomp_set=-2;
 static void ufi_write_set_precomp_ns(int32_t n) {precomp_set=n;}
 static int32_t weak_set=-2;static uint32_t weak_seed_set;
 static void ufi_write_set_weak(int32_t j,uint32_t sd) {weak_set=j;weak_seed_set=sd;}
+static bool raw_check_set;
+static void ufi_write_set_raw_check(bool x) {raw_check_set=x;}
 static void ufi_flux_hard_sectors(uint8_t x) {hard_sectors=x;line_calls++;}
 static bool ufi_drive_media_matches(uint32_t token){return token==42 && !(change_during_prepare && media_checks++);}
 static void ufi_write_abort(void){write_aborts++;}
@@ -288,7 +290,7 @@ int main(void) {
     uint8_t f2[18]={0,0,0x21,3,0,0,0,3,0,0,0,1};
     assert(cmd_write(8,f2,12)==0 && erase_rest);
     f2[11]=0;assert(cmd_write(8,f2,12)==0 && !erase_rest);
-    f2[11]=0x10;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_FLAGS2 && note_d==0x10);
+    f2[11]=0x20;before=prepare_calls;assert(cmd_write(8,f2,12)==UFI_ERR_BAD_ARGS && prepare_calls==before && note_f==REFUSE_FLAGS2 && note_d==0x20);
     f2[11]=1;apple_drive=true;assert(cmd_write(8,f2,12)==UFI_ERR_NOT_IMPL && prepare_calls==before);apple_drive=false;
     f2[2]=0x61;memcpy(f2+11,"\xc0\x3b\x47\x03",4);f2[15]=1;      /* behind index_ticks */
     assert(cmd_write(8,f2,16)==0 && erase_rest && source_ticks==55000000);
@@ -315,7 +317,7 @@ int main(void) {
       pc[12]=0xd0;assert(cmd_write(8,pc,14)==0 && precomp_set==2000);
       pc[2]=0x20;assert(cmd_write(8,pc,14)==UFI_ERR_NOT_IMPL);              /* extended intervals are host-timed */
       pc[2]=0;pc[11]=0x07;memcpy(pc+12,"\x10\x27\0\0\x7d\0",6);assert(cmd_write(8,pc,18)==0 && erase_rest && start_offset_set==10000 && precomp_set==125);   /* all three */
-      pc[11]=0x10;assert(cmd_write(8,pc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_FLAGS2 && note_d==0x10);   /* bit4 unknown */
+      pc[11]=0x20;assert(cmd_write(8,pc,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_FLAGS2 && note_d==0x20);   /* bit5 unknown */
       assert(cmd_write(8,so,16)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==12); }  /* trailing bytes without bit1 */
     { /* flags2 bit3 (1.18, 4.16): weak-cell markers, jitter u16 + seed u32 follow; extended path only, never with verify */
       uint8_t wk[18]={0,0,0x20,3,0,0,0,3,0,0,0,0x08,0x00,0x20,0x78,0x56,0x34,0x12};   /* jitter 8192, seed 0x12345678 */
@@ -328,6 +330,16 @@ int main(void) {
       wk[2]=0x21;assert(cmd_write(8,wk,18)==UFI_ERR_BAD_ARGS && note_f==REFUSE_WEAK && note_d==4);                /* with verify */
       wk[2]=0x20;wk[11]=0;assert(cmd_write(8,wk,12)==0 && weak_set==-1);                                          /* flags2 without bit3: off */
       assert(cmd_write(8,wk,11)==0 && weak_set==-1 && cmd_write(8,wk,19)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH); }
+    { /* flags2 bit4 (1.18, 4.17): raw fingerprint read-back; needs index_ticks (bit6), never with verify (bit0), combinable with weak markers */
+      uint8_t rc[22]={0,0,0x60,3,0,0,0,3,0,0,0,0xc0,0x3b,0x47,3,0x10,0x10,0x00,1,0,0,0};   /* index 55 000 000 */
+      assert(cmd_write(8,rc,16)==0 && extended && raw_check_set && source_ticks==55000000 && weak_set==-1);
+      rc[15]=0;assert(cmd_write(8,rc,16)==0 && !raw_check_set);
+      rc[15]=0x18;assert(cmd_write(8,rc,22)==0 && raw_check_set && weak_set==16 && weak_seed_set==1);
+      uint8_t rc2[12]={0,0,0x20,3,0,0,0,3,0,0,0,0x10};
+      assert(cmd_write(8,rc2,12)==UFI_ERR_BAD_ARGS && note_f==REFUSE_RAW_CHECK && note_d==1);   /* no index_ticks: refused before the setter */
+      rc[2]=0x61;rc[15]=0x10;assert(cmd_write(8,rc,16)==UFI_ERR_BAD_ARGS && note_f==REFUSE_RAW_CHECK && note_d==2);   /* with verify */
+      rc[2]=0x60;assert(cmd_write(8,rc,16)==0 && raw_check_set);
+      assert(cmd_write(8,rc,15)==0 && !raw_check_set); }                                              /* no flags2: off */
     uint8_t strict[23]={0,0,0xa1,3,0,0,0,3,0,0,0,0xfe,0x0f,0,0,0,0,0,0,0,0,2,0};
     assert(cmd_write(9,strict,23)==0 && requested_set==4094);
     strict[22]=1;assert(cmd_write(9,strict,23)==UFI_ERR_BAD_ARGS && note_f==REFUSE_EXPECTED && note_d==4);

@@ -101,7 +101,7 @@ int main(void){
     code=BASE+ERRORS+r'''
 #include "ufi_verify.h"
 enum {WRITE_IDLE,WRITE_COMPLETE,WRITE_VERIFYING,WRITE_ERROR,CAPTURE_COMPLETE=8,CAPTURE_ERROR=9};
-static struct {unsigned state;bool wave_mode;uint32_t flux_count;uint8_t track,side,quarter,verify_level;} g_write;
+static struct {unsigned state;bool wave_mode,raw_check;uint32_t flux_count;uint8_t track,side,quarter,verify_level;} g_write;
 static struct {unsigned state,error_code;} g_capture;
 typedef struct {uint32_t count,index_time;const uint32_t* samples;} flux_revolution_t;
 static flux_revolution_t revolution={.count=1000};
@@ -161,7 +161,18 @@ int main(void){
     assert(ufi_write_verify()==UFI_ERR_DMA && raw_available && raw_report[2]==2);
     uint8_t report_copy[RAW_REPORT_SIZE];assert(ufi_raw_verify_report(report_copy)==RAW_REPORT_SIZE);
     assert(!memcmp(report_copy,raw_report,RAW_REPORT_SIZE));
-    puts("write readback: media binding before capture and explicit content/plausibility levels passed");
+    /* flags2 bit4 (4.17): the fingerprint alone decides - deviation keeps status 0 with level 1 unless
+     * op 31 flag 0x02 demands the match; a matching read-back gives level 2; op 31 flag 0x01 is not needed */
+    options[2]=1;assert(!ufi_raw_verify_options(options,5,option_reply));
+    g_write.raw_check=true;g_write.state=WRITE_COMPLETE;raw_available=false;verify_ref.n=1;
+    assert(!ufi_write_verify() && g_write.verify_level==1 && raw_available && raw_report[2]==2 && g_write.state==WRITE_IDLE && captures==5);
+    options[2]=3;assert(!ufi_raw_verify_options(options,5,option_reply));g_write.state=WRITE_COMPLETE;
+    assert(ufi_write_verify()==UFI_ERR_DMA && raw_report[2]==2 && g_write.state==WRITE_ERROR);
+    for(unsigned i=0;i<4096;i++)observed[i]=(i+1u)*1000u;                 /* the read-back equals the source */
+    options[2]=0;assert(!ufi_raw_verify_options(options,5,option_reply));g_write.state=WRITE_COMPLETE;
+    assert(!ufi_write_verify() && g_write.verify_level==VERIFY_READBACK_PLAUSIBLE && raw_report[2]==1 && captures==7);
+    g_write.raw_check=false;verify_ref.n=0;
+    puts("write readback: media binding before capture, explicit content/plausibility levels and the raw-only verdict passed");
 }
 '''
     run('regression_sd_verify_state',code,('src/ufi_verify.c','src/ufi_mfm.c','src/ufi_raw_verify.c'))

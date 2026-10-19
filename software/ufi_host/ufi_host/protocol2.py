@@ -159,6 +159,10 @@ WEAK_JITTER = 1 << 31                   # the transition ending this interval mo
 WEAK_DROP = 1 << 30                     # the transition ending this interval is omitted with probability 1/2
 WEAK_VALUE = 0x3FFFFFFF                 # the interval itself when markers are enabled
 WEAK_JITTER_MAX = 8192
+# ANALYSIS_JOB op 31/32 (6.3) and WRITE flags2 bit4 (4.17): raw timing/density fingerprint of a write
+RAW_TIMING_PROFILE = 0x01               # op 31: build the fingerprint on every firmware-verified write
+REQUIRE_TIMING_MATCH = 0x02             # op 31: a deviating or missing fingerprint fails the write (needs 0x01 for verified writes)
+RAW_VERDICT = {1: "plausible", 2: "deviating", 4: "not available"}
 VERIFY_LEVELS = {0: "none", 1: "write completed", 2: "read-back plausible (count only)",
                  3: "content verified", 4: "unverifiable"}
 FILE_CREATE = 0x01
@@ -527,7 +531,7 @@ VERIFY_FORMATS = {0: "no reference", 1: "IBM MFM", 2: "Amiga", 3: "IBM FM", 4: "
 REFUSAL_FIELDS = {0: "unknown", 1: "length", 2: "flags", 3: "track/quarter", 4: "side/position", 5: "revs/period",
                   6: "sectors", 7: "scale", 8: "index_ticks", 9: "expected set", 10: "flags2",
                   11: "configuration generation", 12: "media generation", 13: "analysis options", 14: "start offset",
-                  15: "precomp", 16: "weak markers"}
+                  15: "precomp", 16: "weak markers", 17: "raw check"}
 
 
 def generation_block(payload: bytes, offset: int) -> dict | None:
@@ -1287,6 +1291,48 @@ class Device2:
                 "tolerance_flags": tolerance, "quality_features": features, "diagnostic_flags": diagnostics,
                 "position_byte": reply[14]}
 
+    def raw_verify_options(self, flags: int | None = None, tolerance_permille: int | None = None) -> dict:
+        """Op 31 (firmware 1.18, USB_Protokoll 6.3): options of the raw timing/density fingerprint.  Both
+        None reads; otherwise the missing value is read first and both are set: flags RAW_TIMING_PROFILE
+        (fingerprint on every firmware-verified write) and REQUIRE_TIMING_MATCH (a deviation fails the
+        write with status 6; also honoured by write_track(raw_check=True)), tolerance 1..1000 per mille
+        (default 30).  Session-local; setting bumps the configuration generation.  Returns {'flags',
+        'tolerance_permille', 'supported_mask', 'report_op', 'windows'}."""
+        if flags is None and tolerance_permille is None:
+            d = self.analysis_op(31)
+        else:
+            if flags is None or tolerance_permille is None:
+                cur = self.raw_verify_options()
+                flags = cur["flags"] if flags is None else flags
+                tolerance_permille = cur["tolerance_permille"] if tolerance_permille is None else tolerance_permille
+            if flags & ~3 or (flags & 2 and not flags & 1 and False) or not 1 <= tolerance_permille <= 1000:
+                raise ValueError("raw verify: flags 0..3, tolerance 1..1000 per mille")
+            d = self.analysis_op(31, struct.pack("<BBH", 1, flags, tolerance_permille))
+        if len(d) < 8 or d[0] != 1:
+            raise DeviceError(ANALYSIS_JOB, 0) if False else ValueError("raw verify options: unexpected reply")
+        return dict(flags=d[1], tolerance_permille=struct.unpack_from("<H", d, 2)[0], supported_mask=d[4],
+                    report_op=d[5], windows=d[6])
+
+    def raw_verify_report(self) -> dict | None:
+        """Op 32 (6.3): the fingerprint report of the last write that built one (verified write with op 31
+        flag 0x01, or write_track(raw_check=True)); None while no report exists.  verdict 1 plausible,
+        2 deviating, 4 not available; the 64 window distances are the absolute bin differences per
+        1/64 revolution.  A lossy timing fingerprint, never a content verdict."""
+        try:
+            d = self.analysis_op(32)
+        except DeviceError as e:
+            if e.status == 17:                                  # NOT_FOUND: no report since reset
+                return None
+            raise
+        if len(d) < 32 or d[0] != 1:
+            raise ValueError("raw verify report: unexpected reply")
+        windows = d[1]
+        src_p, rb_p, src_n, rb_n, dist = struct.unpack_from("<IIIII", d, 4)
+        return dict(verdict=d[2], verdict_name=RAW_VERDICT.get(d[2], str(d[2])), lossy=bool(d[3] & 1),
+                    source_period=src_p, readback_period=rb_p, source_count=src_n, readback_count=rb_n,
+                    distance=dist, tolerance_permille=struct.unpack_from("<H", d, 24)[0],
+                    windows=[struct.unpack_from("<I", d, 32 + 4 * w)[0] for w in range(min(windows, (len(d) - 32) // 4))])
+
     def write_lock(self, engage: bool = False) -> dict:
         """Session write lock (op 37, firmware 1.18).  engage=True engages it; there is no
         disengage over USB, only an MCU reset clears it.  Returns {'session': bool,
@@ -1681,7 +1727,7 @@ class Device2:
                     expected_config: int | None = None, expected_media: int | None = None,
                     erase_rest: bool = False, start_offset: int | None = None,
                     precomp_ns: int | None = None, weak_jitter: int | None = None,
-                    weak_seed: int = 0) -> WriteResult:
+                    weak_seed: int = 0, raw_check: bool = False) -> WriteResult:
         """deltas: flux intervals in 275 MHz ticks (first one measured from the index).
         precomp_ns (firmware 1.18, WRITE_LIMITS flags bit6, flags2 bit2): write precompensation for
         this write only, 0 = off (no track rule, on any track), 1..2000 ns applied as given; None
@@ -1715,6 +1761,15 @@ class Device2:
             if not self.write_limits().flags & 128:
                 raise ValueError("firmware does not announce weak-cell markers (WRITE_LIMITS bit 7)")
         plain = [d & WEAK_VALUE for d in deltas] if weak else deltas
+        if raw_check:
+            # flags2 bit4 (1.18, 4.17): the board compares the 64x8 timing fingerprint of a read-back
+            # revolution with the source; no content reference needed, verdict in raw_verify_report()
+            if not extended or index_ticks is None:
+                raise ValueError("raw_check needs the extended path with index_ticks (the source revolution period)")
+            if verify or firmware_verify:
+                raise ValueError("raw_check cannot be combined with verification (verified writes use op 31 flag 1)")
+            if not self.flag_masks()["write_flags2"] & 0x10:
+                raise ValueError("firmware does not accept the raw-check flag (op 38 flags2 mask bit 4)")
         guarded = expected_config is not None or expected_media is not None
         if guarded and (expected_config is None or expected_media is None or
                         not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
@@ -1764,7 +1819,7 @@ class Device2:
         if extended and index_ticks is not None:
             flags |= 0x40                   # bit6: source index period (verify reference, speed check)
             extra += struct.pack("<I", index_ticks)
-        if erase_rest or start_offset is not None or precomp_ns is not None or weak:
+        if erase_rest or start_offset is not None or precomp_ns is not None or weak or raw_check:
             limit_flags = self.write_limits().flags
             if precomp_ns is not None:
                 if not limit_flags & 64:
@@ -1781,7 +1836,7 @@ class Device2:
                 if not 1 <= start_offset <= 275_000_000:
                     raise ValueError("start offset: 1..275000000 ticks (up to one second after the index)")
             extra += bytes([(1 if erase_rest else 0) | (2 if start_offset is not None else 0) | (4 if precomp_ns is not None else 0)
-                            | (8 if weak else 0)])   # flags2
+                            | (8 if weak else 0) | (16 if raw_check else 0)])   # flags2
             if start_offset is not None:
                 extra += struct.pack("<I", start_offset)
             if precomp_ns is not None:
