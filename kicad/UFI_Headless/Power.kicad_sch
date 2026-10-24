@@ -17921,12 +17921,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C189199" (at 335.28 278.13 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "TI TPS25921ADR (eFuse 5 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 33k/10k = 6.0 V, C_SS 2.2 nF)" (at 335.28 278.13 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C189199"
+			(at 335.28 278.13 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "TI TPS25921ADR (eFuse 5 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 33k/10k = 6.0 V, C_SS 2.2 nF)"
+			(at 335.28 278.13 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a7c54d60-ee07-43c8-8bfa-dc2e160a4e3a")
 		)
@@ -18024,12 +18036,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C189199" (at 335.28 318.77 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "TI TPS25921ADR (eFuse 12 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 100k/(10k+1k) = 14.0 V, C_SS 1 nF)" (at 335.28 318.77 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C189199"
+			(at 335.28 318.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "TI TPS25921ADR (eFuse 12 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 100k/(10k+1k) = 14.0 V, C_SS 1 nF)"
+			(at 335.28 318.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4133aa24-2f9c-4043-8915-aea5c4edb0ca")
 		)
@@ -18125,9 +18149,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C4216" (at 297.18 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C4216"
+			(at 297.18 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "d4de5de2-8afe-435c-abc5-9da42f9b7ac6")
 		)
@@ -18205,9 +18235,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 304.8 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 304.8 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "d53dc4ae-4d13-480f-ba6c-00fc1de11458")
 		)
@@ -18285,9 +18321,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 312.42 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 312.42 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "d61ae6f8-b7c5-4c60-b338-a8e9ba905dcb")
 		)
@@ -18365,9 +18407,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C22807" (at 320.04 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C22807"
+			(at 320.04 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "6e324a97-dd53-499d-8fe7-d56ef40f2244")
 		)
@@ -18447,9 +18495,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C14663" (at 327.66 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C14663"
+			(at 327.66 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "38578260-21a2-413d-a468-9ed55186b507")
 		)
@@ -18529,9 +18583,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C1604" (at 335.28 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C1604"
+			(at 335.28 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "c79ad0d1-0dd9-4606-8cdd-256500c5334d")
 		)
@@ -18609,9 +18669,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 342.9 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 342.9 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4c8ee8c5-b312-445f-99f1-33e04842f0ef")
 		)
@@ -18689,9 +18755,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 297.18 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 297.18 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "e3778759-4e5c-4701-ab38-9ed1a88985c6")
 		)
@@ -18769,9 +18841,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 304.8 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 304.8 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "b1f68fd6-6268-416d-87f6-74bc1a85d659")
 		)
@@ -18849,9 +18927,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C21190" (at 312.42 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C21190"
+			(at 312.42 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "6dadaf29-580d-49e9-a8a3-caf7bbddc877")
 		)
@@ -18929,9 +19013,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 320.04 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 320.04 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "9aa0ac27-ed22-4664-9d15-24df499ce9c1")
 		)
@@ -19009,9 +19099,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C22807" (at 327.66 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C22807"
+			(at 327.66 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a75256a2-482a-4c5a-8330-b33a2092293c")
 		)
@@ -19091,9 +19187,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C14663" (at 335.28 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C14663"
+			(at 335.28 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "41c04db7-cf91-40aa-b8b1-73c5e3481efb")
 		)
@@ -19173,9 +19275,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C1588" (at 342.9 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C1588"
+			(at 342.9 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "41bc39f9-2b05-4a27-803b-f0ffe70d3240")
 		)
@@ -19253,9 +19361,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 350.52 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 350.52 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4cbf0aab-c468-4be4-809f-21a8b6ce5a38")
 		)
@@ -19781,5 +19895,405 @@
 			(justify left bottom)
 		)
 		(uuid "2140aca7-dde5-4198-9608-f42d4af4f9e8")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 360.68 215.9 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "111ff5a6-d40e-4014-870d-039bdf974eb4")
+		(property "Reference" "R160"
+			(at 358.14 215.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 363.22 215.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 358.902 215.9 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 360.68 215.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 360.68 215.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C25804" (at 360.68 215.9 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "451bec38-8856-405f-b4ec-e843a7f6fd2b")
+		)
+		(pin "2"
+			(uuid "bf2553b0-200c-48b2-b676-ae1027ba7a1c")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "R160")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 368.3 215.9 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3c297826-e691-4da0-b567-28810fde2a2f")
+		(property "Reference" "R161"
+			(at 365.76 215.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 370.84 215.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 366.522 215.9 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 368.3 215.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 368.3 215.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C25804" (at 368.3 215.9 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "ff864543-e7dc-4ad1-af2a-c47064ea1d4e")
+		)
+		(pin "2"
+			(uuid "0236aed9-e7a9-462d-8dd5-81e847477eb5")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "R161")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 360.68 226.06 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "8c722573-1ab1-4db7-9978-399b33309327")
+		(property "Reference" "R162"
+			(at 358.14 226.06 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "33k"
+			(at 363.22 226.06 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 358.902 226.06 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 360.68 226.06 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 360.68 226.06 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C4216" (at 360.68 226.06 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "a9dece7a-a2c0-4b2f-a385-93f1a71419aa")
+		)
+		(pin "2"
+			(uuid "ee3f4902-8a66-4ac9-a422-c5b8a2a4ce86")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "R162")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 368.3 226.06 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "985bb985-7111-4232-b021-99c7d5c02035")
+		(property "Reference" "R163"
+			(at 365.76 226.06 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 370.84 226.06 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 366.522 226.06 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 368.3 226.06 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 368.3 226.06 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C25804" (at 368.3 226.06 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "977dfa0a-ee8f-4147-a2a0-099f6c23910c")
+		)
+		(pin "2"
+			(uuid "86d3a0f4-9ea0-4f70-a852-3ca9be566e1c")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "R163")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "FDD_5V"
+		(at 360.68 212.09 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f6088e34-bd90-47a1-9f46-081a26b0a41e")
+	)
+	(global_label "V_FDD5"
+		(at 360.68 219.71 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "d887e331-48ae-4866-b89a-d54e5bcb288b")
+	)
+	(global_label "V_FDD5"
+		(at 368.3 212.09 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "55fd28d4-ab48-46d0-b95f-8243d2d6f2c8")
+	)
+	(global_label "GND"
+		(at 368.3 219.71 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "89022d02-8ac9-44a9-b038-00a1158b72b0")
+	)
+	(global_label "FDD_12V"
+		(at 360.68 222.25 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "a58ca7cf-e9f2-4ef8-b7cc-53c4126cd8e8")
+	)
+	(global_label "V_FDD12"
+		(at 360.68 229.87 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "705cf44e-41ae-41a1-bb31-bddfe95bbe98")
+	)
+	(global_label "V_FDD12"
+		(at 368.3 222.25 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c31bc959-fffb-4272-ab14-68074e632177")
+	)
+	(global_label "GND"
+		(at 368.3 229.87 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5fe1662a-90a2-436a-b1bc-0a5c7b52b9f3")
 	)
 )

@@ -3516,6 +3516,189 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "UFI_Headless:BSS138DW"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "Q"
+				(at -7.62 11.43 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "BSS138DW"
+				(at 1.27 11.43 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+				(at 0 -15.24 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30337.pdf"
+				(at 0 -17.78 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Dual N-channel MOSFET 50 V 200 mA, VGS(th) 0.5-1.5 V, RDS(on) 3.5 Ohm max at 10 V, SOT-363 (Diodes BSS138DW top view: 1 S2, 2 G2, 3 D1, 4 S1, 5 G1, 6 D2), single-unit symbol"
+				(at 0 0 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "dual nmos mosfet open drain BSS138DW 2N7002DW"
+				(at 0 0 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "BSS138DW_0_1"
+				(rectangle
+					(start -7.62 8.89)
+					(end 7.62 -8.89)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "BSS138DW_1_1"
+				(pin passive line
+					(at 2.54 -11.43 90)
+					(length 2.54)
+					(name "S2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 -5.08 0)
+					(length 2.54)
+					(name "G2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin open_collector line
+					(at 10.16 5.08 180)
+					(length 2.54)
+					(name "D1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at -2.54 -11.43 90)
+					(length 2.54)
+					(name "S1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 5.08 0)
+					(length 2.54)
+					(name "G1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin open_collector line
+					(at 10.16 -5.08 180)
+					(length 2.54)
+					(name "D2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(text "FDD CONNECTORS\nJ: 34-pin IBM PC / Shugart. Odd pins GND. Pins 10/12/14/16 = MOTEA/DRVSB/DRVSA/MOTEB (PC)\n   resp. DS0/DS1/DS2/MOTOR (Shugart, DS3 = pin 6 via JP1); the drive type selects the bus.\n   Pin 34 = DSKCHG (PC) / READY (Shugart); Shugart /DCD on pin 2 is not readable (DENSITY output).\nJ: Amiga external drive, 2x12 header, pin n = DB23 pin n (Amiga HRM pinout), pin 24 GND.\n   Adapter cable to DB23. SEL1B shares DRVSEL_B, SEL2B = DRVSEL_A via JP3 (DF2),\n   MTRXD shares MOTOR_B (each drive latches it on its select edge). Only one drive at a time.\n   CHECK: docs/Amiga_DB23_Adapter_Cable.md uses a different (inconsistent) pinout."
 		(exclude_from_sim no)
@@ -3568,10 +3751,6 @@
 				(hide yes)
 			)
 		)
-	)
-	(no_connect
-		(at 96.52 91.44)
-		(uuid "5bca5439-6a1f-5723-9fd6-2fd32ea430da")
 	)
 	(wire
 		(pts
@@ -4136,16 +4315,6 @@
 				(hide yes)
 			)
 		)
-	)
-	(wire
-		(pts
-			(xy 83.82 129.54) (xy 81.28 129.54)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "c35905e7-7880-5be8-bd5b-c4e2af4e139a")
 	)
 	(wire
 		(pts
@@ -6287,63 +6456,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GND")
-		(at 81.28 129.54 270)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "c3743e77-1905-5ffa-8b47-c0fe415c977e")
-		(property "Reference" "#PWR246"
-			(at 81.28 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 81.28 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 81.28 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 81.28 129.54 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "9417ca2f-daad-5e83-ab48-478ad4ebe441")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
-					(reference "#PWR246")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Connector_Generic:Conn_02x17_Odd_Even")
 		(at 88.9 109.22 0)
 		(unit 1)
@@ -7811,5 +7923,686 @@
 			(justify right)
 		)
 		(uuid "4c231c27-7c0e-48d7-a617-56b931f7ed7b")
+	)
+	(symbol
+		(lib_id "UFI_Headless:BSS138DW")
+		(at 160.02 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "42faafa6-d1e5-44cd-ba15-e38589b49367")
+		(property "Reference" "Q12"
+			(at 160.02 292.1 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "BSS138DW"
+			(at 160.02 313.69 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+			(at 160.02 284.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.diodes.com/assets/Datasheets/ds30337.pdf"
+			(at 160.02 281.94 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Dual N-channel MOSFET 50 V 200 mA, VGS(th) 0.5-1.5 V, RDS(on) 3.5 Ohm max at 10 V, SOT-363 (Diodes BSS138DW top view: 1 S2, 2 G2, 3 D1, 4 S1, 5 G1, 6 D2), single-unit symbol"
+			(at 160.02 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C154900" (at 160.02 299.72 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "Diodes BSS138DW-7-F (J6 pin 4 output on channel 1, channel 2 unused)" (at 160.02 299.72 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "3dcd5c2b-62e6-465e-9ab0-7fcfea2ef5ea")
+		)
+		(pin "2"
+			(uuid "3eda3d11-aacf-4e09-9837-63d89d902b40")
+		)
+		(pin "3"
+			(uuid "b32e372e-08a4-47e4-a394-1d95461288f2")
+		)
+		(pin "4"
+			(uuid "c25a4886-bd7e-4f35-9adc-48bce720180f")
+		)
+		(pin "5"
+			(uuid "bcc5f48d-4f97-4be8-9333-68c413daa207")
+		)
+		(pin "6"
+			(uuid "99f174c0-03a9-410a-9e2e-fb1795e38028")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "Q12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Jumper:SolderJumper_3_Bridged12")
+		(at 240.03 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "938fb2d7-a4d2-463e-8ee5-94fc4102b281")
+		(property "Reference" "JP7"
+			(at 240.03 297.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PIN33 GND/FLIPPY"
+			(at 240.03 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
+			(at 240.03 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 240.03 284.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "3-pole Solder Jumper, pins 1+2 closed/bridged"
+			(at 240.03 287.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "7549be57-fdf2-43bf-a116-a7bc93374a80")
+		)
+		(pin "2"
+			(uuid "e1523366-e8d6-43ba-b784-4ffd532d95b1")
+		)
+		(pin "3"
+			(uuid "0e82ec84-94d8-4631-b793-f121c067f1dc")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "JP7")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 260.35 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3d833487-7493-47fe-b205-4cb3c8095878")
+		(property "Reference" "R156"
+			(at 257.81 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "2.2k"
+			(at 262.89 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 258.572 299.72 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 260.35 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 260.35 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C4190" (at 260.35 299.72 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "2cdfa903-e602-4699-89b6-507de9169cde")
+		)
+		(pin "2"
+			(uuid "4a9221d9-cae5-45f6-90fd-ccbb8121de3e")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "R156")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 270.51 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "37372282-acd4-45c6-bfef-5fa52568df99")
+		(property "Reference" "R157"
+			(at 267.97 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "2.2k"
+			(at 273.05 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 268.732 299.72 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 270.51 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C4190" (at 270.51 299.72 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "d02ab8a8-4814-4af8-98b4-92935705dbf5")
+		)
+		(pin "2"
+			(uuid "22961fb0-cc01-4172-a8a4-3df763025777")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "R157")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 129.54 270.51 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "52dfba57-3a39-4660-8ee8-53f3318d9698")
+		(property "Reference" "R158"
+			(at 127.0 270.51 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100k"
+			(at 132.08 270.51 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 127.762 270.51 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 129.54 270.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 129.54 270.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C25803" (at 129.54 270.51 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "af631a4b-f0bb-4d4c-83a8-2413c9b878b8")
+		)
+		(pin "2"
+			(uuid "96b9d0b9-091c-4287-8632-43eb338527a4")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "R158")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 139.7 270.51 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "87046a94-42bd-4d17-b571-ff8cf21bf5e9")
+		(property "Reference" "R159"
+			(at 137.16 270.51 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 142.24 270.51 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 137.922 270.51 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 139.7 270.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 139.7 270.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C21190" (at 139.7 270.51 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "f509a3d1-2bd8-490e-92c7-6aad9a95f28d")
+		)
+		(pin "2"
+			(uuid "256aec90-ca3a-4abf-9e0e-7f040112aa3e")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
+					(reference "R159")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(at 162.56 311.15000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f24ce649-e57d-4a0e-8cbc-8eb6c884f299")
+	)
+	(global_label "GND"
+		(at 149.86 304.8 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "6f1d6fd9-e5a1-40da-8a8a-7b7dd168dd77")
+	)
+	(global_label "FD_PIN4"
+		(at 170.18 294.64000000000004 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "28bcbd05-6939-4c5a-8960-16d4acad91c7")
+	)
+	(global_label "GND"
+		(at 157.48000000000002 311.15000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a5bf97e2-01e6-47f6-9254-bc38b23df2e2")
+	)
+	(global_label "FDD_PIN4"
+		(at 149.86 294.64000000000004 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7185ccfa-9fad-4a44-8b94-bb45736736e9")
+	)
+	(global_label "GND"
+		(at 234.95 299.72 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "bdfe5567-ec54-41cd-9f17-79b047a005af")
+	)
+	(global_label "FD_PIN33"
+		(at 240.03 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "dd95d579-da8a-4ebd-a7ec-257827eb384d")
+	)
+	(global_label "FLIPPY"
+		(at 245.11 299.72 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1d305683-50df-4313-b3fa-8e554559525b")
+	)
+	(global_label "FDD_PIN33"
+		(at 260.35 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c4a666ca-9a8c-41aa-824c-7943cc6221fc")
+	)
+	(global_label "FLIPPY"
+		(at 260.35 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e7d168d4-dd86-48f7-bfb4-d8167b4d623c")
+	)
+	(global_label "FLIPPY"
+		(at 270.51 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7f8fa0a9-007f-4f9b-9437-42f7483de21b")
+	)
+	(global_label "GND"
+		(at 270.51 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7b1425b5-e968-42db-90ac-19207922ce36")
+	)
+	(global_label "FDD_PIN4"
+		(at 129.54 266.7 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4e7fa567-e023-4c4c-8d87-eb0745672763")
+	)
+	(global_label "GND"
+		(at 129.54 274.32 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0852b45e-87d5-41cb-b2fe-b6521f2a7e29")
+	)
+	(global_label "FDD_5V"
+		(at 139.7 266.7 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "78146bbd-260e-40db-a148-84b9692675b2")
+	)
+	(global_label "FD_PIN4"
+		(at 139.7 274.32 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9d2928f9-f0f0-41dd-a719-c8924ca4d446")
+	)
+	(global_label "FD_PIN4"
+		(at 96.52000000000001 91.44 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "383dc143-de2e-4f8e-b41e-45a91c803d47")
+	)
+	(global_label "FD_PIN33"
+		(at 83.82000000000001 129.54 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "cd6e180e-9166-4ce8-9084-c3381e228a28")
+	)
+	(no_connect
+		(at 170.18 304.8)
+		(uuid "fe48c201-1435-4f4a-83ec-d66b6863b659")
 	)
 )

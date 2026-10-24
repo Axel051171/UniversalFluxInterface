@@ -10676,22 +10676,6 @@
 			)
 		)
 	)
-	(no_connect
-		(at 248.92 162.56)
-		(uuid "b534430a-04c9-5f87-b3c4-f9c7b170afd0")
-	)
-	(no_connect
-		(at 248.92 165.1)
-		(uuid "debd2b8e-f35f-5fa9-9c94-0613730b9400")
-	)
-	(no_connect
-		(at 248.92 109.22)
-		(uuid "22db1a84-69af-5ad3-963a-fb64526f22be")
-	)
-	(no_connect
-		(at 248.92 111.76)
-		(uuid "030a5ad0-1c87-5a6f-9455-a20cdda04724")
-	)
 	(wire
 		(pts
 			(xy 248.92 114.3) (xy 251.46 114.3)
@@ -10815,10 +10799,6 @@
 				(hide yes)
 			)
 		)
-	)
-	(no_connect
-		(at 172.72 172.72)
-		(uuid "d4aeffe7-7a9a-5bb7-80c4-ba0b28c0ee43")
 	)
 	(wire
 		(pts
@@ -11463,14 +11443,6 @@
 		)
 		(uuid "9827c87c-7e19-578d-a904-a59aa90a1fb8")
 	)
-	(no_connect
-		(at 248.92 231.14)
-		(uuid "0a02279a-5159-5cf9-b5b2-e529cc9fd344")
-	)
-	(no_connect
-		(at 248.92 233.68)
-		(uuid "98324e39-a9f4-5ba7-89e7-162512b9276d")
-	)
 	(wire
 		(pts
 			(xy 172.72 99.06) (xy 170.18 99.06)
@@ -11617,10 +11589,6 @@
 		(uuid "6ce67dbd-2fc7-5091-a1b7-603c03a66d5c")
 	)
 	(no_connect
-		(at 248.92 167.64)
-		(uuid "bbe9781a-d0db-5e0d-9d0a-fa1537e2e258")
-	)
-	(no_connect
 		(at 248.92 170.18)
 		(uuid "60a44853-ac9c-5080-8d96-611ab256f547")
 	)
@@ -11631,10 +11599,6 @@
 	(no_connect
 		(at 248.92 175.26)
 		(uuid "f134397e-a74e-59ab-ac66-59f5606b5186")
-	)
-	(no_connect
-		(at 248.92 86.36)
-		(uuid "e220c181-7b31-5393-9024-273c12f0a74a")
 	)
 	(wire
 		(pts
@@ -12121,10 +12085,6 @@
 	(no_connect
 		(at 248.92 119.38)
 		(uuid "34752f8a-0612-5ac7-b108-3489485546be")
-	)
-	(no_connect
-		(at 248.92 121.92)
-		(uuid "5553e8a8-c31a-590f-bc05-f9f035139acd")
 	)
 	(wire
 		(pts
@@ -27823,5 +27783,93 @@
 			(justify right)
 		)
 		(uuid "ff28cfa5-809e-4383-848a-68ecd9366864")
+	)
+	(global_label "V_FDD5"
+		(at 248.92 162.56 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "be3912ef-5a43-4836-ac76-badf86f261c3")
+	)
+	(global_label "V_FDD12"
+		(at 248.92 165.10000000000002 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f410648f-fc8c-4f92-87c2-129feb3b451b")
+	)
+	(global_label "MAC_CSTOUT"
+		(at 248.92 111.76000000000002 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c13624da-20af-4131-8cce-e56945ed8045")
+	)
+	(global_label "FDD_PIN4"
+		(at 172.72 172.72000000000003 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5e48937c-1c00-4ba1-99ef-d8208a2bdb45")
+	)
+	(global_label "FDD_PIN2_IN"
+		(at 248.92 231.14000000000001 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "56b6d57c-e67b-4169-bb0e-084d9ccfb23e")
+	)
+	(global_label "FDD_PIN4_IN"
+		(at 248.92 233.68 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "41e86329-54ac-4bb0-8b77-837b546f8d57")
+	)
+	(global_label "SYNC"
+		(at 248.92 167.64000000000001 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "51ae362f-980c-401c-840e-a472e22730fc")
+	)
+	(global_label "FDD_PIN33"
+		(at 248.92 121.92000000000002 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "253b9fe5-b349-4dad-9f2c-77387004e855")
+	)
+	(no_connect
+		(at 248.92 86.36)
+		(uuid "b0a687ff-472a-42ac-bf57-faa40a56ffb1")
+	)
+	(no_connect
+		(at 248.92 109.22)
+		(uuid "979637d2-fc81-48b5-ac22-cebc657364dc")
 	)
 )

@@ -101,6 +101,22 @@ extern const gpio_pin_t PIN_FLT5;           /* PF9, v1.0 (A11c): U28 FLT, open d
                                                overvoltage or thermal shutdown - also low while the rail is disabled (ENUV low
                                                counts as undervoltage), so only read while the rail is on. v0.x: unconnected */
 extern const gpio_pin_t PIN_FLT12;          /* PF10, v1.0: U29 FLT (R143) */
+
+/* v1.0 stage A11d (docs/Timer_Zuteilung.md): sync sensor, J6 pin 2/4/33, rail voltages, Mac port.
+ * All of them are inputs or released outputs until a driver uses them (stage A10). */
+extern const gpio_pin_t PIN_SYNC;           /* PC6, TIM8_CH1 (AF3): J19 pin 3 through U26 (74LVC14), high = sensor pulse;
+                                               own line since A11d (was wired onto the INDEX bus) */
+extern const gpio_pin_t PIN_FDD_PIN2_IN;    /* PD14: J6 pin 2 read back through U26 (high = line low) */
+extern const gpio_pin_t PIN_FDD_PIN4_IN;    /* PD15: J6 pin 4 read back through U26 */
+extern const gpio_pin_t PIN_FDD_PIN4;       /* PF14: J6 pin 4 output, MOSFET Q12 gate (bus_out() semantics, 100k R158) */
+extern const gpio_pin_t PIN_FDD_PIN33;      /* PB5: J6 pin 33 flippy signal through R156 2.2k (R157 2.2k to GND), only
+                                               reaches the connector when the solder jumper JP7 is set to FLIPPY */
+extern const gpio_pin_t PIN_MAC_SEL;        /* PB0: Mac drive SEL (head select) through U27 (AHCT244) to J23 pin 12 */
+extern const gpio_pin_t PIN_MAC_PWM;        /* PA8, TIM1_CH1 (AF1): 400K drive speed PWM through U27 and the solder
+                                               jumper JP5 (open by default) to J23 pin 20 */
+extern const gpio_pin_t PIN_MAC_CSTOUT;     /* PB1: J23 pin 20 read back through U26 (800K/FDHD !CSTOUT, high = asserted) */
+#define ADC_CH_V_FDD5           ADC_CHANNEL_4   /* PC4: FDD_5V through R160/R161 10k/10k (x2) */
+#define ADC_CH_V_FDD12          ADC_CHANNEL_8   /* PC5: FDD_12V through R162/R163 33k/10k (x4.3) */
 extern const gpio_pin_t PIN_WLOCK;          /* v0.5-v0.7: PE4 input, high = WRITE LOCK jumper set (J11/JP4).  v1.0 (A9b): the
                                                same pin PE4 is the OUTPUT WLOCK_FW (high = firmware lock, 100k pull-up R131
                                                keeps it high through reset) into the 3-input OR U14; the hardware lock state

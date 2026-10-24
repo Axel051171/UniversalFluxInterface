@@ -58,6 +58,14 @@ const gpio_pin_t PIN_WREN_SENSE      = {GPIOE, GPIO_PIN_6};   /* v1.0 */
 const gpio_pin_t PIN_FDD_INDEX2      = {GPIOB, GPIO_PIN_11};  /* v1.0, TIM2_CH4 */
 const gpio_pin_t PIN_FLT5            = {GPIOF, GPIO_PIN_9};   /* v1.0 (A11c), eFuse fault, low = fault */
 const gpio_pin_t PIN_FLT12           = {GPIOF, GPIO_PIN_10};  /* v1.0 (A11c) */
+const gpio_pin_t PIN_SYNC            = {GPIOC, GPIO_PIN_6};   /* v1.0 (A11d), TIM8_CH1 */
+const gpio_pin_t PIN_FDD_PIN2_IN     = {GPIOD, GPIO_PIN_14};  /* v1.0 (A11d) */
+const gpio_pin_t PIN_FDD_PIN4_IN     = {GPIOD, GPIO_PIN_15};  /* v1.0 (A11d) */
+const gpio_pin_t PIN_FDD_PIN4        = {GPIOF, GPIO_PIN_14};  /* v1.0 (A11d), MOSFET gate */
+const gpio_pin_t PIN_FDD_PIN33       = {GPIOB, GPIO_PIN_5};   /* v1.0 (A11d) */
+const gpio_pin_t PIN_MAC_SEL         = {GPIOB, GPIO_PIN_0};   /* v1.0 (A11d) */
+const gpio_pin_t PIN_MAC_PWM         = {GPIOA, GPIO_PIN_8};   /* v1.0 (A11d), TIM1_CH1 */
+const gpio_pin_t PIN_MAC_CSTOUT      = {GPIOB, GPIO_PIN_1};   /* v1.0 (A11d) */
 const gpio_pin_t PIN_BTN_A           = {GPIOB, GPIO_PIN_8};
 const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
 const gpio_pin_t PIN_EXP_IO1         = {GPIOE, GPIO_PIN_0};
@@ -169,6 +177,19 @@ void board_gpio_init(void)
     /* v1.0 (A11c): eFuse FLT lines, open drain with 10k pull-ups on the board; the internal pull-up
      * keeps them high on v0.x boards where PF9/PF10 are unconnected */
     init_pins(GPIOF, PIN_FLT5.pin | PIN_FLT12.pin, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
+    /* v1.0 (A11d): receiver inputs from U26 (driven, no pull), released outputs: Q12 gate low,
+     * flippy signal low, Mac SEL low, PWM low (TIM1 takes PA8 only when a 400K drive is selected) */
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    init_pins(PIN_SYNC.port, PIN_SYNC.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(GPIOD, PIN_FDD_PIN2_IN.pin | PIN_FDD_PIN4_IN.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(PIN_MAC_CSTOUT.port, PIN_MAC_CSTOUT.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    HAL_GPIO_WritePin(PIN_FDD_PIN4.port, PIN_FDD_PIN4.pin, GPIO_PIN_RESET);
+    init_pins(PIN_FDD_PIN4.port, PIN_FDD_PIN4.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    HAL_GPIO_WritePin(GPIOB, PIN_FDD_PIN33.pin | PIN_MAC_SEL.pin, GPIO_PIN_RESET);
+    init_pins(GPIOB, PIN_FDD_PIN33.pin | PIN_MAC_SEL.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    HAL_GPIO_WritePin(PIN_MAC_PWM.port, PIN_MAC_PWM.pin, GPIO_PIN_RESET);
+    init_pins(PIN_MAC_PWM.port, PIN_MAC_PWM.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(PIN_FDD_INDEX2.port, PIN_FDD_INDEX2.pin, GPIO_MODE_AF_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_VERY_HIGH, FDD_INDEX_AF);
     init_pins(GPIOB, GPIO_PIN_8 | GPIO_PIN_9, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
