@@ -719,6 +719,12 @@ void ufi_crash_fault(const uint32_t* frame, uint32_t kind);   // from the fault 
 void ufi_crash_boot(void);              // start-up: CRASH.LOG, reset cause text
 const char* ufi_crash_last(void);       // "reset: power-on" / "reset: HardFault pc=..."
 uint8_t ufi_board_rev(void);            // 5/6/7 (v0.x) or 10 (v1.0) from the BOARD_ID divider, 0 = unknown (ufi_v2.c)
+// clocks (ufi_clock.c, board v1.0 stage A9c): HSE from the 25 MHz TCXO in bypass mode, RTC on the LSE crystal + CR2032
+bool ufi_clock_hse_bypass(void);        // true = TCXO on OSC_IN (v1.0), false = crystal oscillator (v0.x)
+void ufi_clock_rtc_init(void);          // once per start-up after the board revision is known; v1.0 only
+bool ufi_clock_rtc_ready(void);         // LSE running and the RTC counting
+bool ufi_clock_rtc_get(uint16_t* year, uint8_t* mon, uint8_t* day, uint8_t* hour, uint8_t* min, uint8_t* sec);
+bool ufi_clock_rtc_set(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);   // host op follows in A10
 uint8_t ufi_crash_kind(void);           // 0 = no fault record at this start-up
 void ufi_stack_paint(void);             // first thing in ufi_init(): paint the free stack
 uint32_t ufi_stack_free(void);          // bytes of stack never used so far
