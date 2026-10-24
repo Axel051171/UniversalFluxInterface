@@ -3569,27 +3569,6 @@
 			)
 		)
 	)
-	(wire
-		(pts
-			(xy 83.82 91.44) (xy 81.28 91.44)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "f270592a-1f4f-5290-9425-7ef8a90ade6d")
-	)
-	(label "FD_PIN3"
-		(at 81.28 91.44 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "f29b2174-3236-55ff-9a77-09f9633a98c2")
-	)
 	(no_connect
 		(at 96.52 91.44)
 		(uuid "5bca5439-6a1f-5723-9fd6-2fd32ea430da")
@@ -5388,68 +5367,6 @@
 			(justify left bottom)
 		)
 		(uuid "0c3946b3-e641-51c2-8f19-caa8909b9352")
-	)
-	(wire
-		(pts
-			(xy 154.94 299.72) (xy 152.4 299.72)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "911d1938-435d-5fdd-ac5c-7a4fb73798cd")
-	)
-	(wire
-		(pts
-			(xy 160.02 303.53) (xy 160.02 306.07)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "abdd6623-7097-55cf-9746-54a911b417e8")
-	)
-	(label "FD_PIN3"
-		(at 160.02 306.07 270)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "47b11038-6891-5905-99c8-41a942718ea7")
-	)
-	(wire
-		(pts
-			(xy 165.1 299.72) (xy 167.64 299.72)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a591e14b-c486-5ae4-af32-debc1d82d745")
-	)
-	(global_label "FDD_5V"
-		(shape bidirectional)
-		(at 167.64 299.72 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "f093cf3a-7068-528c-ac76-5d54e57cf3a4")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 167.64 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 	)
 	(text "v0.7: JP3 open = J7 pin 9 SEL2B idle (pull-up); bridge = SEL2B driven by DRVSEL_A (second\nAmiga drive DF2, drive type amiga2). DRVSEL_A also selects J6 drive A / DS2: one bus user at a time."
 		(exclude_from_sim no)
@@ -7567,124 +7484,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GND")
-		(at 152.4 299.72 270)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "c9c7c94d-c140-52ac-bfd8-c3a619ac4199")
-		(property "Reference" "#PWR259"
-			(at 152.4 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 152.4 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 152.4 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 152.4 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "ffd0310a-2d41-5879-a405-7543c3c6841d")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
-					(reference "#PWR259")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Jumper:SolderJumper_3_Bridged12")
-		(at 160.02 299.72 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "9a9847ee-83a3-56ab-bd5a-0858010a84c3")
-		(property "Reference" "JP2"
-			(at 157.48 302.26 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "PIN3_GND/5V"
-			(at 160.02 296.926 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
-			(at 160.02 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 160.02 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "5decf66c-78f7-5149-86b1-9b76b43fdc6d")
-		)
-		(pin "2"
-			(uuid "7d372ce5-22ca-57ef-9aff-1efb05e5d09e")
-		)
-		(pin "3"
-			(uuid "93571522-00b8-57ed-8c25-e8b97d92b14e")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7efa7110-e20d-5bc0-a817-7dc9a25f889d"
-					(reference "JP2")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Jumper:SolderJumper_2_Open")
 		(at 200.66 299.72 0)
 		(unit 1)
@@ -7973,7 +7772,7 @@
 			)
 		)
 	)
-	(global_label "+5V"
+	(global_label "FDD_5V"
 		(at 254.0 205.74 270)
 		(effects
 			(font
@@ -7981,9 +7780,9 @@
 			)
 			(justify right)
 		)
-		(uuid "341a516f-454e-40aa-a5cb-df8f1a9da070")
+		(uuid "b13a931a-7cbd-4981-b159-2c54173f0d83")
 	)
-	(global_label "+5V"
+	(global_label "FDD_5V"
 		(at 256.54 205.74 270)
 		(effects
 			(font
@@ -7991,9 +7790,9 @@
 			)
 			(justify right)
 		)
-		(uuid "01b6dc0b-c86f-4cec-a33e-f3034c582b26")
+		(uuid "2b880e3d-ce07-408e-8162-67977e73d438")
 	)
-	(global_label "+5V"
+	(global_label "FDD_5V"
 		(at 259.08 205.74 270)
 		(effects
 			(font
@@ -8001,6 +7800,16 @@
 			)
 			(justify right)
 		)
-		(uuid "b82697f7-2efe-4536-ba45-2fae156254a1")
+		(uuid "921679f7-f52f-4e19-9f7c-55405df2b2b4")
+	)
+	(global_label "GND"
+		(at 83.82000000000001 91.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "4c231c27-7c0e-48d7-a617-56b931f7ed7b")
 	)
 )

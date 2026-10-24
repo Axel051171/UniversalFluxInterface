@@ -3904,6 +3904,639 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "74xGxx:74LVC2G32"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at -7.62 7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "74LVC2G32"
+				(at -7.62 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Dual OR Gate, Low-Voltage CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Dual Gate OR LVC CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "SSOP* VSSOP*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "74LVC2G32_1_1"
+				(arc
+					(start -7.62 5.08)
+					(mid -5.838 0)
+					(end -7.62 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 2.54) (xy -6.35 2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 -2.54) (xy -6.35 -2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(arc
+					(start 5.08 0)
+					(mid 3.202 -3.202)
+					(end 0 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 5.08)
+					(mid 3.2271 3.2271)
+					(end 5.08 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 5.08) (xy -7.62 5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -5.08) (xy -7.62 -5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin input line
+					(at -15.24 2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 12.7 0 180)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(symbol "74LVC2G32_2_1"
+				(arc
+					(start -7.62 5.08)
+					(mid -5.838 0)
+					(end -7.62 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 2.54) (xy -6.35 2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 -2.54) (xy -6.35 -2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(arc
+					(start 5.08 0)
+					(mid 3.202 -3.202)
+					(end 0 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 5.08)
+					(mid 3.2271 3.2271)
+					(end 5.08 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 5.08) (xy -7.62 5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -5.08) (xy -7.62 -5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin output line
+					(at 12.7 0 180)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(symbol "74LVC2G32_3_0"
+				(rectangle
+					(start -5.08 -5.08)
+					(end 5.08 5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "74LVC2G32_3_1"
+				(pin power_in line
+					(at 0 -10.16 90)
+					(length 5.08)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 10.16 270)
+					(length 5.08)
+					(name "VCC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "UFI_Headless:74LVC2G32"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "U"
+				(at -7.62 11.43 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "74LVC2G32"
+				(at 1.27 11.43 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" "Package_SO:TSSOP-8_3x3mm_P0.65mm"
+				(at 0 -15.24 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/74LVC2G32.pdf"
+				(at 0 -17.78 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Dual 2-input OR gate, single unit (1A 1B -> 1Y, 2A 2B -> 2Y), 1.65-5.5 V, TSSOP-8 / VSSOP-8: 1 1A, 2 1B, 3 2Y, 4 GND, 5 2A, 6 2B, 7 1Y, 8 VCC"
+				(at 0 0 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "OR gate dual LVC2G32"
+				(at 0 0 0)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "74LVC2G32_0_1"
+				(rectangle
+					(start -7.62 8.89)
+					(end 7.62 -11.43)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "74LVC2G32_1_1"
+				(pin input line
+					(at -10.16 6.35 0)
+					(length 2.54)
+					(name "1A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 3.81 0)
+					(length 2.54)
+					(name "1B"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 10.16 -3.81 180)
+					(length 2.54)
+					(name "2Y"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -13.97 90)
+					(length 2.54)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 -3.81 0)
+					(length 2.54)
+					(name "2A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -10.16 -6.35 0)
+					(length 2.54)
+					(name "2B"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 10.16 5.08 180)
+					(length 2.54)
+					(name "1Y"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "7"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 11.43 270)
+					(length 2.54)
+					(name "VCC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "8"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(text "FLUX INTERFACE\nOutputs: SN74LS07 open-collector, 40 mA sink (drives 150R terminators), 1k pull-ups to +5V.\n  MCU low = bus line asserted (active low), MCU high/reset = released.\nInputs: 1k pull-ups to +5V, 74LVC14A Schmitt inverter at 3V3 (5V-tolerant inputs).\n  MCU sees INVERTED level: high = drive asserts line. RDATA/INDEX capture on rising edge."
 		(exclude_from_sim no)
@@ -5549,37 +6182,6 @@
 			(type default)
 		)
 		(uuid "74a03354-f118-5dac-886d-4a0ff515a363")
-	)
-	(wire
-		(pts
-			(xy 132.08 299.72) (xy 134.62 299.72)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "f15b47a7-4882-5401-8439-d63ede7aa30c")
-	)
-	(global_label "FDD_WGATE_G"
-		(shape bidirectional)
-		(at 134.62 299.72 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "7ef58803-1a52-5592-bad5-2e614a1659cb")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 134.62 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
 	)
 	(wire
 		(pts
@@ -10245,176 +10847,6 @@
 			)
 		)
 	)
-	(global_label "+5V"
-		(at 165.1 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "ab5e1999-e8b0-414f-80b4-78d55349e76a")
-	)
-	(global_label "+5V"
-		(at 167.64 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "7a01b2d4-21e3-4c92-b13e-a1c32c8197b7")
-	)
-	(global_label "+5V"
-		(at 170.18 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "959ec926-0f6d-435c-8eac-2d10ec56be4e")
-	)
-	(global_label "+5V"
-		(at 172.72 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "4a87507f-711a-46c3-8430-6ef1030dc167")
-	)
-	(global_label "+5V"
-		(at 185.42 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "e30661df-13b6-46ca-ab18-56eb1481879d")
-	)
-	(global_label "+5V"
-		(at 187.96 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "b9c8dd7a-5cf9-4ad5-8347-5e852331b156")
-	)
-	(global_label "+5V"
-		(at 190.5 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "57004816-176e-4114-91ac-00907b8b4fd6")
-	)
-	(global_label "+5V"
-		(at 193.04 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "8b595f13-d3be-405e-b847-813cded57872")
-	)
-	(global_label "+5V"
-		(at 205.74 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "64f4d8fe-621e-4f53-9e33-dbd85f1db5a1")
-	)
-	(global_label "+5V"
-		(at 208.28 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "2f82586d-5810-4e95-89ec-84dde235a368")
-	)
-	(global_label "+5V"
-		(at 210.82 254.0 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "4ba7f505-ad7f-4972-89b8-4c7f317d847f")
-	)
-	(global_label "+5V"
-		(at 254.0 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "dc4ec56e-2dd2-4285-b62a-57029ebc9160")
-	)
-	(global_label "+5V"
-		(at 256.54 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "310b1a97-0919-4842-97cb-14cfae5506a8")
-	)
-	(global_label "+5V"
-		(at 259.08 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "b3cad519-1ea4-4ab1-81ef-d0afc4540ee6")
-	)
-	(global_label "+5V"
-		(at 261.62 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "8bb77c30-3270-4186-910f-0a91e949c82a")
-	)
-	(global_label "+5V"
-		(at 274.32 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "70261b49-44b9-4b39-9f2c-b2a191d1ee64")
-	)
-	(global_label "+5V"
-		(at 276.86 175.26 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "bdadcf08-faf7-4fea-990a-afb404c64191")
-	)
 	(symbol
 		(lib_id "Analog_Switch:TS5A3166DBVR")
 		(at 330.2 254 0)
@@ -10905,122 +11337,6 @@
 		(uuid "b5e866f1-636b-4e95-b57b-7ef9da43103d")
 	)
 	(symbol
-		(lib_id "74xGxx:74LVC1G332")
-		(at 119.38 299.72 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "75ff0e0b-a95a-41e8-868a-cb35259eee2f")
-		(property "Reference" "U14"
-			(at 112.268 307.086 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "74LVC1G332"
-			(at 125.476 292.1 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
-			(at 119.38 299.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g332.pdf"
-			(at 119.38 299.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Single OR 3-Input Gate, Low-Voltage CMOS"
-			(at 119.38 299.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC" "C2865081"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "SN74LVC1G332DCKR (SC-70-6; alternative Nexperia 74LVC1G332GW,125 C548342)"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Note" "3-input OR: WGATE reaches the drive only when FDD_WGATE is active AND WLOCK_HW (front switch) AND WLOCK_FW (PE4) are both low; A9b 2026-10-24 (was 74LVC1G32 with the jumper)"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "0ec5172c-2b34-45fa-8799-971792227fca")
-		)
-		(pin "2"
-			(uuid "d77caa2e-c0e0-41b7-9149-f722335c62e0")
-		)
-		(pin "3"
-			(uuid "f7b8f5da-b1f4-4290-b8e5-d350396ad06a")
-		)
-		(pin "4"
-			(uuid "c53460f9-60c8-4b7e-88bf-7d521bf77f58")
-		)
-		(pin "5"
-			(uuid "e168fef4-9730-4aa1-844d-7ead96d81ff0")
-		)
-		(pin "6"
-			(uuid "41121b38-f95f-431b-8eaf-44cf22bfa518")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
-					(reference "U14")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:R")
 		(at 93.98 309.88 0)
 		(unit 1)
@@ -11117,34 +11433,619 @@
 		)
 		(uuid "9518ef27-dd78-4381-8b55-a01b70acbdf3")
 	)
-	(global_label "FDD_WGATE"
-		(at 106.67999999999999 299.72 180)
+	(symbol
+		(lib_id "74xGxx:74LVC1G32")
+		(at 119.38 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "5b7a853b-6b1a-467d-9d12-979ed0ffe70e")
+		(property "Reference" "U14"
+			(at 114.3 307.34 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "74LVC1G32"
+			(at 127 292.1 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-353_SC-70-5"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g332.pdf"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Single OR 3-Input Gate, Low-Voltage CMOS"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C460530"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes 74LVC1G32SE-7 (2-input OR: LOCK = WLOCK_HW or WLOCK_FW; A11a, was 74LVC1G332 C2865081)"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "3-input OR: WGATE reaches the drive only when FDD_WGATE is active AND WLOCK_HW (front switch) AND WLOCK_FW (PE4) are both low; A9b 2026-10-24 (was 74LVC1G32 with the jumper)"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "74e2ed03-9d8a-481a-be4c-b7966cd29047")
+		)
+		(pin "2"
+			(uuid "37fa83bf-7b02-4640-980a-27672e0a3799")
+		)
+		(pin "3"
+			(uuid "4e9c3984-b9b0-4928-bfaa-a96464a022ec")
+		)
+		(pin "4"
+			(uuid "1a8aee62-54fa-47e0-a585-9926a147a3e6")
+		)
+		(pin "5"
+			(uuid "f6b34cd4-cdd2-4cc0-bd03-146a0d6b7209")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "U14")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 149.86 332.74 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "748dba4e-9ab9-4fff-8d10-effb31a2f437")
+		(property "Reference" "C84"
+			(at 147.32 332.74 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 152.4 332.74 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 150.825 328.93 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 149.86 332.74 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 149.86 332.74 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 149.86 332.74 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8e1a990f-a8aa-4304-8647-b7222b2c8c83")
+		)
+		(pin "2"
+			(uuid "4da3625d-3669-4e03-9e24-1712c2c5c19b")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "C84")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(at 149.86 328.93 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "07eccac9-3a59-4131-b363-7a2e5ef20089")
+	)
+	(global_label "GND"
+		(at 149.86 336.55 270)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
 			(justify right)
 		)
-		(uuid "5b43c7ba-b24e-4eda-9d0a-f24cdbe6b1da")
+		(uuid "23f30332-559d-49d8-9bb5-4676101bf0a4")
 	)
 	(global_label "WLOCK_HW"
-		(at 106.67999999999999 304.8 180)
+		(at 104.14 297.18 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
 			(justify right)
 		)
-		(uuid "01ea95e8-22bf-4a18-bf7c-92d406fe69fe")
+		(uuid "95cca5fe-e131-4b4a-8bdc-ed3226894cdc")
 	)
 	(global_label "WLOCK_FW"
-		(at 106.67999999999999 294.64000000000004 180)
+		(at 104.14 302.26000000000005 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
 			(justify right)
 		)
-		(uuid "12ded70a-929e-4c1c-a89f-4fc4812eb833")
+		(uuid "2c5ff52f-cb1c-42ae-9471-4315979c5cdd")
+	)
+	(global_label "LOCK"
+		(at 132.07999999999998 299.72 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d732c575-e719-4b43-a05c-0942fe3b789d")
+	)
+	(global_label "FDD_5V"
+		(at 165.1 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "778fd731-065c-4288-9277-1f22c2edc07c")
+	)
+	(global_label "FDD_5V"
+		(at 167.64 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "da7ed6ce-4dbc-4a01-8dcc-c29f7cf4cb1f")
+	)
+	(global_label "FDD_5V"
+		(at 170.18 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "12e69255-6263-4414-95c9-2c4bab3911bb")
+	)
+	(global_label "FDD_5V"
+		(at 172.72 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9c4e2c5a-5d5f-45ae-9361-a1b1d96a3be0")
+	)
+	(global_label "FDD_5V"
+		(at 185.42 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "8a6d9141-5006-4550-a65a-6c52c3e6dd0c")
+	)
+	(global_label "FDD_5V"
+		(at 187.96 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7f9e19cd-6e6c-4470-aebb-c1189e22ebd8")
+	)
+	(global_label "FDD_5V"
+		(at 190.5 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "193754fc-b436-40d2-8354-efbf20f92711")
+	)
+	(global_label "FDD_5V"
+		(at 193.04 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "30b68aaa-8fc3-44fe-8743-75079f050e3d")
+	)
+	(global_label "FDD_5V"
+		(at 205.74 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "29bbacb8-3d5d-404d-b0c5-6c5c39e90b3b")
+	)
+	(global_label "FDD_5V"
+		(at 208.28 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "19cfaf9b-bb32-48e2-b81c-ed7316b42dc4")
+	)
+	(global_label "FDD_5V"
+		(at 210.82 254.0 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "d9b92e31-5989-4234-810f-8059a988e1c1")
+	)
+	(global_label "FDD_5V"
+		(at 254.0 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e6351b11-8d6c-4759-8bda-0c2f934705c4")
+	)
+	(global_label "FDD_5V"
+		(at 256.54 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "86cdd3df-1b2f-46c4-9fda-f816a4afcb4c")
+	)
+	(global_label "FDD_5V"
+		(at 259.08 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "05890f6d-cd7e-4170-be42-ee3b39f2ea15")
+	)
+	(global_label "FDD_5V"
+		(at 261.62 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0b0fd5e5-417d-4a93-a199-92150db7628f")
+	)
+	(global_label "FDD_5V"
+		(at 274.32 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "3a26065c-36e8-49d7-9d6c-c122f528cf3b")
+	)
+	(global_label "FDD_5V"
+		(at 276.86 175.26 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7c1c17d1-0203-4603-b8da-ee7c15e1c364")
+	)
+	(text "A11a (24.10.2026, owner list M1/M4/M6): U14 74LVC1G32 forms LOCK = WLOCK_HW or WLOCK_FW (both high = locked; reset and cable-off states are locked). U30 74LVC2G32 gates the two write requests with LOCK: FDD_WGATE -> FDD_WGATE_G (U7 -> J6/J7 pin 24) and APL_WRREQ -> APL_WRREQ_G (U16 2A2 -> J14 pin 10). Both are active low, LOCK high forces them inactive. Replaces the 3-input OR of A9b; a later Mac port (K1) hangs on the same LOCK.\nM4: the 1k terminations R75-R91 (and R97-R99 on the Amiga sheet) now pull up to FDD_5V, so a drive with its supply off is not back-fed through the bus. M6: JP2 is gone, J6 pin 3 is GND (SA800/TEAC)."
+		(exclude_from_sim no)
+		(at 85.09 350.52 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c959aefa-07da-4639-93f7-4214b7095757")
+	)
+	(symbol
+		(lib_id "UFI_Headless:74LVC2G32")
+		(at 119.38 332.74 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c745bd15-e8bd-494a-a895-2046a319c73a")
+		(property "Reference" "U30"
+			(at 119.38 318.77 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "74LVC2G32"
+			(at 119.38 349.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_SO:TSSOP-8_3x3mm_P0.65mm"
+			(at 119.38 317.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://assets.nexperia.com/documents/data-sheet/74LVC2G32.pdf"
+			(at 119.38 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Dual 2-input OR gate, single unit (1A 1B -> 1Y, 2A 2B -> 2Y), 1.65-5.5 V, TSSOP-8 / VSSOP-8: 1 1A, 2 1B, 3 2Y, 4 GND, 5 2A, 6 2B, 7 1Y, 8 VCC"
+			(at 119.38 332.74 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C548635" (at 119.38 332.74 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "Nexperia 74LVC2G32DP,125 (dual 2-input OR: FDD_WGATE|LOCK -> FDD_WGATE_G, APL_WRREQ|LOCK -> APL_WRREQ_G; alt. TI SN74LVC2G32DCUR C91874 VSSOP-8)" (at 119.38 332.74 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "2d80cdd1-7483-49ec-bdae-318542607aa3")
+		)
+		(pin "2"
+			(uuid "dba600e1-bfec-4a5d-aa7a-74c36d881076")
+		)
+		(pin "3"
+			(uuid "30ec8c3d-676b-4f4f-b5f9-97673a936ca1")
+		)
+		(pin "4"
+			(uuid "ff86fd74-06b8-4bc9-adad-a70694e28691")
+		)
+		(pin "5"
+			(uuid "a655c560-a76d-41e0-a668-da3e57da56e4")
+		)
+		(pin "6"
+			(uuid "e7734bf6-31e8-4ab4-8611-4d7a3a6ff137")
+		)
+		(pin "7"
+			(uuid "b21ee5a5-aac5-4a00-9ed5-0f7926fdc169")
+		)
+		(pin "8"
+			(uuid "50dd0d7e-fc4a-4411-9064-770cdf97a3e8")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "U30")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "FDD_WGATE"
+		(at 109.22 326.39 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "fb21781e-14c4-4851-8ac7-4ad534268448")
+	)
+	(global_label "LOCK"
+		(at 109.22 328.93 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "86bf9537-2c8a-4076-9464-366f090492c6")
+	)
+	(global_label "APL_WRREQ_G"
+		(at 129.54 336.55 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "92d7a1be-8606-4ae5-9f5f-22e78d9742ae")
+	)
+	(global_label "GND"
+		(at 119.38 346.71000000000004 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "18611f8b-ffdf-4d64-bd97-7a6f898567c2")
+	)
+	(global_label "APL_WRREQ"
+		(at 109.22 336.55 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "3d7d3588-0e13-47c2-84aa-18f41885b509")
+	)
+	(global_label "LOCK"
+		(at 109.22 339.09000000000003 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0ad29061-b03b-468c-ac89-492ac6c8a967")
+	)
+	(global_label "FDD_WGATE_G"
+		(at 129.54 327.66 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "dcbda15a-2a28-4bb8-a324-0c4bf0e08a3a")
+	)
+	(global_label "+3V3"
+		(at 119.38 321.31 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7ec8e5a7-d19d-4c1b-89ce-3c69ee82e908")
 	)
 )
