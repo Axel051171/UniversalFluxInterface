@@ -27864,12 +27864,24 @@
 		)
 		(uuid "253b9fe5-b349-4dad-9f2c-77387004e855")
 	)
-	(no_connect
-		(at 248.92 86.36)
-		(uuid "b0a687ff-472a-42ac-bf57-faa40a56ffb1")
+	(global_label "MAC_SEL"
+		(at 248.92 109.22000000000001 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4c293da9-3e44-4ffa-bd77-c9df3359729f")
 	)
-	(no_connect
-		(at 248.92 109.22)
-		(uuid "979637d2-fc81-48b5-ac22-cebc657364dc")
+	(global_label "MAC_PWM"
+		(at 248.92 86.36000000000001 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "735048cb-87db-4916-a5ee-540004b20edd")
 	)
 )

@@ -6115,16 +6115,6 @@
 	)
 	(wire
 		(pts
-			(xy 33.02 111.76) (xy 33.02 114.3)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "300db02c-f09c-511f-a34f-3601f595d72e")
-	)
-	(wire
-		(pts
 			(xy 78.74 72.39) (xy 78.74 69.85)
 		)
 		(stroke
@@ -8343,63 +8333,6 @@
 			(project "UFI_Headless"
 				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
 					(reference "#PWR002")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 33.02 114.3 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "a3e74b5c-d8e8-569d-b1ac-d78873d972d8")
-		(property "Reference" "#PWR003"
-			(at 33.02 120.65 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 33.02 118.11 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 33.02 114.3 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 33.02 114.3 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "a33e21f6-98c8-56af-9330-c04cc65d9e37")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
-					(reference "#PWR003")
 					(unit 1)
 				)
 			)
@@ -19958,9 +19891,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 360.68 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 360.68 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "451bec38-8856-405f-b4ec-e843a7f6fd2b")
 		)
@@ -20038,9 +19977,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 368.3 215.9 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 368.3 215.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "ff864543-e7dc-4ad1-af2a-c47064ea1d4e")
 		)
@@ -20118,9 +20063,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C4216" (at 360.68 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C4216"
+			(at 360.68 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a9dece7a-a2c0-4b2f-a385-93f1a71419aa")
 		)
@@ -20198,9 +20149,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 368.3 226.06 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 368.3 226.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "977dfa0a-ee8f-4147-a2a0-099f6c23910c")
 		)
@@ -20295,5 +20252,223 @@
 			(justify right)
 		)
 		(uuid "5fe1662a-90a2-436a-b1bc-0a5c7b52b9f3")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 25.4 124.46 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "895d3904-8e37-4de8-9d38-efd785a83cec")
+		(property "Reference" "R164"
+			(at 22.86 124.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1M"
+			(at 27.94 124.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 23.622 124.46 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 25.4 124.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 25.4 124.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C22935" (at 25.4 124.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "1M (USB shield to GND, A11d S7)" (at 25.4 124.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "4f46e2cd-3439-4230-8f06-2e1405f2bb5e")
+		)
+		(pin "2"
+			(uuid "1fd83420-f5d4-4324-95e5-bf1f69645d0e")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "R164")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 33.02 124.46 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "cf042416-7794-4c90-bc4a-b112e56d90db")
+		(property "Reference" "C85"
+			(at 30.48 124.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4.7nF"
+			(at 35.56 124.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 33.985 120.65 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 33.02 124.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 33.02 124.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C53987" (at 33.02 124.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "4.7nF 50V X7R (USB shield to GND, A11d S7)" (at 33.02 124.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "05826ea0-a0f9-4974-abf0-8fedb7627456")
+		)
+		(pin "2"
+			(uuid "a8533b05-5f59-4e6d-a029-730d746e6dd0")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "C85")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(at 25.4 128.26999999999998 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "8ffbc22b-a92e-4b03-a6cf-cac927da3ef1")
+	)
+	(global_label "GND"
+		(at 33.02 128.26999999999998 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e9e55bd4-c595-4278-b6c0-00999ee63ab3")
+	)
+	(label "USB_SHIELD"
+		(at 33.02 111.76 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c7e120b8-feb8-47a4-acbb-9e7171cc783c")
+	)
+	(wire
+		(pts
+			(xy 25.4 120.64999999999999) (xy 33.02 111.76)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "81ae71c5-b27f-4145-978f-5985c00a6d04")
+	)
+	(wire
+		(pts
+			(xy 33.02 120.64999999999999) (xy 33.02 111.76)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1c21d1cf-2c69-4d97-91b6-42d5f9a04c83")
 	)
 )
