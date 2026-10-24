@@ -24,7 +24,8 @@ extern USBD_HandleTypeDef hUsbDevice;
 extern capture_context_t g_capture;
 
 #define SAMPLE_MS               10u
-#define OVERCURRENT_MA          1500u   /* polyfuses hold 1.1 A; INA180 saturates ~1.6 A (v0.x) / ~3.2 A (v1.0) */
+#define OVERCURRENT_MA          1500u   /* v0.x: polyfuses hold 1.1 A, INA180 saturates ~1.6 A; v1.0 (A11c): the TPS25921A
+                                           eFuses limit at 1.43-1.7 A (R_ILIM 150k) and retry, INA180 saturates ~3.2 A */
 #define OVERCURRENT_SAMPLES     5u      /* 50 ms: motor start-up peaks pass */
 #define USB_LOST_MS             300u
 #define RAIL_STAGGER_MS         50u     /* 5 V first, then 12 V */
@@ -32,6 +33,7 @@ extern capture_context_t g_capture;
 static uint8_t power_mask;
 static bool safe_mode;                  /* button B at start-up: supplies stay off */
 static uint8_t trip_mask;
+static uint8_t fault_mask;              /* v1.0 (A11c): eFuse FLT asserted while the rail is on (bit0 5 V, bit1 12 V) */
 static uint8_t oc_count[2];
 static uint16_t rail_ma[2];
 static uint32_t last_sample_ms, last_activity_ms, usb_ok_ms;
@@ -69,8 +71,34 @@ void ufi_board_init(bool power_on)
     ufi_board_power(0x03);
 }
 
+static const gpio_pin_t* const rail_flt[2] = {&PIN_FLT5, &PIN_FLT12};
+
+/* v1.0 (A11c): the eFuse FLT output is low on undervoltage, overvoltage or thermal shutdown.
+ * It is also low while ENUV is low, so a disabled rail never counts as a fault. A change is
+ * reported once as a POWER event (board_status power bits 2/3), the rail stays enabled: the
+ * TPS25921A retries by itself. */
+static void sample_faults(void)
+{
+    if (ufi_board_rev() < 10u)
+        return;
+    uint8_t f = 0;
+    for (int r = 0; r < 2; r++) {
+        if (((power_mask >> r) & 1u) && HAL_GPIO_ReadPin(rail_flt[r]->port, rail_flt[r]->pin) == GPIO_PIN_RESET)
+            f |= (uint8_t)(1u << r);
+    }
+    if (f != fault_mask) {
+        fault_mask = f;
+        if (f) {
+            led_set(&PIN_LED_ERR, true);
+        }
+        const board_status_t s = ufi_board_status();
+        ufi_v2_event(UFI_V2_EVT_POWER, &s, sizeof(s));
+    }
+}
+
 static void sample_rails(void)
 {
+    sample_faults();
     for (int r = 0; r < 2; r++) {
         /* v1.0 (board_rev 10): 50 mR shunt -> 1 mV/mA; earlier boards 0.1R -> 2 mV/mA */
         rail_ma[r] = (uint16_t)(ufi_adc_mv(rail_adc[r]) / (ufi_board_rev() >= 10u ? 1u : 2u));
@@ -146,7 +174,7 @@ board_status_t ufi_board_status(void)
 {
     sample_rails();
     board_status_t s = {0};
-    s.power = power_mask;
+    s.power = (uint8_t)(power_mask | (uint8_t)(fault_mask << 2));   /* bits 2/3: eFuse fault 5 V / 12 V (v1.0) */
     s.flags = (uint8_t)((ufi_board_jumper_locked() ? 0x01u : 0u) | (uint8_t)(trip_mask << 1) |
                         (session_lock ? 0x80u : 0u) |
                         (ufi_sd_present() ? 0x08u : 0u) |

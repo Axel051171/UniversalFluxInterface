@@ -53,6 +53,8 @@ const gpio_pin_t PIN_FDD12_EN        = {GPIOE, GPIO_PIN_3};
 const gpio_pin_t PIN_WLOCK           = {GPIOE, GPIO_PIN_4};   /* v1.0: output WLOCK_FW */
 const gpio_pin_t PIN_WREN_SENSE      = {GPIOE, GPIO_PIN_6};   /* v1.0 */
 const gpio_pin_t PIN_FDD_INDEX2      = {GPIOB, GPIO_PIN_11};  /* v1.0, TIM2_CH4 */
+const gpio_pin_t PIN_FLT5            = {GPIOF, GPIO_PIN_9};   /* v1.0 (A11c), eFuse fault, low = fault */
+const gpio_pin_t PIN_FLT12           = {GPIOF, GPIO_PIN_10};  /* v1.0 (A11c) */
 const gpio_pin_t PIN_BTN_A           = {GPIOB, GPIO_PIN_8};
 const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
 const gpio_pin_t PIN_EXP_IO1         = {GPIOE, GPIO_PIN_0};
@@ -154,6 +156,9 @@ void board_gpio_init(void)
     HAL_GPIO_WritePin(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_PIN_SET);
     init_pins(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(PIN_WREN_SENSE.port, PIN_WREN_SENSE.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    /* v1.0 (A11c): eFuse FLT lines, open drain with 10k pull-ups on the board; the internal pull-up
+     * keeps them high on v0.x boards where PF9/PF10 are unconnected */
+    init_pins(GPIOF, PIN_FLT5.pin | PIN_FLT12.pin, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(PIN_FDD_INDEX2.port, PIN_FDD_INDEX2.pin, GPIO_MODE_AF_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_VERY_HIGH, FDD_INDEX_AF);
     init_pins(GPIOB, GPIO_PIN_8 | GPIO_PIN_9, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);

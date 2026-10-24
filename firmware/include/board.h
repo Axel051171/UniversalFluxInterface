@@ -94,8 +94,13 @@ extern const gpio_pin_t PIN_VBUS_SENSE;     /* PA9, 22k/33k divider */
 
 /* v0.5: drive supply switches (high = on, 100k pull-downs keep them off in reset),
  * write lock jumper, buttons, expansion GPIO (v0.6: SD NAND on SDMMC2, no card detect) */
-extern const gpio_pin_t PIN_FDD5_EN;        /* PE2 */
-extern const gpio_pin_t PIN_FDD12_EN;       /* PE3 */
+extern const gpio_pin_t PIN_FDD5_EN;        /* PE2; v1.0 (A11c): ENUV of the TPS25921A eFuse U28 through R135 10k (R28 100k
+                                               pull-down keeps the rail off in reset), v0.x: gate of Q2 */
+extern const gpio_pin_t PIN_FDD12_EN;       /* PE3; v1.0: ENUV of U29 through R141 10k, v0.x: gate of Q4 */
+extern const gpio_pin_t PIN_FLT5;           /* PF9, v1.0 (A11c): U28 FLT, open drain with R137 10k to +3V3; low = undervoltage,
+                                               overvoltage or thermal shutdown - also low while the rail is disabled (ENUV low
+                                               counts as undervoltage), so only read while the rail is on. v0.x: unconnected */
+extern const gpio_pin_t PIN_FLT12;          /* PF10, v1.0: U29 FLT (R143) */
 extern const gpio_pin_t PIN_WLOCK;          /* v0.5-v0.7: PE4 input, high = WRITE LOCK jumper set (J11/JP4).  v1.0 (A9b): the
                                                same pin PE4 is the OUTPUT WLOCK_FW (high = firmware lock, 100k pull-up R131
                                                keeps it high through reset) into the 3-input OR U14; the hardware lock state

@@ -10254,14 +10254,6 @@
 			)
 		)
 	)
-	(no_connect
-		(at 172.72 160.02)
-		(uuid "14517e2d-4987-5d18-8668-29a637a231db")
-	)
-	(no_connect
-		(at 172.72 162.56)
-		(uuid "ddc059a4-e973-5632-996c-0975b1ae12cf")
-	)
 	(wire
 		(pts
 			(xy 172.72 86.36) (xy 170.18 86.36)
@@ -27811,5 +27803,25 @@
 			(justify left bottom)
 		)
 		(uuid "6dc1cb5d-44da-4423-90bb-0b57c2beb321")
+	)
+	(global_label "FLT5"
+		(at 172.72 160.02 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1e416486-65f8-4427-9188-e7260f932e23")
+	)
+	(global_label "FLT12"
+		(at 172.72 162.56 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "ff28cfa5-809e-4383-848a-68ecd9366864")
 	)
 )

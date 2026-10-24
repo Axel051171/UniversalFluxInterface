@@ -30,8 +30,8 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | 5 V extern | J17 PSU_IN (Klemme: 5 V, GND, GND, 12 V), F4 | für ein internes PC-Netzteil |
 | 5-V-Quellenwahl | U3 TPS2116 (USB gegen Platinen-5 V), **neu U19 TPS2116** (externe 5 V von J17 mit Vorrang vor dem Buck), TP9 | automatisch, kein Jumper mehr (J18 entfallen); `PWR_SRC` PG4 meldet die Hauptquelle |
 | 3,3 V | U4 AP7361C-33 LDO | TP1–TP4: 3V3, 5V, 12V, GND |
-| Laufwerksversorgung geschaltet | Q1/Q3 AO3401A High-Side, Q2/Q4 2N7002, F2/F3 Polyfuses 1,1 A, D13/D14 TVS | aus, solange die MCU im Reset ist; Firmware schaltet 5 V, dann 12 V (`ufi power`, `POWER` 0x40) |
-| Strommessung | R26/R29 0,1 Ω, U12/U13 INA180A1 → PC0/PC1 | über 1,5 A für 50 ms → Schiene aus, ERR-LED, Ereignis 0x83; `ufi selftest` Posten `rail_5v`/`rail_12v` |
+| Laufwerksversorgung geschaltet | **A11c:** U28/U29 TPS25921A eFuses (Strombegrenzung 1,43–1,7 A, Überspannungsabschaltung 6,0 V / 14,0 V, Anstiegsrampe ≈ 2,5 ms, automatischer Neustart, FLT an PF9/PF10), D13/D14 TVS; F2/F3 und Q1–Q4 entfallen | aus, solange die MCU im Reset ist (100 k Pull-downs an ENUV); Firmware schaltet 5 V, dann 12 V (`ufi power`, `POWER` 0x40); eFuse-Fehler in `board_status.power` Bit2/3 und Ereignis 0x83 |
+| Strommessung | R26/R29 50 mΩ (A9a), U12/U13 INA180A1 → PC0/PC1 | über 1,5 A für 50 ms → Schiene aus, ERR-LED, Ereignis 0x83; `ufi selftest` Posten `rail_5v`/`rail_12v` |
 | Laufwerksstrom-Ausgang | J3 4-polig (FDD_5V, GND, GND, FDD_12V) | interne Stiftleiste wie bisher, Kabel zum Laufwerk |
 | C64 PSU Guard | **neu J20 GUARD 1×4** (GND, OFF, ERR5, ERR12), R107/R108 | Anschluss der kleinen Spannungsplatine (`kicad/C64_PSU_Guard`, dort J3): OFF schaltet beide Guard-Kanäle ab, ERR5/ERR12 melden eine ausgelöste eFuse; Firmware-Nutzung folgt |
 
@@ -42,7 +42,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | 34-polig PC/Shugart | J6 2×17, LS07-Treiber U6/U7 (Open-Collector), HC14-Empfänger U8, 1-kΩ-Abschluss R75–R91 (**neu einzeln**), ESD D9–D11, Lötbrücken JP1 (Pin 6 DRATE für 3-Mode) und JP2 (Pin 3 GND/5 V) | Laufwerk A/B (Twist) oder Shugart DS0–DS3, 300/360 U/min (`ufi rpm`, `SET_RPM`), DENSITY/DRATE/TG43 (`ufi timing`, `ufi lines`), 8-Zoll über Adapter |
 | Amiga extern | J7 2×12 (Pin n = DB23 Pin n), R97–R99 | `drive=amiga|amiga2`, Amiga-ID (`AMIGA_ID`); DB23-Gehäusebuchse am Flachbandkabel von J7, einmal bei der Montage gesteckt |
 | Commodore IEC | J8 1×6 (DIN-6-Belegung), LS07 U9, HC14 U10, R92–R96, ESD D12 | 1541/1571/1581 roh und über DOS: `ufi iec-*`, D64/D71/D81 lesen und schreiben (`iec-read`/`iec-write`), Nibbles (`IEC_NIB`), Speicher/DOS-Befehle (`IEC_MEM`), Blockzugriff (`IEC_BLOCK`); DIN-6-Gehäusebuchse am Kabel von J8 |
-| Apple Disk II | J14 2×10, U16 AHCT244, U17 LVC2G17, U18 ICL7660 (−12 V), J15 zweites Laufwerk, J19 Sync-Sensor | 5,25-Zoll-GCR mit Viertelspuren, `apple-gcr`, `apple-table`, `read-dsk`; Sync-Sensor über `apple_sync=1` |
+| Apple Disk II | J14 2×10, U16 AHCT244, U17 LVC2G17, U18 ICL7662 (−12 V aus FDD_12V, bis 20 V spezifiziert – kein 7660), J15 zweites Laufwerk, J19 Sync-Sensor | 5,25-Zoll-GCR mit Viertelspuren, `apple-gcr`, `apple-table`, `read-dsk`; Sync-Sensor über `apple_sync=1` |
 | Atari SIO (optional) | nur Kabel DIN-6 → SIO-13 an J8 | Firmware-Option, keine Platinenänderung |
 | Schreibschutz in Hardware | **JP4 Lötbrücke** (statt Jumper J11), U14 LVC1G32, R33 | geschlossen = WGATE elektrisch gesperrt; zusätzlich Sitzungs-Schreibsperre per Software (`ufi write-lock`, Status 22) |
 
