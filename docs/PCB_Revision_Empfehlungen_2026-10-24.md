@@ -119,8 +119,17 @@ hängen. Sie sollten auf der Platine steckbar sein, nicht als Fädeldraht:
 - **C64 PSU Guard (kleine Spannungsplatine):** eigener Header J20 1×4 GUARD (GND, OFF = PG7,
   ERR5 = PG8, ERR12 = PG13, 10 k Pull-ups R107/R108) als Ersatz für den entfallenen J9;
   passt auf J3 der Guard-Platine (1 GND, 2 OFF, 3 ERR5, 4 ERR12). Firmware-Nutzung folgt.
-- **Pinreserve W5500 (A6):** SPI3 PC10 SCK, PC11 MISO, PC12 MOSI, PA15 CS, PD5 INT, PD10 RST
-  (Belegung gegen die ST-Pindatenbank geprüft); danach bleiben 24 der 144 MCU-Pins frei.
+- **LAN (A6, umgesetzt):** Blatt LAN mit U23 W5500 an SPI3 (PC10 SCK, PC11 MISO, PC12 MOSI,
+  PA15 CS, PD5 INT, PD10 RST; Belegung gegen die ST-Pindatenbank geprüft) und J22 HanRun
+  HR911105A (RJ45 mit integrierten Übertragern, Bob-Smith-Netz und LINK/ACT-LEDs; Pinbelegung
+  aus dem HanRun-Datenblatt Rev. A/2: 1 TD+, 2 TD−, 3 RD+, 4 TX-Mittelanzapfung, 5 RX-Mittelanzapfung,
+  6 RD−, 8 Gehäuse-GND, 9/10 grüne LED, 12/11 gelbe LED). Beschaltung nach der
+  WIZnet-Referenzschaltung W5500-Ref-ExternalMag (2015) und dem W5500-Datenblatt v1.1.0:
+  49,9 Ω Abschluss an TXP/TXN, 10 Ω + 22 nF an der TX-Mittelanzapfung, 6,8 nF in Reihe und
+  82 Ω gegen die RX-Mittelanzapfung mit 10 nF, EXRES1 12,4 kΩ 1 %, 1V2O 10 nF, TOCAP 4,7 µF,
+  VBG offen, RSVD 23 an GND, PMODE über 10 k auf 3,3 V (Auto-Negotiation), 25-MHz-Quarz wie Y1
+  mit 18 pF und 1 M, 3V3A über Ferrit mit 10 µF + 5 × 100 nF. Firmware: Pinmap im selben Commit,
+  der Chip bleibt bis zum Treiber im Reset. Danach bleiben 24 der 144 MCU-Pins frei.
 - **FDD-Abschluss:** 32 Einzelwiderstände 0603, 1 kΩ, statt RN1–RN8; 8-Zoll-Abschluss
   (150–220 Ω) gehört in den Adapter.
 - **Testbarkeit:** Loopback-Block (WDATA→RDATA, WGATE→Status, INDEX_SIM→INDEX, TRK0-Force),

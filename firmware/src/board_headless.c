@@ -64,6 +64,14 @@ const gpio_pin_t PIN_GUARD_OFF       = {GPIOG, GPIO_PIN_7};
 const gpio_pin_t PIN_GUARD_ERR5      = {GPIOG, GPIO_PIN_8};
 const gpio_pin_t PIN_GUARD_ERR12     = {GPIOG, GPIO_PIN_13};
 
+/* v1.0 board: W5500 LAN bridge on SPI3 */
+const gpio_pin_t PIN_LAN_SCK         = {GPIOC, GPIO_PIN_10};
+const gpio_pin_t PIN_LAN_MISO        = {GPIOC, GPIO_PIN_11};
+const gpio_pin_t PIN_LAN_MOSI        = {GPIOC, GPIO_PIN_12};
+const gpio_pin_t PIN_LAN_CS          = {GPIOA, GPIO_PIN_15};
+const gpio_pin_t PIN_LAN_INT         = {GPIOD, GPIO_PIN_5};
+const gpio_pin_t PIN_LAN_RST         = {GPIOD, GPIO_PIN_10};
+
 /* v0.7 Apple Disk II port (pins unconnected on older boards: harmless) */
 const gpio_pin_t PIN_APL_PH0         = {GPIOF, GPIO_PIN_12};
 const gpio_pin_t PIN_APL_PH1         = {GPIOF, GPIO_PIN_13};
@@ -153,6 +161,18 @@ void board_gpio_init(void)
               GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOG, PIN_WGATE_SENSE.pin | PIN_GUARD_ERR5.pin | PIN_GUARD_ERR12.pin,
               GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+
+    /* v1.0 LAN: no driver yet, so the W5500 stays in reset (RST low) with CS released
+     * (high); SPI3 pins are plain inputs until a driver claims them (PA15 leaves its
+     * JTDI pull-up behind here, the board has R119 on CS anyway) */
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    HAL_GPIO_WritePin(PIN_LAN_RST.port, PIN_LAN_RST.pin, GPIO_PIN_RESET);
+    init_pins(PIN_LAN_RST.port, PIN_LAN_RST.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    HAL_GPIO_WritePin(PIN_LAN_CS.port, PIN_LAN_CS.pin, GPIO_PIN_SET);
+    init_pins(PIN_LAN_CS.port, PIN_LAN_CS.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(GPIOC, PIN_LAN_SCK.pin | PIN_LAN_MISO.pin | PIN_LAN_MOSI.pin, GPIO_MODE_INPUT,
+              GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(PIN_LAN_INT.port, PIN_LAN_INT.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
 
     /* v0.7 Apple port: phases off, enables and write request released (high) before the
      * pins become outputs; RDDATA to TIM2_CH3, WRDATA left to ufi_write.c (TIM3_CH2) */

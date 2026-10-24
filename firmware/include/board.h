@@ -112,8 +112,17 @@ extern const gpio_pin_t PIN_GUARD_OFF;      /* PG7, J20 pin 2: C64 PSU Guard OFF
 extern const gpio_pin_t PIN_GUARD_ERR5;     /* PG8, J20 pin 3: Guard 5 V channel tripped (open drain, 10k pull-up R107) */
 extern const gpio_pin_t PIN_GUARD_ERR12;    /* PG13, J20 pin 4: Guard 12 V channel tripped (10k pull-up R108) */
 #define INDEX_SIM_AF            GPIO_AF4_TIM15  /* TIM15_CH1 on PE5 */
-/* reserved for the W5500 LAN bridge (schematic stage A6): SPI3 PC10 SCK / PC11 MISO /
- * PC12 MOSI (AF6), PA15 CS, PD5 INT, PD10 RST */
+
+/* v1.0 LAN: WIZnet W5500 on SPI3 (schematic sheet LAN, stage A6).  No driver yet: the
+ * board init only parks the chip (RST low, CS high, SPI pins as inputs).  On v0.7 boards
+ * the pins are unconnected. */
+extern const gpio_pin_t PIN_LAN_SCK;        /* PC10, SPI3_SCK (AF6) */
+extern const gpio_pin_t PIN_LAN_MISO;       /* PC11, SPI3_MISO (AF6) */
+extern const gpio_pin_t PIN_LAN_MOSI;       /* PC12, SPI3_MOSI (AF6) */
+extern const gpio_pin_t PIN_LAN_CS;         /* PA15, W5500 SCSn, low = selected (10k pull-up R119) */
+extern const gpio_pin_t PIN_LAN_INT;        /* PD5, W5500 INTn, low = interrupt (10k pull-up R120) */
+extern const gpio_pin_t PIN_LAN_RST;        /* PD10, W5500 RSTn, low >= 500 us = reset (10k pull-up R121) */
+#define LAN_SPI_AF              GPIO_AF6_SPI3
 #define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A */
 #define ADC_CH_I_FDD12          ADC_CHANNEL_11  /* PC1 */
 #define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */

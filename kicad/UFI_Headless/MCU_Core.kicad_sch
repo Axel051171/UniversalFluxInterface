@@ -10703,10 +10703,6 @@
 		)
 		(uuid "7124370d-c8a2-5644-aa85-87712eaba85e")
 	)
-	(no_connect
-		(at 248.92 220.98)
-		(uuid "0f13e657-6d36-5ae5-becc-9728deed64cd")
-	)
 	(wire
 		(pts
 			(xy 248.92 223.52) (xy 251.46 223.52)
@@ -11113,22 +11109,6 @@
 		)
 		(uuid "17d17a3d-b096-58d3-a3b0-53c43c93da90")
 	)
-	(no_connect
-		(at 248.92 104.14)
-		(uuid "1590fe9e-9de9-5ef2-bdb6-bb68ac1c482a")
-	)
-	(no_connect
-		(at 248.92 177.8)
-		(uuid "23aa81bb-0e0b-5008-9dc9-b24623fd4958")
-	)
-	(no_connect
-		(at 248.92 180.34)
-		(uuid "64a52542-6f38-5b47-8653-f895b7c7b8fe")
-	)
-	(no_connect
-		(at 248.92 182.88)
-		(uuid "2e740932-c399-526c-b4a4-ba47f8fd4247")
-	)
 	(wire
 		(pts
 			(xy 248.92 195.58) (xy 251.46 195.58)
@@ -11283,10 +11263,6 @@
 				(hide yes)
 			)
 		)
-	)
-	(no_connect
-		(at 248.92 208.28)
-		(uuid "c1eb9d5e-9f4c-56a3-bd9f-3d3315b18981")
 	)
 	(wire
 		(pts
@@ -25924,5 +25900,65 @@
 			(justify left)
 		)
 		(uuid "8f265afc-f257-4149-ab49-8d6f7712bd3c")
+	)
+	(global_label "LAN_RST"
+		(at 248.92 220.98000000000002 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "31f9a85b-c0f0-407e-b2eb-69e7d574fef5")
+	)
+	(global_label "LAN_CS"
+		(at 248.92 104.14000000000001 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4e8a6222-de55-4df5-b218-b71532d06c6a")
+	)
+	(global_label "LAN_SCK"
+		(at 248.92 177.8 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "3fcf676d-2334-4535-8494-31cfb91357e5")
+	)
+	(global_label "LAN_MISO"
+		(at 248.92 180.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "073a19b4-0ff8-45a3-87e0-ccedf4ff70da")
+	)
+	(global_label "LAN_MOSI"
+		(at 248.92 182.88000000000002 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "0d26098f-b1f3-4dc6-aa91-eec0738f57f4")
+	)
+	(global_label "LAN_INT"
+		(at 248.92 208.28000000000003 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ed985488-788f-416e-812e-61b767d2344d")
 	)
 )

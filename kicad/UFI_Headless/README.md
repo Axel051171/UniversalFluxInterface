@@ -59,7 +59,8 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | Selbsttest-Rückschleife | U22 TS5A3166 (FD_WDATA↔FD_RDATA, 5 V), Q5 2N7002 (FD_TRK0 → GND), R106 100k, C58; U10F (freier HC14-Kanal, IEC-Blatt) liest FD_WGATE zurück | LOOP_EN = PG14 (im Reset offen), WGATE_SENSE = PG15; Firmware-Nutzung folgt |
 | Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
-| noch offen | A6: W5500 + RJ45 an SPI3 (PC10/PC11/PC12, CS PA15, INT PD5, RST PD10); A7 Board-ID-Wert v1.0; Layout. J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
+| LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
+| noch offen | A7 Board-ID-Wert v1.0; Layout. J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 
@@ -227,7 +228,8 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | LOOP_EN | PG14 | GPIO out, high = U22 schließt WDATA↔RDATA, Q5 zieht TRK0 (100k Pull-down R106) (v1.0) |
 | WGATE_SENSE | PG15 | GPIO in ← U10F ← FD_WGATE, high = WGATE aktiv (v1.0) |
 | GUARD_OFF / GUARD_ERR5 | PG7 / PG8 | GPIO out → J20 Pin 2 (high = Guard-Kanäle aus) / GPIO in ← J20 Pin 3 (10k R107) (v1.0) |
-| (Reserve W5500) | PC10 / PC11 / PC12 / PA15 / PD5 / PD10 | SPI3 SCK / MISO / MOSI (AF6), CS, INT, RST – Stufe A6 |
+| LAN_SCK / LAN_MISO / LAN_MOSI | PC10 / PC11 / PC12 | SPI3 (AF6) → U23 W5500 (v1.0, Blatt LAN) |
+| LAN_CS / LAN_INT / LAN_RST | PA15 / PD5 / PD10 | GPIO out (low = selected) / GPIO in (low = Interrupt) / GPIO out (low = Reset), je 10k Pull-up (v1.0) |
 | FDD_TRK0 / WPROT / DSKCHG / READY | PF0 / PF1 / PF2 / PF3 | GPIO in |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_OUT | PD0–PD4 | GPIO out → OC-Treiber |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_IN | PF4–PF8 | GPIO in |
