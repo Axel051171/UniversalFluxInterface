@@ -38,6 +38,7 @@ Netznamen mit `/` (z. B. `/MCU_Core/SD_D3`) unter Git Bash mit `MSYS_NO_PATHCONV
 | `drop_pours.py board` | Versorgungs-Pours (Priorität ≥ 5) löschen, damit `power_pours.py` sie nach einer Umroutung neu entlang der Bahnen baut (alte Pours überbrücken sonst fehlende Bahnen und verdecken offene Verbindungen) |
 | `lock_except.py board out NET[,NET] [rip]` | alle Bahnen außer den genannten Netzen sperren (DSN-Export schreibt sie als `fix`) – Freerouting nur für diese Netze; 24.10.: lief auf dem vollen Board in den Timeout |
 | `place_silk.py board REF[,REF] ['TEXT=..'] [REF@x:y[:winkel]] [check] [maxd=MM]` | Referenzen/Platinentexte auf den nächsten freien Siebdruckplatz um die Pad-Box setzen (Ringe bis maxd, auch 90° gedreht), `@x:y` setzt fest und meldet Kollisionen; F- und B-Siebdruck |
+| `pin_labels.py board [check] [REF ...]` | Pin-Beschriftung der internen Stiftleisten (Tabelle im Skript): 0,8-mm-Texte neben jedem Pin außerhalb des Steckerumrisses, bei Platzmangel auf der Rückseite gespiegelt neben den Lötpins; Gruppe `pinlabels REF` je Stecker, erneuter Lauf ersetzt sie; J12-Massepins als Legende auf der Rückseite |
 | `set_netclasses.py project.kicad_pro` | Netzklasse `Load` 1,0 mm (0,8/0,4-Vias) für die 16 Lastnetze nach Skill `pcb-routing` eintragen (idempotent) |
 
 Reihenfolge nach einer Umplatzierung: `rip_net.py` (Korridore), `fanout.py` (QFP-Reihen), `batch_route.py` mit `--order` (die engen Netze zuerst), `trim_dangling.py` erst ganz am Ende – es entfernt auch einseitige Auffächerungs-Vias noch ungerouteter Netze.

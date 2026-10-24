@@ -155,7 +155,8 @@ for spec in refs:
     ok &= place(f, anchor, "field %s" % ref, "ref %s" % ref, fixed, fixed_angle)
 for spec in texts:
     txt, fixed, fixed_angle = split_at(spec)
-    found = [d for d in board.GetDrawings() if d.GetLayer() == pcbnew.F_SilkS and hasattr(d, "GetText") and d.GetText() == txt]
+    found = [d for d in board.GetDrawings() if d.GetLayer() in (pcbnew.F_SilkS, pcbnew.B_SilkS)
+             and hasattr(d, "GetText") and d.GetText() == txt]
     if not found:
         print("text %r not found" % txt)
         ok = False
