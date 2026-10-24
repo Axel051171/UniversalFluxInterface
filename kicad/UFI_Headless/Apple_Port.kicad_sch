@@ -9057,7 +9057,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
+		(property "Footprint" "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical"
 			(at 299.72 279.4 0)
 			(effects
 				(font
@@ -9075,7 +9075,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C49257"
+		(property "LCSC" "C144394"
 			(at 299.72 279.4 0)
 			(effects
 				(font
@@ -9093,6 +9093,9 @@
 				(hide yes)
 			)
 		)
+    (property "MPN" "JST B3B-XH-A (sync sensor, keyed; A11f R1)" (at 299.72 279.4 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
 		(pin "1"
 			(uuid "5c5c6eb1-f6ef-5fae-a28c-5ba483476240")
 		)
@@ -9631,92 +9634,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:D_TVS")
-		(at 190.5 276.86 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "8d9c416f-7494-4bce-9662-c7d33834580a")
-		(property "Reference" "D30"
-			(at 187.96 276.86 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "PESD3V3L1BA"
-			(at 193.04 276.86 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Diode_SMD:D_SOD-323"
-			(at 190.5 276.86 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 190.5 276.86 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Bidirectional transient-voltage-suppression diode"
-			(at 190.5 276.86 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "MPN" "PESD3V3L1BA (same part as D28/D29)"
-			(at 190.5 276.86 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "a4f95363-c0e3-40e1-ae4c-dab178a7ce05")
-		)
-		(pin "2"
-			(uuid "72c7e78f-0904-4487-9ec3-517cd22ddd96")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/a4c7dd3a-3381-5fd0-85a1-c8054d9e8896"
-					(reference "D30")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:C")
 		(at 251.46 279.4 0)
 		(unit 1)
@@ -9934,26 +9851,6 @@
 		)
 		(uuid "8e175e85-a39f-49dc-9c37-26222ecc3e09")
 	)
-	(global_label "SYNC_5V"
-		(at 190.5 280.67 270)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "6f6d3d20-263d-49bf-8346-4b09fc44c52b")
-	)
-	(global_label "GND"
-		(at 190.5 273.05 90)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "56c1782d-54d6-4bff-9830-80524c7c2fa7")
-	)
 	(global_label "+3V3"
 		(at 251.46 275.59 90)
 		(effects
@@ -10054,12 +9951,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C484743" (at 200.66 340.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "TI SN74AHCT244PWR (Mac SEL / PWM level shift 3.3 -> 5 V, A11d K1)" (at 200.66 340.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C484743"
+			(at 200.66 340.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "TI SN74AHCT244PWR (Mac SEL / PWM level shift 3.3 -> 5 V, A11d K1)"
+			(at 200.66 340.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "718b96ce-bd47-42d9-b19d-f1f926354727")
 		)
@@ -10191,9 +10100,15 @@
 				)
 			)
 		)
-    (property "MPN" "solder jumper, open: connects the PWM driver to pin 20 - only for a 400K drive (800K/FDHD drive !CSTOUT there)" (at 243.84 325.12 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "MPN" "solder jumper, open: connects the PWM driver to pin 20 - only for a 400K drive (800K/FDHD drive !CSTOUT there)"
+			(at 243.84 325.12 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a6296d60-dd1c-4ab9-ae3e-51fa6bbd8ccb")
 		)
@@ -10271,9 +10186,15 @@
 				)
 			)
 		)
-    (property "MPN" "solder jumper, open: -12 V to pin 9 - only for a 400K drive (800K/FDHD drive !EJECT there)" (at 243.84 350.52 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "MPN" "solder jumper, open: -12 V to pin 9 - only for a 400K drive (800K/FDHD drive !EJECT there)"
+			(at 243.84 350.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "7693405a-e029-4666-b6b5-21d45bbd4513")
 		)
@@ -10351,9 +10272,15 @@
 				)
 			)
 		)
-    (property "MPN" "solder jumper, bridged: -12 V from U18 to Disk II J14 pin 9 (S5, no fuse: ICL7662 limits to about 20 mA)" (at 271.78 147.32 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "MPN" "solder jumper, bridged: -12 V from U18 to Disk II J14 pin 9 (S5, no fuse: ICL7662 limits to about 20 mA)"
+			(at 271.78 147.32 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "db9aaeba-6628-48fb-afb3-dca6319c603b")
 		)
@@ -10431,9 +10358,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25804" (at 262.89 317.5 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25804"
+			(at 262.89 317.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "30cd65c4-2af5-49aa-b2ea-fb5ca045f80c")
 		)
@@ -10513,9 +10446,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C14663" (at 175.26 317.5 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C14663"
+			(at 175.26 317.5 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "b0817c8a-7d18-4b27-ab4d-53e08c069d69")
 		)
@@ -10595,9 +10534,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C6650" (at 262.89 350.52 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C6650"
+			(at 262.89 350.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "ec5e4d86-9c79-4121-951b-59039e7fee35")
 		)
@@ -10847,12 +10792,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C2977593" (at 299.72 335.28 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "2x10 IDC header, Apple internal 20-pin floppy pinout (tashnotes): 1/3/5/7 GND, 2 CA0, 4 CA1, 6 CA2, 8 LSTRB, 10 !WRREQ, 12 SEL, 14 !ENBL, 16 RD, 18 WR, 11 +5V, 13/15/17/19 +12V, 9 -12V via JP6 (400K only), 20 PWM via JP5 (400K) / !CSTOUT input" (at 299.72 335.28 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C2977593"
+			(at 299.72 335.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "2x10 IDC header, Apple internal 20-pin floppy pinout (tashnotes): 1/3/5/7 GND, 2 CA0, 4 CA1, 6 CA2, 8 LSTRB, 10 !WRREQ, 12 SEL, 14 !ENBL, 16 RD, 18 WR, 11 +5V, 13/15/17/19 +12V, 9 -12V via JP6 (400K only), 20 PWM via JP5 (400K) / !CSTOUT input"
+			(at 299.72 335.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "347cce9b-7a32-4da1-8017-94f705ef67e6")
 		)
@@ -11277,10 +11234,6 @@
 		(uuid "a86d9151-8a74-493d-8346-271af0fcaac6")
 	)
 	(no_connect
-		(at 262.89 345.44)
-		(uuid "dbb4b70e-afa0-4fd5-9570-d79fa5340352")
-	)
-	(no_connect
 		(at 265.43 345.44)
 		(uuid "d7bfced2-98ba-4ac7-ac92-6c0eb1abe12f")
 	)
@@ -11298,5 +11251,15 @@
 			(justify left bottom)
 		)
 		(uuid "a43af538-0684-431d-8a5e-97f736d51d90")
+	)
+	(global_label "SYNC_5V"
+		(at 262.89 345.44 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e2bb733f-faa6-4766-bcb7-b90d37c3abef")
 	)
 )

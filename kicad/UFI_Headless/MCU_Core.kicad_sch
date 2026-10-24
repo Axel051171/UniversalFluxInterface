@@ -25005,7 +25005,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+		(property "Footprint" "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"
 			(at 386.08 81.28 0)
 			(hide yes)
 			(show_name no)
@@ -25038,6 +25038,12 @@
 				)
 			)
 		)
+    (property "LCSC" "C144395" (at 386.08 81.28 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "JST B4B-XH-A (GUARD, keyed; A11f R2 - Guard board v0.2: its J3 becomes JST XH too)" (at 386.08 81.28 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
 		(pin "1"
 			(uuid "8f78d72c-9603-4b0b-a63c-a6b04358366d")
 		)
@@ -27883,5 +27889,305 @@
 			(justify left)
 		)
 		(uuid "735048cb-87db-4916-a5ee-540004b20edd")
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 365.76 101.6 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "a516f522-86e5-4b53-8514-7c3c124a9d2c")
+		(property "Reference" "D32"
+			(at 363.22 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 368.3 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 365.76 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 365.76 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 365.76 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C51450" (at 365.76 101.6 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "77144397-8208-459d-b1f7-6742c27fa79e")
+		)
+		(pin "2"
+			(uuid "f45fb0c9-0a05-42ac-a26d-a85081610bc3")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D32")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 373.38 101.6 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "7a9ce1b0-ad9d-44fe-912b-4ec7282ac0a2")
+		(property "Reference" "D33"
+			(at 370.84 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 375.92 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 373.38 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 373.38 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 373.38 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C51450" (at 373.38 101.6 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "bdb37a3e-e298-4505-89ab-55d5707a64b8")
+		)
+		(pin "2"
+			(uuid "14033f40-5f2c-4c88-9c76-58e72f00eae7")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D33")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 381 101.6 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "96343396-a6ed-4896-a435-0114ed10f52e")
+		(property "Reference" "D34"
+			(at 378.46 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 383.54 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 381 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 381 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 381 101.6 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C51450" (at 381.0 101.6 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "d3acbe79-cd6c-465f-99b2-e8fa4d75c8d5")
+		)
+		(pin "2"
+			(uuid "18030e76-134b-429d-a8fe-d92d9ed6ec42")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D34")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "GUARD_OFF_J"
+		(at 365.76 105.41 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "ee2a4f66-4910-4b01-a186-a6ddbf1b35f5")
+	)
+	(global_label "GND"
+		(at 365.76 97.78999999999999 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4ca57b36-dedc-4cf6-a81a-7f58cb8f3c9e")
+	)
+	(global_label "GUARD_ERR5_J"
+		(at 373.38 105.41 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b0c05934-d0d8-47d1-82cd-86792de2ba70")
+	)
+	(global_label "GND"
+		(at 373.38 97.78999999999999 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "336a1055-a405-4fc5-a2fc-fcad703f365e")
+	)
+	(global_label "GUARD_ERR12_J"
+		(at 381.0 105.41 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a3fc3153-1743-4b75-bb14-89d1612bea33")
+	)
+	(global_label "GND"
+		(at 381.0 97.78999999999999 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1acb4857-67e8-4b55-927f-42bf90f7b09a")
 	)
 )

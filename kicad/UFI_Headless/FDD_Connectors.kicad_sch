@@ -8120,7 +8120,7 @@
 				)
 			)
 		)
-		(property "Value" "2.2k"
+		(property "Value" "2.4k"
 			(at 262.89 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8163,7 +8163,10 @@
 				)
 			)
 		)
-    (property "LCSC" "C4190" (at 260.35 299.72 0)
+    (property "LCSC" "C22940" (at 260.35 299.72 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "2.4k (flippy divider, Greaseweazle V4.1 compatible; owner 25.10.)" (at 260.35 299.72 0)
       (effects (font (size 1.27 1.27)) (hide yes))
     )
 		(pin "1"
@@ -8200,7 +8203,7 @@
 				)
 			)
 		)
-		(property "Value" "2.2k"
+		(property "Value" "2.4k"
 			(at 273.05 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8243,7 +8246,7 @@
 				)
 			)
 		)
-    (property "LCSC" "C4190" (at 270.51 299.72 0)
+    (property "LCSC" "C22940" (at 270.51 299.72 0)
       (effects (font (size 1.27 1.27)) (hide yes))
     )
 		(pin "1"

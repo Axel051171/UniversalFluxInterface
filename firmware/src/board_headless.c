@@ -132,6 +132,8 @@ void board_gpio_init(void)
                            GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
     const uint16_t iec_d = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
     HAL_GPIO_WritePin(GPIOE, fdd_e, fdd_rel);
+    /* A11f: PE14 = WGATE_n stays active low on v1.0 (NOR gate U31 behind it), released = high */
+    HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOD, iec_d, BUS_OUT_RELEASE);          /* IEC: LS07 U9 on every board */
     HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, fdd_rel);
     HAL_GPIO_WritePin(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, fdd_rel);

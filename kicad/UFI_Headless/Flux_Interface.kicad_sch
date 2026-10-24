@@ -4720,6 +4720,267 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "74xGxx:74LVC1G02"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at -5.08 7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "74LVC1G02"
+				(at 7.62 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g02.pdf"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Single NOR Gate, Low-Voltage CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Single Gate NOR LVC CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "SOT?23* Texas?R-PDSO-G5?DCK* Texas?R-PDSO-N5?DRL* Texas?X2SON*0.8x0.8mm*P0.48mm*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "74LVC1G02_0_1"
+				(arc
+					(start -7.62 5.08)
+					(mid -5.838 0)
+					(end -7.62 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 2.54) (xy -6.35 2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 -2.54) (xy -6.35 -2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(arc
+					(start 5.08 0)
+					(mid 3.202 -3.202)
+					(end 0 -5.08)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 5.08)
+					(mid 3.2271 3.2271)
+					(end 5.08 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 5.08) (xy -7.62 5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -5.08) (xy -7.62 -5.08)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "74LVC1G02_1_1"
+				(pin input line
+					(at -15.24 2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -15.24 -2.54 0)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -10.16 90)
+					(length 5.08)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output inverted
+					(at 12.7 0 180)
+					(length 7.62)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 10.16 270)
+					(length 5.08)
+					(name "VCC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(text "FLUX INTERFACE\nOutputs: SN74LS07 open-collector, 40 mA sink (drives 150R terminators), 1k pull-ups to +5V.\n  MCU low = bus line asserted (active low), MCU high/reset = released.\nInputs: 1k pull-ups to +5V, 74LVC14A Schmitt inverter at 3V3 (5V-tolerant inputs).\n  MCU sees INVERTED level: high = drive asserts line. RDATA/INDEX capture on rising edge."
 		(exclude_from_sim no)
@@ -9685,7 +9946,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "Nexperia 74LVC2G32DP,125 (dual 2-input OR: FDD_WGATE|LOCK -> FDD_WGATE_G, APL_WRREQ|LOCK -> APL_WRREQ_G; alt. TI SN74LVC2G32DCUR C91874 VSSOP-8)"
+		(property "MPN" "Nexperia 74LVC2G32DP,125 - gate 1 retired in A11f (inputs on GND, 1Y open), gate 2 gates APL_WRREQ with LOCK"
 			(at 119.38 332.74 0)
 			(effects
 				(font
@@ -9727,26 +9988,6 @@
 			)
 		)
 	)
-	(global_label "FDD_WGATE"
-		(at 109.22 326.39 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "fb21781e-14c4-4851-8ac7-4ad534268448")
-	)
-	(global_label "LOCK"
-		(at 109.22 328.93 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "86bf9537-2c8a-4076-9464-366f090492c6")
-	)
 	(global_label "APL_WRREQ_G"
 		(at 129.54 336.55 0)
 		(effects
@@ -9786,16 +10027,6 @@
 			(justify right)
 		)
 		(uuid "0ad29061-b03b-468c-ac89-492ac6c8a967")
-	)
-	(global_label "FDD_WGATE_G"
-		(at 129.54 327.66 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "dcbda15a-2a28-4bb8-a324-0c4bf0e08a3a")
 	)
 	(global_label "+3V3"
 		(at 119.38 321.31 90)
@@ -9871,12 +10102,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 60.96 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F (dual N-MOSFET, 1 S2 2 G2 3 D1 4 S1 5 G1 6 D2; alt. PANJIT 2N7002KDW C106992)" (at 78.74 60.96 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 60.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F (dual N-MOSFET, 1 S2 2 G2 3 D1 4 S1 5 G1 6 D2; alt. PANJIT 2N7002KDW C106992)"
+			(at 78.74 60.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "a6be649f-4941-47d3-b543-e030cfa3cee6")
 		)
@@ -9968,12 +10211,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 86.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F" (at 78.74 86.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F"
+			(at 78.74 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "32a01372-6942-4ae2-9192-85ba052d640e")
 		)
@@ -10065,12 +10320,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 111.76 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F" (at 78.74 111.76 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F"
+			(at 78.74 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "ff6beca5-f720-43cf-9ca2-ad6af4c25048")
 		)
@@ -10162,12 +10429,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 149.86 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F" (at 78.74 149.86 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F"
+			(at 78.74 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "20321dd7-331a-42c8-a282-99ce8c685ae1")
 		)
@@ -10259,12 +10538,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 175.26 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F" (at 78.74 175.26 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F"
+			(at 78.74 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "ebbf3c8b-d904-4b6a-b083-4bf660c92d7d")
 		)
@@ -10356,12 +10647,24 @@
 				)
 			)
 		)
-    (property "LCSC" "C154900" (at 78.74 200.66 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
-    (property "MPN" "Diodes BSS138DW-7-F" (at 78.74 200.66 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C154900"
+			(at 78.74 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "Diodes BSS138DW-7-F"
+			(at 78.74 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "4833acdd-e51a-4a4c-8c17-2725ed4256b0")
 		)
@@ -10811,9 +11114,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 60.96 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 60.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "238e0a62-758f-4e3a-90d6-56656c9e366c")
 		)
@@ -10891,9 +11200,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 60.96 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 60.96 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "c51ba6a9-105c-4f0e-a74d-ffbeadb0f966")
 		)
@@ -10971,9 +11286,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 86.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "b42b4675-4ab4-4bc4-bb98-3905e798e8e4")
 		)
@@ -11051,9 +11372,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 86.36 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "84bf14de-c942-46b7-a38e-854ca9601b4f")
 		)
@@ -11131,9 +11458,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 111.76 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "be962c86-15f1-4203-8790-bf6de8de0630")
 		)
@@ -11211,9 +11544,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 111.76 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 111.76 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "40e04137-5657-47ad-b750-2761c14f9443")
 		)
@@ -11291,9 +11630,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 149.86 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "b4f40571-689c-47c3-8123-a46f10bc0c9b")
 		)
@@ -11371,9 +11716,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 149.86 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 149.86 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "7de6d1fb-48ca-47e4-a783-f2b084225773")
 		)
@@ -11451,9 +11802,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 175.26 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "92874aea-7852-4430-a9b1-7a9bf6732dda")
 		)
@@ -11531,9 +11888,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 175.26 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 175.26 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "fdef6d4d-a6b2-4b78-88df-1d939ee05563")
 		)
@@ -11611,9 +11974,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 50.8 200.66 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 50.8 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "ab64c7d5-342c-40d0-b8bb-b9ac10bd4116")
 		)
@@ -11691,9 +12060,15 @@
 				)
 			)
 		)
-    (property "LCSC" "C25803" (at 60.96 200.66 0)
-      (effects (font (size 1.27 1.27)) (hide yes))
-    )
+		(property "LCSC" "C25803"
+			(at 60.96 200.66 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(pin "1"
 			(uuid "999b3298-f788-404a-98b8-ee3df0932c79")
 		)
@@ -11959,5 +12334,376 @@
 			(justify left bottom)
 		)
 		(uuid "26ba033a-4e09-4f94-b1d3-d0e3c848e62a")
+	)
+	(no_connect
+		(at 129.54 327.66)
+		(uuid "ae905ab7-ed32-4fc8-a298-b03cf8f49963")
+	)
+	(symbol
+		(lib_id "74xGxx:74LVC1G02")
+		(at 119.38 378.46 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3462f7ba-f70e-4fc0-bcaa-165089a40233")
+		(property "Reference" "U31"
+			(at 119.38 365.76 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "74LVC1G02"
+			(at 119.38 391.16 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-353_SC-70-5"
+			(at 119.38 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g02.pdf"
+			(at 119.38 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Single NOR Gate, Low-Voltage CMOS"
+			(at 119.38 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C52953351" (at 119.38 378.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "MDD 74LVC1G02GW (NOR: Q9 gate = NOR(WGATE_n, LOCK); alt. TECH PUBLIC 74LVC1G02GW C41407550; A11f fix of review finding F1)" (at 119.38 378.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "8c44d686-f13b-44f3-918a-5207f503946e")
+		)
+		(pin "2"
+			(uuid "9c7973a7-3b86-43d4-885b-8dd86a089fe2")
+		)
+		(pin "3"
+			(uuid "0957541c-4cc1-4924-8ce8-9f7e1c26c33d")
+		)
+		(pin "4"
+			(uuid "71c18c8f-d1a1-4b86-b7ac-542f498192fe")
+		)
+		(pin "5"
+			(uuid "b3e1fbdb-a429-487e-ba0a-585afc7d6821")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "U31")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 93.98 378.46 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "1967086c-18f7-4a35-80b6-9ecdb5753d35")
+		(property "Reference" "R167"
+			(at 91.44 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 96.52 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 92.202 378.46 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 93.98 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C25804" (at 93.98 378.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "10k pull-up on WGATE_n (PE14): reset = released" (at 93.98 378.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "41c71584-d2be-41f0-a379-7e8adff95150")
+		)
+		(pin "2"
+			(uuid "215ec55b-c807-4bfa-bd5a-a27af649407f")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "R167")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 149.86 378.46 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "4283a31b-81e5-490f-b375-2abaa491a182")
+		(property "Reference" "C88"
+			(at 147.32 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100nF"
+			(at 152.4 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0603_1608Metric"
+			(at 150.825 374.65 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 149.86 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 149.86 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C14663" (at 149.86 378.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "acb42f6c-8f5b-4246-b5df-75220ca167e3")
+		)
+		(pin "2"
+			(uuid "5805bb6a-3eb1-4273-bbfe-2888fdb09cb1")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "C88")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "FDD_WGATE"
+		(at 104.14 375.91999999999996 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9988d555-43ba-4544-a56a-4ba192e7c9a5")
+	)
+	(global_label "LOCK"
+		(at 104.14 381.0 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b82d3bad-1d31-49d6-8f61-faa436fe1db7")
+	)
+	(global_label "GND"
+		(at 119.38 388.62 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1fa035ef-bb85-4c79-8c25-6672b499152c")
+	)
+	(global_label "FDD_WGATE_G"
+		(at 132.07999999999998 378.46 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e91aa96d-ccfa-41cb-9567-9a3e05cb7220")
+	)
+	(global_label "+3V3"
+		(at 119.38 368.29999999999995 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1064826f-62ac-4dbd-9635-63ddbeddce25")
+	)
+	(global_label "+3V3"
+		(at 93.98 374.65 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b18747ba-dcc7-41eb-916b-c24db873841f")
+	)
+	(global_label "FDD_WGATE"
+		(at 93.98 382.27 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7619e408-1cd4-4a76-8160-c33ec472e501")
+	)
+	(global_label "+3V3"
+		(at 149.86 374.65 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "0f86db60-a8ad-4562-b0ba-1b61bef1fc25")
+	)
+	(global_label "GND"
+		(at 149.86 382.27 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "05afdf11-0d52-4171-b5ac-2ac45e11540a")
+	)
+	(global_label "GND"
+		(at 109.22 326.39 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "58cd9c59-da9b-4ea9-8d57-f2e0b06dd4f2")
+	)
+	(global_label "GND"
+		(at 109.22 328.93 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5c1dd465-979a-475b-b63f-c53f3d98e2e4")
 	)
 )

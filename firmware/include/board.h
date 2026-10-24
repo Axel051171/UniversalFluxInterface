@@ -190,7 +190,9 @@ extern bool board_fdd_mosfet;
 
 static inline bool bus_out_inverted(const gpio_pin_t* p)
 {
-    return board_fdd_mosfet && p->port != GPIOD;
+    /* A11f: WGATE keeps the active-low convention on v1.0 as well - PE14 is WGATE_n into the NOR
+     * gate U31 (Q9 gate = NOR(WGATE_n, LOCK), R167 10k pull-up), so the lock can never assert it */
+    return board_fdd_mosfet && p->port != GPIOD && !(p->port == GPIOE && p->pin == GPIO_PIN_14);
 }
 
 /** Drive a bus output: true = assert (bus low), false = release. */
