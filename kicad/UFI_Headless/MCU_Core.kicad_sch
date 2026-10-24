@@ -11,6 +11,129 @@
 		(company "UFI Project")
 	)
 	(lib_symbols
+		(symbol "Connector:TestPoint"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0.762)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "TP"
+				(at 0 6.858 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "TestPoint"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "test point"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "test point tp"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Pin* Test*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "TestPoint_0_1"
+				(circle
+					(center 0 3.302)
+					(radius 0.762)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "TestPoint_1_1"
+				(pin passive line
+					(at 0 0 90)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Device:D_TVS"
 			(pin_numbers
 				(hide yes)
@@ -22828,16 +22951,6 @@
 		)
 		(uuid "9df7d092-bc53-428a-a086-e715d67f7bfa")
 	)
-	(global_label "+3V3"
-		(at 350.52000000000004 256.54 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "7d7914f2-3d68-42dc-a726-3a7234776d3c")
-	)
 	(global_label "GND"
 		(at 363.22 256.54 0)
 		(effects
@@ -22917,7 +23030,7 @@
 				)
 			)
 		)
-		(property "Value" "SMF3.3CA"
+		(property "Value" "PESD3V3L1BA"
 			(at 340.36 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -22927,7 +23040,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Diode_SMD:D_SOD-123F"
+		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 337.82 299.72 0)
 			(hide yes)
 			(show_name no)
@@ -22958,6 +23071,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "Note" "low-leakage bidirectional ESD diode on the front cable; SMF3.3CA rejected (up to 1 mA leakage at 3.3 V against the ~40k internal pull-up)"
+			(at 337.82 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(pin "1"
@@ -22994,7 +23116,7 @@
 				)
 			)
 		)
-		(property "Value" "SMF3.3CA"
+		(property "Value" "PESD3V3L1BA"
 			(at 350.52 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -23004,7 +23126,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Diode_SMD:D_SOD-123F"
+		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 347.98 299.72 0)
 			(hide yes)
 			(show_name no)
@@ -23071,7 +23193,7 @@
 				)
 			)
 		)
-		(property "Value" "SMF3.3CA"
+		(property "Value" "PESD3V3L1BA"
 			(at 360.68 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -23081,7 +23203,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Diode_SMD:D_SOD-123F"
+		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 358.14 299.72 0)
 			(hide yes)
 			(show_name no)
@@ -23148,7 +23270,7 @@
 				)
 			)
 		)
-		(property "Value" "SMF3.3CA"
+		(property "Value" "PESD3V3L1BA"
 			(at 370.84 299.72 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -23158,7 +23280,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Diode_SMD:D_SOD-123F"
+		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 368.3 299.72 0)
 			(hide yes)
 			(show_name no)
@@ -23285,5 +23407,936 @@
 			(justify left)
 		)
 		(uuid "c4233b2b-3abc-4161-ae26-e9caadbfe5a1")
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 378.46 299.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "1ffaf07b-1b00-4204-8b83-224fda8d4e86")
+		(property "Reference" "D22"
+			(at 375.92 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 381.0 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 378.46 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 378.46 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 378.46 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c6445fd0-c42e-44d5-833b-1add96621692")
+		)
+		(pin "2"
+			(uuid "1729d2dc-af6d-4ca6-9c64-0e0354ffb246")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D22")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 388.62 299.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "aad80f2c-f1ba-4013-9617-3e0632a30f19")
+		(property "Reference" "D23"
+			(at 386.08 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 391.16 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 388.62 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 388.62 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 388.62 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "178543ef-122c-49f2-b0a5-02c40cf7d6fe")
+		)
+		(pin "2"
+			(uuid "f3b45a9a-34e2-4bf4-9604-174e9b8d3bdf")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D23")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 398.78 299.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "552c3239-7107-44c1-93fa-d09b2a29f239")
+		(property "Reference" "D24"
+			(at 396.24 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 401.32 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 398.78 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 398.78 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 398.78 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "694454ed-60de-4218-be04-2050bb18629a")
+		)
+		(pin "2"
+			(uuid "18e1fb40-6fdb-4f09-918d-d8b3fca819d5")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D24")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 408.94 299.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "c2764cf6-aa5d-4075-bef6-0acf7e91f647")
+		(property "Reference" "D25"
+			(at 406.4 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 411.48 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 408.94 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 408.94 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 408.94 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "8370920d-9354-4124-82f3-c529de041167")
+		)
+		(pin "2"
+			(uuid "f898d4e3-4d5a-49c3-aadb-3b9d55825afb")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D25")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 419.1 299.72 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ab35aa87-599e-4fd6-b4d2-35078eb6a74a")
+		(property "Reference" "D26"
+			(at 416.56 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 421.64 299.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 419.1 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 419.1 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 419.1 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b2e664f8-0dde-4026-b77b-010beba86670")
+		)
+		(pin "2"
+			(uuid "a5eb169a-5584-40dc-9bfa-e7e4ed8a350e")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D26")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "FRONT_ACT"
+		(at 378.46 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "a69f199c-13d6-4658-a613-760a6710934f")
+	)
+	(label "FRONT_ERR"
+		(at 388.62 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "5f34451e-78cb-405c-88d6-235a9569e43d")
+	)
+	(label "FRONT_USB"
+		(at 398.78 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "20ec1277-abd2-4e75-91d0-6cdccd8d13a5")
+	)
+	(label "FRONT_FDD"
+		(at 408.94 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "1d094066-b772-46b5-9c6e-81734986960f")
+	)
+	(label "FRONT_PWR"
+		(at 419.1 303.53000000000003 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "5e61a9e4-ed0c-4719-9086-64856579c81b")
+	)
+	(global_label "GND"
+		(at 378.46 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d10be824-f7f4-42c3-8e00-a38c6194fb96")
+	)
+	(global_label "GND"
+		(at 388.62 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c39389cc-1e17-4ece-9b5c-fcb2d1eb6529")
+	)
+	(global_label "GND"
+		(at 398.78 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "21c88de2-1115-438e-be08-cea410b11c3b")
+	)
+	(global_label "GND"
+		(at 408.94 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4426dd1b-9ea1-4a85-b442-937052d5d1b4")
+	)
+	(global_label "GND"
+		(at 419.1 295.91 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "04201d05-1ed3-4332-92a0-ac8e76326677")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 340.36 248.92 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "4630065f-e045-4fb9-9298-3c5d171a99a9")
+		(property "Reference" "R105"
+			(at 340.36 246.38 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 340.36 251.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 340.36 250.698 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 340.36 248.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 340.36 248.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "Note" "limits a short in the front cable on J12 pin 1 to 3.3 mA; the mode switch only needs microamps" (at 340.36 248.92 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "a557bf47-3a56-4a69-923e-c2c82017d054")
+		)
+		(pin "2"
+			(uuid "0ab71ebf-59b5-4e62-88d7-ebfdaebd9691")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R105")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "FRONT_3V3"
+		(at 344.17 248.92 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "cd320134-f079-495e-b32d-d08efd06f0c4")
+	)
+	(label "FRONT_3V3"
+		(at 350.52000000000004 256.54 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "723991ed-3f34-4392-aa25-96e7d3deb290")
+	)
+	(global_label "+3V3"
+		(at 336.55 248.92 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "74bde131-3685-452b-b514-07386ffab90b")
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 91.44 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "dfa84688-a1d9-48c8-b834-9048cc3ff32c")
+		(property "Reference" "TP10"
+			(at 91.44 297.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "TP_I2C_SCL"
+			(at 91.44 302.26 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.5mm"
+			(at 96.52 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 96.52 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 91.44 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ace0884a-4d9a-4e64-9bf0-2789ae0e082e")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "TP10")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 99.06 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "dba909ec-8425-43e0-8db4-b0fc3672452f")
+		(property "Reference" "TP11"
+			(at 99.06 297.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "TP_I2C_SDA"
+			(at 99.06 302.26 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.5mm"
+			(at 104.14 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 104.14 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 99.06 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "abf90df8-2d8e-4e52-b4f1-4e0a7d6b9d05")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "TP11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 106.68 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "949437ab-30e9-403f-9d0c-ea6f43a09062")
+		(property "Reference" "TP12"
+			(at 106.68 297.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "TP_I2C_3V3"
+			(at 106.68 302.26 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.5mm"
+			(at 111.76 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 111.76 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 106.68 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4ab2e546-3e55-4e3c-be7d-450b2e189c0a")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "TP12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 114.3 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "8008e73c-2744-43da-a3e5-f4f0414a5229")
+		(property "Reference" "TP13"
+			(at 114.3 297.18 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "TP_I2C_GND"
+			(at 114.3 302.26 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "TestPoint:TestPoint_Pad_D1.5mm"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "test point"
+			(at 114.3 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "28cb4605-fc4f-4dc7-ba8b-82d70d1206cd")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "TP13")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "I2C_SCL"
+		(at 91.44 299.72 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f3ce7f91-14b9-4714-935c-a29530c118ae")
+	)
+	(label "I2C_SDA"
+		(at 99.06 299.72 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "a01888b8-6721-4eea-8667-c2d11c5056bb")
+	)
+	(global_label "+3V3"
+		(at 106.68 299.72 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a41b2d3d-608f-4815-af11-1c772a14a207")
+	)
+	(global_label "GND"
+		(at 114.3 299.72 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1ec5bd15-9124-48f8-be74-4c8aea805ec6")
 	)
 )
