@@ -18,7 +18,7 @@ MCU-Pin wandert; Commit pro Stufe mit Referenzen und offenen Punkten.
 | A3 | Front-Header J12 2×8, LEDs/Taster/Modusschalter nach außen, J9/J13/D5–D8 raus, SW3/SW4 DNP | MCU_Core | ERC 0/0 | erledigt, 9d5b134 |
 | A3b | PESD3V3L1BA D18–D26, R105 1 kΩ vor FRONT_3V3, I²C-Testpads TP10–TP13 | MCU_Core | ERC 0/0 | erledigt, 5d81b31 |
 | A4 | Rückschleife ohne Jumper (U22 TS5A3166, Q5, LOOP_EN), INDEX_SIM auf PE5/TIM15 über U7F, WGATE_SENSE über U10F, JP4 statt J11, J20 GUARD, J21 LA; Firmware-Pinmap | Flux_Interface, IEC_Bus, MCU_Core, firmware | ERC 0/0, Gate grün, Build 0 Warnungen | erledigt, 9e0313e |
-| A5 | Laufwerkskante: J8 → DIN-6-Buchse auf der Platine, DB23-Buchse (Amiga) parallel zu J7, J3 als codierter Floppy-Stromstecker | IEC_Bus, FDD_Connectors, Power | ERC 0/0, Footprints mit Herstellernummer | offen |
+| A5 | entfällt (Owner 24.10.: Stecker intern wie bisher, J8/J7/J3 bleiben Stiftleisten; DIN-6 und DB23 sind Gehäusebuchsen am Kabel, einmal bei der Montage gesteckt) | – | – | gestrichen |
 | A6 | W5500 + RJ45-Magjack an SPI3 (PC10 SCK, PC11 MISO, PC12 MOSI, PA15 CS, PD5 INT, PD10 RST), 25-MHz-Quarz, Abblockung, Firmware-Pinmap (Treiber später) | neues Blatt LAN, MCU_Core, firmware | ERC 0/0 | offen |
 | A7 | Board-ID: neuer Teilerwert R18 für v1.0, Firmware `BOARD_ID_V10_MV` | MCU_Core, firmware | Gate grün | offen |
 | A8 | Schaltplan-Review nach Skill `kicad-schaltplan-review` (ESD, Leckströme, LED-Ströme, 5-V-Toleranz, Pinkonflikte, verwaiste Netze) | alle | Befunde abgearbeitet oder begründet offen | offen |

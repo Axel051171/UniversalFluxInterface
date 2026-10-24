@@ -59,7 +59,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | Selbsttest-Rückschleife | U22 TS5A3166 (FD_WDATA↔FD_RDATA, 5 V), Q5 2N7002 (FD_TRK0 → GND), R106 100k, C58; U10F (freier HC14-Kanal, IEC-Blatt) liest FD_WGATE zurück | LOOP_EN = PG14 (im Reset offen), WGATE_SENSE = PG15; Firmware-Nutzung folgt |
 | Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
-| noch offen | A5: J8 → DIN-6-Buchse, DB23-Amiga-Buchse neben J7, J3 codiert; A6: W5500 + RJ45 an SPI3 (PC10/PC11/PC12, CS PA15, INT PD5, RST PD10); Layout | |
+| noch offen | A6: W5500 + RJ45 an SPI3 (PC10/PC11/PC12, CS PA15, INT PD5, RST PD10); A7 Board-ID-Wert v1.0; Layout. J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 

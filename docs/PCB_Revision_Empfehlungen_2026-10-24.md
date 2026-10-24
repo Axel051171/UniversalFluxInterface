@@ -86,8 +86,8 @@ hängen. Sie sollten auf der Platine steckbar sein, nicht als Fädeldraht:
 ## 6 Festgelegt am 24.10.2026 (Entwurfsvorgabe für die Umsetzung in KiCad)
 
 - **Versorgung:** wie bisher (USB-C, J17 PSU_IN, J2 12 V), aber ohne J18: die 5-V-Quelle
-  wählt der TPS2116 automatisch. Laufwerksversorgung bleibt auf der Platine (J3), als
-  codierter 4-poliger Floppy-Stromstecker statt offener Stiftleiste.
+  wählt der TPS2116 automatisch. Laufwerksversorgung bleibt auf der Platine (J3) als
+  Stiftleiste wie bisher (Owner 24.10.: Stecker intern unverändert, einmal gesteckt).
 - **Gehäuseeinbau:** USB-C, 12-V-Buchse und IEC hinten, bündig mit der Platinenkante;
   Laufwerkskabel intern. Auf der Platine nur eine Status-LED (ACT); alle übrigen
   Anzeigen und die Bedienung an der Frontplatte. Umriss und sechs Bohrungen bleiben,
@@ -126,8 +126,8 @@ hängen. Sie sollten auf der Platine steckbar sein, nicht als Fädeldraht:
 - **Testbarkeit:** Loopback-Block (WDATA→RDATA, WGATE→Status, INDEX_SIM→INDEX, TRK0-Force),
   Logikanalysator-Header auf 3,3 V, Testpunkte wie in Abschnitt 2.
 - **USB-C:** in Kantenaussparung, Öffnung bündig außen; F.Fab mit Öffnungsseite.
-- **Amiga extern:** DB23-Buchse an der Laufwerkskante, J7 bleibt zusätzlich intern. Offen bleibt das Gehäuse (bis dahin heutiger Umriss).
-- **Eingang/Ausgang-Struktur (Vorgabe 24.10.):** eine Platinenkante trägt alles, was vom Host und von der Versorgung kommt (USB-C, J16, 12-V-Buchse, J17 PSU_IN, SWD J4, UART J5); die gegenüberliegende Kante alle Laufwerksanschlüsse (J6 34-pol, J14 Disk II, DB23 Amiga mit J7, IEC-DIN, J3 Laufwerksstrom). Front-Header J12 an einer Seitenkante.
+- **Amiga extern:** DB23 als Gehäusebuchse am Flachbandkabel von J7 (Owner 24.10.: keine Buchsen auf der Platine, J7, J8 und J3 bleiben Stiftleisten; DIN-6 ebenso am Kabel von J8). Offen bleibt das Gehäuse (bis dahin heutiger Umriss).
+- **Eingang/Ausgang-Struktur (Vorgabe 24.10.):** eine Platinenkante trägt alles, was vom Host und von der Versorgung kommt (USB-C, J16, 12-V-Buchse, J17 PSU_IN, SWD J4, UART J5); die gegenüberliegende Kante alle Laufwerksanschlüsse als interne Stiftleisten (J6 34-pol, J14 Disk II, J7 Amiga, J8 IEC, J3 Laufwerksstrom; DIN-6 und DB23 sind Gehäusebuchsen am Kabel). Front-Header J12 an einer Seitenkante.
 
 ## 7 Nicht ändern
 

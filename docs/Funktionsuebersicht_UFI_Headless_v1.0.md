@@ -31,7 +31,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | 3,3 V | U4 AP7361C-33 LDO | TP1–TP4: 3V3, 5V, 12V, GND |
 | Laufwerksversorgung geschaltet | Q1/Q3 AO3401A High-Side, Q2/Q4 2N7002, F2/F3 Polyfuses 1,1 A, D13/D14 TVS | aus, solange die MCU im Reset ist; Firmware schaltet 5 V, dann 12 V (`ufi power`, `POWER` 0x40) |
 | Strommessung | R26/R29 0,1 Ω, U12/U13 INA180A1 → PC0/PC1 | über 1,5 A für 50 ms → Schiene aus, ERR-LED, Ereignis 0x83; `ufi selftest` Posten `rail_5v`/`rail_12v` |
-| Laufwerksstrom-Ausgang | J3 4-polig (FDD_5V, GND, GND, FDD_12V) | Stufe A5: codierter Floppy-Stromstecker statt offener Stiftleiste |
+| Laufwerksstrom-Ausgang | J3 4-polig (FDD_5V, GND, GND, FDD_12V) | interne Stiftleiste wie bisher, Kabel zum Laufwerk |
 | C64 PSU Guard | **neu J20 GUARD 1×4** (GND, OFF, ERR5, ERR12), R107/R108 | Anschluss der kleinen Spannungsplatine (`kicad/C64_PSU_Guard`, dort J3): OFF schaltet beide Guard-Kanäle ab, ERR5/ERR12 melden eine ausgelöste eFuse; Firmware-Nutzung folgt |
 
 ## 3 Laufwerksschnittstellen
@@ -39,8 +39,8 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | Schnittstelle | Teile | Firmware / Host |
 |---|---|---|
 | 34-polig PC/Shugart | J6 2×17, LS07-Treiber U6/U7 (Open-Collector), HC14-Empfänger U8, 1-kΩ-Abschluss R75–R91 (**neu einzeln**), ESD D9–D11, Lötbrücken JP1 (Pin 6 DRATE für 3-Mode) und JP2 (Pin 3 GND/5 V) | Laufwerk A/B (Twist) oder Shugart DS0–DS3, 300/360 U/min (`ufi rpm`, `SET_RPM`), DENSITY/DRATE/TG43 (`ufi timing`, `ufi lines`), 8-Zoll über Adapter |
-| Amiga extern | J7 2×12 (Pin n = DB23 Pin n), R97–R99 | `drive=amiga|amiga2`, Amiga-ID (`AMIGA_ID`); Stufe A5: zusätzlich DB23-Buchse an der Laufwerkskante |
-| Commodore IEC | J8 1×6 (DIN-6-Belegung), LS07 U9, HC14 U10, R92–R96, ESD D12 | 1541/1571/1581 roh und über DOS: `ufi iec-*`, D64/D71/D81 lesen und schreiben (`iec-read`/`iec-write`), Nibbles (`IEC_NIB`), Speicher/DOS-Befehle (`IEC_MEM`), Blockzugriff (`IEC_BLOCK`); Stufe A5: DIN-6-Buchse auf der Platine |
+| Amiga extern | J7 2×12 (Pin n = DB23 Pin n), R97–R99 | `drive=amiga|amiga2`, Amiga-ID (`AMIGA_ID`); DB23-Gehäusebuchse am Flachbandkabel von J7, einmal bei der Montage gesteckt |
+| Commodore IEC | J8 1×6 (DIN-6-Belegung), LS07 U9, HC14 U10, R92–R96, ESD D12 | 1541/1571/1581 roh und über DOS: `ufi iec-*`, D64/D71/D81 lesen und schreiben (`iec-read`/`iec-write`), Nibbles (`IEC_NIB`), Speicher/DOS-Befehle (`IEC_MEM`), Blockzugriff (`IEC_BLOCK`); DIN-6-Gehäusebuchse am Kabel von J8 |
 | Apple Disk II | J14 2×10, U16 AHCT244, U17 LVC2G17, U18 ICL7660 (−12 V), J15 zweites Laufwerk, J19 Sync-Sensor | 5,25-Zoll-GCR mit Viertelspuren, `apple-gcr`, `apple-table`, `read-dsk`; Sync-Sensor über `apple_sync=1` |
 | Atari SIO (optional) | nur Kabel DIN-6 → SIO-13 an J8 | Firmware-Option, keine Platinenänderung |
 | Schreibschutz in Hardware | **JP4 Lötbrücke** (statt Jumper J11), U14 LVC1G32, R33 | geschlossen = WGATE elektrisch gesperrt; zusätzlich Sitzungs-Schreibsperre per Software (`ufi write-lock`, Status 22) |
@@ -88,8 +88,10 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 
 ## 8 Noch nicht im Schaltplan (Reihenfolge wie geplant)
 
-1. **A5 Laufwerkskante:** J8 → DIN-6-Buchse auf der Platine, DB23-Buchse für externe Amiga-Laufwerke neben J7, J3 als codierter Floppy-Stromstecker.
-2. **A6 LAN:** W5500 mit RJ45-Magjack an der Eingangskante, SPI3 (PC10/PC11/PC12), CS PA15, INT PD5, RST PD10; Steuerung über LAN wie über USB als spätere Firmwarestufe.
-3. **Board-ID v1.0:** neuer Teilerwert R18, damit die Firmware v0.7 (J9-Pinbelegung) von v1.0 (PE5-Indexsimulation, LOOP_EN) unterscheiden kann.
-4. **Firmware-Nutzung der neuen Leitungen:** Selbsttest-Posten für die Rückschleife (WDATA→RDATA, TRK0, WGATE_SENSE), Guard-Status in `BOARD_STATUS`, Guard-OFF beim Abschalten der Laufwerksversorgung.
-5. **Layout:** Eingangskante (USB-C in Kantenaussparung, J16, J2, J17, J4, J5) gegenüber der Laufwerkskante (J6, J14, DB23/J7, DIN-6, J3), Front-Header an einer Seitenkante, Gehäuse noch offen (Umriss bleibt bis dahin).
+1. **A6 LAN:** W5500 mit RJ45-Magjack an der Eingangskante, SPI3 (PC10/PC11/PC12), CS PA15, INT PD5, RST PD10; Steuerung über LAN wie über USB als spätere Firmwarestufe.
+2. **Board-ID v1.0:** neuer Teilerwert R18, damit die Firmware v0.7 (J9-Pinbelegung) von v1.0 (PE5-Indexsimulation, LOOP_EN) unterscheiden kann.
+3. **Firmware-Nutzung der neuen Leitungen:** Selbsttest-Posten für die Rückschleife (WDATA→RDATA, TRK0, WGATE_SENSE), Guard-Status in `BOARD_STATUS`, Guard-OFF beim Abschalten der Laufwerksversorgung.
+4. **Layout:** Eingangskante (USB-C in Kantenaussparung, J16, J2, J17, J4, J5) gegenüber der Laufwerkskante (J6, J14, J7, J8, J3 als interne Stiftleisten; DIN-6 und DB23 als Gehäusebuchsen am Kabel), Front-Header an einer Seitenkante, Gehäuse noch offen (Umriss bleibt bis dahin).
+
+Entschieden 24.10.: keine Buchsen auf der Platine, alle Laufwerks- und Hilfsanschlüsse bleiben
+Stiftleisten wie bisher; nur USB und LAN sind von außen erreichbar.
