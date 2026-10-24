@@ -117,6 +117,8 @@ int main(void){
 #define GPIO_PIN_SET 1
 #define GPIO_PIN_RESET 0
 static const struct {int port,pin;} PIN_WLOCK;
+static const struct {int port,pin;} PIN_WREN_SENSE;      /* v1.0 (A9b) front switch line; this test runs as a v0.x board */
+static uint8_t ufi_board_rev(void){return 7;}
 static int jumper;
 static int HAL_GPIO_ReadPin(int port,int pin){(void)port;(void)pin;return jumper;}
 static bool session_lock;

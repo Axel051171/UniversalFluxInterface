@@ -3613,6 +3613,297 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "74xGxx:74LVC1G332"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "U"
+				(at -7.112 7.366 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "74LVC1G332"
+				(at 6.096 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Single OR 3-Input Gate, Low-Voltage CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Single Gate OR triple LVC CMOS"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "SOT* SG*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "74LVC1G332_0_1"
+				(arc
+					(start -7.62 6.35)
+					(mid -5.321 0)
+					(end -7.62 -6.35)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 5.08) (xy -6.858 5.08)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -7.62 -5.08) (xy -6.858 -5.08)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -6.35 0) (xy -5.334 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 6.35 0)
+					(mid 3.9978 -3.9978)
+					(end 0 -6.35)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 0 6.35)
+					(mid 3.9978 3.9978)
+					(end 6.35 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 6.35) (xy -7.62 6.35)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -6.35) (xy -7.62 -6.35)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+			)
+			(symbol "74LVC1G332_1_1"
+				(pin input line
+					(at -12.7 0 0)
+					(length 6.35)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 -10.16 90)
+					(length 3.81)
+					(name "GND"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -12.7 -5.08 0)
+					(length 5.08)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin output line
+					(at 12.7 0 180)
+					(length 6.35)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "4"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin power_in line
+					(at 0 10.16 270)
+					(length 3.81)
+					(name "VCC"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "5"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -12.7 5.08 0)
+					(length 5.08)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "6"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(text "FLUX INTERFACE\nOutputs: SN74LS07 open-collector, 40 mA sink (drives 150R terminators), 1k pull-ups to +5V.\n  MCU low = bus line asserted (active low), MCU high/reset = released.\nInputs: 1k pull-ups to +5V, 74LVC14A Schmitt inverter at 3V3 (5V-tolerant inputs).\n  MCU sees INVERTED level: high = drive asserts line. RDATA/INDEX capture on rising edge."
 		(exclude_from_sim no)
@@ -5251,68 +5542,6 @@
 	)
 	(wire
 		(pts
-			(xy 104.14 297.18) (xy 101.6 297.18)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "5f738bf9-55a6-5461-a27e-5b02606add5c")
-	)
-	(global_label "FDD_WGATE"
-		(shape bidirectional)
-		(at 101.6 297.18 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "c5e985ee-01f6-5ea9-be69-8f39b1f4c414")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 101.6 297.18 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-	)
-	(wire
-		(pts
-			(xy 104.14 302.26) (xy 101.6 302.26)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a00885c1-dcb1-50da-889f-94887b8888a2")
-	)
-	(global_label "WLOCK"
-		(shape bidirectional)
-		(at 101.6 302.26 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "5bcdfa58-9f6e-53e6-9f81-ea62ae4a2a0a")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 101.6 302.26 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-	)
-	(wire
-		(pts
 			(xy 119.38 309.88) (xy 119.38 312.42)
 		)
 		(stroke
@@ -5391,37 +5620,6 @@
 			(type default)
 		)
 		(uuid "849c245d-40c6-5bed-adc8-13cb483d559e")
-	)
-	(global_label "WLOCK"
-		(shape bidirectional)
-		(at 78.74 313.69 90)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "95c630e3-c30f-54a3-aa95-fb765b7c368d")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 78.74 313.69 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-	)
-	(wire
-		(pts
-			(xy 78.74 323.85) (xy 78.74 326.39)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "ed8e194d-8473-5215-ba36-449b98f56e06")
 	)
 	(wire
 		(pts
@@ -8372,91 +8570,6 @@
 		)
 	)
 	(symbol
-		(lib_id "74xGxx:74LVC1G32")
-		(at 119.38 299.72 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "321e7745-85cc-5bd8-8f14-f7b7afc397ff")
-		(property "Reference" "U14"
-			(at 114.3 292.1 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "74LVC1G32GW"
-			(at 127 307.34 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Package_TO_SOT_SMD:SOT-353_SC-70-5"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "http://www.ti.com/lit/sg/scyt129e/scyt129e.pdf"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C12516"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "MPN" "74LVC1G32GW,125"
-			(at 119.38 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "2a0fe6a5-cb25-5236-a635-dbbbcb0e37d1")
-		)
-		(pin "2"
-			(uuid "00398b5e-b208-53e7-8ae2-d20a44d22897")
-		)
-		(pin "3"
-			(uuid "a4071854-ff62-5a5b-9861-63a62b5ecf9c")
-		)
-		(pin "4"
-			(uuid "532f83e3-90d1-5f7a-9ac3-bfe662b35c85")
-		)
-		(pin "5"
-			(uuid "2cfbe05a-4a59-5cab-b9d5-659f1452e039")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
-					(reference "U14")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "power:+3V3")
 		(at 149.86 293.37 0)
 		(unit 1)
@@ -8638,63 +8751,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GND")
-		(at 78.74 326.39 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "2fc5bcbd-eb7c-512a-a13e-85a17351d00f")
-		(property "Reference" "#PWR230"
-			(at 78.74 332.74 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 78.74 330.2 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 78.74 326.39 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 78.74 326.39 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "faba4227-1682-5db4-b540-746b186ece4e")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
-					(reference "#PWR230")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:R")
 		(at 78.74 320.04 0)
 		(unit 1)
@@ -8711,7 +8767,7 @@
 				)
 			)
 		)
-		(property "Value" "100k"
+		(property "Value" "10k"
 			(at 78.74 320.04 90)
 			(effects
 				(font
@@ -8737,7 +8793,16 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C25803"
+		(property "LCSC" "C25804"
+			(at 78.74 320.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "pull-up: WLOCK_HW high = write locked by default; the front switch SCHREIBEN (J12 pin 12) pulls it to GND; A9b 2026-10-24 (was 100k to GND + solder jumper JP4)"
 			(at 78.74 320.04 0)
 			(effects
 				(font
@@ -10351,83 +10416,6 @@
 		(uuid "bdadcf08-faf7-4fea-990a-afb404c64191")
 	)
 	(symbol
-		(lib_id "Jumper:SolderJumper_2_Open")
-		(at 78.74 299.72 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "d81fa58e-b597-453c-812c-c4cec6b72c27")
-		(property "Reference" "JP4"
-			(at 78.74 297.18 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "WRITE_LOCK"
-			(at 78.74 302.26 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm"
-			(at 78.74 299.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 78.74 292.1 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Solder Jumper, 2-pole, open"
-			(at 78.74 294.64 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "b5157724-ab42-4bb6-980e-9cb389cc0fe6")
-		)
-		(pin "2"
-			(uuid "5b03bdeb-7f41-4b15-b99c-b3f72875a44d")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
-					(reference "JP4")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Analog_Switch:TS5A3166DBVR")
 		(at 330.2 254 0)
 		(unit 1)
@@ -10756,26 +10744,6 @@
 			)
 		)
 	)
-	(global_label "+3V3"
-		(at 73.66 299.72 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "de5263e1-e526-4895-8ba9-6fed2097fd65")
-	)
-	(global_label "WLOCK"
-		(at 83.82 299.72 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "6ac533d2-3cf3-4768-b054-e822355d62b1")
-	)
 	(global_label "FD_RDATA"
 		(at 322.58 254.0 180)
 		(effects
@@ -10915,5 +10883,268 @@
 			(justify right)
 		)
 		(uuid "a2a92f63-40de-4b1d-866c-e56b1ce03caa")
+	)
+	(global_label "+3V3"
+		(at 78.74 323.85 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "8e534b40-43ad-4eda-bb81-0e33e54ff53a")
+	)
+	(global_label "WLOCK_HW"
+		(at 78.74 313.69 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b5e866f1-636b-4e95-b57b-7ef9da43103d")
+	)
+	(symbol
+		(lib_id "74xGxx:74LVC1G332")
+		(at 119.38 299.72 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "75ff0e0b-a95a-41e8-868a-cb35259eee2f")
+		(property "Reference" "U14"
+			(at 112.268 307.086 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "74LVC1G332"
+			(at 125.476 292.1 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-363_SC-70-6"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://www.ti.com/lit/ds/symlink/sn74lvc1g332.pdf"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Single OR 3-Input Gate, Low-Voltage CMOS"
+			(at 119.38 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C2865081"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SN74LVC1G332DCKR (SC-70-6; alternative Nexperia 74LVC1G332GW,125 C548342)"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "3-input OR: WGATE reaches the drive only when FDD_WGATE is active AND WLOCK_HW (front switch) AND WLOCK_FW (PE4) are both low; A9b 2026-10-24 (was 74LVC1G32 with the jumper)"
+			(at 119.38 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "0ec5172c-2b34-45fa-8799-971792227fca")
+		)
+		(pin "2"
+			(uuid "d77caa2e-c0e0-41b7-9149-f722335c62e0")
+		)
+		(pin "3"
+			(uuid "f7b8f5da-b1f4-4290-b8e5-d350396ad06a")
+		)
+		(pin "4"
+			(uuid "c53460f9-60c8-4b7e-88bf-7d521bf77f58")
+		)
+		(pin "5"
+			(uuid "e168fef4-9730-4aa1-844d-7ead96d81ff0")
+		)
+		(pin "6"
+			(uuid "41121b38-f95f-431b-8eaf-44cf22bfa518")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "U14")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 93.98 309.88 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "312d4705-d7e6-4a3d-8893-1d296e7d42bc")
+		(property "Reference" "R131"
+			(at 91.44 309.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100k"
+			(at 96.52 309.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 92.202 309.88 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 93.98 309.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 93.98 309.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "2f34ec25-f019-40ac-b673-eda3d79b468c")
+		)
+		(pin "2"
+			(uuid "477b18c1-e4eb-4931-bd74-a164d83ba50d")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/74c60498-96ae-5bea-b0be-09af15133ab9"
+					(reference "R131")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(at 93.98 306.07 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "529fa9cd-61eb-44ba-aa00-c225b0a8afe5")
+	)
+	(global_label "WLOCK_FW"
+		(at 93.98 313.69 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9518ef27-dd78-4381-8b55-a01b70acbdf3")
+	)
+	(global_label "FDD_WGATE"
+		(at 106.67999999999999 299.72 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5b43c7ba-b24e-4eda-9d0a-f24cdbe6b1da")
+	)
+	(global_label "WLOCK_HW"
+		(at 106.67999999999999 304.8 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "01ea95e8-22bf-4a18-bf7c-92d406fe69fe")
+	)
+	(global_label "WLOCK_FW"
+		(at 106.67999999999999 294.64000000000004 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "12ded70a-929e-4c1c-a89f-4fc4812eb833")
 	)
 )

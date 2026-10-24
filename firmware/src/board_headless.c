@@ -50,7 +50,9 @@ const gpio_pin_t PIN_VBUS_SENSE      = {GPIOA, GPIO_PIN_9};
 /* v0.5 board extras */
 const gpio_pin_t PIN_FDD5_EN         = {GPIOE, GPIO_PIN_2};
 const gpio_pin_t PIN_FDD12_EN        = {GPIOE, GPIO_PIN_3};
-const gpio_pin_t PIN_WLOCK           = {GPIOE, GPIO_PIN_4};
+const gpio_pin_t PIN_WLOCK           = {GPIOE, GPIO_PIN_4};   /* v1.0: output WLOCK_FW */
+const gpio_pin_t PIN_WREN_SENSE      = {GPIOE, GPIO_PIN_6};   /* v1.0 */
+const gpio_pin_t PIN_FDD_INDEX2      = {GPIOB, GPIO_PIN_11};  /* v1.0, TIM2_CH4 */
 const gpio_pin_t PIN_BTN_A           = {GPIOB, GPIO_PIN_8};
 const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
 const gpio_pin_t PIN_EXP_IO1         = {GPIOE, GPIO_PIN_0};
@@ -145,7 +147,15 @@ void board_gpio_init(void)
     __HAL_RCC_GPIOB_CLK_ENABLE();
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_PIN_RESET);
     init_pins(GPIOE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
-    init_pins(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    /* PE4: v0.x input (jumper), v1.0 output WLOCK_FW - set high (locked) before it becomes an output
+     * so the OR gate never sees a low glitch; the board revision is not known yet at this point, on
+     * v0.x boards an output on the jumper pin is harmless (100k pull-down, jumper to +3V3 through
+     * nothing stronger) but ufi_board_init() switches it back to an input there. */
+    HAL_GPIO_WritePin(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_PIN_SET);
+    init_pins(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(PIN_WREN_SENSE.port, PIN_WREN_SENSE.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(PIN_FDD_INDEX2.port, PIN_FDD_INDEX2.pin, GPIO_MODE_AF_PP, GPIO_NOPULL,
+              GPIO_SPEED_FREQ_VERY_HIGH, FDD_INDEX_AF);
     init_pins(GPIOB, GPIO_PIN_8 | GPIO_PIN_9, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOE, GPIO_PIN_0 | GPIO_PIN_1, GPIO_MODE_INPUT, GPIO_PULLDOWN, GPIO_SPEED_FREQ_LOW, 0);
 

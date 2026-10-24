@@ -561,6 +561,7 @@ int ufi_write_start(void) {
         g_write.state = WRITE_ERROR;
         return UFI_ERR_WRITE_PROT;
     }
+    ufi_board_write_enable(true);           /* v1.0 (A9b): WLOCK_FW low opens the hardware WGATE gate for this write */
     if (g_write.wave_mode && g_write.verify_after) {
         reference_started=HAL_GetTick();
         if (!local_reference_ready && !verify_ref_build_u32(&verify_ref,&verify_dec,write_buffer,g_write.flux_count,
@@ -748,6 +749,7 @@ static void write_finish(write_state_t final_state) {
     wdata_idle();
     bus_out(&PIN_FDD_WGATE, false);
     HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
+    ufi_board_write_enable(false);          /* v1.0 (A9b): hardware WGATE gate locked again */
     apple_wrdata(false);
     led_set(&PIN_LED_FDD, false);
     erase_pending = false;

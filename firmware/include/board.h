@@ -96,7 +96,15 @@ extern const gpio_pin_t PIN_VBUS_SENSE;     /* PA9, 22k/33k divider */
  * write lock jumper, buttons, expansion GPIO (v0.6: SD NAND on SDMMC2, no card detect) */
 extern const gpio_pin_t PIN_FDD5_EN;        /* PE2 */
 extern const gpio_pin_t PIN_FDD12_EN;       /* PE3 */
-extern const gpio_pin_t PIN_WLOCK;          /* PE4, high = WRITE LOCK set (v0.7: jumper J11; v1.0: solder jumper JP4) */
+extern const gpio_pin_t PIN_WLOCK;          /* v0.5-v0.7: PE4 input, high = WRITE LOCK jumper set (J11/JP4).  v1.0 (A9b): the
+                                               same pin PE4 is the OUTPUT WLOCK_FW (high = firmware lock, 100k pull-up R131
+                                               keeps it high through reset) into the 3-input OR U14; the hardware lock state
+                                               comes back on PIN_WREN_SENSE.  ufi_board_jumper_locked() reads the right pin. */
+extern const gpio_pin_t PIN_WREN_SENSE;     /* PE6 input (v1.0): WLOCK_HW through R130 470 R; high = front switch open or
+                                               cable off = write locked (R33 10k pull-up), low = switch SCHREIBEN closed */
+extern const gpio_pin_t PIN_FDD_INDEX2;     /* PB11, TIM2_CH4 (AF1), v1.0: INDEX also on channel 4 so that CH2 can measure the
+                                               RDATA pulse width on the same time base (capture code still uses CH2) */
+/* ufi_board_write_enable(bool) - v1.0: WLOCK_FW low only while a write runs - is declared in ufi_firmware.h */
 extern const gpio_pin_t PIN_BTN_A;          /* PB8, low = pressed (v1.0: front header J12 pin 13) */
 extern const gpio_pin_t PIN_BTN_B;          /* PB9, low = pressed (v1.0: front header J12 pin 14) */
 extern const gpio_pin_t PIN_EXP_IO1;        /* PE0, mode switch "USB floppy" (v0.7 J13 pin 1 / J9 pin 5, v1.0 J12 pin 15) */

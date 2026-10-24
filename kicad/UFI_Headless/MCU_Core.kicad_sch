@@ -9180,41 +9180,6 @@
 	)
 	(wire
 		(pts
-			(xy 172.72 190.5) (xy 170.18 190.5)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "496dab69-2dd9-5a68-a73d-5c2084e4f6e9")
-	)
-	(global_label "WLOCK"
-		(shape bidirectional)
-		(at 170.18 190.5 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "9f0720e7-e7b0-57da-957d-8eb5103b3334")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 170.18 190.5 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-	)
-	(no_connect
-		(at 172.72 195.58)
-		(uuid "c18baf64-2a36-5d5a-a922-f9ab0508c188")
-	)
-	(wire
-		(pts
 			(xy 195.58 55.88) (xy 195.58 53.34)
 		)
 		(stroke
@@ -10511,10 +10476,6 @@
 			(justify left bottom)
 		)
 		(uuid "9bbf39d2-2dc9-536c-8e9d-7547cc86defb")
-	)
-	(no_connect
-		(at 248.92 137.16)
-		(uuid "bf4f23c2-cffc-58df-91f0-b30928f42ccd")
 	)
 	(wire
 		(pts
@@ -23297,7 +23258,7 @@
 				)
 			)
 		)
-		(property "Note" "front panel, keyed 2x8: 1 +3V3, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (LED anodes, series R on board), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (470 R + TVS), even pins 2-12 GND"
+		(property "Note" "front panel, keyed 2x8: 1 +3V3 (R105), 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (LED anodes, series R on board), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (470 R + TVS); 10 FRONT_WRLED (+3V3 via R128 1k, LED 'write enabled' anode), 12 WLOCK_HW (switch SCHREIBEN to GND = write enabled, LED cathode; R33 10k pull-up = locked when open or cable off); even pins 2-8 GND. A9b 2026-10-24"
 			(at 355.6 264.16 0)
 			(effects
 				(font
@@ -23492,26 +23453,6 @@
 			(justify left)
 		)
 		(uuid "44717f30-86f8-4fa8-8254-3d09d9c70275")
-	)
-	(global_label "GND"
-		(at 363.22 266.70000000000005 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "01443762-8500-4ddf-95e2-43387ea80a90")
-	)
-	(global_label "GND"
-		(at 363.22 269.24 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "d2c929ae-e9bb-4330-b213-c9ff9c974e20")
 	)
 	(symbol
 		(lib_id "Device:D_TVS")
@@ -25986,5 +25927,443 @@
 			(justify right)
 		)
 		(uuid "beb28287-c259-41b3-bb82-da18618bac35")
+	)
+	(global_label "WLOCK_FW"
+		(at 172.72 190.5 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "87db2666-8831-4e83-b032-4e7da0270ff2")
+	)
+	(global_label "WREN_SENSE"
+		(at 172.72 195.58 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "bc194e17-bda7-4316-a856-e882eb1ab316")
+	)
+	(global_label "FDD_INDEX"
+		(at 248.92 137.16000000000003 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f3570748-79c3-43d1-9bf8-e074aec1df9e")
+	)
+	(global_label "FRONT_WRLED"
+		(at 363.22 266.70000000000005 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f1a6ee70-b9ae-4c45-8270-56ac6541efcf")
+	)
+	(global_label "WLOCK_HW"
+		(at 363.22 269.24 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "fa7dff5b-6555-46bc-9787-f4bbde7197f5")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 320.04 320.04 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "ef834d3c-1b68-4665-84cb-038c56e5012b")
+		(property "Reference" "R128"
+			(at 320.04 317.5 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1k"
+			(at 320.04 322.58 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 320.04 321.818 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 320.04 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 320.04 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "476a7720-e0a5-47b7-b187-a796d1083888")
+		)
+		(pin "2"
+			(uuid "6198db47-fdb9-4c16-be2b-a8e531da1b1d")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R128")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 320.04 327.66 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "748590cb-ecd9-477b-86a0-7e803cff2cd7")
+		(property "Reference" "R130"
+			(at 320.04 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "470"
+			(at 320.04 330.2 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 320.04 329.438 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 320.04 327.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 320.04 327.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "9c09b755-a52d-4d50-b683-d3e1c55b8808")
+		)
+		(pin "2"
+			(uuid "bfed2424-8778-4e76-b45c-bdc2548a4cdc")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R130")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(at 316.23 320.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "98f36a51-57f2-442b-b72e-78b52575b016")
+	)
+	(global_label "FRONT_WRLED"
+		(at 323.85 320.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7e1a934e-7e46-40be-8e4a-ede918c43569")
+	)
+	(global_label "WREN_SENSE"
+		(at 316.23 327.66 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "00c349f7-a3c6-4bf0-bcb2-c8a5ae7ceaf5")
+	)
+	(global_label "WLOCK_HW"
+		(at 323.85 327.66 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "904b9dc4-0f1d-4aff-a7cf-45132bd03b96")
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 337.82 320.04 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "a00d79b3-b6d5-44a8-8602-92f37db8de95")
+		(property "Reference" "D28"
+			(at 335.28 320.04 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 340.36 320.04 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 337.82 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 337.82 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 337.82 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "2ee60989-78e1-4418-979a-7144c90e8174")
+		)
+		(pin "2"
+			(uuid "142eaa74-54ee-412a-99a0-d8bf76f0276b")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D28")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 347.98 320.04 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3895d579-931c-4bab-9e05-9ed744ae8b47")
+		(property "Reference" "D29"
+			(at 345.44 320.04 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "PESD3V3L1BA"
+			(at 350.52 320.04 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323"
+			(at 347.98 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 347.98 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Bidirectional transient-voltage-suppression diode"
+			(at 347.98 320.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "cf14433b-f1e3-4119-9de2-f4870d020085")
+		)
+		(pin "2"
+			(uuid "20d21243-2f3b-46c9-9a83-723d92a99aca")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "D29")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "WLOCK_HW"
+		(at 337.82 323.85 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a04197be-9b64-4c6d-93c8-8dd600be2a55")
+	)
+	(global_label "GND"
+		(at 337.82 316.23 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c52f8b11-1920-42e0-9b47-fc2e30ae5c48")
+	)
+	(global_label "FRONT_WRLED"
+		(at 347.98 323.85 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "58d5559b-b9eb-41d6-8eae-e66d74eeb869")
+	)
+	(global_label "GND"
+		(at 347.98 316.23 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "6f2b6107-79d2-49d8-91ad-9673871e91af")
 	)
 )

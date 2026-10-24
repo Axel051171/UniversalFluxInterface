@@ -395,7 +395,8 @@ void ufi_board_activity(void);                  // host command / transfer seen
 void ufi_board_power(uint8_t mask);
 board_status_t ufi_board_status(void);
 bool ufi_board_write_locked(void);              // WRITE-LOCK jumper or session lock: WGATE must stay off
-bool ufi_board_jumper_locked(void);             // WRITE-LOCK jumper only (board_status bit 0)
+bool ufi_board_jumper_locked(void);             // WRITE-LOCK jumper only (board_status bit 0); v1.0: front switch line WLOCK_HW on PE6
+void ufi_board_write_enable(bool on);           // v1.0 (A9b): WLOCK_FW (PE4) low only while a write runs; v0.x: no effect
 void ufi_board_soft_lock(void);                 // session write lock (op 37, 1.18): engage-only, cleared by MCU reset
 bool ufi_board_soft_locked(void);               // v2 write starts refuse with status 22 while engaged
 bool ufi_board_has_apple(void);                 // v0.7 board: Apple Disk II port J14

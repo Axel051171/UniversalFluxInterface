@@ -256,6 +256,7 @@ static int pack_deltas(void) {
 static bool ufi_drive_is_apple(void) { return false; }
 static bool ufi_config_apple_sync(void) { return false; }
 static bool ufi_board_write_locked(void) { return locked; }
+static void ufi_board_write_enable(bool on) { (void)on; }
 static bool soft_locked;
 static bool ufi_board_soft_locked(void) { return soft_locked; }
 static bool ufi_drive_write_protected(void) { return false; }

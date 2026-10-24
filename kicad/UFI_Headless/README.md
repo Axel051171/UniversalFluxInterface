@@ -61,6 +61,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
 | LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
 | Board-ID | R18 22k (R17 10k) | 2,27 V = v1.0; `INFO` meldet `board_rev` 10, Firmware schaltet damit Apple-Port und Amiga2 frei wie bei v0.7 |
+| A9b Schreibsperre (24.10.) | Grundzustand gesperrt: R33 10k Pull-up auf WLOCK_HW, JP4 entfällt, U14 74LVC1G332 (3-fach-ODER: FDD_WGATE, WLOCK_HW, WLOCK_FW → FDD_WGATE_G), WLOCK_FW = PE4 Ausgang mit R131 100k Pull-up, WLOCK_HW über R130 470 Ω an PE6 (WREN_SENSE); J12 Pin 12 = WLOCK_HW (Frontschalter SCHREIBEN nach GND), Pin 10 = FRONT_WRLED (+3V3 über R128 1k, LED-Kathode an Pin 12), D28/D29 PESD3V3L1BA; FDD_INDEX zusätzlich an PB11 (TIM2_CH4, AF1 gegen die Pin-Datenbank geprüft) | Schreiben nur bei Schalter EIN und Firmware-Freigabe während eines Schreibauftrags; Frontkabel ab = gesperrt |
 | A9a Schutz (24.10.) | J17/J3 als JST XH B4B-XH-A (C144395, verpolsicher, Adapterkabel in `docs/Inbetriebnahme.md`); D27 SS54 als Dioden-ODER für J17 Pin 4 (+12V_PSU) neben D2 (J2); U24 USBLC6-2SC6 als ESD auf CC1/CC2; R125–R127 220 Ω in Serie auf dem Guard-Kabel (GUARD_*_J); R26/R29 50 mΩ (RLM12FTCMR050 C912768) statt 0,1 Ω, F2 1812 wie F3 (C20999); SW3/SW4 gestrichen | Firmware `ufi_board.c` skaliert den INA180-Wert nach Platinenrevision (v1.0 1 mV/mA); A9b/A9c (Schreibsperre, INDEX auf TIM2_CH4, Sanftanlauf, RTC) folgen, siehe `PLAN.md` |
 | noch offen | Lastpfade 1,0 mm (Stufe B3), Fertigungsfreigabe (Stufe C). J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.); Gehäuseausschnitte für J1 (USB-C) und J22 (RJ45) an der Eingangskante | |
 
@@ -236,6 +237,9 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | I2C_SCL / I2C_SDA | PB6 / PB7 | I2C1 (AF4) auf J9 (v0.5), ab v1.0 Testpads TP10/TP11 |
 | EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5), Modusschalter J13 (v0.6), ab v1.0 MODE1/MODE2 auf J12 Pin 15/16 |
 | BTN_A / BTN_B | PB8 / PB9 | GPIO in, Pull-up, low = gedrückt (SW3/SW4, J9; ab v1.0 J12 Pin 13/14) (v0.5) |
+| WLOCK_FW | PE4 | v1.0 (A9b): GPIO out, high = Firmware-Schreibsperre (R131 100k Pull-up, Reset = gesperrt), low nur während eines Schreibauftrags; v0.x: Eingang des Jumpers |
+| WREN_SENSE | PE6 | v1.0 (A9b): GPIO in, WLOCK_HW über R130 470 Ω, high = Frontschalter offen/Kabel ab = gesperrt |
+| FDD_INDEX (2) | PB11 | v1.0 (A9b): TIM2_CH4 AF1, Index zusätzlich zu PA1/CH2 – CH2 kann damit die RDATA-Pulsbreite messen |
 | SD CK / CMD / D0–D3 | PD6 / PD7 / PG9–PG12 | SDMMC2 (AF11, D2/D3 AF10) (v0.5) |
 | GUARD_ERR12 | PG13 | v0.5 Card-Detect, v0.6 unbenutzt, ab v1.0 GPIO in ← J20 Pin 4 (10k Pull-up R108) |
 | INDEX_SIM | PE5 | TIM15_CH1 (AF4) Output → U7F → INDEX-Bus; ruhend high = Bus losgelassen (v1.0) |

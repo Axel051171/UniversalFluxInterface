@@ -115,7 +115,26 @@ bool ufi_board_soft_locked(void)
 
 bool ufi_board_jumper_locked(void)
 {
+    /* v1.0 (A9b): the hardware lock is the front switch line WLOCK_HW read on PE6 (high =
+     * locked, also when the front cable is off); v0.x: the jumper on PE4 */
+    if (ufi_board_rev() >= 10u)
+        return HAL_GPIO_ReadPin(PIN_WREN_SENSE.port, PIN_WREN_SENSE.pin) == GPIO_PIN_SET;
     return HAL_GPIO_ReadPin(PIN_WLOCK.port, PIN_WLOCK.pin) == GPIO_PIN_SET;
+}
+
+void ufi_board_write_enable(bool on)
+{
+    /* v1.0: WLOCK_FW (PE4) is the third input of the WGATE OR gate U14; low only while a
+     * write runs.  v0.x boards: PE4 is the jumper input, restore it as input once and leave it. */
+    static bool v0_restored;
+    if (ufi_board_rev() >= 10u) {
+        HAL_GPIO_WritePin(PIN_WLOCK.port, PIN_WLOCK.pin, on ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    } else if (!v0_restored) {
+        GPIO_InitTypeDef g = {.Pin = PIN_WLOCK.pin, .Mode = GPIO_MODE_INPUT, .Pull = GPIO_NOPULL,
+                              .Speed = GPIO_SPEED_FREQ_LOW};
+        HAL_GPIO_Init(PIN_WLOCK.port, &g);
+        v0_restored = true;
+    }
 }
 
 bool ufi_board_write_locked(void)
