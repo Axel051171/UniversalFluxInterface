@@ -161,15 +161,26 @@ extern const gpio_pin_t PIN_LAN_RST;        /* PD10, W5500 RSTn, low >= 500 us =
 #define PSRAM_IO3_PIN   GPIO_PIN_13     /* AF9 */
 
 /* ---- Polarity ------------------------------------------------------------ */
-#define BUS_OUT_ASSERT          GPIO_PIN_RESET  /* MCU low -> LS07 pulls the bus low */
+#define BUS_OUT_ASSERT          GPIO_PIN_RESET  /* MCU low -> LS07 pulls the bus low (IEC on every board, Shugart on v0.x) */
 #define BUS_OUT_RELEASE         GPIO_PIN_SET
 #define BUS_IN_ASSERTED         GPIO_PIN_SET    /* bus low -> LVC14 output high */
 #define FLUX_EDGE               TIM_INPUTCHANNELPOLARITY_RISING
 
+/* v1.0 (A11b): the twelve Shugart/Amiga outputs (PE7-PE15, PF11 DRATE, PE5 INDEX_SIM and the TIM3
+ * output PA6 WDATA) drive the gates of the dual N-MOSFETs Q6-Q11 (BSS138DW, 100k gate pull-downs):
+ * MCU high = bus low, reset = released.  The IEC outputs (PD0-PD4) keep the LS07 U9 and its polarity.
+ * board_gpio_init() sets the flag from the board revision before it touches any bus output. */
+extern bool board_fdd_mosfet;
+
+static inline bool bus_out_inverted(const gpio_pin_t* p)
+{
+    return board_fdd_mosfet && p->port != GPIOD;
+}
+
 /** Drive a bus output: true = assert (bus low), false = release. */
 static inline void bus_out(const gpio_pin_t* p, bool assert)
 {
-    HAL_GPIO_WritePin(p->port, p->pin, assert ? BUS_OUT_ASSERT : BUS_OUT_RELEASE);
+    HAL_GPIO_WritePin(p->port, p->pin, (assert != bus_out_inverted(p)) ? BUS_OUT_ASSERT : BUS_OUT_RELEASE);
 }
 
 /** Read a bus input: true = bus line asserted (low on the cable). */
@@ -181,7 +192,7 @@ static inline bool bus_in(const gpio_pin_t* p)
 /** True if the output pin currently asserts its bus line. */
 static inline bool bus_out_state(const gpio_pin_t* p)
 {
-    return (p->port->ODR & p->pin) == 0;
+    return ((p->port->ODR & p->pin) == 0) != bus_out_inverted(p);
 }
 
 static inline void led_set(const gpio_pin_t* p, bool on)

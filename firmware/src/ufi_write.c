@@ -205,7 +205,8 @@ void ufi_write_init(void) {
     TIM_OC_InitTypeDef oc = {0};
     oc.OCMode = TIM_OCMODE_FORCED_INACTIVE;
     oc.Pulse = WRITE_PULSE_TICKS - 1;
-    oc.OCPolarity = TIM_OCPOLARITY_LOW;     // active = low = bus asserted
+    /* active = bus asserted: low into the LS07 U7 (v0.x), high on the MOSFET gate Q10 (v1.0, A11b) */
+    oc.OCPolarity = board_fdd_mosfet ? TIM_OCPOLARITY_HIGH : TIM_OCPOLARITY_LOW;
     oc.OCFastMode = TIM_OCFAST_DISABLE;
     HAL_TIM_PWM_ConfigChannel(&htim3, &oc, TIM_CHANNEL_1);
     TIM_CCxChannelCmd(TIM3, TIM_CHANNEL_1, TIM_CCx_ENABLE);

@@ -146,7 +146,8 @@ static void sim_pin(bool output)
         g.Mode = GPIO_MODE_AF_PP;
         g.Alternate = INDEX_SIM_AF;
     } else {
-        HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_PIN_SET);   /* released */
+        /* released: high into the LS07 (v0.x), low on the MOSFET gate (v1.0, A11b) */
+        HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, board_fdd_mosfet ? GPIO_PIN_RESET : GPIO_PIN_SET);
         g.Mode = GPIO_MODE_OUTPUT_PP;
     }
     HAL_GPIO_Init(PIN_INDEX_SIM.port, &g);
@@ -217,8 +218,9 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode)
     TIM_OC_InitTypeDef oc = {0};
     oc.OCMode = TIM_OCMODE_PWM1;                /* active while CNT < pulse ... */
     oc.Pulse = low;
-    oc.OCPolarity = TIM_OCPOLARITY_LOW;         /* ... and active = low */
-    oc.OCIdleState = TIM_OCIDLESTATE_SET;
+    /* ... and active = low into the LS07 (v0.x) or high on the MOSFET gate (v1.0, A11b) */
+    oc.OCPolarity = board_fdd_mosfet ? TIM_OCPOLARITY_HIGH : TIM_OCPOLARITY_LOW;
+    oc.OCIdleState = board_fdd_mosfet ? TIM_OCIDLESTATE_RESET : TIM_OCIDLESTATE_SET;
     if (HAL_TIM_PWM_Init(&htim15) != HAL_OK ||
         HAL_TIM_PWM_ConfigChannel(&htim15, &oc, TIM_CHANNEL_1) != HAL_OK) {
         sim_mode = 0;

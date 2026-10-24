@@ -5,6 +5,7 @@
  */
 
 #include "board.h"
+#include "ufi_firmware.h"     /* ufi_board_rev(): v1.0 MOSFET polarity of the bus outputs (A11b) */
 
 /* FDD outputs (LS07 open-collector drivers) */
 const gpio_pin_t PIN_FDD_MOTOR_A     = {GPIOE, GPIO_PIN_7};
@@ -46,6 +47,8 @@ const gpio_pin_t PIN_LED_USB         = {GPIOG, GPIO_PIN_2};
 const gpio_pin_t PIN_LED_ERR         = {GPIOG, GPIO_PIN_3};
 const gpio_pin_t PIN_PWR_SRC         = {GPIOG, GPIO_PIN_4};
 const gpio_pin_t PIN_VBUS_SENSE      = {GPIOA, GPIO_PIN_9};
+
+bool board_fdd_mosfet;                                        /* v1.0 (A11b): Shugart outputs through MOSFET gates */
 
 /* v0.5 board extras */
 const gpio_pin_t PIN_FDD5_EN         = {GPIOE, GPIO_PIN_2};
@@ -108,15 +111,22 @@ void board_gpio_init(void)
     __HAL_RCC_GPIOF_CLK_ENABLE();
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
+    /* v1.0 (A11b): Shugart outputs drive MOSFET gates (released = low), v0.x the LS07 inputs
+     * (released = high).  The revision comes from the BOARD_ID divider; the ADC initialises
+     * itself on the first reading.  Until this point the 100k gate pull-downs (v1.0) and the
+     * floating LS07 inputs (v0.x) keep every line released. */
+    board_fdd_mosfet = ufi_board_rev() >= 10u;
+    const GPIO_PinState fdd_rel = board_fdd_mosfet ? GPIO_PIN_RESET : GPIO_PIN_SET;
+
     /* Bus outputs: latch the released level before switching to output mode,
      * so no line glitches to "asserted" during start-up. */
     const uint16_t fdd_e = GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 |
                            GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
     const uint16_t iec_d = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
-    HAL_GPIO_WritePin(GPIOE, fdd_e, BUS_OUT_RELEASE);
-    HAL_GPIO_WritePin(GPIOD, iec_d, BUS_OUT_RELEASE);
-    HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, BUS_OUT_RELEASE);
-    HAL_GPIO_WritePin(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, BUS_OUT_RELEASE);
+    HAL_GPIO_WritePin(GPIOE, fdd_e, fdd_rel);
+    HAL_GPIO_WritePin(GPIOD, iec_d, BUS_OUT_RELEASE);          /* IEC: LS07 U9 on every board */
+    HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, fdd_rel);
+    HAL_GPIO_WritePin(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, fdd_rel);
     init_pins(GPIOE, fdd_e, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_HIGH, 0);
     init_pins(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_LOW, 0);
@@ -168,7 +178,7 @@ void board_gpio_init(void)
      * until ufi_index_sim_set() hands the pin to TIM15; loopback switch and guard OFF low
      * (their 100k pull-downs already hold them there during reset); guard error lines have
      * 10k pull-ups on the board, WGATE_SENSE is driven by the HC14 */
-    HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, fdd_rel);   /* A11b: MOSFET gate low = released */
     init_pins(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_LOW, 0);
     HAL_GPIO_WritePin(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_PIN_RESET);
