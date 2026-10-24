@@ -2,8 +2,10 @@
  * UFI Flux Engine - board v0.5 extras and safety
  *
  * Drive supplies: FDD_5V / FDD_12V are switched by P-FETs (PE2/PE3 high = on; the 100k
- * pull-downs keep them off while the MCU is in reset) and measured through 0.1R shunts by
- * INA180A1 amplifiers (20 V/V -> 2 mV per mA) on ADC1.  A rail drawing more than
+ * pull-downs keep them off while the MCU is in reset) and measured through shunts by
+ * INA180A1 amplifiers (20 V/V) on ADC1: 0.1R on v0.5-v0.7 (2 mV per mA), 50 mR on
+ * v1.0 (1 mV per mA, R26/R29 after the pcb-routing review of 2026-10-24) - the board
+ * revision from the BOARD_ID divider selects the scale.  A rail drawing more than
  * OVERCURRENT_MA for OVERCURRENT_SAMPLES samples in a row is switched off and flagged
  * until the host switches it on again (BOARD_STATUS).
  *
@@ -22,7 +24,7 @@ extern USBD_HandleTypeDef hUsbDevice;
 extern capture_context_t g_capture;
 
 #define SAMPLE_MS               10u
-#define OVERCURRENT_MA          1500u   /* polyfuses hold 1.1 A; INA180 saturates ~1.6 A */
+#define OVERCURRENT_MA          1500u   /* polyfuses hold 1.1 A; INA180 saturates ~1.6 A (v0.x) / ~3.2 A (v1.0) */
 #define OVERCURRENT_SAMPLES     5u      /* 50 ms: motor start-up peaks pass */
 #define USB_LOST_MS             300u
 #define RAIL_STAGGER_MS         50u     /* 5 V first, then 12 V */
@@ -70,7 +72,8 @@ void ufi_board_init(bool power_on)
 static void sample_rails(void)
 {
     for (int r = 0; r < 2; r++) {
-        rail_ma[r] = (uint16_t)(ufi_adc_mv(rail_adc[r]) / 2u);
+        /* v1.0 (board_rev 10): 50 mR shunt -> 1 mV/mA; earlier boards 0.1R -> 2 mV/mA */
+        rail_ma[r] = (uint16_t)(ufi_adc_mv(rail_adc[r]) / (ufi_board_rev() >= 10u ? 1u : 2u));
         if (!((power_mask >> r) & 1u)) {
             oc_count[r] = 0;
             continue;

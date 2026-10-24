@@ -65,7 +65,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 |---|---|---|
 | Front-Header | **J12 2×8 Wannenstecker mit Kodierung** | Flachbandkabel zur Frontplatte, einmal bei der Montage gesteckt |
 | LEDs ACT, ERR, USB, FDD, PWR | je eigener Vorwiderstand R34–R37/R100 330 Ω auf der Platine, Anoden an J12 Pin 3/5/7/9/11, Kathoden an GND (gerade Pins) | D22–D26 ESD-Schutz; auf der Platine bleibt nur D4 ACT |
-| Taster A und B | J12 Pin 13/14, R101/R102 470 Ω, D18/D19 ESD | SW3/SW4 auf der Platine bleiben als Footprint unbestückt (einzige bewusste Nichtbestückung) |
+| Taster A und B | J12 Pin 13/14, R101/R102 470 Ω, D18/D19 ESD | SW3/SW4 sind seit A9a (24.10.) gestrichen; im Service genügt eine Drahtbrücke an J12 Pin 13/14 gegen GND |
 | Modusschalter EIN-AUS-EIN | J12 Pin 15/16 (MODE1/MODE2), Mittelkontakt +3V3 über R105 1 kΩ an Pin 1, R103/R104, D20/D21 | Mitte = Flux, MODE1 = USB-Floppy, MODE2 = SD-Laufwerk; ACT blinkt 1×/2×/3× |
 | RESET / BOOT | nur auf der Platine | an der Front bewusst nicht vorgesehen (Fehlbedienung), DFU über Taste A beim Einschalten |
 
@@ -83,7 +83,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 ## 7 Bestückung v1.0
 
 - Alles bestücken, einschließlich J7 (Amiga), J16 (USB-Header), C46/C50, R75–R99, J20, J21 und der neuen Teile U19, U22, Q5, JP4-Pads, D18–D26.
-- Bewusst unbestückt: **SW3, SW4** (Taster A/B auf der Platine; sie sitzen an der Front). Kupfer-Lötbrücken JP1 (offen), JP2 (1-2 gebrückt), JP3 (offen), JP4 (offen = schreiben erlaubt) sind keine Bauteile; ihre Stellung wird bei der Montage festgelegt.
+- Bewusst unbestückt: nichts mehr (SW3/SW4 seit A9a gestrichen, die Platine wird vollständig bestückt). Kupfer-Lötbrücken JP1 (offen), JP2 (1-2 gebrückt), JP3 (offen), JP4 (offen = schreiben erlaubt) sind keine Bauteile; ihre Stellung wird bei der Montage festgelegt.
 - Entfallen gegenüber v0.7: J9, J11, J13, J18, D5–D8, R12–R15, RN1–RN8.
 - Nach dem Bestücken: `python -m ufi_host.bringup --port COMx --report bringup.json` (docs/Bringup_2026-10-24.md), bei v1.0 mit allen Posten OK statt der RN-Warnungen.
 

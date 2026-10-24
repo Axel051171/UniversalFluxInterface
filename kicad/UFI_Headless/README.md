@@ -23,7 +23,7 @@ v0.5 (neue Teile mit festen Referenzen ab Q1, U12, R17, C47, D13, J9, SW3, TP7):
 | TVS an den Laufwerksausgängen | D13 SMF5.0CA (FDD_5V), D14 SMAJ15CA (FDD_12V) | – |
 | WRITE LOCK | J11 (Jumper), U14 74LVC1G32, R33 | Jumper gesteckt = WGATE in Hardware gesperrt, Firmware meldet „write protected“ |
 | Erweiterung | J9 2×5: 3V3, 5V, I²C1 (PB6/PB7, 2,2k), GPIO PE0/PE1, Taster-Leitungen | z. B. OLED-Display + Taster für Betrieb ohne PC; Pin 6 (PE1) ab Firmware 1.13 wahlweise Index-Simulation (Open-Drain, `ufi index-sim 300`/`UFI.CFG index_sim=300`) → Draht an den Indexsensor-Ausgang eines PC-Laufwerks für Flippy-Disketten; dann kein Betriebsart-Schalter an J13 |
-| Taster | SW3/SW4 (PB8/PB9, aktiv low) | frei für Firmware-Funktionen |
+| Taster | v0.5–v0.7 SW3/SW4 (PB8/PB9, aktiv low); ab v1.0 nur noch an der Front über J12 Pin 13/14, SW3/SW4 seit A9a gestrichen | frei für Firmware-Funktionen |
 | ~~microSD~~ | in v0.6 durch SD-NAND U15 ersetzt (s. u.) | – |
 | Board-ID | R17/R18 an PA4 | 10k/10k = 1,65 V = v0.5, 10k/4,7k = 1,06 V = v0.6; steht in `GET_INFO` |
 | Messpunkte | TP7 WDATA, TP8 WGATE (MCU-Seite) | – |
@@ -52,7 +52,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 |---|---|---|
 | 5-V-Quelle automatisch | U19 TPS2116DRL (VIN1 = externe 5 V von J17 mit Vorrang, VIN2 = 12-V-Buck), R72/R73, C57, Status über R74 auf TP9 | J18 entfällt; `PWR_SRC` zeigt weiterhin die Hauptquelle U3 |
 | FDD-/IEC-/Amiga-Abschluss | R75–R99, 25 × 1 kΩ 0603 statt RN1–RN8 | – |
-| Front-Header | J12 2×8 Wannenstecker FRONT: 1 +3V3 über R105 1 kΩ, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (R34–R37, R100 330 Ω), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (R101–R104 470 Ω), gerade Pins 2–12 GND; D18–D26 PESD3V3L1BA | LEDs, Taster A/B und der Modusschalter sitzen an der Frontplatte; J9, J13 und die Platinen-LEDs D5–D8 entfallen, D4 ACT bleibt, SW3/SW4 unbestückt |
+| Front-Header | J12 2×8 Wannenstecker FRONT: 1 +3V3 über R105 1 kΩ, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (R34–R37, R100 330 Ω), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (R101–R104 470 Ω), gerade Pins 2–12 GND; D18–D26 PESD3V3L1BA | LEDs, Taster A/B und der Modusschalter sitzen an der Frontplatte; J9, J13, die Platinen-LEDs D5–D8 und seit A9a auch SW3/SW4 entfallen (Taster A/B nur an der Front, Service-Drahtbrücke J12 Pin 13/14 gegen GND), D4 ACT bleibt |
 | I²C-Testpads | TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND (R19/R20 bestückt) | Reserve für EEPROM/Sensor |
 | WRITE LOCK | **JP4** Lötbrücke (statt J11), U14 74LVC1G32, R33 100k | geschlossen = WGATE in Hardware gesperrt; einmal bei der Montage |
 | Indexsimulation | PE5 = TIM15_CH1 → U7F (freier LS07-Kanal) → INDEX-Bus | `ufi index-sim 300`: Impuls liegt ohne Draht auf INDEX (Selbsttest `index_loop`); 3,3-V-Impuls auch auf J21 Pin 10 |
@@ -61,6 +61,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
 | LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
 | Board-ID | R18 22k (R17 10k) | 2,27 V = v1.0; `INFO` meldet `board_rev` 10, Firmware schaltet damit Apple-Port und Amiga2 frei wie bei v0.7 |
+| A9a Schutz (24.10.) | J17/J3 als JST XH B4B-XH-A (C144395, verpolsicher, Adapterkabel in `docs/Inbetriebnahme.md`); D27 SS54 als Dioden-ODER für J17 Pin 4 (+12V_PSU) neben D2 (J2); U24 USBLC6-2SC6 als ESD auf CC1/CC2; R125–R127 220 Ω in Serie auf dem Guard-Kabel (GUARD_*_J); R26/R29 50 mΩ (RLM12FTCMR050 C912768) statt 0,1 Ω, F2 1812 wie F3 (C20999); SW3/SW4 gestrichen | Firmware `ufi_board.c` skaliert den INA180-Wert nach Platinenrevision (v1.0 1 mV/mA); A9b/A9c (Schreibsperre, INDEX auf TIM2_CH4, Sanftanlauf, RTC) folgen, siehe `PLAN.md` |
 | noch offen | Lastpfade 1,0 mm (Stufe B3), Fertigungsfreigabe (Stufe C). J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.); Gehäuseausschnitte für J1 (USB-C) und J22 (RJ45) an der Eingangskante | |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.

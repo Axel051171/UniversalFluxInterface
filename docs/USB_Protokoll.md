@@ -1507,7 +1507,7 @@ Op-Byte → BAD_ARGS):
 | 77 | u8 | 1 = Betriebsprofil vom Werkzeug gespeichert (Op 18), 0 = Firmware-Vorgabe |
 | 78 | u16 | Drehzahleinstellung (SET_RPM), 0 = Vorgabe |
 | 80 | u32 | Laufzeit seit Reset in ms |
-| 84 | u16 | Strom der 5-V-Laufwerksversorgung in mA (board_status) |
+| 84 | u16 | Strom der 5-V-Laufwerksversorgung in mA (board_status; die Firmware rechnet den INA180-Wert nach der Platinenrevision um: v0.x 0,1 Ω = 2 mV/mA, v1.0 50 mΩ = 1 mV/mA) |
 | 86 | u16 | Strom der 12-V-Laufwerksversorgung in mA |
 | 88 | u8 | `power` wie STATUS: Bit0 FDD_5V an, Bit1 FDD_12V an |
 | 89 | u8 | board_status-Flags wie STATUS (Jumper, Überstrom, SD, Taster, Sicherheitsmodus, Sitzungssperre) |

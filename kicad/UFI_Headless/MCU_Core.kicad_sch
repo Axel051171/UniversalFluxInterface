@@ -13162,68 +13162,6 @@
 	)
 	(wire
 		(pts
-			(xy 134.62 299.72) (xy 132.08 299.72)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "add381e8-1e5f-5611-ad9a-5b07e617cd94")
-	)
-	(label "BTN_A"
-		(at 132.08 299.72 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "a353f486-8c50-5872-bf81-379216b9036c")
-	)
-	(wire
-		(pts
-			(xy 144.78 299.72) (xy 147.32 299.72)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "25680a23-1490-565a-9007-ec5843dbfe2e")
-	)
-	(wire
-		(pts
-			(xy 134.62 314.96) (xy 132.08 314.96)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "2e341e11-61f4-57a1-a5ad-168cf637ca2b")
-	)
-	(label "BTN_B"
-		(at 132.08 314.96 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "b9d9dc49-a199-54dc-990b-e6c974f0ab63")
-	)
-	(wire
-		(pts
-			(xy 144.78 314.96) (xy 147.32 314.96)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "23d05aca-913f-594b-b3a2-bfd7d7ddb854")
-	)
-	(wire
-		(pts
 			(xy 210.82 294.64) (xy 208.28 294.64)
 		)
 		(stroke
@@ -21606,290 +21544,6 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 147.32 299.72 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "92ecc7ff-ebe6-5791-93b7-c9eb835479a8")
-		(property "Reference" "#PWR180"
-			(at 147.32 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 147.32 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 147.32 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 147.32 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "4bf4dbc3-3466-52ca-af91-d8a149fd6d78")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
-					(reference "#PWR180")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Switch:SW_Push")
-		(at 139.7 299.72 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "aadbd969-c74c-5e29-8559-b019e1fb71a5")
-		(property "Reference" "SW3"
-			(at 140.97 297.18 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BTN_A"
-			(at 139.7 301.244 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Button_Switch_SMD:SW_SPST_TL3342"
-			(at 139.7 294.64 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 139.7 294.64 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C2886898"
-			(at 139.7 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "DNP" "DNP"
-			(at 139.7 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Note" "not fitted: button A is on the front header J12 pin 13"
-			(at 139.7 299.72 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "6f416fc6-65e6-5ade-8596-e3837e4a970b")
-		)
-		(pin "2"
-			(uuid "340499e8-c2c9-5464-974f-5db26945c266")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
-					(reference "SW3")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 147.32 314.96 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "bcac58c4-7bf0-54b0-ad3e-27e7ab6729de")
-		(property "Reference" "#PWR181"
-			(at 147.32 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 147.32 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 147.32 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 147.32 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "8d33e0ff-b3f3-5fe1-ac82-d2305cb4a740")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
-					(reference "#PWR181")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Switch:SW_Push")
-		(at 139.7 314.96 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "3fe6da4f-33f8-5a08-96fb-b8d4385f2d32")
-		(property "Reference" "SW4"
-			(at 140.97 312.42 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BTN_B"
-			(at 139.7 316.484 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Button_Switch_SMD:SW_SPST_TL3342"
-			(at 139.7 309.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 139.7 309.88 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "LCSC" "C2886898"
-			(at 139.7 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "DNP" "DNP"
-			(at 139.7 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Note" "not fitted: button B is on the front header J12 pin 14"
-			(at 139.7 314.96 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "b09a1d3e-3ec9-587f-a258-f5807f48db00")
-		)
-		(pin "2"
-			(uuid "ed3a0f01-3580-5d67-bbd5-1422e8acd436")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
-					(reference "SW4")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
 		(at 220.98 314.96 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -25631,36 +25285,6 @@
 		)
 		(uuid "c8d34578-2660-4c6a-b985-30b75fd015de")
 	)
-	(global_label "GUARD_OFF"
-		(at 381.0 81.28 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "382753eb-3fae-460c-a11d-e4f39d4f3bc9")
-	)
-	(global_label "GUARD_ERR5"
-		(at 381.0 83.82000000000001 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "1ed17f79-c95d-4809-8a43-120fce015da2")
-	)
-	(global_label "GUARD_ERR12"
-		(at 381.0 86.36 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "f3c1c8d2-2f08-4bb1-bb77-d387593c3911")
-	)
 	(global_label "+3V3"
 		(at 370.84 52.07 90)
 		(effects
@@ -25960,5 +25584,407 @@
 			(justify left)
 		)
 		(uuid "ed985488-788f-416e-812e-61b767d2344d")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 373.38 81.28 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "4583720e-57dc-4cc4-b6dd-22565e22ca85")
+		(property "Reference" "R125"
+			(at 373.38 78.74 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "220"
+			(at 373.38 83.82 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 373.38 83.058 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 373.38 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 373.38 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C22962"
+			(at 373.38 81.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF2200T5E"
+			(at 373.38 81.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "series resistor on the GUARD cable (leaves the board), MCU side GUARD_OFF, cable side GUARD_OFF_J"
+			(at 373.38 81.28 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "209d27d0-a2a6-4bc3-9a27-4079f43b5cf0")
+		)
+		(pin "2"
+			(uuid "3f3a4397-c282-4162-a005-162d46a68b20")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R125")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 373.38 83.82 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "46319d2a-f45e-4783-9099-c368493d2958")
+		(property "Reference" "R126"
+			(at 373.38 81.28 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "220"
+			(at 373.38 86.36 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 373.38 85.598 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 373.38 83.82 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 373.38 83.82 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C22962"
+			(at 373.38 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF2200T5E"
+			(at 373.38 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "series resistor on the GUARD cable, MCU side GUARD_ERR5 (10k pull-up R107), cable side GUARD_ERR5_J"
+			(at 373.38 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "36bf9469-55ee-4894-a086-a2b83965cfd3")
+		)
+		(pin "2"
+			(uuid "8fdc83ab-ceae-4cc5-98f6-1af98fbd33f8")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R126")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 373.38 86.36 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "5ac3f473-aa38-4b45-8705-4e4db9d094f8")
+		(property "Reference" "R127"
+			(at 373.38 83.82 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "220"
+			(at 373.38 88.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
+			(at 373.38 88.138 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 373.38 86.36 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 373.38 86.36 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C22962"
+			(at 373.38 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "0603WAF2200T5E"
+			(at 373.38 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "series resistor on the GUARD cable, MCU side GUARD_ERR12 (10k pull-up R108), cable side GUARD_ERR12_J"
+			(at 373.38 86.36 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "75a23b0d-ec47-4c42-a416-6c7876afa84d")
+		)
+		(pin "2"
+			(uuid "b63b2106-bfdb-48d3-b29a-b903642850f4")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/7e9206fe-7baf-51b1-a33b-3f5a276f413f"
+					(reference "R127")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "GUARD_OFF"
+		(at 369.57 81.28 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "8eafa0f3-08d5-490b-9cba-2646ec1eb1db")
+	)
+	(global_label "GUARD_OFF_J"
+		(at 377.19 81.28 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "086679d3-e3f7-4c1c-a765-6a9d0b5980da")
+	)
+	(global_label "GUARD_ERR5"
+		(at 369.57 83.82 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "4e5c6dc1-34c3-44f5-b4e2-9de51fec47c2")
+	)
+	(global_label "GUARD_ERR5_J"
+		(at 377.19 83.82 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "6e256944-9389-4e30-be33-6dd51a00f11e")
+	)
+	(global_label "GUARD_ERR12"
+		(at 369.57 86.36 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "de996ef4-82d5-4a3d-aacc-b4c3fb92eba0")
+	)
+	(global_label "GUARD_ERR12_J"
+		(at 377.19 86.36 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "33b9754b-3a40-4ce3-bd1c-a8d60e3a7b00")
+	)
+	(global_label "GUARD_OFF_J"
+		(at 381.0 81.28 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7bb31dfc-7e95-44d4-bcd6-c30fa2b578f7")
+	)
+	(global_label "GUARD_ERR5_J"
+		(at 381.0 83.82000000000001 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1105b5a4-8c2c-437b-b908-44540d963a3c")
+	)
+	(global_label "GUARD_ERR12_J"
+		(at 381.0 86.36 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "beb28287-c259-41b3-bb82-da18618bac35")
 	)
 )

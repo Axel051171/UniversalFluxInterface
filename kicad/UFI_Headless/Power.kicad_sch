@@ -7321,27 +7321,6 @@
 	)
 	(wire
 		(pts
-			(xy 83.82 254) (xy 81.28 254)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "158b729f-739f-53df-8554-ef7ef631db3e")
-	)
-	(label "+12V_IN"
-		(at 81.28 254 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "d9c85a7d-867a-5e45-a999-2c84822c3c5f")
-	)
-	(wire
-		(pts
 			(xy 119.38 245.11) (xy 119.38 242.57)
 		)
 		(stroke
@@ -13906,7 +13885,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+		(property "Footprint" "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"
 			(at 88.9 248.92 0)
 			(effects
 				(font
@@ -13924,7 +13903,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C32713270"
+		(property "LCSC" "C144395"
 			(at 88.9 248.92 0)
 			(effects
 				(font
@@ -13933,7 +13912,16 @@
 				(hide yes)
 			)
 		)
-		(property "Note" "PC PSU floppy (Berg) plug: 1 +5V, 2/3 GND, 4 +12V"
+		(property "Note" "C64 PSU in, keyed XH housing on the cable: 1 +5V, 2/3 GND, 4 +12V - a reversed plug would put 12 V on U19 (6 V max)"
+			(at 88.9 248.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "JST B4B-XH-A(LF)(SN) (XH 2.5 mm, 3 A, keyed)"
 			(at 88.9 248.92 0)
 			(effects
 				(font
@@ -15161,7 +15149,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+		(property "Footprint" "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"
 			(at 340.36 170.18 0)
 			(effects
 				(font
@@ -15179,7 +15167,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C32713270"
+		(property "LCSC" "C144395"
 			(at 340.36 170.18 0)
 			(effects
 				(font
@@ -15188,7 +15176,16 @@
 				(hide yes)
 			)
 		)
-		(property "Note" "Pin1 +5V, 2/3 GND, 4 +12V (Berg/Molex FDD order)"
+		(property "Note" "drive power out, keyed XH housing on the cable to the drive's Berg plug: 1 +5V, 2/3 GND, 4 +12V - a reversed plug would put 12 V on the drive's 5 V input"
+			(at 340.36 170.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "JST B4B-XH-A(LF)(SN) (XH 2.5 mm, 3 A, keyed)"
 			(at 340.36 170.18 0)
 			(effects
 				(font
@@ -15292,7 +15289,7 @@
 				)
 			)
 		)
-		(property "Value" "1.1A hold 6V"
+		(property "Value" "1.1A hold 24V"
 			(at 302.26 215.9 90)
 			(effects
 				(font
@@ -15300,7 +15297,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Fuse:Fuse_1206_3216Metric"
+		(property "Footprint" "Fuse:Fuse_1812_4532Metric"
 			(at 300.99 220.98 0)
 			(effects
 				(font
@@ -15318,7 +15315,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C20801"
+		(property "LCSC" "C20999"
 			(at 299.72 215.9 0)
 			(effects
 				(font
@@ -15327,7 +15324,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "SMD1206P110TF (1.1A hold, 6V)"
+		(property "MPN" "SMD1812P110TF/24 (1.1A hold, 24V, same part as F3; 1812 has about half the resistance of the 1206 type)"
 			(at 299.72 215.9 0)
 			(effects
 				(font
@@ -15501,7 +15498,7 @@
 				)
 			)
 		)
-		(property "Value" "0.1R 1%"
+		(property "Value" "0.05R 1%"
 			(at 299.72 269.24 90)
 			(effects
 				(font
@@ -15527,7 +15524,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C25334"
+		(property "LCSC" "C912768"
 			(at 299.72 269.24 0)
 			(effects
 				(font
@@ -15536,7 +15533,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "1206W4F100LT5E (0.1R 1% 1/4W)"
+		(property "MPN" "RLM12FTCMR050 (50 mR 1% 1 W, TA-I; alternative Panasonic ERJ8CWFR050V C713437)"
 			(at 299.72 269.24 0)
 			(effects
 				(font
@@ -15545,6 +15542,9 @@
 				(hide yes)
 			)
 		)
+    (property "Note" "INA180A1 (20 V/V): 1 V per A, 1.5 V at 1.5 A; Kelvin connection of U12 IN+/IN- directly at the pads" (at 299.72 269.24 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
 		(pin "1"
 			(uuid "1789068f-ab40-5214-af95-8138a19649f6")
 		)
@@ -16478,7 +16478,7 @@
 				)
 			)
 		)
-		(property "Value" "0.1R 1%"
+		(property "Value" "0.05R 1%"
 			(at 299.72 309.88 90)
 			(effects
 				(font
@@ -16504,7 +16504,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C25334"
+		(property "LCSC" "C912768"
 			(at 299.72 309.88 0)
 			(effects
 				(font
@@ -16513,7 +16513,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "1206W4F100LT5E (0.1R 1% 1/4W)"
+		(property "MPN" "RLM12FTCMR050 (50 mR 1% 1 W, TA-I; alternative Panasonic ERJ8CWFR050V C713437)"
 			(at 299.72 309.88 0)
 			(effects
 				(font
@@ -16522,6 +16522,9 @@
 				(hide yes)
 			)
 		)
+    (property "Note" "INA180A1 (20 V/V): 1 V per A, 1.5 V at 1.5 A; Kelvin connection of U13 IN+/IN- directly at the pads" (at 299.72 309.88 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
 		(pin "1"
 			(uuid "8ef29b5c-0533-56f5-8268-6d57b5629063")
 		)
@@ -18732,5 +18735,302 @@
 			(justify right bottom)
 		)
 		(uuid "d2d41440-06ee-4672-bbc3-e3ed673b11af")
+	)
+	(symbol
+		(lib_id "Device:D_Schottky")
+		(at 76.2 254 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "0d552b0f-962e-4b92-8f9e-3ae4c274b39a")
+		(property "Reference" "D27"
+			(at 76.2 251.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "SS54"
+			(at 76.2 256.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SMC"
+			(at 76.2 254 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 76.2 254 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Schottky diode"
+			(at 76.2 254 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C16103"
+			(at 76.2 254.0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" "SS54C (40V/5A)"
+			(at 76.2 254.0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Note" "diode-OR of the two 12 V sources: J17 pin 4 (C64 PSU) through D27, J2 (jack) through D2; both may be plugged at once"
+			(at 76.2 254.0 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "7eada2e9-6b10-49e3-a797-c1cca8a543d3")
+		)
+		(pin "2"
+			(uuid "a39b3bbb-0f56-488e-8dd1-c1fdcf3142b8")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "D27")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "+12V"
+		(at 72.39 254.0 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a262aafa-0328-49b2-a7d1-17fdeed5b7de")
+	)
+	(wire
+		(pts
+			(xy 80.01 254.0) (xy 83.82000000000001 254.0)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "805c9894-583d-4149-b2e3-10245d3e5c98")
+	)
+	(label "+12V_PSU"
+		(at 80.01 254.0 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "738c89f1-29a9-4683-bf80-7a16fb1df0fd")
+	)
+	(symbol
+		(lib_id "Power_Protection:USBLC6-2SC6")
+		(at 101.6 109.22 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "3e24c1ed-546b-4b5b-a761-851603814c5b")
+		(property "Reference" "U24"
+			(at 101.6 101.6 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "USBLC6-2SC6"
+			(at 101.6 119.38 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_SMD:SOT-23-6"
+			(at 102.87 102.87 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+					(italic yes)
+				)
+				(justify left)
+			)
+		)
+		(property "Datasheet" "https://www.st.com/resource/en/datasheet/usblc6-2.pdf"
+			(at 102.87 100.965 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Description" "Very low capacitance ESD protection diode, 2 data-line, SOT-23-6"
+			(at 101.6 109.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+    (property "LCSC" "C7519" (at 101.6 109.22 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "MPN" "USBLC6-2SC6" (at 101.6 109.22 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+    (property "Note" "ESD for the USB-C CC lines (VRWM 5.25 V, same part as U1); I/O1 = CC1, I/O2 = CC2, both pass-through pins tied so no pin is left open" (at 101.6 109.22 0)
+      (effects (font (size 1.27 1.27)) (hide yes))
+    )
+		(pin "1"
+			(uuid "722df04c-7cbc-49a6-a340-cc499fd63022")
+		)
+		(pin "2"
+			(uuid "8e5a00b4-779d-4963-a399-63c609fa29d2")
+		)
+		(pin "3"
+			(uuid "cac0812a-b90e-484a-b2d7-c2675a5c3908")
+		)
+		(pin "4"
+			(uuid "71f88022-a8bf-44d8-ae30-0ecafbee2a26")
+		)
+		(pin "5"
+			(uuid "f305e85d-3a62-47b8-b58e-c27566969e3b")
+		)
+		(pin "6"
+			(uuid "cacbd360-07dd-454a-9b0b-75f2f07cccfa")
+		)
+		(instances
+			(project "UFI_Headless"
+				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/fbe2b8a8-7a93-5a0f-a2a9-1800b176cb77"
+					(reference "U24")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "CC1"
+		(at 96.52 109.22 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "577ec817-e162-42eb-b7cf-86ffc99604db")
+	)
+	(global_label "GND"
+		(at 101.6 116.84 270)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "86ddb36b-5a2a-4bbc-ae8a-3d12c3d21ce2")
+	)
+	(global_label "CC2"
+		(at 96.52 111.76 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "731a263b-79b9-4000-b612-15438b5141b5")
+	)
+	(global_label "CC2"
+		(at 106.67999999999999 111.76 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d084a858-1036-4c96-ab85-ab034932a056")
+	)
+	(global_label "VBUS"
+		(at 101.6 104.14 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "dd0c7677-1119-4f7f-adc7-58e92169630d")
+	)
+	(global_label "CC1"
+		(at 106.67999999999999 109.22 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "db80aedb-ca8b-4ef4-aa5e-2ca9e974fad2")
 	)
 )

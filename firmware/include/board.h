@@ -123,7 +123,7 @@ extern const gpio_pin_t PIN_LAN_CS;         /* PA15, W5500 SCSn, low = selected 
 extern const gpio_pin_t PIN_LAN_INT;        /* PD5, W5500 INTn, low = interrupt (10k pull-up R120) */
 extern const gpio_pin_t PIN_LAN_RST;        /* PD10, W5500 RSTn, low >= 500 us = reset (10k pull-up R121) */
 #define LAN_SPI_AF              GPIO_AF6_SPI3
-#define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A */
+#define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A (0.1R, v0.x) / 1 V/A (50 mR, v1.0) */
 #define ADC_CH_I_FDD12          ADC_CHANNEL_11  /* PC1 */
 #define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */
 #define BOARD_ID_V05_MV         1650u

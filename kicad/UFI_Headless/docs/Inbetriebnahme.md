@@ -131,3 +131,20 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 ## Schreibpfad
 
 Die Abnahme des Schreibpfads (Loopback-Messungen, Streaming, Verify-Stufen, Fehlerfaelle, Medien) steht in `docs/Abnahme_Schreibpfad.md` im Repo-Wurzelverzeichnis.
+
+## Kabel für v1.0 (Stufe A9a, 24.10.2026)
+
+J17 (PSU-IN) und J3 (Laufwerksversorgung) sind ab v1.0 JST-XH-Stecker (B4B-XH-A, 2,5 mm,
+verpolsicher) statt 2,54-mm-Stiftleisten. Belegung unverändert: Pin 1 +5V, Pin 2/3 GND,
+Pin 4 +12V. Zwei Adapterkabel, jeweils mit XH-Buchsengehäuse (XHP-4) und Crimpkontakten
+(SXH-001T-P0.6), AWG 22:
+
+| Kabel | Platinenseite | andere Seite |
+|---|---|---|
+| C64-/PC-Netzteil → J17 | XHP-4: 1 +5V, 2/3 GND, 4 +12V | Berg-Buchse (PC-Floppy-Stromstecker) 1:1 nach Pinnummer |
+| J3 → Laufwerk | XHP-4: 1 +5V, 2/3 GND, 4 +12V | Berg-Stecker des 3,5"-Laufwerks 1:1 (Pin 1 +5V, 4 +12V) |
+
+Ein verdrehter Stecker war bei den Stiftleisten nicht erkennbar und hätte 12 V auf U19
+(6 V max.) bzw. auf den 5-V-Eingang des Laufwerks gelegt; das XH-Gehäuse passt nur in einer
+Lage. Beide 12-V-Quellen (J2 Hohlbuchse, J17 Pin 4) dürfen gleichzeitig stecken: D2 und D27
+(SS54) bilden ein Dioden-ODER.
