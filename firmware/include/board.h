@@ -129,6 +129,7 @@ extern const gpio_pin_t PIN_LAN_RST;        /* PD10, W5500 RSTn, low >= 500 us =
 #define BOARD_ID_V05_MV         1650u
 #define BOARD_ID_V06_MV         1055u   /* 10k/4.7k, SD NAND instead of the microSD slot */
 #define BOARD_ID_V07_MV         595u    /* 10k/2.2k, Apple Disk II port */
+#define BOARD_ID_V10_MV         2269u   /* 10k/22k, v1.0: front header, electronic loopback, LAN (rev 10) */
 
 /* ---- QSPI PSRAM (board v0.2): APS6404L 8 MB on OCTOSPIM port 1 ---------- */
 #define BOARD_HAS_PSRAM         1

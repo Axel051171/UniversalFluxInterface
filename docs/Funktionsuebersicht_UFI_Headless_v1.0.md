@@ -16,7 +16,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | Massenspeicher 4 GB | U15 CSNP32GCR01 SD-NAND an SDMMC2 | FAT32 „UFI“: Dumps `DUMPnnnn.SCP/.IMG/.ADF/.HFE`, Logs, `UFI.CFG`, `SELFTEST.LOG`, gespeicherte Laufwerksprofile |
 | Debug | J4 SWD 1,27 mm (Cortex-Debug 10-polig), J5 UART (USART3 PD8/PD9), SWO PB3 | intern, nur bei offenem Deckel |
 | Reset / Boot | SW1 RESET, SW2 BOOT0 | im Gehäuse unerreichbar, aber nicht nötig: Taste A an der Front beim Einschalten startet den ROM-DFU-Bootloader, `ufi bootloader` ebenso |
-| Platinenkennung | R17/R18 an PA4 | `ufi caps` zeigt die Revision (v0.7 = 10k/2,2k); v1.0 bekommt einen eigenen Teilerwert (offen, siehe 8) |
+| Platinenkennung | R17 10k / R18 22k an PA4 | 2,27 V = v1.0 (`board_rev` 10, `ufi caps` zeigt „board v1.0“); v0.7 war 10k/2,2k = 0,60 V. Die Firmware unterscheidet damit die alte J9-Belegung von der neuen (INDEX_SIM auf PE5, LOOP_EN, LAN) |
 | I²C-Reserve | TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND, R19/R20 2,2k | für EEPROM oder Sensor, keine Firmware |
 | LAN | **neu U23 W5500** (TCP/IP in Hardware, SPI3) mit **J22 HanRun HR911105A** RJ45 (Übertrager, Bob-Smith-Netz und LINK/ACT-LEDs im Stecker), eigener 25-MHz-Quarz Y2 | von außen erreichbar (Eingangskante neben USB-C); Steuerung über LAN wie über USB kommt als spätere Firmwarestufe, bis dahin hält die Firmware den Chip im Reset |
 
@@ -90,8 +90,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 ## 8 Noch nicht im Schaltplan (Reihenfolge wie geplant)
 
 1. **LAN-Firmware:** Treiber für den W5500 (Schaltplan ist fertig, Stufe A6) und Steuerung über LAN wie über USB.
-2. **Board-ID v1.0:** neuer Teilerwert R18, damit die Firmware v0.7 (J9-Pinbelegung) von v1.0 (PE5-Indexsimulation, LOOP_EN) unterscheiden kann.
-3. **Firmware-Nutzung der neuen Leitungen:** Selbsttest-Posten für die Rückschleife (WDATA→RDATA, TRK0, WGATE_SENSE), Guard-Status in `BOARD_STATUS`, Guard-OFF beim Abschalten der Laufwerksversorgung.
+2. **Firmware-Nutzung der neuen Leitungen:** Selbsttest-Posten für die Rückschleife (WDATA→RDATA, TRK0, WGATE_SENSE), Guard-Status in `BOARD_STATUS`, Guard-OFF beim Abschalten der Laufwerksversorgung.
 4. **Layout:** Eingangskante (USB-C in Kantenaussparung, J16, J2, J17, J4, J5) gegenüber der Laufwerkskante (J6, J14, J7, J8, J3 als interne Stiftleisten; DIN-6 und DB23 als Gehäusebuchsen am Kabel), Front-Header an einer Seitenkante, Gehäuse noch offen (Umriss bleibt bis dahin).
 
 Entschieden 24.10.: keine Buchsen auf der Platine, alle Laufwerks- und Hilfsanschlüsse bleiben

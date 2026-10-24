@@ -60,7 +60,8 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
 | LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
-| noch offen | A7 Board-ID-Wert v1.0; Layout. J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
+| Board-ID | R18 22k (R17 10k) | 2,27 V = v1.0; `INFO` meldet `board_rev` 10, Firmware schaltet damit Apple-Port und Amiga2 frei wie bei v0.7 |
+| noch offen | Layout (Stufe B), Fertigungsfreigabe (Stufe C). J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 
@@ -218,7 +219,7 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | FDD5_EN / FDD12_EN | PE2 / PE3 | GPIO out, high = Laufwerksversorgung an (v0.5) |
 | I_FDD5 / I_FDD12 | PC0 / PC1 | ADC1 INP10/INP11, INA180A1 2 V/A (v0.5) |
 | WLOCK | PE4 | GPIO in, high = WRITE-LOCK gesetzt (v0.5 Jumper J11, v1.0 Lötbrücke JP4) |
-| BOARD_ID | PA4 | ADC1 INP18, Teiler = Board-Revision (v0.5) |
+| BOARD_ID | PA4 | ADC1 INP18, Teiler = Board-Revision: 1,65 V v0.5, 1,06 V v0.6, 0,60 V v0.7, 2,27 V v1.0 (Fenster ±200 mV) |
 | I2C_SCL / I2C_SDA | PB6 / PB7 | I2C1 (AF4) auf J9 (v0.5), ab v1.0 Testpads TP10/TP11 |
 | EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5), Modusschalter J13 (v0.6), ab v1.0 MODE1/MODE2 auf J12 Pin 15/16 |
 | BTN_A / BTN_B | PB8 / PB9 | GPIO in, Pull-up, low = gedrückt (SW3/SW4, J9; ab v1.0 J12 Pin 13/14) (v0.5) |

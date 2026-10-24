@@ -446,7 +446,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 |---|---|---|---|
 | **System** | | | |
 | 0x00 | PING | beliebig | dieselben Bytes |
-| 0x01 | INFO | – | `proto` u8 = 2, `fw_major` u8, `fw_minor` u8, `board_rev` u8 (5/6/7, 0 = unbekannt), `caps` u32, `sample_hz` u32 = 275 000 000, `store_bytes` u32, `max_payload` u16 = 4096, dann ASCII-Text (Firmware, Git-Rev., Datum, PSRAM-Test) |
+| 0x01 | INFO | – | `proto` u8 = 2, `fw_major` u8, `fw_minor` u8, `board_rev` u8 (5/6/7 = Platine v0.5/v0.6/v0.7, 10 = v1.0 mit Teiler 10k/22k = 2269 mV, 0 = unbekannt), `caps` u32, `sample_hz` u32 = 275 000 000, `store_bytes` u32, `max_payload` u16 = 4096, dann ASCII-Text (Firmware, Git-Rev., Datum, PSRAM-Test) |
 | 0x02 | STATUS | – | `drive, motor, wprot, track0, disk_changed, ready, track, side` (je u8), dann `board_status` (8 Byte, wie v1 0x1B) |
 | 0x03 | RESET | – | Antwort, danach Neustart |
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |

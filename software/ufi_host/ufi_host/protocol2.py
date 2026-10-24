@@ -208,6 +208,13 @@ DIR_ENTRY = struct.Struct("<IBB")
 
 
 # -- framing -------------------------------------------------------------------
+def board_rev_text(rev: int) -> str:
+    """INFO board_rev as the board is labelled: 5/6/7 = v0.5/v0.6/v0.7, 10 = v1.0, 0 = unknown."""
+    if rev == 0:
+        return "unknown"
+    return f"v{rev // 10}.{rev % 10}"
+
+
 def crc16(data: bytes, crc: int = 0xFFFF) -> int:
     """CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection, no final xor)."""
     for b in data:
@@ -392,7 +399,7 @@ class DeviceInfo:
     proto: int
     fw_major: int
     fw_minor: int
-    board_rev: int                      # 5/6/7, 0 = unknown
+    board_rev: int                      # 5/6/7 = v0.x, 10 = v1.0, 0 = unknown (board_rev_text)
     caps: int
     sample_hz: int
     store_bytes: int
@@ -891,7 +898,7 @@ class Device2:
 
     def info(self) -> list[str]:
         i = self.device_info()
-        rev = f"v0.{i.board_rev}" if i.board_rev else "unknown"
+        rev = board_rev_text(i.board_rev)
         return [f"UFI v{i.proto} protocol, firmware {i.fw_major}.{i.fw_minor}, board {rev}",
                 *i.text]
 

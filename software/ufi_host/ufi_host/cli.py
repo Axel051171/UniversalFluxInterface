@@ -303,7 +303,7 @@ def cmd_selftest(dev: P2.Device2) -> int:
 def cmd_caps(dev: P2.Device2) -> None:
     i = dev.device_info()
     print(f"protocol v{i.proto}, firmware {i.fw_major}.{i.fw_minor}, "
-          f"board {f'v0.{i.board_rev}' if i.board_rev else 'unknown'}")
+          f"board {P2.board_rev_text(i.board_rev)}")
     print(f"sample clock {i.sample_hz} Hz, store {i.store_bytes} bytes, max payload {i.max_payload}")
     print(f"caps 0x{i.caps:08X}")
     for bit, (name, on) in enumerate(i.caps_list()):
@@ -1007,7 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
                 import json
                 print(json.dumps(pv, sort_keys=True))
             else:
-                print(f"board v0.{pv['board_rev']} ({pv['board_id_mv']} mV), MCU {pv['mcu_uid']} id 0x{pv['mcu_device_id']:03x} "
+                print(f"board {P2.board_rev_text(pv['board_rev'])} ({pv['board_id_mv']} mV), MCU {pv['mcu_uid']} id 0x{pv['mcu_device_id']:03x} "
                       f"rev 0x{pv['mcu_revision']:04x}")
                 print(f"firmware {pv['firmware'][0]}.{pv['firmware'][1]} rev {pv['git_rev']}{'+' if pv['git_dirty'] else ''} "
                       f"built {pv['build_date']}, flux clock {pv['flux_hz']} Hz, uptime {pv['uptime_ms'] / 1000:.0f} s")
@@ -1157,7 +1157,7 @@ def main(argv: list[str] | None = None) -> int:
             if getattr(a, "provenance", False):
                 pv = cap.provenance
                 print("provenance: " + ("not in END (older firmware)" if pv is None else
-                      f"board v0.{pv['board_rev']}, MCU {pv['mcu_uid']}, firmware {pv['firmware'][0]}.{pv['firmware'][1]} "
+                      f"board {P2.board_rev_text(pv['board_rev'])}, MCU {pv['mcu_uid']}, firmware {pv['firmware'][0]}.{pv['firmware'][1]} "
                       f"rev {pv['git_rev']}{'+' if pv['git_dirty'] else ''}, configuration {pv['config_generation']}, "
                       f"media {pv['media_generation']}, capture id {pv['capture_id']}, drive {pv['drive']}"))
             if a.output and a.output.lower().endswith(".hfe"):

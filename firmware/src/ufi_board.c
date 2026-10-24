@@ -143,7 +143,8 @@ bool ufi_board_has_apple(void)
     static int8_t has = -1;
     if (has < 0) {
         const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
-        has = (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 1 : 0;
+        has = ((id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ||
+                (id + 200u > BOARD_ID_V10_MV && id < BOARD_ID_V10_MV + 200u)) ? 1 : 0;
     }
     return has == 1;
 }

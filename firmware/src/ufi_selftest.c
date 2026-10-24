@@ -140,7 +140,8 @@ static void t_board_id(st_item_t* it)
     it->value = mv;
     const bool known = (mv + 200u > BOARD_ID_V05_MV && mv < BOARD_ID_V05_MV + 200u) ||
                        (mv + 200u > BOARD_ID_V06_MV && mv < BOARD_ID_V06_MV + 200u) ||
-                       (mv + 200u > BOARD_ID_V07_MV && mv < BOARD_ID_V07_MV + 200u);
+                       (mv + 200u > BOARD_ID_V07_MV && mv < BOARD_ID_V07_MV + 200u) ||
+                       (mv + 200u > BOARD_ID_V10_MV && mv < BOARD_ID_V10_MV + 200u);
     it->status = known ? ST_OK : ST_WARN;
 }
 

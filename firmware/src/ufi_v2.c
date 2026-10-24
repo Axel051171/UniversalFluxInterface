@@ -189,7 +189,8 @@ uint8_t ufi_board_rev(void)
     const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
     return (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? 5u
          : (id + 200u > BOARD_ID_V06_MV && id < BOARD_ID_V06_MV + 200u) ? 6u
-         : (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 7u : 0u;
+         : (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 7u
+         : (id + 200u > BOARD_ID_V10_MV && id < BOARD_ID_V10_MV + 200u) ? 10u : 0u;
 }
 
 static uint32_t caps(uint8_t rev)
