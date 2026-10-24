@@ -43,6 +43,24 @@ v0.6 (Gerät kommt in ein geschlossenes Gehäuse): microSD-Slot J10 entfällt, d
 | Diskette kopieren | Firmware 1.8, `button_a=copy` + Taster A ≥ 1 s (oder `COPY_START` 0x54) | Flux-Kopie Spur für Spur von `copy_from` nach `copy_to` (z. B. A → B oder ds0 → ds1), mit Prüflesen; Fortschritt/Fehler über `DUMP_STATUS` und ERR-Blinkcode (2 Lesen, 3 Schreiben/Schreibschutz). Kopiergeschützte Disketten mit Spurlängen-Tricks werden nicht garantiert kopiert |
 | Front-LEDs (Gehäuse) | J12 2×4 + R34–R37 330 Ω (≈ 4 mA), je LED eine Reihe: 1+/2− PWR, 3+/4− ACT, 5+/6− FDD, 7+/8− ERR | parallel zu den Board-LEDs, keine Firmware-Änderung |
 
+v1.0 (in Arbeit auf dem Branch `hw/v0.7-frontpanel`, Schaltplanstufen A1–A4, Vorgaben in
+[docs/PCB_Revision_Empfehlungen_2026-10-24.md](../../docs/PCB_Revision_Empfehlungen_2026-10-24.md)):
+das Gerät sitzt in einem geschlossenen Gehäuse, von außen bleiben nur USB und LAN erreichbar,
+nichts ist nach dem Einbau steckbar; komplette Bestückung.
+
+| Funktion | Teile | Bedienung / Firmware |
+|---|---|---|
+| 5-V-Quelle automatisch | U19 TPS2116DRL (VIN1 = externe 5 V von J17 mit Vorrang, VIN2 = 12-V-Buck), R72/R73, C57, Status über R74 auf TP9 | J18 entfällt; `PWR_SRC` zeigt weiterhin die Hauptquelle U3 |
+| FDD-/IEC-/Amiga-Abschluss | R75–R99, 25 × 1 kΩ 0603 statt RN1–RN8 | – |
+| Front-Header | J12 2×8 Wannenstecker FRONT: 1 +3V3 über R105 1 kΩ, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (R34–R37, R100 330 Ω), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (R101–R104 470 Ω), gerade Pins 2–12 GND; D18–D26 PESD3V3L1BA | LEDs, Taster A/B und der Modusschalter sitzen an der Frontplatte; J9, J13 und die Platinen-LEDs D5–D8 entfallen, D4 ACT bleibt, SW3/SW4 unbestückt |
+| I²C-Testpads | TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND (R19/R20 bestückt) | Reserve für EEPROM/Sensor |
+| WRITE LOCK | **JP4** Lötbrücke (statt J11), U14 74LVC1G32, R33 100k | geschlossen = WGATE in Hardware gesperrt; einmal bei der Montage |
+| Indexsimulation | PE5 = TIM15_CH1 → U7F (freier LS07-Kanal) → INDEX-Bus | `ufi index-sim 300`: Impuls liegt ohne Draht auf INDEX (Selbsttest `index_loop`); 3,3-V-Impuls auch auf J21 Pin 10 |
+| Selbsttest-Rückschleife | U22 TS5A3166 (FD_WDATA↔FD_RDATA, 5 V), Q5 2N7002 (FD_TRK0 → GND), R106 100k, C58; U10F (freier HC14-Kanal, IEC-Blatt) liest FD_WGATE zurück | LOOP_EN = PG14 (im Reset offen), WGATE_SENSE = PG15; Firmware-Nutzung folgt |
+| Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
+| C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
+| noch offen | A5: J8 → DIN-6-Buchse, DB23-Amiga-Buchse neben J7, J3 codiert; A6: W5500 + RJ45 an SPI3 (PC10/PC11/PC12, CS PA15, INT PD5, RST PD10); Layout | |
+
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 
 A8 (Verpolschutz 12 V) war schon vorhanden: SS54 in Reihe + SMAJ15CA. A10 (50-pol 8"-Anschluss) passt nicht auf 110×85 mm – 8"-Laufwerke über externen Adapter.
@@ -198,13 +216,18 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | APL_WRPROT | PB15 | GPIO in ← U17 ← J14 Pin 20, high = geschützt (v0.7) |
 | FDD5_EN / FDD12_EN | PE2 / PE3 | GPIO out, high = Laufwerksversorgung an (v0.5) |
 | I_FDD5 / I_FDD12 | PC0 / PC1 | ADC1 INP10/INP11, INA180A1 2 V/A (v0.5) |
-| WLOCK | PE4 | GPIO in, high = WRITE-LOCK-Jumper gesteckt (v0.5) |
+| WLOCK | PE4 | GPIO in, high = WRITE-LOCK gesetzt (v0.5 Jumper J11, v1.0 Lötbrücke JP4) |
 | BOARD_ID | PA4 | ADC1 INP18, Teiler = Board-Revision (v0.5) |
-| I2C_SCL / I2C_SDA | PB6 / PB7 | I2C1 (AF4) auf J9 (v0.5) |
-| EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5) |
-| BTN_A / BTN_B | PB8 / PB9 | GPIO in, Pull-up, low = gedrückt (SW3/SW4, J9) (v0.5) |
+| I2C_SCL / I2C_SDA | PB6 / PB7 | I2C1 (AF4) auf J9 (v0.5), ab v1.0 Testpads TP10/TP11 |
+| EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5), Modusschalter J13 (v0.6), ab v1.0 MODE1/MODE2 auf J12 Pin 15/16 |
+| BTN_A / BTN_B | PB8 / PB9 | GPIO in, Pull-up, low = gedrückt (SW3/SW4, J9; ab v1.0 J12 Pin 13/14) (v0.5) |
 | SD CK / CMD / D0–D3 | PD6 / PD7 / PG9–PG12 | SDMMC2 (AF11, D2/D3 AF10) (v0.5) |
-| (frei) | PG13 | v0.5 Card-Detect, ab v0.6 unbenutzt |
+| GUARD_ERR12 | PG13 | v0.5 Card-Detect, v0.6 unbenutzt, ab v1.0 GPIO in ← J20 Pin 4 (10k Pull-up R108) |
+| INDEX_SIM | PE5 | TIM15_CH1 (AF4) Output → U7F → INDEX-Bus; ruhend high = Bus losgelassen (v1.0) |
+| LOOP_EN | PG14 | GPIO out, high = U22 schließt WDATA↔RDATA, Q5 zieht TRK0 (100k Pull-down R106) (v1.0) |
+| WGATE_SENSE | PG15 | GPIO in ← U10F ← FD_WGATE, high = WGATE aktiv (v1.0) |
+| GUARD_OFF / GUARD_ERR5 | PG7 / PG8 | GPIO out → J20 Pin 2 (high = Guard-Kanäle aus) / GPIO in ← J20 Pin 3 (10k R107) (v1.0) |
+| (Reserve W5500) | PC10 / PC11 / PC12 / PA15 / PD5 / PD10 | SPI3 SCK / MISO / MOSI (AF6), CS, INT, RST – Stufe A6 |
 | FDD_TRK0 / WPROT / DSKCHG / READY | PF0 / PF1 / PF2 / PF3 | GPIO in |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_OUT | PD0–PD4 | GPIO out → OC-Treiber |
 | IEC_{ATN,CLK,DATA,SRQ,RESET}_IN | PF4–PF8 | GPIO in |

@@ -722,7 +722,7 @@ uint8_t ufi_crash_kind(void);           // 0 = no fault record at this start-up
 void ufi_stack_paint(void);             // first thing in ufi_init(): paint the free stack
 uint32_t ufi_stack_free(void);          // bytes of stack never used so far
 int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n);   // out: 4 x (type, flags)
-#define INDEX_SIM_PIN       0x01u   // pulses on J9 pin 6 (PE1, open drain)
+#define INDEX_SIM_PIN       0x01u   // pulses on PE5 (TIM15_CH1; board v1.0: via LS07 U7F onto the INDEX bus, J21 pin 10 at 3.3 V)
 #define INDEX_SIM_INTERNAL  0x02u   // pulses replace the drive's INDEX line in capture/write
 int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode);   // rpm 0 = off, mode 0 = PIN
 uint16_t ufi_index_sim_rpm(void);

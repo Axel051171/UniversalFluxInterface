@@ -56,6 +56,14 @@ const gpio_pin_t PIN_BTN_B           = {GPIOB, GPIO_PIN_9};
 const gpio_pin_t PIN_EXP_IO1         = {GPIOE, GPIO_PIN_0};
 const gpio_pin_t PIN_EXP_IO2         = {GPIOE, GPIO_PIN_1};
 
+/* v1.0 board: index simulation output, electronic loopback, WGATE read-back, PSU guard */
+const gpio_pin_t PIN_INDEX_SIM       = {GPIOE, GPIO_PIN_5};
+const gpio_pin_t PIN_LOOP_EN         = {GPIOG, GPIO_PIN_14};
+const gpio_pin_t PIN_WGATE_SENSE     = {GPIOG, GPIO_PIN_15};
+const gpio_pin_t PIN_GUARD_OFF       = {GPIOG, GPIO_PIN_7};
+const gpio_pin_t PIN_GUARD_ERR5      = {GPIOG, GPIO_PIN_8};
+const gpio_pin_t PIN_GUARD_ERR12     = {GPIOG, GPIO_PIN_13};
+
 /* v0.7 Apple Disk II port (pins unconnected on older boards: harmless) */
 const gpio_pin_t PIN_APL_PH0         = {GPIOF, GPIO_PIN_12};
 const gpio_pin_t PIN_APL_PH1         = {GPIOF, GPIO_PIN_13};
@@ -132,6 +140,19 @@ void board_gpio_init(void)
     init_pins(PIN_WLOCK.port, PIN_WLOCK.pin, GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOB, GPIO_PIN_8 | GPIO_PIN_9, GPIO_MODE_INPUT, GPIO_PULLUP, GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOE, GPIO_PIN_0 | GPIO_PIN_1, GPIO_MODE_INPUT, GPIO_PULLDOWN, GPIO_SPEED_FREQ_LOW, 0);
+
+    /* v1.0: index simulation released (high: the LS07 driver leaves the INDEX bus alone)
+     * until ufi_index_sim_set() hands the pin to TIM15; loopback switch and guard OFF low
+     * (their 100k pull-downs already hold them there during reset); guard error lines have
+     * 10k pull-ups on the board, WGATE_SENSE is driven by the HC14 */
+    HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_PIN_SET);
+    init_pins(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+              GPIO_SPEED_FREQ_LOW, 0);
+    HAL_GPIO_WritePin(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_PIN_RESET);
+    init_pins(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+              GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(GPIOG, PIN_WGATE_SENSE.pin | PIN_GUARD_ERR5.pin | PIN_GUARD_ERR12.pin,
+              GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
 
     /* v0.7 Apple port: phases off, enables and write request released (high) before the
      * pins become outputs; RDDATA to TIM2_CH3, WRDATA left to ufi_write.c (TIM3_CH2) */

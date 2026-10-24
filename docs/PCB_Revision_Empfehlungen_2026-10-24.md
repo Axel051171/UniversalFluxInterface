@@ -99,8 +99,28 @@ hängen. Sie sollten auf der Platine steckbar sein, nicht als Fädeldraht:
   RESET und BOOT nur auf der Platine (BOOT an der Front wäre ein Fehlbedienungsrisiko).
   A und B bleiben als Footprint auf der Platine, unbestückt.
 - **Steckverbinder:** J16 USB-Header und J7 Amiga bestücken; J9 Erweiterung entfällt
-  (EXP_IO1/IO2 gehen auf den Front-Header, INDEX_SIM auf den Loopback-Block); J4 SWD und
-  J5 UART bleiben unverändert; J11 WRITE-LOCK als Schiebeschalter.
+  (EXP_IO1/IO2 gehen auf den Front-Header, INDEX_SIM auf einen eigenen Timer-Pin); J4 SWD und
+  J5 UART bleiben unverändert; J11 WRITE-LOCK wird die Lötbrücke JP4 (siehe Gehäuse-Vorgabe).
+- **Gehäuse-Vorgabe (24.10., nach A3):** Nach dem Einbau ist nichts mehr steckbar, von außen
+  bleiben nur LAN und USB erreichbar. Deshalb keine Jumper und keine Schiebeschalter für den
+  Betrieb: WRITE-LOCK als Lötbrücke JP4 (einmal bei der Montage), die Selbsttest-Rückschleife
+  elektronisch (unten), J15 (zweites Apple-Laufwerk) und J19 (Sync-Sensor) bleiben interne,
+  bei der Montage einmal gesteckte Kabel. RESET/BOOT im Gehäuse sind unkritisch, weil Taste A
+  an der Front beim Einschalten den ROM-DFU-Bootloader startet. Diesmal **komplette
+  Bestückung** aller Bauteile; bewusst unbestückt bleiben nur SW3/SW4 (Taster A/B auf der
+  Platine, an der Front vorhanden).
+- **Selbsttest-Rückschleife ohne Jumper (A4, umgesetzt):** INDEX_SIM = PE5 (TIM15 Kanal 1,
+  Hardware-Impuls) über den bisher freien Open-Collector-Treiber U7F fest auf den INDEX-Bus
+  (Wired-OR wie der Sync-Sensor); LOOP_EN = PG14 (100 k Pull-down R106, im Reset offen)
+  schließt den Analogschalter U22 TS5A3166 zwischen FD_WDATA und FD_RDATA (5 V, Steuereingang
+  VIH 2,4 V bei 5 V laut TI-Datenblatt, 3,3-V-Pegel reicht) und zieht über Q5 2N7002 FD_TRK0
+  nach GND; WGATE-Rücklesen über den freien Inverter U10F (IEC-Blatt) nach PG15.
+  Logikanalysator-Header J21 2×10 bestückt (3,3-V-Seite, nur bei offenem Deckel genutzt).
+- **C64 PSU Guard (kleine Spannungsplatine):** eigener Header J20 1×4 GUARD (GND, OFF = PG7,
+  ERR5 = PG8, ERR12 = PG13, 10 k Pull-ups R107/R108) als Ersatz für den entfallenen J9;
+  passt auf J3 der Guard-Platine (1 GND, 2 OFF, 3 ERR5, 4 ERR12). Firmware-Nutzung folgt.
+- **Pinreserve W5500 (A6):** SPI3 PC10 SCK, PC11 MISO, PC12 MOSI, PA15 CS, PD5 INT, PD10 RST
+  (Belegung gegen die ST-Pindatenbank geprüft); danach bleiben 24 der 144 MCU-Pins frei.
 - **FDD-Abschluss:** 32 Einzelwiderstände 0603, 1 kΩ, statt RN1–RN8; 8-Zoll-Abschluss
   (150–220 Ω) gehört in den Adapter.
 - **Testbarkeit:** Loopback-Block (WDATA→RDATA, WGATE→Status, INDEX_SIM→INDEX, TRK0-Force),

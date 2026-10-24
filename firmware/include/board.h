@@ -96,11 +96,24 @@ extern const gpio_pin_t PIN_VBUS_SENSE;     /* PA9, 22k/33k divider */
  * write lock jumper, buttons, expansion GPIO (v0.6: SD NAND on SDMMC2, no card detect) */
 extern const gpio_pin_t PIN_FDD5_EN;        /* PE2 */
 extern const gpio_pin_t PIN_FDD12_EN;       /* PE3 */
-extern const gpio_pin_t PIN_WLOCK;          /* PE4, high = WRITE LOCK jumper set */
-extern const gpio_pin_t PIN_BTN_A;          /* PB8, low = pressed */
-extern const gpio_pin_t PIN_BTN_B;          /* PB9, low = pressed */
-extern const gpio_pin_t PIN_EXP_IO1;        /* PE0, J13 pin 1 / J9 pin 5: mode switch "USB floppy" */
-extern const gpio_pin_t PIN_EXP_IO2;        /* PE1, J13 pin 3 / J9 pin 6: mode switch "SD drive" */
+extern const gpio_pin_t PIN_WLOCK;          /* PE4, high = WRITE LOCK set (v0.7: jumper J11; v1.0: solder jumper JP4) */
+extern const gpio_pin_t PIN_BTN_A;          /* PB8, low = pressed (v1.0: front header J12 pin 13) */
+extern const gpio_pin_t PIN_BTN_B;          /* PB9, low = pressed (v1.0: front header J12 pin 14) */
+extern const gpio_pin_t PIN_EXP_IO1;        /* PE0, mode switch "USB floppy" (v0.7 J13 pin 1 / J9 pin 5, v1.0 J12 pin 15) */
+extern const gpio_pin_t PIN_EXP_IO2;        /* PE1, mode switch "SD drive" (v0.7 J13 pin 3 / J9 pin 6, v1.0 J12 pin 16) */
+
+/* v1.0 board (closed enclosure, nothing pluggable after assembly): the index simulation has
+ * its own timer output and the self-test loopback is switched electronically.  On v0.7
+ * boards these pins are unconnected: the outputs drive nothing, the inputs float. */
+extern const gpio_pin_t PIN_INDEX_SIM;      /* PE5, TIM15_CH1 (AF4): low pulse -> LS07 U7F pulls the INDEX bus low */
+extern const gpio_pin_t PIN_LOOP_EN;        /* PG14, high = TS5A3166 closes WDATA->RDATA, 2N7002 pulls TRK0 low */
+extern const gpio_pin_t PIN_WGATE_SENSE;    /* PG15, WGATE bus read back through HC14 U10F (high = WGATE asserted) */
+extern const gpio_pin_t PIN_GUARD_OFF;      /* PG7, J20 pin 2: C64 PSU Guard OFF (high = both drive rails off) */
+extern const gpio_pin_t PIN_GUARD_ERR5;     /* PG8, J20 pin 3: Guard 5 V channel tripped (open drain, 10k pull-up R107) */
+extern const gpio_pin_t PIN_GUARD_ERR12;    /* PG13, J20 pin 4: Guard 12 V channel tripped (10k pull-up R108) */
+#define INDEX_SIM_AF            GPIO_AF4_TIM15  /* TIM15_CH1 on PE5 */
+/* reserved for the W5500 LAN bridge (schematic stage A6): SPI3 PC10 SCK / PC11 MISO /
+ * PC12 MOSI (AF6), PA15 CS, PD5 INT, PD10 RST */
 #define ADC_CH_I_FDD5           ADC_CHANNEL_10  /* PC0, INA180A1: 2 V/A */
 #define ADC_CH_I_FDD12          ADC_CHANNEL_11  /* PC1 */
 #define ADC_CH_BOARD_ID         ADC_CHANNEL_18  /* PA4: board revision divider */

@@ -3409,20 +3409,6 @@
 		)
 		(uuid "a9326b9a-f9a4-5ac6-a2fd-d0d9dc7c00e8")
 	)
-	(no_connect
-		(at 228.6 124.46)
-		(uuid "5ff78454-bea8-5ad7-bec6-ee0b923351a1")
-	)
-	(wire
-		(pts
-			(xy 213.36 124.46) (xy 210.82 124.46)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "bb2c59f9-10a0-5dcc-964c-ea1c95ca9da4")
-	)
 	(wire
 		(pts
 			(xy 246.38 99.06) (xy 246.38 101.6)
@@ -5013,63 +4999,6 @@
 		)
 	)
 	(symbol
-		(lib_id "power:GND")
-		(at 210.82 124.46 270)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(dnp no)
-		(uuid "cff4ff4f-a136-5ed1-a5aa-c08e9922b946")
-		(property "Reference" "#PWR265"
-			(at 210.82 124.46 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "GND"
-			(at 210.82 124.46 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Footprint" ""
-			(at 210.82 124.46 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 210.82 124.46 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "48e7f889-686f-558d-9045-ac9a5d30bce9")
-		)
-		(instances
-			(project "UFI_Headless"
-				(path "/dc1b800d-cedf-5627-97f0-e6992ff33669/ed0b61ff-f6bd-56db-b8a4-25dbfb310cbc"
-					(reference "#PWR265")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "74xx:74HC14")
 		(at 220.98 124.46 0)
 		(unit 6)
@@ -6240,5 +6169,25 @@
 			(justify right)
 		)
 		(uuid "87eca06b-930e-4eb0-b375-e32c8ba0b8d5")
+	)
+	(global_label "WGATE_SENSE"
+		(at 228.6 124.46 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "3f7b59bc-74a3-4282-a317-92d54b811213")
+	)
+	(global_label "FD_WGATE"
+		(at 213.35999999999999 124.46 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7c3a3244-4217-4b2b-8774-90cbfd20a2a3")
 	)
 )

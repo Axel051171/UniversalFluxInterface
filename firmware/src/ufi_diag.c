@@ -5,19 +5,21 @@
  *                    of the selected drive (TIM2 time base, polled index input)
  * - ufi_diag_scan(): which drives answer: TRK0 found by a recalibration, index pulses
  *                    (= disk inserted and spinning), write protect
- * - index simulation: open-drain index pulses on EXP_IO2 (J9 pin 6, PE1) at 300 / 360 rpm,
- *                    wired to the index sensor output of a drive (flippy disks: the back
- *                    side has no index hole, PC drives refuse to write without index).
- *                    PE1 is also the SD position of the mode switch on J13: the simulation
- *                    is refused while that input is high and the switch reads it as low.
- *                    TIM7, 10 us per tick, interrupt toggles the pin.
+ * - index simulation: index pulses at 300 / 360 rpm from TIM15_CH1 on PE5 (board v1.0:
+ *                    through the open-collector driver U7F onto the INDEX bus, so the
+ *                    self-test loopback needs no wire and the pulses reach the MCU's own
+ *                    INDEX input; on v0.7 boards PE5 is unconnected).  Flippy disks: the
+ *                    back side has no index hole, PC drives refuse to write without index;
+ *                    the 3.3 V pulse is also on the LA header J21 pin 10.
+ *                    10 us per tick, PWM channel makes the pulse, the update interrupt
+ *                    marks its start for the internal mode.
  */
 
 #include <string.h>
 #include "ufi_firmware.h"
 
 #define INDEX_WAIT_MS       600u        /* > 1 revolution at 300 rpm with margin */
-#define SIM_TICK_HZ         100000u     /* TIM7: 10 us per tick */
+#define SIM_TICK_HZ         100000u     /* TIM15: 10 us per tick, 30000 ticks at 200 rpm */
 #define SIM_PULSE_US_DEF    2000u
 
 extern TIM_HandleTypeDef htim2;
@@ -128,56 +130,57 @@ int ufi_diag_scan(bool shugart_bus, uint8_t* out, uint8_t* n)
  * INDEX SIMULATION
  * ============================================================================ */
 
-static TIM_HandleTypeDef htim7;
-static volatile uint16_t sim_rpm, sim_low_ticks, sim_high_ticks;
+static TIM_HandleTypeDef htim15;
+static volatile uint16_t sim_rpm, sim_low_ticks;
 static volatile uint8_t sim_mode;           /* INDEX_SIM_PIN / INDEX_SIM_INTERNAL */
-static volatile bool sim_pulse;
 
+/* PE5 is TIM15_CH1 while the simulation drives the INDEX bus, otherwise a GPIO held high
+ * so that the LS07 driver U7F behind it leaves the bus alone (board init does the same) */
 static void sim_pin(bool output)
 {
     GPIO_InitTypeDef g = {0};
-    g.Pin = PIN_EXP_IO2.pin;
+    g.Pin = PIN_INDEX_SIM.pin;
     g.Speed = GPIO_SPEED_FREQ_LOW;
+    g.Pull = GPIO_NOPULL;
     if (output) {
-        HAL_GPIO_WritePin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin, GPIO_PIN_SET);   /* released */
-        g.Mode = GPIO_MODE_OUTPUT_OD;
-        g.Pull = GPIO_NOPULL;
+        g.Mode = GPIO_MODE_AF_PP;
+        g.Alternate = INDEX_SIM_AF;
     } else {
-        g.Mode = GPIO_MODE_INPUT;               /* mode switch input again (board init) */
-        g.Pull = GPIO_PULLDOWN;
+        HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_PIN_SET);   /* released */
+        g.Mode = GPIO_MODE_OUTPUT_PP;
     }
-    HAL_GPIO_Init(PIN_EXP_IO2.port, &g);
+    HAL_GPIO_Init(PIN_INDEX_SIM.port, &g);
 }
 
-void TIM7_IRQHandler(void)
+/* update event = counter wrap = start of the low pulse on CH1 (PWM1, active low) */
+void TIM15_IRQHandler(void)
 {
-    if (__HAL_TIM_GET_FLAG(&htim7, TIM_FLAG_UPDATE)) {
-        __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
-        sim_pulse = !sim_pulse;                 /* pulse = output low (index asserted) */
-        if (sim_mode & INDEX_SIM_PIN) {
-            HAL_GPIO_WritePin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin,
-                              sim_pulse ? GPIO_PIN_RESET : GPIO_PIN_SET);
-        }
-        __HAL_TIM_SET_AUTORELOAD(&htim7, (sim_pulse ? sim_low_ticks : sim_high_ticks) - 1u);
-        if (sim_pulse && (sim_mode & INDEX_SIM_INTERNAL)) {
+    if (__HAL_TIM_GET_FLAG(&htim15, TIM_FLAG_UPDATE)) {
+        __HAL_TIM_CLEAR_FLAG(&htim15, TIM_FLAG_UPDATE);
+        if (sim_mode & INDEX_SIM_INTERNAL) {
             ufi_flux_index_event(TIM2->CNT);    /* counts as the drive's index pulse */
         }
     }
+}
+
+static void sim_timer_stop(void)
+{
+    __HAL_TIM_DISABLE_IT(&htim15, TIM_IT_UPDATE);
+    HAL_TIM_PWM_Stop(&htim15, TIM_CHANNEL_1);
+    HAL_NVIC_DisableIRQ(TIM15_IRQn);
 }
 
 int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode)
 {
     if (rpm == 0) {
         if (sim_rpm) {
-            HAL_TIM_Base_Stop_IT(&htim7);
-            HAL_NVIC_DisableIRQ(TIM7_IRQn);
-            ufi_flux_index_source(false);
             if (sim_mode & INDEX_SIM_PIN) {
-                sim_pin(false);
+                sim_pin(false);                 /* release the bus before the timer stops */
             }
+            sim_timer_stop();
+            ufi_flux_index_source(false);
             sim_rpm = 0;
             sim_mode = 0;
-            sim_pulse = false;
         }
         return UFI_OK;
     }
@@ -189,43 +192,49 @@ int ufi_index_sim_set(uint16_t rpm, uint16_t pulse_us, uint8_t mode)
         return UFI_ERR_BAD_ARGS;
     }
     if (pulse_us == 0) pulse_us = SIM_PULSE_US_DEF;
-    const uint32_t period = 60u * SIM_TICK_HZ / rpm;        /* ticks per revolution */
+    const uint32_t period = 60u * SIM_TICK_HZ / rpm;        /* ticks per revolution, <= 30000 */
     const uint32_t low = pulse_us / (1000000u / SIM_TICK_HZ);
     if (low < 1u || low >= period / 2u) {
         return UFI_ERR_BAD_ARGS;
     }
     const bool pin_was = (sim_mode & INDEX_SIM_PIN) != 0, pin_now = (mode & INDEX_SIM_PIN) != 0;
-    if (pin_now && !pin_was && HAL_GPIO_ReadPin(PIN_EXP_IO2.port, PIN_EXP_IO2.pin) == GPIO_PIN_SET) {
-        return UFI_ERR_BUSY;                    /* mode switch on J13 in the SD position */
-    }
 
     if (sim_rpm) {
-        HAL_TIM_Base_Stop_IT(&htim7);           /* re-program a running simulation */
+        if (pin_was) {
+            sim_pin(false);                     /* re-program a running simulation */
+        }
+        sim_timer_stop();
     }
     sim_low_ticks = (uint16_t)low;
-    sim_high_ticks = (uint16_t)(period - low);
-    sim_pulse = false;
-    if (pin_now != pin_was) {
-        sim_pin(pin_now);
-    }
     sim_mode = mode;
     ufi_flux_index_source((mode & INDEX_SIM_INTERNAL) != 0);
-    __HAL_RCC_TIM7_CLK_ENABLE();
-    htim7.Instance = TIM7;                      /* APB1 timer clock = TIM2 clock */
-    htim7.Init.Prescaler = FLUX_TIMER_FREQ / SIM_TICK_HZ - 1u;
-    htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim7.Init.Period = sim_high_ticks - 1u;
-    htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_Base_Init(&htim7) != HAL_OK) {
-        sim_pin(false);
+    __HAL_RCC_TIM15_CLK_ENABLE();
+    htim15.Instance = TIM15;                    /* APB2 timer clock = APB1 timer clock = TIM2 clock */
+    htim15.Init.Prescaler = FLUX_TIMER_FREQ / SIM_TICK_HZ - 1u;
+    htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim15.Init.Period = period - 1u;
+    htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    TIM_OC_InitTypeDef oc = {0};
+    oc.OCMode = TIM_OCMODE_PWM1;                /* active while CNT < pulse ... */
+    oc.Pulse = low;
+    oc.OCPolarity = TIM_OCPOLARITY_LOW;         /* ... and active = low */
+    oc.OCIdleState = TIM_OCIDLESTATE_SET;
+    if (HAL_TIM_PWM_Init(&htim15) != HAL_OK ||
+        HAL_TIM_PWM_ConfigChannel(&htim15, &oc, TIM_CHANNEL_1) != HAL_OK) {
+        sim_mode = 0;
+        ufi_flux_index_source(false);
         return UFI_ERR_NOT_IMPL;
     }
-    __HAL_TIM_CLEAR_FLAG(&htim7, TIM_FLAG_UPDATE);
+    __HAL_TIM_CLEAR_FLAG(&htim15, TIM_FLAG_UPDATE);
+    __HAL_TIM_ENABLE_IT(&htim15, TIM_IT_UPDATE);
     /* same preemption level as the TIM2 index capture: above the flux DMA ISR */
-    HAL_NVIC_SetPriority(TIM7_IRQn, 0, 3);
-    HAL_NVIC_EnableIRQ(TIM7_IRQn);
+    HAL_NVIC_SetPriority(TIM15_IRQn, 0, 3);
+    HAL_NVIC_EnableIRQ(TIM15_IRQn);
     sim_rpm = rpm;
-    HAL_TIM_Base_Start_IT(&htim7);
+    HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_1);  /* enables MOE and the counter */
+    if (pin_now) {
+        sim_pin(true);
+    }
     return UFI_OK;
 }
 
@@ -241,5 +250,5 @@ uint8_t ufi_index_sim_mode(void)
 
 bool ufi_index_sim_pulse(void)
 {
-    return sim_rpm && sim_pulse;
+    return sim_rpm && __HAL_TIM_GET_COUNTER(&htim15) < sim_low_ticks;
 }
