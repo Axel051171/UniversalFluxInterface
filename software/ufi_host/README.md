@@ -57,6 +57,7 @@ ufi read-dsk -o game.dsk [--order prodos] [--tracks 35] [-r 2] [--flags …]  # 
 ufi extra density_us=1500                 # Firmware ≥ 1.18: zusätzliche Laufwerkszeiten (Umschaltwartezeit, Motorstart→Schritt, Schreibberuhigung, WGATE-Vor-/Nachlauf)
 ufi profile [standard|konservativ|save]   # Firmware ≥ 1.18: wirksame Einstellungen des gewählten Laufwerks; Zeitsatz anwenden (konservativ = KryoFlux-Werte: Schritt 8 ms, Beruhigung 40 ms, Umkehr 38 ms); save merkt sie sich je Laufwerk in UFIPROF.BIN auf der SD (ufi rm UFIPROF.BIN vergisst alle)
 ufi selftest                              # Firmware ≥ 1.14: Platinen-Selbsttest (Takt, PSRAM, SD, Versorgungen, USB-C, Laufwerksleitungen, IEC-Rückschleife, Index-Schleife), schreibt SELFTEST.LOG
+python -m ufi_host.bringup --port COMx --report bringup.json [--index-sim]   # Bring-up der nackten Platine ohne Laufwerk: Identifikation, Discovery, Diagnose, Versorgungen, Selbsttest mit Erwartungen, 1.18-Abfragen; docs/Bringup_2026-10-24.md
 ufi format 1440 --verify                  # Firmware ≥ 1.14: Diskette in der Firmware formatieren (1440 720 1200 360 dmf amiga 1581 st720 st800, ab 1.16 amigahd; --track T für eine Spur)
 ufi analyze 0 0 -r 5                      # Firmware ≥ 1.14: Drehzahl, Abstands-Spitzen, Kodierung/Bitzelle, Spurlänge, schwache Bits, Index→erster Sektor
 ufi dump --tracks 0                       # Firmware ≥ 1.14: Spurzahl automatisch (höchste erreichbare Spur); UFI.CFG track_search=1 für 40-Spur-Disketten
