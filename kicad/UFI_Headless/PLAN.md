@@ -70,6 +70,11 @@ Freie U5-Pins vor A11 (20): PC13, PF9, PF10, PC2_C, PC3_C, PC4, PC5, PB0, PB1, P
 
 Danach frei: PC13, PC2_C, PC3_C, PB4, PC7–PC9, PA10 (8 Pins; PB1 = Mac !CSTOUT nach Owner-Entscheid 24.10.: PWM-Leitung immer zusätzlich auf einen Schmitt-Eingang, der Lötjumper verbindet nur den PWM-Ausgang). Owner-Entscheide 24.10. spät: K1 Pin 9/20 per Lötjumper offen; U9 LS07 bleibt (IEC: drei Pull-ups ≈ 15 mA liegen in der 0,4-V-Garantie); S5 ohne Sicherung, U18 ist ein ICL7662 (bis 20 V, nicht auf 7660 „korrigieren“); Reihenfolge A11c → A11e → A11a → A11b → A11d (K1 zuletzt).
 
+### A8 Schaltplan-Review (25.10.2026, `docs/Review_A8_2026-10-25.md`)
+- **F1 (Fehler, von der Sitzung bestätigt):** Schreibsperre am WGATE-Zweig invertiert – U30-Gatter 1 (ODER aus A11a, für den LS07 entworfen) treibt seit A11b das MOSFET-Gate Q9-G2; LOCK = 1 hält WGATE dauerhaft aktiv. **Vorschlag (A8-Fix, Teilstufe A11f):** Gate-Klemme nach Variante (b): PE14 über R167 1 k auf Q9-G2, neuer Q13 BSS138DW-Kanal (Gate = LOCK, Drain = Q9-G2, Source = GND) zieht das Gate bei Sperre auf 0 V; U30-Gatter 1 stillgelegt (1A/1B an GND, 1Y offen), Gatter 2 (WRREQ) bleibt; Selbsttest-Posten „WGATE_SENSE nie aktiv bei LOCK“ in A10.
+- **R1–R3 (Owner-Entscheid):** R1 D30 (3,3-V-TVS auf 5-V-Signal SYNC_5V) → freier Kanal von D31 oder PESD5V0L1BA, J19 als JST XH; R2 J20 GUARD ohne ESD/Kodierung → 3× PESD3V3L1BA + JST XH; R3 J6 Pin 33 über 2,2 k kann keinen Abschluss ziehen → MOSFET-Kanal (zweite Hälfte von Q13) statt R156/R157, abhängig vom Flippy-Umbau.
+- R4/R5, H1–H12: Inbetriebnahme-Liste (V_OL der MOSFET-Ausgänge mit 150-Ω-Laufwerk, AHCT244 Ioff, Rampenzeit, LSE-Anschwingen, FRONT_WRLED-Helligkeit) und Doku-Angleich (PLAN-Werte 33,2 k/90,9 k/2,7 nF/1,2 nF → 33 k, 100 k+1 k, 2,2 nF, 1 nF wie im Schaltplan); fehlende LCSC-Nummern vor Stufe C (H12).
+
 ## Offene Fragen an den Owner
 - A11: K1 kommt als interne Stiftleiste mit Kabel zur Gehäusebuchse (keine D-Sub-Buchse auf der Platine), K2 gestrichen, SHT40 + TCXO in A9c (alles Owner 24.10.). Noch offen: Amiga-Kabel mit Einzeldrähten bestätigt? K3–K5?
 - Gehäuse (Typ, Innenmaße, Wandstärke) bestimmt die Kantenausschnitte für J1 (USB-C) und J22 (RJ45); der Umriss ist 110 × 97 mm.
