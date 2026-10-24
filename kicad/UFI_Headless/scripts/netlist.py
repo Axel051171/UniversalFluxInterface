@@ -26,6 +26,8 @@ def read_netlist(path: str | Path):
             "props": {str(p[1][1]): str(p[2][1]) for p in c
                       if isinstance(p, list) and p[0] == "property" and len(p) > 2},
             "datasheet": str(child(c, "datasheet")[1]) if child(c, "datasheet") else "",
+            # symbol Description (netlist "(description ...)"), compared by the PCB parity check
+            "description": str(child(c, "description")[1]) if child(c, "description") else "",
         }
     nets = {}
     for n in child(tree, "nets")[1:]:

@@ -1,6 +1,6 @@
 # UFI Headless – STM32H723 Flux Engine (ohne CM5)
 
-Status: **Schaltplan + Layout v0.7** – ERC 0 Verstöße, alle Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen (Details unten).
+Status: **Schaltplan + Layout v1.0 (Stufe B2)** – ERC 0 Verstöße, alle Netze per Netlist-Export geprüft; PCB-DRC 0 Fehler, 0 Warnungen, 0 unverbunden, Schaltplan-Parität ok (Details unten). Offen: Lastpfad-Breiten nach Skill `pcb-routing` (Stufe B3 in `PLAN.md`), Fertigungsfreigabe (Stufe C).
 
 | Sheet | Inhalt | Status |
 |---|---|---|
@@ -61,7 +61,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
 | LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
 | Board-ID | R18 22k (R17 10k) | 2,27 V = v1.0; `INFO` meldet `board_rev` 10, Firmware schaltet damit Apple-Port und Amiga2 frei wie bei v0.7 |
-| noch offen | Layout (Stufe B), Fertigungsfreigabe (Stufe C). J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.) | |
+| noch offen | Lastpfade 1,0 mm (Stufe B3), Fertigungsfreigabe (Stufe C). J8, J7 und J3 bleiben interne Stiftleisten, DIN-6 und DB23 sind Gehäusebuchsen am Kabel (Owner 24.10.); Gehäuseausschnitte für J1 (USB-C) und J22 (RJ45) an der Eingangskante | |
 
 Projektbibliothek für U15: `lib/UFI_Headless.kicad_sym` und `lib/UFI_Headless.pretty` (in `sym-lib-table`/`fp-lib-table`); `kisch.py` und `add_parts.py` suchen dort zuerst.
 
@@ -129,9 +129,20 @@ cd kicad/UFI_Headless
 "$PY" scripts/verify_netlist.py headless.net           # Soll/Ist-Vergleich aller Netze
 ```
 
-## Layout (v0.2, v0.1 automatisch erzeugt + inkrementelle ECO)
+## Layout v1.0 (Stufe B2, 24.10.2026)
 
-![top](docs/top.png)
+![layout v1.0](docs/layout_v1.0_2026-10-24.png)
+
+- 110 × 97 mm, 4 Lagen (F.Cu / In1 GND / In2 +3V3-Pour + Signale / B.Cu), 6× M3; Eingangskante y = 0 mit J17 PSU-IN, J2 12 V, J22 RJ45, J1 USB-C, J16, J4 SWD, J5 UART; Laufwerkskante y = 97 mit J6, J14, J7, J3; J8 IEC links, J12 Front rechts, J20 Guard links, J21 LA rechts oben
+- **J1 und J22 zeigen mit der Öffnung über die Kante** (J1 rot 180 bei y 2,66 mm, J22 rot 180 bei y 13,11 mm); bei Rotation 0 liegen die Öffnungen beider Bibliotheks-Footprints nach innen – so stand die USB-C-Buchse seit v0.1 falsch. Das Gehäuse braucht dort Wandausschnitte
+- DRC gegen die JLC-Regeln (`UFI_Headless.kicad_dru`): **0 Fehler, 0 Warnungen, 0 unverbundene Elemente, Schaltplan-Parität ok** (`kicad-cli pcb drc --schematic-parity --severity-all`), kein Via-in-Pad, Vias ≥ 0,5/0,25 mm (Restring ≥ 0,125 mm)
+- Routing: Freerouting (Pipeline `make_pcb.sh route`) ließ nach dem 1800-s-Timeout 154 Verbindungen offen, Engstellen an den 0,5-mm-QFP-Reihen von U5/U23; Rest per `scripts/eco/`: `relayout_lan.py` (Quarz-Cluster unter U23), `fanout.py` (0,5/0,25-Dogbones), `batch_route.py` (A*-Router mit Segmentprüfung und Glättung), `place_silk.py` (Referenzen/Texte). Reihenfolge in `scripts/eco/README.md`
+- Siebdruck: Referenzen nur für ICs, Stecker, Schalter, Quarze, Sicherungen, Spulen und D4 (`hide_small_refs.py`); SW3 (DNP) steht auf B.Cu unter J22, SW4 auf F.Cu
+- **Lastpfade (Skill `pcb-routing`, gemessen mit `check_routing.py` und `routing_rules.json`): nicht erfüllt.** Alle 16 Lastnetze (VBUS, VBUS_F, +5V_PSU, +5V_PSU_F, +12V_IN, +12V, BUCK_SW, +5V_DRV, +5V_PRI, +5V, FDD5_F/S, FDD_5V, FDD12_F/S, FDD_12V) sind 0,2–0,25 mm breit (plus Pours 0,4 mm je Seite, wo Platz ist); Soll nach Strom (F1/F4 1,5 A, F2/F3 1,1 A, Abschaltung > 1,5 A): 1,0 mm. Pfadlängen F2→R26 88 mm, F3→R29 110 mm, Q1→J3 122 mm, VBUS_F F1→U3 95 mm: die Versorgungskette ist über die Platine verteilt. Netzklasse `Load` (1,0 mm, 0,8/0,4-Vias) ist seit B2 in `.kicad_pro` angelegt (`scripts/eco/set_netclasses.py`); die Umplatzierung und das Neurouten der Lastpfade ist Stufe B3
+
+### Layout v0.2–v0.7 (Vorgeschichte, v0.1 automatisch erzeugt + inkrementelle ECO)
+
+![top v0.7](docs/top.png)
 
 - 110 × 85 mm (v0.1–v0.6; ab v0.7 110 × 97 mm, 6× M3), 4 Lagen, 115 Bauteile (inkl. 6 Messpunkt-Pads), 4× M3
 - DRC: **0 Fehler, 0 Warnungen, 0 unverbundene Elemente, Schaltplan-Parität ok**, kein Via-in-Pad. IDC-Konturen von J6/J7 ragen absichtlich über den Rand: per Regel `idc_edge_silk` in `UFI_Headless.kicad_dru` ausgenommen (Fertiger clippt), Bibliotheks-Footprints unverändert
@@ -174,7 +185,7 @@ bash scripts/make_pcb.sh all                               # Neu-Layout von Null
 6. `power_pours.py` – Versorgungs-Pours entlang der Routen
 
 Lagenaufbau: F.Cu Signal + GND-Pour · In1.Cu GND-Plane · In2.Cu Signal + 3V3-Pour · B.Cu Signal + GND-Pour.
-Hinweis Fertigung: kein Via-in-Pad. VBUS-Vias sitzen neben den A4/A9-Pads (die NPTH-Stifte direkt darunter erzwingen den Versatz nach innen), CC2 läuft links am A9-Via vorbei. D−-Vias an J1 sind 0,48/0,23 mm.
+Hinweis Fertigung: kein Via-in-Pad. VBUS-Vias sitzen neben den A4/A9-Pads, D−-Vias an J1 sind 0,48/0,23 mm. Seit v1.0 ist J1 um 180° gedreht (Öffnung 1 mm über der Kante, Kontaktreihe innen); die Auffächerung erzeugt `scripts/eco/place_v10.py` aus den Padlagen, die NPTH-Stifte und Gehäusebeine liegen jetzt zwischen Kontaktreihe und Kante.
 
 ## Stromversorgung
 

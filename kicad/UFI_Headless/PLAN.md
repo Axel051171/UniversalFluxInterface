@@ -23,12 +23,14 @@ MCU-Pin wandert; Commit pro Stufe mit Referenzen und offenen Punkten.
 | A7 | Board-ID: R18 22k (2,27 V) für v1.0, Firmware `BOARD_ID_V10_MV`, `board_rev` 10, Host-Anzeige v1.0 | MCU_Core, firmware, host | Gate grün | erledigt (Commit A7) |
 | A8 | Schaltplan-Review nach Skill `kicad-schaltplan-review` (ESD, Leckströme, LED-Ströme, 5-V-Toleranz, Pinkonflikte, verwaiste Netze) | alle | Befunde abgearbeitet oder begründet offen | offen |
 | B1 | Platzierungsentwurf: Netzliste in die Platine übernommen (94 neue Footprints, alte RN/J9/J11/J13/J18/LED-Teile entfernt), Stecker auf Eingangs- und Laufwerkskante, J22 neben J2, J12 rechts, J8 links, LAN-Block neben U15; Bild `docs/placement_v1.0_draft_2026-10-24.png` | .kicad_pcb | Bild für den Owner | erledigt (Commit B1), unverdrahtet, kein DRC |
-| B2 | Layout: USB-C in Kantenaussparung, Feinplatzierung (Restüberlappungen der Passivteile), alte Leiterbahnen der geänderten Netze entfernen, neue Teile routen, Siebdruck/F.Fab mit Öffnungsseite, DRC 0/0 gegen JLC-Regeln | .kicad_pcb | DRC 0/0 | offen |
+| B2 | Layout: USB-C in Kantenaussparung, Feinplatzierung (Restüberlappungen der Passivteile), alte Leiterbahnen der geänderten Netze entfernen, neue Teile routen, Siebdruck/F.Fab mit Öffnungsseite, DRC 0/0 gegen JLC-Regeln | .kicad_pcb | DRC 0/0 | erledigt (Commit B2): DRC 0 Fehler / 0 Warnungen / 0 unverbunden mit Schaltplan-Parität; J1/J22 mit Öffnung zur Kante (bei Rot 0 zeigten beide nach innen – Fehler seit v0.1); Quarz-Cluster und 3V3A-Filter unter U23 neu gelegt; QFP-Reihen mit 0,5/0,25-Vias aufgefächert (`fanout.py`), Rest mit `batch_route.py`; SW3 (DNP) auf B.Cu unter J22 geparkt; Bild `docs/layout_v1.0_2026-10-24.png`. Freerouting lief in den 1800-s-Timeout und ließ 154 Verbindungen offen – deshalb die ECO-Werkzeuge. **Nicht erfüllt:** Lastpfad-Breiten nach Skill `pcb-routing` (Messung 24.10.: alle 16 Lastnetze 0,2–0,25 mm + Pours, Pfade bis 122 mm) → B3 |
+| B3 | Lastpfade nach Skill `pcb-routing`: Netzklasse `Load` 1,0 mm (16 Netze inkl. Zwischenknoten FDD5_F/FDD5_S/FDD12_F/FDD12_S/+5V_PRI/+5V_PSU_F, `scripts/eco/set_netclasses.py`), Regeln in `routing_rules.json`; Versorgungskette kompakt umplatzieren (F2/R26/Q1/U12/D13 und F3/R29/Q3/U13/D14 an J3; D2/C1–C3/U2/L1/U19/U3 als Block), Lastpfade zuerst von Hand mit 1,0 mm und ≥ 2 Vias je Lagenwechsel, verdrängte Signale danach neu routen | .kicad_pcb, .kicad_pro | `check_routing.py` 0 FEHLER, DRC 0/0 | offen – Owner-Entscheidung: Umplatzierung der Power-Kette (Vorschlag) oder 0,5 mm + Pours als Kompromiss |
 | C | Fertigungsfreigabe nach Skill `pcb-fertigungsfreigabe`: BOM mit Herstellernummern und Lager, CPL ohne DNP, Rotation geprüft, Gerber/Bohr/STEP, Tag `hw-v1.0` | fertigung/ | Freigabebericht | offen |
 
 ## Offene Fragen an den Owner
-- Gehäuse (Typ, Innenmaße) bestimmt die Lage der Kanten und die USB-C-Höhe; bis dahin bleibt der Umriss 110 × 85 mm.
-- SW3/SW4 bestücken oder nicht (derzeit DNP, Taster sitzen an der Front).
+- Gehäuse (Typ, Innenmaße, Wandstärke) bestimmt die Kantenausschnitte für J1 (USB-C) und J22 (RJ45); der Umriss ist 110 × 97 mm.
+- SW3/SW4 bestücken oder nicht (derzeit DNP, Taster sitzen an der Front); SW3 steht auf B.Cu unter J22, SW4 bleibt auf F.Cu.
+- B3: Power-Kette umplatzieren (Lastpfade 1,0 mm nach `pcb-routing`) oder Kompromiss 0,5 mm + Pours.
 
 ## Nach Stufe A4 noch in der Firmware zu nutzen
 LOOP_EN/WGATE_SENSE im Selbsttest (WDATA→RDATA, TRK0, WGATE), Guard-Status in BOARD_STATUS,

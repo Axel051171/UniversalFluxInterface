@@ -29,6 +29,10 @@ for fp in board.GetFootprints():
         changed += 1
     if c["datasheet"] not in ("", "~"):
         fp.GetField(pcbnew.FIELD_T_DATASHEET).SetText(c["datasheet"])
+    desc = fp.GetField(pcbnew.FIELD_T_DESCRIPTION)
+    if desc is not None and desc.GetText() != c.get("description", ""):
+        desc.SetText(c.get("description", ""))
+        changed += 1
     for f in fp.GetFields():
         if f.GetName() != "Reference":
             f.SetVisible(False)

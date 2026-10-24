@@ -1,0 +1,41 @@
+{
+  "_comment": "pcb-routing skill: load paths of UFI Headless v1.0. Currents: F1/F4 1.5 A hold (USB / C64 PSU in), F2/F3 1.1 A hold with firmware cut-off > 1.5 A for 50 ms (FDD rails), TPS54202 buck up to 2 A, +3V3 about 0.4 A. Widths per the skill table (IPC-2152, 35 um outer, 10 K): 1.5-2 A -> 1.0 mm, 1 A -> 0.5 mm, <= 0.5 A -> 0.25 mm.",
+  "min_width": {
+    "VBUS": 1.0, "/Power/VBUS_F": 1.0,
+    "/Power/+5V_PSU": 1.0, "/Power/+5V_PSU_F": 1.0,
+    "/Power/+12V_IN": 1.0, "+12V": 1.0,
+    "/Power/BUCK_SW": 1.0, "/Power/+5V_DRV": 1.0, "/Power/+5V_PRI": 1.0, "+5V": 1.0,
+    "/Power/FDD5_F": 1.0, "/Power/FDD5_S": 1.0, "FDD_5V": 1.0,
+    "/Power/FDD12_F": 1.0, "/Power/FDD12_S": 1.0, "FDD_12V": 1.0,
+    "+3V3": 0.3
+  },
+  "min_vias": {
+    "+5V": 2, "+12V": 2, "FDD_5V": 2, "FDD_12V": 2, "/Power/+5V_DRV": 2, "/Power/+5V_PRI": 2
+  },
+  "paths": [
+    ["VBUS", "J1:A4", "F1:1", 1.0],
+    ["/Power/VBUS_F", "F1:2", "U3:6", 1.0],
+    ["/Power/+5V_PSU", "J17:1", "F4:1", 1.0],
+    ["/Power/+5V_PSU_F", "F4:2", "U19:3", 1.0],
+    ["/Power/+12V_IN", "J2:1", "D2:2", 1.0],
+    ["/Power/+12V_IN", "J17:4", "D2:2", 1.0],
+    ["+12V", "D2:1", "U2:3", 1.0],
+    ["+12V", "D2:1", "F3:1", 1.0],
+    ["/Power/BUCK_SW", "U2:2", "L1:1", 1.0],
+    ["/Power/+5V_DRV", "L1:2", "U19:6", 1.0],
+    ["/Power/+5V_PRI", "U19:7", "U3:3", 1.0],
+    ["+5V", "U3:2", "F2:1", 1.0],
+    ["+5V", "U3:2", "U4:1", 0.5],
+    ["/Power/FDD5_F", "F2:2", "R26:1", 1.0],
+    ["/Power/FDD5_S", "R26:2", "Q1:2", 1.0],
+    ["FDD_5V", "Q1:3", "J3:1", 1.0],
+    ["FDD_5V", "Q1:3", "J7:12", 1.0],
+    ["FDD_5V", "Q1:3", "J14:11", 1.0],
+    ["/Power/FDD12_F", "F3:2", "R29:1", 1.0],
+    ["/Power/FDD12_S", "R29:2", "Q3:2", 1.0],
+    ["FDD_12V", "Q3:3", "J3:4", 1.0],
+    ["FDD_12V", "Q3:3", "J7:23", 1.0],
+    ["FDD_12V", "Q3:3", "J14:13", 1.0],
+    ["+3V3", "U4:3", "U5:144", 0.3]
+  ]
+}

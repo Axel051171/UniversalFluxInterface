@@ -9,7 +9,7 @@ bestätigen konnte, steht als "prüfen".
 
 | Befund | Ursache | Abhilfe in der nächsten Revision |
 |---|---|---|
-| J1 USB-C um 180° gedreht | HRO-TYPE-C-31-M-12 hat vier symmetrische Gehäusepins, das Gehäuse passt in beide Richtungen; auf der Bestückungszeichnung ist die Öffnung nicht erkennbar | Buchse in eine **Aussparung der Platinenkante** setzen (Ausschnitt im Umriss, Öffnung ragt in die Aussparung): gedreht kollidiert das Gehäuse mit der Platine. Zusätzlich auf F.Fab den Steckerumriss mit Öffnungsseite zeichnen und auf dem Bestückungsdruck einen Pfeil "USB" an der Kante. Rework ist bei dieser Bauform schwer, deshalb mechanisch ausschließen. |
+| J1 USB-C mit der Öffnung nach innen | **Befund B2 (24.10.):** das Layout war seit v0.1 um 180° falsch, nicht die Bestückung. Im KiCad-Footprint liegt die SMD-Kontaktreihe hinten (y −4,05), die Öffnung vorn (y +3,65); die HRO-Zeichnung (LCSC C165948) legt die Platinenkante 5,79 mm vor die hinteren Gehäusebeine. Mit Rotation 0 an der oberen Kante zeigt die Öffnung zwangsläufig nach innen. Dasselbe galt für den RJ45-Footprint (Stiftreihen hinten, LED-Pins vorn). | v1.0: J1 um 180° gedreht, Öffnung 1,0 mm über der Kante (y = 2,66); J22 um 180° gedreht, Front 3,05 mm über der Kante (HanRun "D 3.05 min"). Keine Kantenaussparung nötig, die Gehäusewand bekommt dort Durchbrüche. Auffächerung an J1 neu erzeugt (`scripts/eco/place_v10.py`). |
 | RN1–RN8 (1 kΩ-Arrays) nicht bestückt | Arrays (MNR14/1206-4) sind beim Bestücker oft nicht lagernd oder als "optional" gelesen | Entweder vier Einzelwiderstände 0603 je Gruppe (Standardteil, immer lagernd) oder ein Array aus dem Basisbestand des Bestückers. In der BOM als **required** markieren; die Spalte "DNP" nur für wirklich optionale Teile. |
 | C46/C50 nicht bestückt | wie oben, kein DNP-Vermerk, aber ausgelassen | Vor Bestellung die Pick-and-Place-Liste gegen die BOM abgleichen (Skript: jede Referenz mit Wert muss in der Platzierungsliste vorkommen, außer DNP). |
 | J11 WRITE-LOCK ohne Stifte | zweipolige Stiftleiste als "optional" behandelt | Schiebeschalter (z. B. SMD-Slide SPDT) statt Jumper, mit Druck "WRITE LOCK / ENABLE". Ein Schalter wird bestückt, ein Jumper vergessen. |
@@ -134,7 +134,7 @@ hängen. Sie sollten auf der Platine steckbar sein, nicht als Fädeldraht:
   (150–220 Ω) gehört in den Adapter.
 - **Testbarkeit:** Loopback-Block (WDATA→RDATA, WGATE→Status, INDEX_SIM→INDEX, TRK0-Force),
   Logikanalysator-Header auf 3,3 V, Testpunkte wie in Abschnitt 2.
-- **USB-C:** in Kantenaussparung, Öffnung bündig außen; F.Fab mit Öffnungsseite.
+- **USB-C und RJ45:** um 180° gedreht gegenüber v0.7, Öffnungen stehen 1,0 mm (J1) und 3,05 mm (J22) über die Eingangskante (Datenblattwerte HRO/HanRun); keine Kantenaussparung, Durchbrüche in der Gehäusewand.
 - **Amiga extern:** DB23 als Gehäusebuchse am Flachbandkabel von J7 (Owner 24.10.: keine Buchsen auf der Platine, J7, J8 und J3 bleiben Stiftleisten; DIN-6 ebenso am Kabel von J8). Offen bleibt das Gehäuse (bis dahin heutiger Umriss).
 - **Eingang/Ausgang-Struktur (Vorgabe 24.10.):** eine Platinenkante trägt alles, was vom Host und von der Versorgung kommt (USB-C, J16, 12-V-Buchse, J17 PSU_IN, SWD J4, UART J5); die gegenüberliegende Kante alle Laufwerksanschlüsse als interne Stiftleisten (J6 34-pol, J14 Disk II, J7 Amiga, J8 IEC, J3 Laufwerksstrom; DIN-6 und DB23 sind Gehäusebuchsen am Kabel). Front-Header J12 an einer Seitenkante.
 

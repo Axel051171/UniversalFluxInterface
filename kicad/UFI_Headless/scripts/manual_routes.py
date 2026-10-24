@@ -13,14 +13,7 @@ MM = pcbnew.FromMM
 V = lambda x, y: pcbnew.VECTOR2I(MM(x), MM(y))  # noqa: E731
 board = pcbnew.LoadBoard(sys.argv[1])
 
-ROUTES = {
-    "USB_DP": [  # via sits on the B6 leg of the fan-out, above the VBUS_F track at y~3.87
-        ("via", (72.75, 3.2)),
-        ("In2.Cu", [(72.75, 3.2), (72.75, 14.3)]),
-        ("via", (72.75, 14.3)),
-        ("F.Cu", [(72.75, 14.3), (72.75, 15.05)]),
-    ],
-}
+ROUTES = {}  # v1.0: J1 is rotated and re-placed; the v0.1 USB_DP fallback coordinates no longer apply
 
 conn = board.GetConnectivity()
 conn.RecalculateRatsnest()

@@ -91,7 +91,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 
 1. **LAN-Firmware:** Treiber für den W5500 (Schaltplan ist fertig, Stufe A6) und Steuerung über LAN wie über USB.
 2. **Firmware-Nutzung der neuen Leitungen:** Selbsttest-Posten für die Rückschleife (WDATA→RDATA, TRK0, WGATE_SENSE), Guard-Status in `BOARD_STATUS`, Guard-OFF beim Abschalten der Laufwerksversorgung.
-4. **Layout:** Eingangskante (USB-C in Kantenaussparung, J16, J2, J17, J4, J5) gegenüber der Laufwerkskante (J6, J14, J7, J8, J3 als interne Stiftleisten; DIN-6 und DB23 als Gehäusebuchsen am Kabel), Front-Header an einer Seitenkante, Gehäuse noch offen (Umriss bleibt bis dahin).
+4. **Layout:** Eingangskante (USB-C und RJ45 mit der Öffnung 1 bzw. 3 mm über der Kante, J16, J2, J17, J4, J5) gegenüber der Laufwerkskante (J6, J14, J7, J8, J3 als interne Stiftleisten; DIN-6 und DB23 als Gehäusebuchsen am Kabel), Front-Header an einer Seitenkante, Gehäuse noch offen (Umriss bleibt bis dahin).
 
 Entschieden 24.10.: keine Buchsen auf der Platine, alle Laufwerks- und Hilfsanschlüsse bleiben
 Stiftleisten wie bisher; nur USB und LAN sind von außen erreichbar.
