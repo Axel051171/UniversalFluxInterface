@@ -22,7 +22,8 @@ MCU-Pin wandert; Commit pro Stufe mit Referenzen und offenen Punkten.
 | A6 | W5500 + RJ45-Magjack HR911105A an SPI3 (PC10 SCK, PC11 MISO, PC12 MOSI, PA15 CS, PD5 INT, PD10 RST), Werte nach WIZnet-Referenz, 25-MHz-Quarz, Abblockung, Firmware-Pinmap (Treiber später) | neues Blatt LAN, MCU_Core, firmware | ERC 0/0, Gate grün | erledigt (Commit A6) |
 | A7 | Board-ID: R18 22k (2,27 V) für v1.0, Firmware `BOARD_ID_V10_MV`, `board_rev` 10, Host-Anzeige v1.0 | MCU_Core, firmware, host | Gate grün | erledigt (Commit A7) |
 | A8 | Schaltplan-Review nach Skill `kicad-schaltplan-review` (ESD, Leckströme, LED-Ströme, 5-V-Toleranz, Pinkonflikte, verwaiste Netze) | alle | Befunde abgearbeitet oder begründet offen | offen |
-| B | Layout: USB-C in Kantenaussparung, Eingangskante gegen Laufwerkskante, J12 an einer Seitenkante, neue Teile platzieren und routen, Siebdruck/F.Fab mit Öffnungsseite, DRC 0/0 gegen JLC-Regeln | .kicad_pcb | DRC 0/0 | offen |
+| B1 | Platzierungsentwurf: Netzliste in die Platine übernommen (94 neue Footprints, alte RN/J9/J11/J13/J18/LED-Teile entfernt), Stecker auf Eingangs- und Laufwerkskante, J22 neben J2, J12 rechts, J8 links, LAN-Block neben U15; Bild `docs/placement_v1.0_draft_2026-10-24.png` | .kicad_pcb | Bild für den Owner | erledigt (Commit B1), unverdrahtet, kein DRC |
+| B2 | Layout: USB-C in Kantenaussparung, Feinplatzierung (Restüberlappungen der Passivteile), alte Leiterbahnen der geänderten Netze entfernen, neue Teile routen, Siebdruck/F.Fab mit Öffnungsseite, DRC 0/0 gegen JLC-Regeln | .kicad_pcb | DRC 0/0 | offen |
 | C | Fertigungsfreigabe nach Skill `pcb-fertigungsfreigabe`: BOM mit Herstellernummern und Lager, CPL ohne DNP, Rotation geprüft, Gerber/Bohr/STEP, Tag `hw-v1.0` | fertigung/ | Freigabebericht | offen |
 
 ## Offene Fragen an den Owner
