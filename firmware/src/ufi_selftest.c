@@ -28,6 +28,7 @@ typedef struct {
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
     "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
+    "rtc", "sht40",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -215,6 +216,31 @@ static void t_stack(st_item_t* it)
     it->status = it->value < 512u ? ST_FAIL : it->value < 2048u ? ST_WARN : ST_OK;
 }
 
+/* ---- board v1.0 sensing (A10) -------------------------------------------- */
+
+/* calendar running: value = yyyymmdd; v0.x boards have no LSE crystal (skip), a v1.0 board
+ * whose LSE does not oscillate fails (bench item: LSE start-up) */
+static void t_rtc(st_item_t* it)
+{
+    ufi_rtc_time_t t;
+    if (!ufi_sense_rtc_get(&t)) {
+        it->status = ufi_board_rev() >= 10u ? ST_FAIL : ST_SKIP;
+        return;
+    }
+    it->value = ufi_calendar_yyyymmdd(t.year, t.mon, t.day);
+    it->status = ST_OK;
+}
+
+/* SHT40 U25 (v1.0): value = temp 0.01 degC (high half, two's complement) | rh 0.01 % (low
+ * half); no answer on a v1.0 board = fail (not fitted / I2C), on v0.x nothing is expected */
+static void t_sht40(st_item_t* it)
+{
+    ufi_sht40_t s;
+    (void)ufi_sense_sht40(&s);
+    it->value = s.status == SHT40_OK ? (((uint32_t)(uint16_t)s.temp_x100 << 16) | s.rh_x100) : s.status;
+    it->status = s.status == SHT40_OK ? ST_OK : (ufi_board_rev() >= 10u ? ST_FAIL : ST_SKIP);
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -245,7 +271,7 @@ uint8_t ufi_selftest_selected(uint8_t* out,uint8_t max_items,uint16_t mask) {
 
 uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
 {
-    st_item_t items[15];
+    st_item_t items[24];                    /* 13 + A10 items (ids 15..) + log */
     uint8_t n = 0;
     memset(items, 0, sizeof(items));
 #define ITEM(k, call) do { items[n].id = (k); call; n++; } while (0)
@@ -262,10 +288,12 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(11, t_index_loop(&items[n]));
     ITEM(12, t_last_reset(&items[n]));
     ITEM(13, t_stack(&items[n]));
+    ITEM(15, t_rtc(&items[n]));             /* A10: board v1.0 sensing, ids 15.. (14 = log stays last) */
+    ITEM(16, t_sht40(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */
-    char text[640];
+    char text[800];
     int len = snprintf(text, sizeof(text), "UFI selftest firmware %s\r\n", UFI_FW_VERSION);
     for (uint8_t i = 0; i < n && len > 0 && len < (int)sizeof(text) - 40; i++) {
         len += snprintf(text + len, sizeof(text) - (size_t)len, "%-11s %s %lu\r\n",

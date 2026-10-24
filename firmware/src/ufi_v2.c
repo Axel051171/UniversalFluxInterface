@@ -91,6 +91,7 @@ enum {
     V2_IEC_TARGET = 0x36, V2_IEC_READ_STATUS = 0x37,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
     V2_RTC = 0x43,                      /* A10a: calendar read / set (board v1.0) */
+    V2_SENSOR = 0x44,                   /* A10b: SHT40 temperature / humidity */
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
@@ -822,12 +823,12 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             uint32_t words;ufi_flux_store(&words);
             const bool idle=!ufi_operation_busy() && !ufi_dump_active() && ufi_resources_owner()!=UFI_OWNER_GW;
             /* ids 11+ (A10, board v1.0): the INFO caps word is full, new features are announced here */
-            enum {FEATURE_COUNT=11};
+            enum {FEATURE_COUNT=12};
             const bool enabled[FEATURE_COUNT]={true,true,true,ufi_board_has_apple(),true,
                 ufi_sd_present(),ufi_flux_store_is_psram(),ufi_usb_get_mode()==UFI_USB_COMPOSITE,true,true,
-                ufi_clock_rtc_ready()};
+                ufi_clock_rtc_ready(),ufi_sense_sht40_present()};
             const uint32_t limits[FEATURE_COUNT]={REVOLUTIONS_STREAM,WAVE_MIN_TICKS,30,0,0,0,words,64,UFI_V2_MAX_PAYLOAD-UFI_JOB_HEADER,FLUX_TIMER_FREQ,
-                2099};
+                2099,0x44};
             out[0]=1;out[1]=FEATURE_COUNT;
             for(unsigned i=0;i<FEATURE_COUNT;i++) {
                 uint8_t *f=out+2+i*8;
@@ -917,7 +918,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             break;
         }
         case V2_SELFTEST:                   /* -> n u8, n x (id u8, status u8, value u32) */
-            out[0] = ufi_selftest(&out[1], 16);
+            out[0] = ufi_selftest(&out[1], 24);   /* A10: 13 items + ids 15.. + log */
             n = (uint16_t)(1u + 6u * out[0]);
             break;
         case V2_STATUS: {
@@ -1321,6 +1322,17 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 out[3] = t.mon; out[4] = t.day; out[5] = t.hour; out[6] = t.min; out[7] = t.sec;
                 n = 8u;
             }
+            break;
+        }
+        case V2_SENSOR: {                   /* A10b: SHT40 -> status u8, temp 0.01 degC i16, rh 0.01 % u16 */
+            if (len) { ret = UFI_ERR_BAD_ARGS; break; }
+            ufi_sht40_t s;
+            memset(&s, 0, sizeof(s));
+            (void)ufi_sense_sht40(&s);
+            out[0] = s.status;
+            put16(&out[1], (uint16_t)s.temp_x100);
+            put16(&out[3], s.rh_x100);
+            n = 5u;
             break;
         }
 
