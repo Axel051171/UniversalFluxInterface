@@ -39,7 +39,7 @@ MCU-Pin wandert; Commit pro Stufe mit Referenzen und offenen Punkten.
 7. **Stecker (A9a, erledigt):** J17 und J3 JST XH 4-polig B4B-XH-A (C144395), Belegung unverändert; Adapterkabel Berg ↔ XH in `docs/Inbetriebnahme.md`. D27 SS54 von J17 Pin 4 (+12V_PSU) auf +12V, J2 bleibt über D2.
 8. **5-V-Kette (A9a, erledigt):** R26/R29 50 mΩ 1 % (RLM12FTCMR050 C912768, Alternative ERJ8CWFR050V C713437; Lager in Stufe C prüfen), F2 1812 wie F3 (C20999, 24 V, halber Widerstand des 1206-Typs); Firmware `ufi_board.c` skaliert nach Platinenrevision (v1.0 1 mV/mA).
 9. **SW3/SW4 (A9a, erledigt):** aus Schaltplan gestrichen; Platine folgt in B3.
-10. Optional (Owner-Entscheidung offen): SHT40 an TP10–TP13; TCXO 25 MHz statt Y1.
+10. **Owner 24.10.: beide übernehmen (A9c):** SHT40 an TP10–TP13 (I²C, an der Lufteinlasskante); TCXO 25 MHz statt Y1 (≈ 1 ppm, Taktausgang an OSC_IN, C19/C18 entfallen).
 
 Firmware zu A9b/A9c im selben Commit: Pinmap PE4 WLOCK_FW (Startwert high), PE6 WREN_SENSE, PB11 INDEX auf TIM2_CH4; LSE/RTC einschalten; Zeitstempel aus RTC und Board-ID in die Metadaten jeder Aufnahme (Protokollerweiterung → `docs/USB_Protokoll.md`, Abstimmung mit der UFT-Sitzung).
 
@@ -52,12 +52,12 @@ Firmware zu A9b/A9c im selben Commit: Pinmap PE4 WLOCK_FW (Startwert high), PE6 
 - M6 JP2 streichen, J6 Pin 3 fest GND (SA800/TEAC).
 - S1/S2 Pin 2 und Pin 4: je MOSFET-Ausgang (per Firmware abschaltbar) + Empfänger am dritten 74LVC14 (S6). S3 Pin 33 Flippy: Lötjumper GND/Signal, Signal = GPIO über 2,4 k, 2,4 k nach GND. S4 FDD_5V/FDD_12V über Teiler an PC4/PC5 (ADC), Grenzen 4,5 V / 10,8 V in der Firmware, Werte in die Metadaten. S5 Disk II J14.9 −12 V: Jumper + Sicherung, Siebdruck „kein Mac-Laufwerk“, ICL7662-Last nachrechnen. S7 USB-Schirm über 1 MΩ ‖ 4,7 nF.
 - Timer-Zuteilung TIM2 (32 Bit) als Tabelle in docs: Flux CH1, Pulsbreite CH2, Index CH4 (A9b), SYNC, Apple-RD CH3 – je Betriebsart gegen das H723-Datenblatt.
-- K1 DB19-Port (Apple 3,5″/Mac, PWM Pin 10), K2 XP1541-Header (74LVC8T245), K3 34-Pin Rechnerseite, K4 RD/INDEX-Pull-up 470 Ω per Jumper, K5 34-Pin-Prüfstecker: nach Owner-Entscheid.
+- K1 Apple-3,5″/Mac-Port (DB19-Belegung, PWM Pin 10): **Owner 24.10.: keine D-Sub-Buchse auf der Platine** – wie J7/DB23 als interne Stiftleiste (2×10) mit Kabel zur Gehäusebuchse, die Buchsen hat der Owner. K2 XP1541-Header (74LVC8T245), K3 34-Pin Rechnerseite, K4 RD/INDEX-Pull-up 470 Ω per Jumper, K5 34-Pin-Prüfstecker: nach Owner-Entscheid.
 - Vor der Bestellung prüfen: Amiga-Adapterkabel mit Einzeldrähten (IDC-Quetschung auf DB23 legt J7.23 +12 V auf DB-Pin 12 = +5 V des Laufwerks); `docs/Inbetriebnahme.md` nennt noch „Jumper J11 (WRITE LOCK)“.
 - Reihenfolge: A9 (A9a/A9b erledigt, A9c ohne Sanftanlauf: nur RTC) → A11 → A8 Review → B3 → A10 (Firmware: Ringpuffer vor dem Index, ≥ 5 Umdrehungen, Index-/Sektorzeitstempel, Pin 34 READY/DSKCHG, Amiga-ID, Spur puffern vor WGATE, Schrittlimit) → C.
 
 ## Offene Fragen an den Owner
-- A11: DB19-Port (K1) dazu? XP1541-Header (K2) dazu? Amiga-Kabel mit Einzeldrähten bestätigt?
+- A11: K1 kommt als interne Stiftleiste (keine D-Sub-Buchse auf der Platine, Owner 24.10.). Noch offen: XP1541-Header (K2) dazu? Amiga-Kabel mit Einzeldrähten bestätigt?
 - Gehäuse (Typ, Innenmaße, Wandstärke) bestimmt die Kantenausschnitte für J1 (USB-C) und J22 (RJ45); der Umriss ist 110 × 97 mm.
 - SW3/SW4 bestücken oder nicht (derzeit DNP, Taster sitzen an der Front); SW3 steht auf B.Cu unter J22, SW4 bleibt auf F.Cu.
 - B3: Power-Kette umplatzieren (Lastpfade 1,0 mm nach `pcb-routing`) oder Kompromiss 0,5 mm + Pours.
