@@ -113,6 +113,8 @@ set(HAL_SOURCES
     ${HAL_PATH}/Src/stm32h7xx_hal_mdma.c
     ${HAL_PATH}/Src/stm32h7xx_hal_adc.c
     ${HAL_PATH}/Src/stm32h7xx_hal_adc_ex.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_i2c.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_i2c_ex.c
     ${HAL_PATH}/Src/stm32h7xx_hal_sd.c
     ${HAL_PATH}/Src/stm32h7xx_hal_sd_ex.c
     ${HAL_PATH}/Src/stm32h7xx_ll_sdmmc.c
@@ -200,6 +202,8 @@ set(PROJECT_SOURCES
     src/ufi_debug.c
     src/ufi_diag.c
     src/ufi_clock.c
+    src/ufi_sense.c
+    src/ufi_sense_calc.c
     src/system_stm32h7xx.c
     src/stm32h7xx_it.c
     src/usbd_conf.c

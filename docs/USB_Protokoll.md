@@ -268,7 +268,7 @@ freigegeben. Aktive Operationen, laufende Jobs, ausstehende Antworten und neue
 Empfangsdaten verhindern die Freigabe. Danach müssen Laufwerk und Motor bei Bedarf
 neu ausgewählt beziehungsweise gestartet werden. GW behält seinen eigenen Watchdog.
 
-`FEATURES 0C` liefert `schema=1, count=10`, danach zehn Datensätze à 8 Byte:
+`FEATURES 0C` liefert `schema=1, count=11` (10 vor Stufe A10; der Host wertet `count` aus), danach `count` Datensätze à 8 Byte:
 `id u16, flags u8, owner u8, limit u32`. Flags: Bit0 implementiert, Bit1 konfiguriert
 beziehungsweise verfügbar, Bit2 momentan bereit. Bereit ist eine konservative
 Softwareabfrage; sie bestätigt weder ein angeschlossenes Laufwerk noch einen
@@ -286,6 +286,35 @@ erfolgreichen Hardwaretest. `owner` entspricht RESOURCE.
 | 8 | Composite-Bulk | Paketgröße (64); verfügbar bei aktivem Composite |
 | 9 | Integritätsjobs | maximale DATA-Nutzdaten ohne Jobkopf (4080) |
 | 10 | 64-Bit-Zeitbasis | native Timerfrequenz (275000000 Hz) |
+| 11 | Echtzeituhr (RTC, Platine v1.0, A10a) | höchstes stellbares Jahr (2099); konfiguriert/bereit = LSE schwingt und der Kalender läuft (`ufi_clock_rtc_ready()`) |
+
+### 1.5 Platine v1.0: Uhr, Sensor, Versorgungsspannungen, Sync-Sensor (Stufe A10)
+
+Die 32 Bits des `caps`-Worts in INFO sind belegt (Bit31 = u32-Hinweis); die Fähigkeiten der
+Stufe A10 stehen deshalb nur in FEATURES (IDs ab 11) und werden nicht in `caps` gespiegelt.
+Die Ops 0x43–0x47 gehören zur Gruppe „Board“ und verhalten sich im Composite-Modus wie
+POWER (0x40): sie beanspruchen die native Ressource, sind also keine reinen Abfragen im Sinne
+von 1.4. Während READ/WRITE sind RTC (0x43) erlaubt, während eines Dumps ebenfalls. Alle
+Zahlen little endian.
+
+**RTC 0x43 (A10a):** Anfrage leer = lesen; 7 Byte `year` u16, `mon`, `day`, `hour`, `min`,
+`sec` = stellen und danach lesen. Antwort 8 Byte: `ready` u8, `year` u16, `mon`, `day`,
+`hour`, `min`, `sec`. `ready` 0 heißt keine laufende Uhr (Platine vor v1.0 ohne LSE-Quarz,
+oder der LSE schwingt nicht an; Felder 0). Stellen ohne Uhr → Status 11, ungültiger Kalender
+(Jahr außerhalb 2000–2099, Tag größer als die Monatslänge, Schaltjahre nach der Vierjahresregel,
+die für 2000–2099 ausreicht) → Status 16, andere Längen → Status 16, Initialisierungsfenster der
+RTC nicht erreicht → Status 5. Die Uhr läuft aus der CR2032 weiter; der Wochentag wird nicht
+geführt. Kein Zeitzonen- oder UTC-Begriff: der Host stellt, was er für richtig hält
+(`ufi rtc now` stellt die lokale Zeit des PCs).
+
+**Metadaten jeder Aufnahme (A10a):** `DUMPnnnn.JSN` enthält zusätzlich `"rtc"` (0/1), bei
+laufender Uhr `"time"` als `"YYYY-MM-DDThh:mm:ss"`, auf v1.0 `"v_fdd5_mv"` und `"v_fdd12_mv"`
+(Spannungen am Laufwerksstecker, Op 0x45) und bei antwortendem SHT40 `"temp_c"` und `"rh"` als
+Dezimalzahlen mit zwei Nachkommastellen (JSON-Zahlen, keine Strings). `"board"` (Revision) war
+schon vorhanden. `DUMPnnnn.LOG` beginnt mit einer Kopfzeile
+`UFI dump board <rev> fw <version> <zeit|no-rtc> [5V <mV> mV 12V <mV> mV] [<T> C <RH> %RH]`.
+Alle Dateien auf dem SD-NAND tragen seit A10 den FAT-Zeitstempel der Uhr (`get_fattime()` in
+`ufi_sd.c`); ohne laufende Uhr bleibt es beim bisherigen festen Datum 2026-01-01 00:00.
 
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
@@ -501,6 +530,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x40 | POWER | – oder `mask` u8 (Bit0 FDD_5V, Bit1 FDD_12V) | `board_status` 8 Byte |
 | 0x41 | USB_POWER | – | `cc1_mv` u16, `cc2_mv` u16, `current_ma` u16 |
 | 0x42 | SD_INFO | – | `present, status, card_type, bus_width` u8, `capacity_mb` u32 |
+| 0x43 | RTC (A10a, Platine v1.0) | – (lesen) oder `year` u16, `mon, day, hour, min, sec` je u8 (stellen; Kalender 2000–2099, Monatslängen und Schaltjahre werden geprüft, sonst Status 16) | `ready` u8 (1 = Kalender läuft; 0 = keine Uhr: Platine vor v1.0 oder LSE schwingt nicht, Felder dann 0, Stellen antwortet mit Status 11), `year` u16, `mon, day, hour, min, sec` je u8 (8 Byte); Abschnitt 1.5 |
 | **Dateien (SD-NAND, FAT32)** | | | |
 | 0x50 | DIR | `start` u16, Pfad (ASCII, leer = Wurzel) | `count` u8, `more` u8, dann je Eintrag `size` u32, `attr` u8 (0x10 = Ordner), `nlen` u8, Name |
 | 0x51 | READ_FILE | `offset` u32, `len` u16 (≤ 4096), Name | Dateiinhalt (kürzer am Dateiende) |

@@ -90,6 +90,7 @@ enum {
     V2_IEC_NIB = 0x34, V2_IEC_BLOCK = 0x35,
     V2_IEC_TARGET = 0x36, V2_IEC_READ_STATUS = 0x37,
     V2_POWER = 0x40, V2_USB_POWER = 0x41, V2_SD_INFO = 0x42,
+    V2_RTC = 0x43,                      /* A10a: calendar read / set (board v1.0) */
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
@@ -434,7 +435,7 @@ static bool allowed_during_dump(uint8_t cmd)
 {
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
-        case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT:
+        case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_RTC:
         case V2_INDEX_SIM: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
             return true;
         default:
@@ -448,6 +449,7 @@ static bool uses_drive(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
         case V2_ABORT: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_QUALITY: case V2_ANALYSIS_JOB:
+        case V2_RTC:                        /* A10: board sensing, no drive involved */
             return false;
         default: return true; /* includes IEC, file I/O and mode/power changes */
     }
@@ -819,16 +821,20 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             if(len) {ret=UFI_ERR_BAD_ARGS;break;}
             uint32_t words;ufi_flux_store(&words);
             const bool idle=!ufi_operation_busy() && !ufi_dump_active() && ufi_resources_owner()!=UFI_OWNER_GW;
-            const bool enabled[10]={true,true,true,ufi_board_has_apple(),true,
-                ufi_sd_present(),ufi_flux_store_is_psram(),ufi_usb_get_mode()==UFI_USB_COMPOSITE,true,true};
-            const uint32_t limits[10]={REVOLUTIONS_STREAM,WAVE_MIN_TICKS,30,0,0,0,words,64,UFI_V2_MAX_PAYLOAD-UFI_JOB_HEADER,FLUX_TIMER_FREQ};
-            out[0]=1;out[1]=10;
-            for(unsigned i=0;i<10;i++) {
+            /* ids 11+ (A10, board v1.0): the INFO caps word is full, new features are announced here */
+            enum {FEATURE_COUNT=11};
+            const bool enabled[FEATURE_COUNT]={true,true,true,ufi_board_has_apple(),true,
+                ufi_sd_present(),ufi_flux_store_is_psram(),ufi_usb_get_mode()==UFI_USB_COMPOSITE,true,true,
+                ufi_clock_rtc_ready()};
+            const uint32_t limits[FEATURE_COUNT]={REVOLUTIONS_STREAM,WAVE_MIN_TICKS,30,0,0,0,words,64,UFI_V2_MAX_PAYLOAD-UFI_JOB_HEADER,FLUX_TIMER_FREQ,
+                2099};
+            out[0]=1;out[1]=FEATURE_COUNT;
+            for(unsigned i=0;i<FEATURE_COUNT;i++) {
                 uint8_t *f=out+2+i*8;
                 put16(f,i+1);f[2]=1u|(enabled[i]?2u:0u)|(enabled[i]&&idle?4u:0u);
                 f[3]=ufi_resources_owner();put32(f+4,limits[i]);
             }
-            n=82;break;
+            n=2u+8u*FEATURE_COUNT;break;
         }
         case V2_JOB:
             if (len==10 && p[0]==1 && !ufi_operation_busy() && !ufi_dump_active()) {
@@ -1296,6 +1302,25 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = ufi_sd_info(&s);
             memcpy(out, &s, sizeof(s));
             n = sizeof(s);
+            break;
+        }
+        case V2_RTC: {                      /* A10a: empty = read; 7 bytes year u16, mon, day, hour, min, sec = set, then read back */
+            ufi_rtc_time_t t;
+            memset(&t, 0, sizeof(t));
+            if (len == 7u) {
+                t.year = (uint16_t)get16(p);
+                t.mon = p[2]; t.day = p[3]; t.hour = p[4]; t.min = p[5]; t.sec = p[6];
+                ret = ufi_sense_rtc_set(&t);
+            } else if (len) {
+                ret = UFI_ERR_BAD_ARGS;
+            }
+            if (ret == UFI_OK) {
+                (void)ufi_sense_rtc_get(&t);
+                out[0] = t.ready ? 1u : 0u;
+                put16(&out[1], t.year);
+                out[3] = t.mon; out[4] = t.day; out[5] = t.hour; out[6] = t.min; out[7] = t.sec;
+                n = 8u;
+            }
             break;
         }
 

@@ -190,3 +190,16 @@ DRESULT disk_ioctl(BYTE pdrv, BYTE cmd, void* buff)
             return RES_PARERR;
     }
 }
+
+/* FatFs time stamp (A10): the RTC calendar on v1.0; boards without a running RTC keep the
+ * fixed date of the former _FS_NORTC setting (2026-01-01 00:00) */
+DWORD get_fattime(void)
+{
+    uint16_t y;
+    uint8_t mo, d, h, mi, s;
+    if (!ufi_clock_rtc_get(&y, &mo, &d, &h, &mi, &s)) {
+        return ((DWORD)(2026u - 1980u) << 25) | (1u << 21) | (1u << 16);
+    }
+    return ((DWORD)(y - 1980u) << 25) | ((DWORD)mo << 21) | ((DWORD)d << 16) |
+           ((DWORD)h << 11) | ((DWORD)mi << 5) | ((DWORD)s >> 1);
+}

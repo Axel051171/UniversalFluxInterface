@@ -21,6 +21,7 @@ extern "C" {
 #define HAL_EXTI_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
+#define HAL_I2C_MODULE_ENABLED          /* v1.0 (A10): SHT40 U25 on I2C1 */
 #define HAL_IWDG_MODULE_ENABLED
 #define HAL_OSPI_MODULE_ENABLED
 #define HAL_MDMA_MODULE_ENABLED
@@ -82,6 +83,7 @@ extern "C" {
  * ============================================================================ */
 
 #define USE_HAL_ADC_REGISTER_CALLBACKS    0
+#define USE_HAL_I2C_REGISTER_CALLBACKS    0
 #define USE_HAL_PCD_REGISTER_CALLBACKS    0
 #define USE_HAL_TIM_REGISTER_CALLBACKS    0
 #define USE_HAL_UART_REGISTER_CALLBACKS   0
@@ -131,6 +133,10 @@ extern "C" {
 
 #ifdef HAL_EXTI_MODULE_ENABLED
 #include "stm32h7xx_hal_exti.h"
+#endif
+
+#ifdef HAL_I2C_MODULE_ENABLED
+#include "stm32h7xx_hal_i2c.h"
 #endif
 
 #ifdef HAL_FLASH_MODULE_ENABLED

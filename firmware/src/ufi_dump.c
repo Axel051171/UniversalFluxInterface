@@ -713,6 +713,12 @@ static void open_log(void)
     name[6] = (char)('0' + file_no / 10u % 10u);
     name[7] = (char)('0' + file_no % 10u);
     log_open = (f_open(&logfile, name, FA_WRITE | FA_CREATE_ALWAYS) == FR_OK);
+    if (log_open) {                                      /* A10: board, firmware, time, rails, sensor */
+        char hdr[112];
+        memset(hdr, 0, sizeof(hdr));
+        (void)ufi_sense_log_header(hdr, sizeof(hdr));
+        log_puts(hdr);
+    }
 }
 
 static void log_track(uint8_t good)
@@ -1098,6 +1104,21 @@ static void write_json(void)
     p = js_str(p, &first, "firmware", UFI_FW_VERSION);
     p = js_str(p, &first, "git", UFI_GIT_REV);
     p = js_num(p, &first, "board", ufi_board_rev());
+    ufi_sense_meta_t meta;                               /* A10: clock, rail voltages, SHT40 */
+    memset(&meta, 0, sizeof(meta));
+    ufi_sense_meta(&meta);
+    p = js_num(p, &first, "rtc", meta.rtc ? 1u : 0u);
+    if (meta.rtc) {
+        p = js_str(p, &first, "time", meta.time);
+    }
+    if (meta.rails) {
+        p = js_num(p, &first, "v_fdd5_mv", meta.v5_mv);
+        p = js_num(p, &first, "v_fdd12_mv", meta.v12_mv);
+    }
+    if (meta.sensor) {
+        p = js_text(js_key(p, &first, "temp_c"), meta.temp_c);
+        p = js_text(js_key(p, &first, "rh"), meta.rh);
+    }
     p = js_str(p, &first, "drive", drive_name(cfg.drive));
     p = js_num(p, &first, "sample_hz", FLUX_TIMER_FREQ);
     if (cfg.drive == DRIVE_IEC) {

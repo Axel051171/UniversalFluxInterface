@@ -11,6 +11,7 @@
 #include "ufi_fixes.h"  /* MUSS zuerst! */
 #include "ufi_write_codec.h"
 #include "board.h"
+#include "ufi_sense.h"  /* A10: calendar access, SHT40, rail voltages, SYNC capture, metadata */
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -724,7 +725,7 @@ bool ufi_clock_hse_bypass(void);        // true = TCXO on OSC_IN (v1.0), false =
 void ufi_clock_rtc_init(void);          // once per start-up after the board revision is known; v1.0 only
 bool ufi_clock_rtc_ready(void);         // LSE running and the RTC counting
 bool ufi_clock_rtc_get(uint16_t* year, uint8_t* mon, uint8_t* day, uint8_t* hour, uint8_t* min, uint8_t* sec);
-bool ufi_clock_rtc_set(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);   // host op follows in A10
+bool ufi_clock_rtc_set(uint16_t year, uint8_t mon, uint8_t day, uint8_t hour, uint8_t min, uint8_t sec);   // host op RTC 0x43 (A10a, ufi_sense.c)
 uint8_t ufi_crash_kind(void);           // 0 = no fault record at this start-up
 void ufi_stack_paint(void);             // first thing in ufi_init(): paint the free stack
 uint32_t ufi_stack_free(void);          // bytes of stack never used so far

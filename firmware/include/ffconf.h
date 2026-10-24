@@ -34,7 +34,7 @@
 
 #define _FS_TINY        0
 #define _FS_EXFAT       0
-#define _FS_NORTC       1       /* no RTC: every file gets this date */
+#define _FS_NORTC       0       /* get_fattime() in ufi_sd.c: RTC calendar on v1.0 (A10), the date below without a running RTC */
 #define _NORTC_MON      1
 #define _NORTC_MDAY     1
 #define _NORTC_YEAR     2026

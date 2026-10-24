@@ -61,6 +61,7 @@ void ufi_board_power(uint8_t mask)
 void ufi_board_init(bool power_on)
 {
     last_activity_ms = HAL_GetTick();
+    ufi_sense_init();                       /* A10: calendar access, SHT40, rail voltages (state in DTCM) */
     safe_mode = !power_on;
     if (safe_mode) {
         ufi_board_power(0x00);              /* e.g. a shorted drive: host switches on */
