@@ -52,12 +52,12 @@ Firmware zu A9b/A9c im selben Commit: Pinmap PE4 WLOCK_FW (Startwert high), PE6 
 - M6 JP2 streichen, J6 Pin 3 fest GND (SA800/TEAC).
 - S1/S2 Pin 2 und Pin 4: je MOSFET-Ausgang (per Firmware abschaltbar) + Empfänger am dritten 74LVC14 (S6). S3 Pin 33 Flippy: Lötjumper GND/Signal, Signal = GPIO über 2,4 k, 2,4 k nach GND. S4 FDD_5V/FDD_12V über Teiler an PC4/PC5 (ADC), Grenzen 4,5 V / 10,8 V in der Firmware, Werte in die Metadaten. S5 Disk II J14.9 −12 V: Jumper + Sicherung, Siebdruck „kein Mac-Laufwerk“, ICL7662-Last nachrechnen. S7 USB-Schirm über 1 MΩ ‖ 4,7 nF.
 - Timer-Zuteilung TIM2 (32 Bit) als Tabelle in docs: Flux CH1, Pulsbreite CH2, Index CH4 (A9b), SYNC, Apple-RD CH3 – je Betriebsart gegen das H723-Datenblatt.
-- K1 Apple-3,5″/Mac-Port (DB19-Belegung, PWM Pin 10): **Owner 24.10.: keine D-Sub-Buchse auf der Platine** – wie J7/DB23 als interne Stiftleiste (2×10) mit Kabel zur Gehäusebuchse, die Buchsen hat der Owner. K2 XP1541-Header (74LVC8T245), K3 34-Pin Rechnerseite, K4 RD/INDEX-Pull-up 470 Ω per Jumper, K5 34-Pin-Prüfstecker: nach Owner-Entscheid.
+- K1 Apple-3,5″/Mac-Port (DB19-Belegung, PWM Pin 10): **Owner 24.10.: keine D-Sub-Buchse auf der Platine** – wie J7/DB23 als interne Stiftleiste (2×10) mit Kabel zur Gehäusebuchse, die Buchsen hat der Owner. **K1 kommt (Owner 24.10.).** K2 XP1541-Header: **gestrichen** (Owner 24.10.: Flux über das PC-Laufwerk ist der bessere Rettungsweg). K3 34-Pin Rechnerseite, K4 RD/INDEX-Pull-up 470 Ω per Jumper, K5 34-Pin-Prüfstecker: nach Owner-Entscheid.
 - Vor der Bestellung prüfen: Amiga-Adapterkabel mit Einzeldrähten (IDC-Quetschung auf DB23 legt J7.23 +12 V auf DB-Pin 12 = +5 V des Laufwerks); `docs/Inbetriebnahme.md` nennt noch „Jumper J11 (WRITE LOCK)“.
 - Reihenfolge: A9 (A9a/A9b erledigt, A9c ohne Sanftanlauf: nur RTC) → A11 → A8 Review → B3 → A10 (Firmware: Ringpuffer vor dem Index, ≥ 5 Umdrehungen, Index-/Sektorzeitstempel, Pin 34 READY/DSKCHG, Amiga-ID, Spur puffern vor WGATE, Schrittlimit) → C.
 
 ## Offene Fragen an den Owner
-- A11: K1 kommt als interne Stiftleiste (keine D-Sub-Buchse auf der Platine, Owner 24.10.). Noch offen: XP1541-Header (K2) dazu? Amiga-Kabel mit Einzeldrähten bestätigt?
+- A11: K1 kommt als interne Stiftleiste mit Kabel zur Gehäusebuchse (keine D-Sub-Buchse auf der Platine), K2 gestrichen, SHT40 + TCXO in A9c (alles Owner 24.10.). Noch offen: Amiga-Kabel mit Einzeldrähten bestätigt? K3–K5?
 - Gehäuse (Typ, Innenmaße, Wandstärke) bestimmt die Kantenausschnitte für J1 (USB-C) und J22 (RJ45); der Umriss ist 110 × 97 mm.
 - SW3/SW4 bestücken oder nicht (derzeit DNP, Taster sitzen an der Front); SW3 steht auf B.Cu unter J22, SW4 bleibt auf F.Cu.
 - B3: Power-Kette umplatzieren (Lastpfade 1,0 mm nach `pcb-routing`) oder Kompromiss 0,5 mm + Pours.
