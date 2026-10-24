@@ -195,20 +195,22 @@ Hinweis Fertigung: kein Via-in-Pad. VBUS-Vias sitzen neben den A4/A9-Pads, D−-
 ## Stromversorgung
 
 ```
-USB-C / J16 VBUS ──Polyfuse 1.5A──► VBUS_F ──────────────────────────┐ VIN2 (Fallback)
-12V Jack / J17 Pin 4 ──SS54──► +12V ──TPS54202──► +5V_DRV ── J18 1-2 ─┤ VIN1 = +5V_PRI
-J17 Pin 1 (PSU +5V) ──F4 1.5A──► +5V_PSU_F ──────────────── J18 2-3 ─┘ (Priorität, Schwelle ≈4.3V)
-                     │                             TPS2116 ──► +5V ──► AP7361C ──► +3V3
-                     └─F3 1.1A─► FDD_12V           (2.5A)      └─F2 1.1A─► FDD_5V
-                                 (J3 Pin 4, J7 Pin 23)                     (J3 Pin 1, J7 Pin 12)
+v1.0 (A4, A9a, A11c):
+USB-C J1 / J16 VBUS ──F1 1.5A──► VBUS_F ───────────────────────────► U3 TPS2116 VIN2 (Ausweichquelle)
+J2 Hohlbuchse ──D2 SS54──┐                                                    │
+J17 Pin 4 (PSU 12V) ──D27 SS54──┴► +12V ──U2 TPS54202──► +5V_DRV ──► U19 TPS2116 VIN2 ─┐
+J17 Pin 1 (PSU 5V) ──F4 1.5A──► +5V_PSU_F ──────────────────────► U19 VIN1 (Vorrang) ─┴► +5V_PRI ──► U3 VIN1 ──► +5V ──► U4 AP7361C ──► +3V3
++12V ──U29 TPS25921A (1,5 A, OVP 14 V, FDD12_EN)──► R29 50 mΩ ──► FDD_12V (J3 Pin 4, J7 Pin 23, J14)
++5V  ──U28 TPS25921A (1,5 A, OVP 6 V, FDD5_EN)───► R26 50 mΩ ──► FDD_5V  (J3 Pin 1, J7 Pin 12, J14, J19)
 ```
+(v0.7 hatte hier die Polyfuses F2/F3 mit den Schaltern Q1–Q4 und den Jumper J18 für die 5-V-Vorrangquelle; beides ist seit A4/A11c weg.)
 
 **v0.7 – Einbau im PC-Gehäuse:**
 - **J16** interner USB-2.0-Header (2×5, **Stift 9 nicht bestücken** = Kodierung, Pad 9 bleibt frei), Belegung wie der Mainboard-Header (Port 1): 1 +5 V, 3 D−, 5 D+, 7/8 GND, 2/4/6/10 frei → 1:1-Kabel 9-pol Buchse–Buchse zum Mainboard. **Steckrichtung:** Bestückungsdruck „1“ = Pin 1 (+5 V), darunter „5V D- D+ GND“ an der Stiftreihe 1/3/5/7, „X“ = Kodierstelle Pin 9. Das zugestopfte Loch der Kabelbuchse kommt auf „X“ – genau wie am Mainboard, wo an derselben Stelle der Stift fehlt. Liegt parallel zur USB-C-Buchse: **immer nur einen Host anschließen** (USB-C oder J16).
 - **J17** Stromeingang vom PC-Netzteil, Floppy-(Berg-)Stecker: 1 +5 V, 2/3 GND, 4 +12 V. Die 12 V laufen wie die der Hohlbuchse über SS54/TVS: **J2 oder J17, nicht beide**. +5 V über eigene Polyfuse F4 und TVS D17.
 - **J18** Jumper für die 5-V-Vorrangquelle des TPS2116: **1-2 = 12-V-Wandler** (ab Werk, Hohlbuchse oder Netzteil-12 V), **2-3 = Netzteil-5 V direkt** (Bestückungsdruck: „BUCK“ / „EXT“). USB bleibt in beiden Stellungen die automatische Ausweichquelle (fehlt die Vorrangquelle, übernimmt USB). Ohne Jumper läuft das Board nur über USB.
 
-Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleiben stehen.
+Ein Kurzschluss im Laufwerkskabel begrenzt der betroffene eFuse U28/U29 auf ≈ 1,5 A und schaltet bei Übertemperatur ab (automatischer Neustart, FLT an die Firmware); +5V/+3V3 der Logik bleiben stehen. (v0.7: Polyfuses F2/F3.)
 
 - Nur USB: Logik + 3,5"-Laufwerk aus USB-C. Ohne CC-Auswertung ist offiziell nur der USB-Default-Strom (500 mA) zugesichert; 3,5"-Laufwerke laufen damit in der Praxis meist (wie bei Greaseweazle), für Spec-Konformität später CC-Spannung per ADC auswerten.
 - 12V gesteckt: Laufwerks-5V aus dem Buck, 12V für 5,25"-Laufwerke.
@@ -234,7 +236,7 @@ Ein Kurzschluss im Laufwerkskabel löst nur F2/F3 aus; +5V/+3V3 der Logik bleibe
 | APL_WRPROT | PB15 | GPIO in ← U17 ← J14 Pin 20, high = geschützt (v0.7) |
 | FDD5_EN / FDD12_EN | PE2 / PE3 | GPIO out, high = Laufwerksversorgung an (v0.5) |
 | I_FDD5 / I_FDD12 | PC0 / PC1 | ADC1 INP10/INP11, INA180A1 2 V/A (v0.5) |
-| WLOCK | PE4 | GPIO in, high = WRITE-LOCK gesetzt (v0.5 Jumper J11, v1.0 Lötbrücke JP4) |
+| WLOCK | PE4 | v0.5–v0.7: GPIO in, high = WRITE-LOCK gesetzt (Jumper J11); ab v1.0 ist PE4 der Ausgang WLOCK_FW (siehe unten), JP4 ist seit A9b weg |
 | BOARD_ID | PA4 | ADC1 INP18, Teiler = Board-Revision: 1,65 V v0.5, 1,06 V v0.6, 0,60 V v0.7, 2,27 V v1.0 (Fenster ±200 mV) |
 | I2C_SCL / I2C_SDA | PB6 / PB7 | I2C1 (AF4) auf J9 (v0.5), ab v1.0 Testpads TP10/TP11 |
 | EXP_IO1 / EXP_IO2 | PE0 / PE1 | GPIO auf J9 (v0.5), Modusschalter J13 (v0.6), ab v1.0 MODE1/MODE2 auf J12 Pin 15/16 |

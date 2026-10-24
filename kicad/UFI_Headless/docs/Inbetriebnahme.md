@@ -14,7 +14,7 @@ ein **Schrott-Laufwerk** und **Schrott-Disketten** für alle Schreibtests.
 | 1.1 | Pin-1-Markierungen U5 (MCU), U6/U7/U9 (LS07), U8/U10 (LVC14), U11 (PSRAM), U12/U13 (INA180), U14, U15 (SD-NAND) | Punkt am Pin 1 | |
 | 1.2 | Polarität D-TVS/Schottky (SS54), Elkos, LEDs | laut Bestückungsdruck | |
 | 1.3 | Lötbrücken, v. a. QFP-144 (U5) und SOT-353 (U14) | keine Brücken (Lupe) | |
-| 1.4 | JP1 offen, JP2 auf 1-2 (GND), Jumper J11 (WRITE LOCK) **gesteckt** | Auslieferungszustand + Schreibschutz | |
+| 1.4 | JP1 offen; Schreibschutz aktiv: v0.7 Jumper J11 (WRITE LOCK) **gesteckt**, v1.0 Frontschalter SCHREIBEN **aus** oder Frontkabel ab (A9b; JP2 ist seit A11 weg, J6 Pin 3 fest GND) | Auslieferungszustand + Schreibschutz | |
 | 1.5 | Widerstand gegen GND (TP4): TP1 3V3, TP2 5V, TP3 12V, FDD_5V/12V an J3 | > 100 Ω, kein Kurzschluss | |
 
 ## 2 Versorgung (ohne Firmware, ohne Laufwerk)
@@ -59,7 +59,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 4.1 | `st()` nach dem Start | power = 3 (beide an), FDD_5V/12V an J3 ≈ 5 / 12 V | |
 | 4.2 | Ohne Laufwerk: i5_mA / i12_mA | < 20 mA (Offset INA180) | |
 | 4.3 | Taster **B** beim Einschalten halten | ERR-LED an, power = 0, Flag Bit6; `d.command(0x1B, 3)` schaltet ein | |
-| 4.4 | J11 gesteckt / gezogen | Flag Bit0 = 1 / 0 | |
+| 4.4 | Schreibschutz an / aus (v0.7: J11 gesteckt / gezogen; v1.0: Frontschalter SCHREIBEN aus / ein) | Flag Bit0 = 1 / 0 | |
 | 4.5 | Taster A/B während des Betriebs gedrückt | Flag Bit4 / Bit5 | |
 | 4.6 | Last 10 Ω/5 W an FDD_5V (≈ 0,5 A), dann 3,3 Ω (≈ 1,5 A) | i5_mA ≈ 500; bei > 1,5 A nach 50 ms aus, Flag Bit1, ERR-LED | |
 | 4.6a | Front-LEDs an J12 (1+/2− PWR, 3+/4− ACT, 5+/6− FDD, 7+/8− ERR), LED-Test `d.command(0xD0, 2)` | grün dauerhaft, gelbe LEDs leuchten mit ACT/FDD/ERR mit; zu dunkel → R34–R37 kleiner (min. 150 Ω) | |
@@ -67,7 +67,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 4.8 | `SD_INFO` | ready 1, status 0, bus 4, capacity 3500–4000 MB (4 GB) bzw. 900–1000 MB (1 GB) | |
 | 4.9 | Taster **A** beim Einschalten | DFU-Gerät erscheint (`dfu-util -l`) | |
 
-## 5 Laufwerk lesen (nur lesen, J11 gesteckt lassen)
+## 5 Laufwerk lesen (nur lesen, Schreibschutz an lassen: v0.7 J11 gesteckt, v1.0 Schalter SCHREIBEN aus)
 
 | # | Prüfung | Soll | ✔ |
 |---|---|---|---|
@@ -92,12 +92,12 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 5.18 | Diskette wechseln, Explorer F5 | neuer Inhalt; ohne Diskette „kein Datenträger“ | |
 | 5.19 | Schalter zurück in die Mitte | ACT blinkt 1×, `ufi info` geht wieder | |
 
-## 6 Schreiben (Schrott-Diskette, J11 ziehen)
+## 6 Schreiben (Schrott-Diskette, Schreibschutz aus: v0.7 J11 ziehen, v1.0 Schalter SCHREIBEN ein)
 
 | # | Prüfung | Soll | ✔ |
 |---|---|---|---|
-| 6.1 | J11 gesteckt, Schreibversuch | Fehler „write protected“, TP8 bleibt high | |
-| 6.2 | J11 gezogen, `WRITE_PATTERN` 2 µs, 1 s: `d.command(0x34, 0, 0, 0xD0, 0x07, 0xE8, 0x03)` (Motor an) | TP8 low für 1 s, TP7: 400-ns-Pulse alle 2 µs | |
+| 6.1 | Schreibschutz an (J11 gesteckt / Schalter aus), Schreibversuch | Fehler „write protected“, TP8 bleibt high | |
+| 6.2 | Schreibschutz aus (J11 gezogen / Schalter ein), `WRITE_PATTERN` 2 µs, 1 s: `d.command(0x34, 0, 0, 0xD0, 0x07, 0xE8, 0x03)` (Motor an) | TP8 low für 1 s, TP7: 400-ns-Pulse alle 2 µs | |
 | 6.3 | `ufi write` / `write-disk --verify` mit dem Image aus 5.7 | Verify ok, zurückgelesen identisch decodierbar | |
 | 6.4 | Schreibgeschützte Diskette | Fehler „write protected“ | |
 
@@ -116,7 +116,7 @@ print(d.command(0x1D))            # SD_INFO: ready, status, type, bus, capacity_
 | 7.2g | Oszi an J14 Pin 2/4/6/8 bei `ufi select apple`, `ufi motor on`, `ufi recal` | Phasen nacheinander 0→3 rückwärts (80 Halbschritte), danach alle low; Pin 14 (/ENABLE) low solange Motor an | |
 | 7.2h | Disk II an J14 (Originalkabel, rote Ader = Pin 1), `ufi select apple`, `ufi motor on`, `ufi recal`, `ufi read 0 0 -r 2` (Firmware nimmt bei Apple automatisch 200-ms-Abschnitte statt Index) | Kopf klackert an Spur 0, Fluss 4-µs-Raster (GCR), ~50 000 Wechsel je 200 ms | |
 | 7.2i | `UFI.CFG` `drive=apple`, `tracks=35`, `sides=1`, Dump mit Taster A, SCP am PC mit `a2r`/Applesauce-Tools bzw. HxC öffnen | DOS-3.3/ProDOS-Diskette dekodierbar | |
-| 7.2j | Schreiben (J11 ziehen, Schrott-Diskette): eine gelesene Spur zurückschreiben, erneut lesen | gleiche Flussanzahl ±5 %; WRDATA an Pin 18 wechselt je Flusswechsel den Pegel | |
+| 7.2j | Schreiben (Schreibschutz aus: J11 ziehen bzw. Schalter SCHREIBEN ein, Schrott-Diskette): eine gelesene Spur zurückschreiben, erneut lesen | gleiche Flussanzahl ±5 %; WRDATA an Pin 18 wechselt je Flusswechsel den Pegel | |
 | 7.2k | Sync-Sensor an J19, Magnet an der Disk-II-Spindel, `UFI.CFG apple_sync=1`, `ufi select apple`, `ufi motor on`, `ufi read 0 0 -r 3` | Oszi TP6 (INDEX): ein Puls je Umdrehung ≥ 500 µs; `ufi read` zeigt ≈ 300 U/min je Umdrehung (echte Index-Umdrehungen) | |
 | 7.3 | 40-Spur-Diskette im 80-Spur-Laufwerk: `ufi timing double_step=1` | Spuren lesbar | |
 | 7.4 | `SEEK_TEST`: `d.command(0x1E, 0, 79, 5, timeout=60)` | Kopf pendelt 5×, kein Schrittverlust (danach `recal`) | |

@@ -11,13 +11,13 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 
 | Funktion | Teile | Hinweis |
 |---|---|---|
-| Steuerung | U5 STM32H723ZGT6, LQFP-144, 550 MHz Cortex-M7, 25-MHz-Quarz Y1 | Firmware 1.18-dev; 108 von 144 Pins belegt, nach A4 und W5500 bleiben 24 frei |
+| Steuerung | U5 STM32H723ZGT6, LQFP-144, 550 MHz Cortex-M7, 25-MHz-TCXO X1 (A9c, HSE-Bypass), RTC mit 32,768-kHz-Quarz Y3 und CR2032 BT1 | Firmware 1.18-dev; nach A9b/A9c/A11c sind 18 GPIO frei, davon 10 für A11d/K1 reserviert (`docs/Timer_Zuteilung.md`) |
 | Flussspeicher 8 MB | U11 APS6404L QSPI-PSRAM an OCTOSPI1 | bis 20 Umdrehungen je Spur im Speicher; ohne PSRAM Rückfall auf 224 KB internes SRAM |
 | Massenspeicher 4 GB | U15 CSNP32GCR01 SD-NAND an SDMMC2 | FAT32 „UFI“: Dumps `DUMPnnnn.SCP/.IMG/.ADF/.HFE`, Logs, `UFI.CFG`, `SELFTEST.LOG`, gespeicherte Laufwerksprofile |
 | Debug | J4 SWD 1,27 mm (Cortex-Debug 10-polig), J5 UART (USART3 PD8/PD9), SWO PB3 | intern, nur bei offenem Deckel |
 | Reset / Boot | SW1 RESET, SW2 BOOT0 | im Gehäuse unerreichbar, aber nicht nötig: Taste A an der Front beim Einschalten startet den ROM-DFU-Bootloader, `ufi bootloader` ebenso |
 | Platinenkennung | R17 10k / R18 22k an PA4 | 2,27 V = v1.0 (`board_rev` 10, `ufi caps` zeigt „board v1.0“); v0.7 war 10k/2,2k = 0,60 V. Die Firmware unterscheidet damit die alte J9-Belegung von der neuen (INDEX_SIM auf PE5, LOOP_EN, LAN) |
-| I²C-Reserve | TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND, R19/R20 2,2k | für EEPROM oder Sensor, keine Firmware |
+| I²C: Feuchte/Temperatur | U25 SHT40-AD1B (A9c, Adresse 0x44) an TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND, R19/R20 2,2k | Auslesen folgt in Stufe A10; die Pads bleiben als Reserve |
 | LAN | **neu U23 W5500** (TCP/IP in Hardware, SPI3) mit **J22 HanRun HR911105A** RJ45 (Übertrager, Bob-Smith-Netz und LINK/ACT-LEDs im Stecker), eigener 25-MHz-Quarz Y2 | von außen erreichbar (Eingangskante neben USB-C); Steuerung über LAN wie über USB kommt als spätere Firmwarestufe, bis dahin hält die Firmware den Chip im Reset |
 
 ## 2 Versorgung
