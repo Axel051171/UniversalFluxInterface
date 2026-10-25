@@ -17,7 +17,9 @@ OFFSETS = [  # (footprint regex, degrees added for JLC)
     (r"^SOP-(?!18_)", 270), (r"^SOIC-", 270), (r"^TSSOP-", 270), (r"^VSSOP-10_", 270),
     (r"^CP_Elec_", 180), (r"^R_Array_Convex_4x0603", 90),
 ]
-POLARISED = r"^(U|D|Y|J1$|C1$|C13$)"   # parts whose orientation matters (J1: USB-C)
+# parts whose orientation matters: ICs, diodes, crystals/TCXO, MOSFETs (SOT-363 dual, no offset
+# known - check pin 1), battery holder (pad 1 = +), every connector (keyed IDC/JST, USB-C, RJ45)
+POLARISED = r"^(U|D|Y|X|Q|BT|J|C1$|C13$)"
 
 board_path, pos_path, cpl_path, md_path = sys.argv[1:5]
 board = pcbnew.LoadBoard(board_path)
@@ -72,5 +74,8 @@ with open(md_path, "w", encoding="utf-8") as f:
             "| Ref | Wert | Gehäuse | KiCad ° | Offset ° | JLC ° | Pin 1 auf der Platine |\n|---|---|---|---|---|---|---|\n")
     for c in sorted(checks, key=key):
         f.write(f"| {c[0]} | {c[1]} | {c[2]} | {c[3]:g} | {c[4]:+d} | {c[5]:g} | {c[6]} |\n")
-    f.write("\nDioden/LEDs: Pin 1 = Kathode. Elkos C1/C13: Pin 1 = Plus. USB-C J1: Kontakte zur Platinenkante.\n")
+    f.write("\nDioden/LEDs: Pin 1 = Kathode. Elkos C1/C13: Pin 1 = Plus. USB-C J1 und RJ45 J22: Öffnung zur "
+            "Platinenkante. BT1: Pad 1 = Plus (Halterkontakt). Q6–Q12 BSS138DW SOT-363: Pin 1 = S2 (Punkt im "
+            "Druck), kein Offset hinterlegt. JST-XH J3/J17/J19/J20: Pin 1 an der Markierung; IDC J6/J7/J12/J14/J23: "
+            "Kerbe der Wanne zum Pin-1-Dreieck.\n")
 print(f"cpl rows {len(rows)}, checklist {len(checks)}")

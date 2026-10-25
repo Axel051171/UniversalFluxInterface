@@ -1,0 +1,4 @@
+gerber/
+*.step
+# the Gerber/drill zip is the released fab set; the repository-wide *.zip rule must not hide it
+!UFI_Headless_gerber.zip

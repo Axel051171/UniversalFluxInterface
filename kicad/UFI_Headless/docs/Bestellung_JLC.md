@@ -1,62 +1,70 @@
-# Bestellung bei JLCPCB – UFI Headless v0.7
+# Bestellung bei JLCPCB – UFI Headless v1.0
 
-Dateien: `kicad/UFI_Headless/fertigung/` bzw. Anhang des GitHub-Release **v0.7** (dort mit `_v0.7` im Namen: `UFI_Headless_v0.7_gerber.zip`, `…_bom-jlc.csv`, `…_cpl-jlc.csv`).
+Dateien: `kicad/UFI_Headless/fertigung/` (erzeugt mit `scripts/make_fab.sh`): `UFI_Headless_gerber.zip`,
+`UFI_Headless-bom-jlc.csv`, `UFI_Headless-cpl-jlc.csv`, `JLC_Rotation_Check.md`. Freigabebericht:
+[Freigabe_v1.0.md](Freigabe_v1.0.md).
 
 ## 1 Leiterplatte
 
-Auf jlcpcb.com → *Order now* → `UFI_Headless_gerber.zip` hochladen. Größe (110 × 97 mm) und Lagen erkennt JLC selbst.
+Auf jlcpcb.com → *Order now* → `UFI_Headless_gerber.zip` hochladen. Größe und Lagenzahl liest JLC aus den Gerbern
+(Jobdatei: 6 Lagen, 110,1 × 97,1 mm, 1,6 mm).
 
 | Option | Einstellung | Warum |
 |---|---|---|
-| Layers | **4** | GND-Fläche In1, Signale/+3V3 In2 |
+| Layers | **6** | S/G/S/S/G/S: F.Cu Signale, In1 GND, In2/In3 Signale, In4 GND, B.Cu Signale (README, Abschnitt Layout B3) |
 | Dimensions | 110 × 97 mm | aus Gerber |
 | PCB Qty | 5 (Minimum) | |
-| PCB Thickness | **1.6 mm** | Board-Aufbau in KiCad |
-| Impedance Control | **No** / Standard-Lagenaufbau | USB Full Speed, keine kontrollierte Impedanz nötig |
-| Via Covering | **Tented** | Vias liegen u. a. dicht an Bauteilen; Board ist so ausgelegt |
-| Surface Finish | **ENIG** (empfohlen) | ebene Pads für QFP-144 (0,5 mm) und SOT-353; HASL geht, ist aber uneben |
-| Min via hole / Track | Standard (0,3 mm / 0,2 mm genügen) | Board nutzt 0,3-mm-Bohrung, 0,2-mm-Bahnen, 0,15 mm Abstand |
-| Mark on PCB / Order number | „Remove“ (Aufpreis) oder egal | Bestückungsdruck ist voll, Nummer landet sonst irgendwo |
+| PCB Thickness | **1.6 mm** | Lagenaufbau in KiCad |
+| Layer Stackup | **JLC06161H-3313** | Werte im Board-Setup (3313-Prepreg 0,0994 mm außen, Kerne 0,55 mm, 2116 innen); die USB-Breite 0,15/0,18 mm ist dafür geschätzt |
+| Impedance Control | **No** | USB Full Speed und 100-Mbit-Ethernet laufen ohne kontrollierte Impedanz; die Werte im README sind Schätzungen |
+| Via Covering | **Tented** | |
+| Surface Finish | **ENIG** | bei 6 Lagen ohne Aufpreis; ebene Pads für QFP-144 und SOT-353 |
+| Min via / Track | Standard genügt | kleinste Bahn 0,13 mm (Ethernet), kleinster Abstand 0,127 mm, Vias 0,45/0,2 bis 0,6/0,35 mm; JLC kann bei 6 Lagen 0,09 mm und 0,15/0,25 mm |
+| Via in Pad | **No** | das Board nutzt kein Via-in-Pad |
+| Mark on PCB / Order number | „Remove“ (Aufpreis) oder egal | |
 | Gold fingers, Castellated | No | |
 
 ## 2 Bestückung (PCB Assembly)
 
 | Option | Einstellung |
 |---|---|
-| PCBA Type | **Standard** (Economic geht nur, wenn für 4 Lagen angeboten; Standard ist sicher) |
-| Assembly Side | **Top Side** (alle Bauteile oben) |
-| PCBA Qty | 2 (reicht für Inbetriebnahme + Ersatz) |
+| PCBA Type | **Standard** |
+| Assembly Side | **Top Side** – einziges Teil unten ist BT1 (siehe unten) |
+| PCBA Qty | 2 (Inbetriebnahme + Ersatz) |
 | Tooling holes | Added by JLCPCB |
 | Confirm Parts Placement | **Yes** – Platzierung im Viewer selbst prüfen |
 
 Upload: **BOM** `UFI_Headless-bom-jlc.csv`, **CPL** `UFI_Headless-cpl-jlc.csv`.
 
 ### Teileprüfung (BOM-Schritt)
-- Alle LCSC-Nummern sind gesetzt und wurden am 05.–07.10.2026 auf Lager geprüft. Bei „out of stock“: gleiches Bauteil mit anderer LCSC-Nummer wählen (Wert/Gehäuse identisch).
-- **Extended Parts** kosten je ~3 $ Rüstgebühr (STM32H723, PSRAM, TPS54202, TPS2116, INA180, 74LVC1G32, SD-NAND u. a.) – normal.
-- **U15 SD-NAND** ist das teuerste Einzelteil: CSNP32GCR01-AOW (4 GB, C2841139) ca. 45 $/Stück (Stand 07.10.2026). Günstiger auf demselben Footprint: **MKDV8GIL-AST** (1 GB, C26159627, ca. 29 $) – reicht für ~14 DD- bzw. ~7 HD-Images. Tausch im BOM-Schritt per „Change Part“.
-- **Durchsteckteile (THT)** – günstiger von Hand löten, bei der Teileauswahl abwählen („do not place“):
-  J3 (FDD-Power), J4 (SWD), J5 (Debug-UART), J6 (34-pol), J8 (IEC), ab v0.7 auch J14 (Disk II 2×10), J17 (Netzteil), J18 (5-V-Jumper), J19 (Sync-Sensor). Wer sie bestücken lassen will: THT-Assembly zuwählen (Aufpreis).
-- **Ohne LCSC-Nummer – selbst besorgen und einlöten:**
-
-| Ref | Teil | Hinweis |
-|---|---|---|
-| J2 | Hohlstecker 5,5/2,1 mm, liegend | Footprint `BarrelJack_Horizontal` |
-| J7 | Wannenstecker 2×12, 2,54 mm | Amiga-Header (Adapterkabel: `docs/Amiga_DB23_Adapter_Cable.md` im Repo-Hauptordner) |
-| J9 | Stiftleiste 2×5, 2,54 mm | Erweiterung, optional |
-| J11 | Stiftleiste 1×2 + Jumper | WRITE LOCK |
-| J12 | Stiftleiste 2×4, 2,54 mm | Front-LEDs im Gehäuse (je LED eine Reihe: ungerade Pin = +, gerade = −) |
-| J13 | Stiftleiste 1×3, 2,54 mm | Betriebsart-Schalter im Gehäuse (Kippschalter EIN-AUS-EIN, Kabel 1:1, Mitte = Pin 2) |
-| J15 | Stiftleiste 1×2, 2,54 mm | /ENABLE zweites Apple-Laufwerk, optional |
-| J16 | Stiftleiste 2×5, 2,54 mm | interner USB-Header, **Stift 9 vor dem Einlöten herausziehen** (im Druck „X“) |
-
-- Testpunkte TP1–TP8 und Lötbrücken JP1/JP2 sind blankes Kupfer – nichts zu bestücken.
+- Alle 99 BOM-Zeilen haben eine LCSC-Nummer (304 Bestückplätze, keine DNP-Teile). Lager und Basic/Extended wurden am
+  25.10.2026 über die JLC-Teilesuche geprüft: 37 Basic, 1 Preferred, 61 Extended (je ~3 $ Rüstgebühr). Bauteilkosten
+  bei der niedrigsten Staffel ca. 70,6 $ je Platine ohne Rüstgebühren.
+- **Knapp:** U5 STM32H723ZGT6 (C730146) **23 Stück** auf Lager – zuerst prüfen, bei Bedarf über „Parts Pre-order“
+  reservieren. J7 Wannenstecker 2×12 (C5144580) 81 Stück. U15 CSNP32GCR01-AOW (C2841139) 389 Stück, ca. 39,55 $ –
+  das teuerste Teil, bleibt bestückt.
+- Bei „out of stock“: gleiches Bauteil mit anderer LCSC-Nummer wählen (Wert, Gehäuse und Pinbelegung identisch).
+- **Durchsteckteile (THT):** J2, J3, J4, J5, J6, J7, J8, J12, J14, J16, J17, J19, J20, J21, J22, J23 und BT1. Alle haben
+  eine LCSC-Nummer. Für eine fertig bestückte Platine **THT-Assembly zuwählen** (Aufpreis je Lötstelle); sonst bei der
+  Teileauswahl abwählen und selbst löten.
+- **BT1** (CR2032-Halter BS-07-A1BJ001, C2979167) sitzt auf der **Unterseite**. Entweder Bestückung „Both Sides“
+  wählen (zweite Seite kostet extra – im Angebot prüfen) oder BT1 abwählen und von Hand einlöten. Pad 1 = Plus.
+- **J16** (interner USB-Header 2×5): Stift 9 ist die Kodierung. Bei Maschinenbestückung bleibt er stehen und wird
+  nachher gezogen oder abgekniffen (im Druck „X“).
+- Testpunkte TP1–TP13 und die Lötbrücken JP1, JP3, JP5–JP8 sind blankes Kupfer – nichts zu bestücken. Grundzustand
+  ab Werk: JP1 (DRATE auf J6 Pin 6) offen, JP3 (Amiga DF2) offen, JP5/JP6 offen, JP7 Pad 1–2 (J6 Pin 33 auf GND),
+  JP8 (−12 V an Disk II) geschlossen.
 
 ### Platzierung prüfen (Viewer-Schritt)
-Die Liste `JLC_Rotation_Check.md` nennt alle Teile, deren Drehung im JLC-Viewer kontrolliert werden muss (Pin-1-Punkt am Footprint-Pin-1). Besonders: U5 (MCU), U6–U10, U11 (PSRAM), U12–U14, Q1–Q4, D-Arrays D9–D12, U15 (SD-NAND, LGA-8: Pin-1-Punkt oben links), ab v0.7 U16 (AHCT244), U17, U18 (ICL7662) und D15/D16.
-Falsch gedrehte Teile im Viewer per Klick drehen; nichts in KiCad ändern.
+`JLC_Rotation_Check.md` listet 87 Teile, deren Drehung im JLC-Viewer kontrolliert werden muss (Pin-1-Punkt des
+Modells am Pin 1 des Footprints). Die Offsets nach kicad-jlcpcb-tools sind eingerechnet, aber nicht im Viewer geprüft.
+Besonders genau: U5 (LQFP-144), U15 (LGA-8, Pin 1 oben links), U11, U23 W5500, die SOT-353/SOT-363-Teile
+(U14, U30, U31, U17, Q6–Q12 ohne hinterlegten Offset), D9–D16/D31 (SOT-23-6), U3/U19 (SOT-583 ohne Offset), X1, Y2/Y3,
+J1 USB-C und J22 RJ45 (Öffnung zur Platinenkante). Falsch gedrehte Teile im Viewer per Klick drehen und den Offset in
+`scripts/jlc_cpl.py` nachtragen; nichts in KiCad ändern.
 
 ## 3 Danach
 
-- Lieferung: [Inbetriebnahme.md](Inbetriebnahme.md) Schritt für Schritt.
-- Für die ersten Tests: Schrott-Laufwerk und Schrott-Disketten bereithalten, Labornetzteil mit Strombegrenzung.
+- Lieferung: [Inbetriebnahme.md](Inbetriebnahme.md) und die Messliste in `docs/Bringup_2026-10-24.md` Abschnitt 6.
+- Frontplatte: Anschlussplan J12 (LEDs, Schalter SCHREIBEN, Taster, Modusschalter) im README.
+- Für die ersten Tests: Schrott-Laufwerk und Schrott-Disketten, Labornetzteil mit Strombegrenzung.

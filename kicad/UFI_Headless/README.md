@@ -52,9 +52,9 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 |---|---|---|
 | 5-V-Quelle automatisch | U19 TPS2116DRL (VIN1 = externe 5 V von J17 mit Vorrang, VIN2 = 12-V-Buck), R72/R73, C57, Status über R74 auf TP9 | J18 entfällt; `PWR_SRC` zeigt weiterhin die Hauptquelle U3 |
 | FDD-/IEC-/Amiga-Abschluss | R75–R99, 25 × 1 kΩ 0603 statt RN1–RN8 | – |
-| Front-Header | J12 2×8 Wannenstecker FRONT: 1 +3V3 über R105 1 kΩ, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (R34–R37, R100 330 Ω), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (R101–R104 470 Ω), gerade Pins 2–12 GND; D18–D26 PESD3V3L1BA | LEDs, Taster A/B und der Modusschalter sitzen an der Frontplatte; J9, J13, die Platinen-LEDs D5–D8 und seit A9a auch SW3/SW4 entfallen (Taster A/B nur an der Front, Service-Drahtbrücke J12 Pin 13/14 gegen GND), D4 ACT bleibt |
+| Front-Header | J12 2×8 Wannenstecker FRONT: 1 +3V3 über R105 1 kΩ, 3 ACT, 5 ERR, 7 USB, 9 FDD, 11 PWR (R34–R37, R100 330 Ω), 13 BTN_A, 14 BTN_B, 15 MODE1, 16 MODE2 (R101–R104 470 Ω), Pins 2/4/6/8 GND, seit A9b Pin 10 FRONT_WRLED und Pin 12 WLOCK_HW (Schalter SCHREIBEN); D18–D26, D28, D29 PESD3V3L1BA. Nur vier Massepins: an der Frontplatte eine gemeinsame Masseschiene für alle Kathoden, Taster und den Schalter | LEDs, Taster A/B und der Modusschalter sitzen an der Frontplatte; J9, J13, die Platinen-LEDs D5–D8 und seit A9a auch SW3/SW4 entfallen (Taster A/B nur an der Front, Service-Drahtbrücke J12 Pin 13/14 gegen GND), D4 ACT bleibt |
 | I²C-Testpads | TP10 SCL, TP11 SDA, TP12 +3V3, TP13 GND (R19/R20 bestückt) | Reserve für EEPROM/Sensor |
-| WRITE LOCK | **JP4** Lötbrücke (statt J11), U14 74LVC1G32, R33 100k | geschlossen = WGATE in Hardware gesperrt; einmal bei der Montage |
+| WRITE LOCK | ~~JP4 Lötbrücke~~ (A4, durch A9b/A11a/A11f ersetzt): Schalter SCHREIBEN an J12 Pin 12 gegen GND, R33 10k Pull-up, WLOCK_FW PE4 (R131 100k), U14 74LVC1G32 bildet LOCK, U31 74LVC1G02 sperrt WGATE, U30 die Apple-Schreibanforderung | Schalter offen oder Frontkabel ab = gesperrt; Schreiben nur bei Schalter zu und Firmware-Freigabe während eines Schreibauftrags (Zeilen A9b, A11a, A11f) |
 | Indexsimulation | PE5 = TIM15_CH1 → U7F (freier LS07-Kanal) → INDEX-Bus | `ufi index-sim 300`: Impuls liegt ohne Draht auf INDEX (Selbsttest `index_loop`); 3,3-V-Impuls auch auf J21 Pin 10 |
 | Selbsttest-Rückschleife | U22 TS5A3166 (FD_WDATA↔FD_RDATA, 5 V), Q5 2N7002 (FD_TRK0 → GND), R106 100k, C58; U10F (freier HC14-Kanal, IEC-Blatt) liest FD_WGATE zurück | LOOP_EN = PG14 (im Reset offen), WGATE_SENSE = PG15; Firmware-Nutzung folgt |
 | Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
@@ -117,7 +117,7 @@ Platine dafür unten um 12 mm verlängert (110 × 97 mm, zusätzliche Befestigun
 - DB19-Laufwerke (Apple 5.25 Drive, UniDisk 5.25) über Adapterkabel 20-pol → DB19. **Nicht** unterstützt: Apple 3.5 Drive / UniDisk 3.5 (/EN3.5, SmartPort; DB19 Pin 4 bleibt GND), Macintosh-Laufwerke.
 - ESD auf allen Signalleitungen am Stecker (D15, D16).
 - **J19 Sync-Sensor** (1 +5 V FDD_5V, 2 GND, 3 SYNC; Bestückungsdruck „+5V GND SYNC“ an den Pins): für einen Sync-Sensor nach Applesauce-Art (Magnet an der Spindel, Hall-Sensor A3144, Open-Collector mit 10k Pull-up, aktiv low, ≥ 500 µs je Umdrehung; wiki.applesaucefdc.com „Sync Sensor“). SYNC liegt direkt auf der INDEX-Leitung des 34-pol Busses (Wired-OR, 1k Pull-up, ESD D11, LVC14 → TIM2_CH2) – elektrisch verhält sich der Sensor wie der Index-Ausgang eines Laufwerks. 34-pol Laufwerke treiben INDEX nur, solange sie angewählt sind. Mit `UFI.CFG apple_sync=1` liest die Firmware Apple-Laufwerke indexbasiert (echte Umdrehungen, SCP mit Index-Flag) und schreibt ab dem Sensorimpuls – Spuren bleiben zueinander ausgerichtet (Kopierschutz mit Spur-Synchronisation). Applesauce-Sensoren haben ein 3,5-mm-Klinkenkabel: Adapter auf J19, Belegung der Klinke vor dem Anschluss am Sensor durchmessen.
-- **Schreibschutz**: Der WRITE-LOCK-Jumper J11 sperrt in Hardware nur WGATE des 34-pol Busses; für den Apple-Port prüft die Firmware den Jumper (kein Schreiben mit gestecktem Jumper), die Hardware nicht.
+- **Schreibschutz**: bis v0.7 sperrte der Jumper J11 in Hardware nur WGATE des 34-pol Busses, den Apple-Port prüfte nur die Firmware. Ab v1.0 (A11a) sperrt LOCK auch die Apple-Schreibanforderung in Hardware: U30 gatet APL_WRREQ → APL_WRREQ_G, gesperrt bei Schalter SCHREIBEN offen oder ohne Firmware-Freigabe.
 - Firmware 1.11: Laufwerke `apple` (J14) und `apple2` (J15), `ufi select apple`, `UFI.CFG drive=apple` (`tracks=35`, `sides=1`). Kein Indexloch: Umdrehungen = 200-ms-Abschnitte, SCP mit Disk-Typ Apple II ohne Index-Flag. Kopf: 4-Phasen-Schrittmotor, 2 Halbschritte je Spur, Rekalibrieren = 80 Halbschritte gegen den Anschlag (Klackern, wie beim Original). Schreiben startet sofort (kein Index), Löschen = /WRREQ ohne Pegelwechsel. Board-ID 10k/2,2k = 0,6 V → „v0.7“, nur dann sind die Apple-Laufwerke wählbar.
 
 ## Stromaufnahme +5V (Abschätzung)
@@ -205,10 +205,15 @@ Handkorrekturen nach dem Autorouting (einmalig auf diesem Board, nicht Teil von 
 
 ### Vor einer Bestellung noch offen
 
-1. **Bestelloptionen**: kein Via-in-Pad mehr (VBUS-Vias neben A4/A9, 0,5/0,25 mm) → „Via Covering: Tented“ reicht; kleine Vias 0,48/0,23 bzw. 0,5/0,25 mm – Aufpreis für < 0,3 mm Bohrung möglich. Alle Vias Restring ≥ 0,125 mm (DRC-Regel `min_via_annular_width`)
-2. **Rotationen im JLC-Bestückungsviewer** gegen `fertigung/JLC_Rotation_Check.md` prüfen (22 gepolte Teile; Offsets nach kicad-jlcpcb-tools sind schon eingerechnet, SOT-583 U3, Y1, Dioden und J1 ohne Offset – dort besonders genau hinsehen)
-3. **Handbestückung**: J2 (Hohlbuchse 5,5/2,1) und J7 (2×12 Wannenstecker) haben keine LCSC-Nummer
-4. **IEC-Kabel**: J8 (1×6, 2,54 mm) auf DIN-6-Buchse, 1:1 nach Pinnummer (Lötseite der Buchse beachten)
+Stand v1.0 (Stufe C, 25.10.2026): Prüfpunkte, Risiken und was erst an der Hardware prüfbar ist stehen im
+Freigabebericht [docs/Freigabe_v1.0.md](docs/Freigabe_v1.0.md), die Bestelloptionen in
+[docs/Bestellung_JLC.md](docs/Bestellung_JLC.md). Beim Bestellen selbst zu tun:
+
+1. **Rotationen im JLC-Bestückungsviewer** gegen `fertigung/JLC_Rotation_Check.md` prüfen (87 Teile; Offsets nach kicad-jlcpcb-tools eingerechnet, SOT-363/SOT-583 ohne Offset)
+2. **BT1 auf der Unterseite**: Bestückung beider Seiten wählen oder BT1 abwählen und von Hand löten
+3. **Lager U5** (STM32H723ZGT6, 23 Stück am 25.10.) zuerst prüfen
+4. **Impedanzen** im JLC-Impedanzrechner gegen die Schätzwerte im Abschnitt Layout B3 prüfen
+5. **IEC-Kabel**: J8 (1×6, 2,54 mm) auf DIN-6-Buchse, 1:1 nach Pinnummer (Lötseite der Buchse beachten)
 
 ## Layout-Pipeline (`scripts/make_pcb.sh`)
 
