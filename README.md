@@ -1,3 +1,7 @@
+<!-- boardrepo-badge:v1 -->
+[![View on BoardRepo](https://boardrepo.com/badge/github.svg?v=2)](https://boardrepo.com/b/a25d98c9-1d02-4544-9c30-dc9d67122fdd?ref=github-readme)
+<!-- /boardrepo-badge:v1 -->
+
 # UFI – Universal Flux Interface (Headless)
 
 Flux-Lese-/Schreibgerät für Disketten: STM32H723 (550 MHz) misst jede Flusswechsel-Zeit mit
