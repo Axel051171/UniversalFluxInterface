@@ -5037,6 +5037,17 @@
 			(uuid "6724ee22-81c3-413e-8214-d8734f0b4b0f")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/3dmodels/LGA-8_L8.0-W6.2-TL.step"
+			(offset
+				(xyz 0 0.005 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
 	)
 	(footprint "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm"
 		(layer "F.Cu")
@@ -5251,7 +5262,7 @@
 			(uuid "3c4e9d56-1b7a-4d01-a214-f6fd01915e1e")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Oscillator.3dshapes/Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm.step"
+		(model "${KIPRJMOD}/3dmodels/OSC-SMD_4P-L3.2-W2.5-H1.0.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -38397,9 +38408,9 @@
 			(uuid "647029de-d973-4162-9b8c-283d23f0d2a5")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Connector_RJ.3dshapes/RJ45_Hanrun_HR911105A_Horizontal.step"
+		(model "${KIPRJMOD}/3dmodels/RJ45-TH_HR911105A.step"
 			(offset
-				(xyz 0 0 0)
+				(xyz 4.443333333 -4.356666667 0)
 			)
 			(scale
 				(xyz 1 1 1)
@@ -51670,7 +51681,7 @@
 			(uuid "0b35e2ce-57db-4525-a7e9-caaef02fecf0")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Fuse.3dshapes/Fuse_1812_4532Metric.step"
+		(model "${KIPRJMOD}/3dmodels/F1812_L4.5-W3.2-H1.0.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -56985,7 +56996,7 @@
 			)
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Sensor_Humidity.3dshapes/Sensirion_DFN-4_1.5x1.5mm_P0.8mm_SHT4x_NoCentralPad.step"
+		(model "${KIPRJMOD}/3dmodels/DFN-4_L1.5-W1.5-P0.8.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -57612,15 +57623,15 @@
 			(uuid "b9b462f8-d37f-4ba6-bfb0-e853f19d5d6a")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Connector_USB.3dshapes/USB_C_Receptacle_HRO_TYPE-C-31-M-12.step"
+		(model "${KIPRJMOD}/3dmodels/USB-C_SMD-TYPE-C-31-M-12_1.step"
 			(offset
-				(xyz 0 0 0)
+				(xyz 0 1.575 0)
 			)
 			(scale
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz 0 0 0)
+				(xyz 0 0 180)
 			)
 		)
 	)
@@ -73991,7 +74002,7 @@
 			(uuid "1a9fe87c-b542-4d65-9272-011a9fed04d6")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Fuse.3dshapes/Fuse_1812_4532Metric.step"
+		(model "${KIPRJMOD}/3dmodels/F1812_L4.5-W3.2-H1.0.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -80644,15 +80655,15 @@
 			(uuid "919e2e9c-e286-4c1a-9f96-5e499f31c624")
 		)
 		(embedded_fonts no)
-		(model "${KICAD10_3DMODEL_DIR}/Battery.3dshapes/BatteryHolder_MYOUNG_BS-07-A1BJ001_CR2032.step"
+		(model "${KIPRJMOD}/3dmodels/BAT-TH_BS-07-A1BJ001.step"
 			(offset
-				(xyz 0 0 0)
+				(xyz 10.4 0 0)
 			)
 			(scale
 				(xyz 1 1 1)
 			)
 			(rotate
-				(xyz 0 0 0)
+				(xyz 0 0 180)
 			)
 		)
 	)
@@ -81118,18 +81129,6 @@
 		(at 19.25 73.65 0)
 		(layer "B.SilkS")
 		(uuid "28ca5252-ca32-4f35-861d-35c3d54be181")
-		(effects
-			(font
-				(size 0.8 0.8)
-				(thickness 0.12)
-			)
-			(justify mirror)
-		)
-	)
-	(gr_text "JP2 1-2 GND / 2-3 +5V (PS/2 only)"
-		(at 19.5 71.9 0)
-		(layer "B.SilkS")
-		(uuid "ce5f4fec-4855-45a2-8c25-de606a1d4afe")
 		(effects
 			(font
 				(size 0.8 0.8)
@@ -82530,7 +82529,7 @@
 			(justify mirror)
 		)
 	)
-	(gr_text "2-12 GND   14 BT-B   16 MOD2"
+	(gr_text "2-8 GND  10 WRLED  12 LOCK  14 BT-B  16 MOD2"
 		(at 108.3 36.9 90)
 		(layer "B.SilkS")
 		(uuid "9552b695-bf14-4ba4-9550-e5a4eb780a7c")

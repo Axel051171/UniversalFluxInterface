@@ -50,7 +50,7 @@ MARGINS = {"J4": 0.1}   # 1.27-mm pitch: 0.7-mm labels with 0.1 mm between them
 # pins without room for a label beside them: one legend text per header at a fixed spot
 # (text, x, y, angle, layer); J12's right column has 2.5 mm to the board edge, the front outline
 # fills it, so the legend sits on the back next to the solder pins
-LEGENDS = {"J12": ("2-12 GND   14 BT-B   16 MOD2", 108.3, 36.9, 90, pcbnew.B_SilkS)}
+LEGENDS = {"J12": ("2-8 GND  10 WRLED  12 LOCK  14 BT-B  16 MOD2", 108.3, 36.9, 90, pcbnew.B_SilkS)}
 # free texts that the per-pin labels replace: (text, x, y)
 REMOVE = [("IEC 1=SRQ 6=RST", 9.0, 38.6), ("+5V", 4.5, 7.75), ("+12V", 2.15, 19.35), ("EN2", 9.5, 93.25),
           ("GND", 17.69, 86.23), ("GND", 27.76, 91.04), ("+5V", 33.4, 88.5)]
