@@ -48,3 +48,9 @@ desktop.ini
 .history/
 graft/
 *.lck
+
+# libFuzzer crash/leak/timeout inputs written to the working directory
+crash-*
+leak-*
+timeout-*
+oom-*
