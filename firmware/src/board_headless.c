@@ -77,7 +77,7 @@ const gpio_pin_t PIN_LOOP_EN         = {GPIOG, GPIO_PIN_14};
 const gpio_pin_t PIN_WGATE_SENSE     = {GPIOG, GPIO_PIN_15};
 const gpio_pin_t PIN_GUARD_OFF       = {GPIOG, GPIO_PIN_7};
 const gpio_pin_t PIN_GUARD_ERR5      = {GPIOG, GPIO_PIN_8};
-const gpio_pin_t PIN_GUARD_ERR12     = {GPIOG, GPIO_PIN_13};
+const gpio_pin_t PIN_GUARD_ERR12     = {GPIOC, GPIO_PIN_9};   /* B3a: was PG13 (v1.0 only, unconnected before) */
 
 /* v1.0 board: W5500 LAN bridge on SPI3 */
 const gpio_pin_t PIN_LAN_SCK         = {GPIOC, GPIO_PIN_10};
@@ -207,8 +207,17 @@ void board_gpio_init(void)
     HAL_GPIO_WritePin(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_PIN_RESET);
     init_pins(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
               GPIO_SPEED_FREQ_LOW, 0);
-    init_pins(GPIOG, PIN_WGATE_SENSE.pin | PIN_GUARD_ERR5.pin | PIN_GUARD_ERR12.pin,
+    init_pins(GPIOG, PIN_WGATE_SENSE.pin | PIN_GUARD_ERR5.pin,
               GPIO_MODE_INPUT, GPIO_NOPULL, GPIO_SPEED_FREQ_LOW, 0);
+    init_pins(PIN_GUARD_ERR12.port, PIN_GUARD_ERR12.pin, GPIO_MODE_INPUT, GPIO_NOPULL,
+              GPIO_SPEED_FREQ_LOW, 0);
+    /* B3a: v1.0 moved FDD_MOTOR_B to PC13 and LED_FDD to PC7 (board_pin() in board.h): motor B
+     * released (MOSFET gate low), LED off; PC13 is a backup-domain pin, low speed only */
+    if (board_fdd_mosfet) {
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13 | GPIO_PIN_7, GPIO_PIN_RESET);
+        init_pins(GPIOC, GPIO_PIN_13 | GPIO_PIN_7, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+                  GPIO_SPEED_FREQ_LOW, 0);
+    }
 
     /* v1.0 LAN: no driver yet, so the W5500 stays in reset (RST low) with CS released
      * (high); SPI3 pins are plain inputs until a driver claims them (PA15 leaves its

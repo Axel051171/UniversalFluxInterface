@@ -9951,10 +9951,6 @@
 			)
 		)
 	)
-	(no_connect
-		(at 248.92 185.42)
-		(uuid "3c7b6c0a-de28-55ca-9710-bb040a1a1ef3")
-	)
 	(wire
 		(pts
 			(xy 172.72 137.16) (xy 170.18 137.16)
@@ -10852,24 +10848,14 @@
 		)
 		(uuid "cda184a5-fd2b-5bbf-901c-390ca7266165")
 	)
-	(wire
-		(pts
-			(xy 172.72 96.52) (xy 170.18 96.52)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "b65abd92-5488-5b5c-b9d8-c2f854f5db2d")
-	)
 	(label "LED_FDD"
-		(at 170.18 96.52 180)
+		(at 251.46 170.18 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify left bottom)
 		)
 		(uuid "80bc36f0-8b0a-57e6-b797-82ac007b6b43")
 	)
@@ -10904,29 +10890,19 @@
 			)
 		)
 	)
-	(wire
-		(pts
-			(xy 172.72 200.66) (xy 170.18 200.66)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "cb331a8f-b3e6-5589-9d7b-bb19e6c14d2e")
-	)
 	(global_label "FDD_MOTOR_B"
 		(shape bidirectional)
-		(at 170.18 200.66 180)
+		(at 251.46 185.42 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "818f2406-3e10-5395-9ccf-4169da54360e")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 170.18 200.66 0)
+			(at 251.46 185.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -11589,16 +11565,8 @@
 		(uuid "6ce67dbd-2fc7-5091-a1b7-603c03a66d5c")
 	)
 	(no_connect
-		(at 248.92 170.18)
-		(uuid "60a44853-ac9c-5080-8d96-611ab256f547")
-	)
-	(no_connect
 		(at 248.92 172.72)
 		(uuid "8183450a-1365-52ab-b319-63bd67817224")
-	)
-	(no_connect
-		(at 248.92 175.26)
-		(uuid "f134397e-a74e-59ab-ac66-59f5606b5186")
 	)
 	(wire
 		(pts
@@ -25082,12 +25050,12 @@
 		(uuid "eeee7ebb-8b73-4e23-9ad8-6743af599b06")
 	)
 	(global_label "GUARD_ERR12"
-		(at 172.72 127.00000000000001 180)
+		(at 251.46 175.26 0)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right)
+			(justify left)
 		)
 		(uuid "00a1e1c7-ad93-4d02-878c-a794d2220ed4")
 	)
@@ -28387,5 +28355,58 @@
 			(justify left)
 		)
 		(uuid "1acb4857-67e8-4b55-927f-42bf90f7b09a")
+	)
+	(wire
+		(pts
+			(xy 248.92 170.18) (xy 251.46 170.18)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "97a1c1e8-a1f0-46fa-891c-062a0a5fd51e")
+	)
+	(wire
+		(pts
+			(xy 248.92 175.26) (xy 251.46 175.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "01698530-fb82-499f-950b-00f7868e7da6")
+	)
+	(wire
+		(pts
+			(xy 248.92 185.42) (xy 251.46 185.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f81af8c9-a84a-4515-8acf-1472321fa78a")
+	)
+	(no_connect
+		(at 172.72 96.52)
+		(uuid "5cab57a0-6edf-4e14-b5d2-0447e9e9a030")
+	)
+	(no_connect
+		(at 172.72 200.66)
+		(uuid "00b8d7dc-877d-4a8d-9572-f469b8764f5b")
+	)
+	(no_connect
+		(at 172.72 127)
+		(uuid "482b78e0-448f-4496-b304-4842c46cdbbd")
+	)
+	(text "pinswap-b3a: LED_FDD PG1->PC7, GUARD_ERR12 PG13->PC9, FDD_MOTOR_B PE8->PC13 (routing, stage B3a)"
+		(exclude_from_sim no)
+		(at 254 248.92 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "cea786cf-8d97-45e0-9764-af69dca6542c")
 	)
 )

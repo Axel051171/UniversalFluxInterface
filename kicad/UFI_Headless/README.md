@@ -58,7 +58,7 @@ nichts ist nach dem Einbau steckbar; komplette Bestückung.
 | Indexsimulation | PE5 = TIM15_CH1 → U7F (freier LS07-Kanal) → INDEX-Bus | `ufi index-sim 300`: Impuls liegt ohne Draht auf INDEX (Selbsttest `index_loop`); 3,3-V-Impuls auch auf J21 Pin 10 |
 | Selbsttest-Rückschleife | U22 TS5A3166 (FD_WDATA↔FD_RDATA, 5 V), Q5 2N7002 (FD_TRK0 → GND), R106 100k, C58; U10F (freier HC14-Kanal, IEC-Blatt) liest FD_WGATE zurück | LOOP_EN = PG14 (im Reset offen), WGATE_SENSE = PG15; Firmware-Nutzung folgt |
 | Logikanalysator | J21 2×10 LA: 1 RDATA, 3 WDATA, 5 INDEX, 7 WGATE, 9 STEP, 11 DIR, 13 SIDE, 15 DRVSEL_A, 17 MOTOR_A, 19 TRK0, 2 WPROT, 4 DSKCHG, 6 READY, 8 DENSITY, 10 INDEX_SIM, 12 LOOP_EN, 14 WGATE_SENSE, 16/18/20 GND (alles 3,3-V-Seite) | nur bei offenem Deckel |
-| C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PG13), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
+| C64 PSU Guard | J20 1×4 GUARD: 1 GND, 2 OFF (PG7), 3 ERR5 (PG8), 4 ERR12 (PC9), R107/R108 10k Pull-ups | passt auf J3 der Guard-Platine (`kicad/C64_PSU_Guard`); Firmware-Nutzung folgt |
 | LAN (Blatt LAN) | U23 W5500 (LQFP-48) an SPI3, J22 HanRun HR911105A (RJ45 mit Übertragern, Bob-Smith-Netz und LEDs intern), Y2 25 MHz + C59/C60 18 pF + R109 1 M, FB2 + C63–C70 Abblockung, R112/R113 49,9 Ω, R114 10 Ω + C71 22 nF (TX-Mittelanzapfung), C72/C73 6,8 nF + R115/R116 82 Ω + C74 10 nF (RX), R111 12,4 k (EXRES1), C61 10 nF (1V2O), C62 4,7 µF (TOCAP), R117/R118 330 Ω (LINK/ACT-LED im Jack), R119–R121 10 k Pull-ups CS/INT/RST, R122–R124 10 k PMODE = Auto-Negotiation | Werte aus der WIZnet-Referenzschaltung; Firmware hält den W5500 bis zum Treiber im Reset (RST low, CS high) |
 | Board-ID | R18 22k (R17 10k) | 2,27 V = v1.0; `INFO` meldet `board_rev` 10, Firmware schaltet damit Apple-Port und Amiga2 frei wie bei v0.7 |
 | A11f Review-Fixes (25.10.) | F1: U31 74LVC1G02 (C52953351) bildet das Q9-Gate als NOR(WGATE_n, LOCK); PE14 = WGATE_n aktiv low mit R167 10 k Pull-up, U30-Gatter 1 stillgelegt (das ODER aus A11a hätte seit A11b bei gesetzter Sperre WGATE dauerhaft aktiviert); R1: D30 raus, SYNC_5V am 5-V-Kanal IO3 von D31, J19 = JST B3B-XH-A (C144394); R2: J20 = JST B4B-XH-A (C144395) mit D32–D34 PESD3V3L1BA (C51450); R3: R156/R157 2,4 k (C22940, Greaseweazle-V4.1-kompatibel), JP7 Grundzustand GND | Firmware: `bus_out_inverted()` nimmt PE14 aus, Ruhepegel high; Inbetriebnahme: J6 Pin 24 muss bei gesetzter Sperre während eines Lesevorgangs high bleiben (Messpunkt H-Liste), Selbsttest-Posten in A10; Polaritätstabelle in PLAN.md (A8-Abschnitt) |
@@ -228,7 +228,7 @@ Ein Kurzschluss im Laufwerkskabel begrenzt der betroffene eFuse U28/U29 auf ≈ 
 | FDD_RDATA | PA5 | TIM2_CH1 (AF1) Input Capture, 32 bit |
 | FDD_INDEX | PA1 | TIM2_CH2 (AF1) Input Capture, gleiche Zeitbasis wie RDATA |
 | FDD_WDATA | PA6 | TIM3_CH1 (AF2) Output |
-| FDD_MOTOR_A / _B | PE7 / PE8 | GPIO out |
+| FDD_MOTOR_A / _B | PE7 / PC13 (bis v0.7 PE8) | GPIO out; B3a: MOTOR_B für das Routing auf PC13 (Backup-Domain, 3 mA, langsam - reicht für das Q6-Gate), Firmware wählt per Revision (board_pin()) |
 | FDD_DRVSEL_A / _B | PE9 / PE10 | GPIO out |
 | FDD_STEP / DIR / SIDE | PE11 / PE12 / PE13 | GPIO out |
 | FDD_WGATE / DENSITY | PE14 / PE15 | GPIO out |
@@ -254,7 +254,7 @@ Ein Kurzschluss im Laufwerkskabel begrenzt der betroffene eFuse U28/U29 auf ≈ 
 | VBAT | Pin 6 | v1.0 (A9c): CR2032 BT1 + C78 (RTC läuft ohne Versorgung weiter, VBAT-Laden bleibt aus); v0.x: an +3V3 |
 | FLT5 / FLT12 | PF9 / PF10 | v1.0 (A11c): GPIO in, Pull-up, FLT der eFuses U28/U29 (low = Unter-/Überspannung/Übertemperatur, auch solange ENUV low ist); v0.x: unbeschaltet |
 | SD CK / CMD / D0–D3 | PD6 / PD7 / PG9–PG12 | SDMMC2 (AF11, D2/D3 AF10) (v0.5) |
-| GUARD_ERR12 | PG13 | v0.5 Card-Detect, v0.6 unbenutzt, ab v1.0 GPIO in ← J20 Pin 4 (10k Pull-up R108) |
+| GUARD_ERR12 | PC9 | ab v1.0 GPIO in ← J20 Pin 4 (10k Pull-up R108); B3a vom PG13 (v0.5 Card-Detect, v0.6 unbenutzt) auf PC9 verlegt (Routing) |
 | INDEX_SIM | PE5 | TIM15_CH1 (AF4) Output → U7F → INDEX-Bus; ruhend high = Bus losgelassen (v1.0) |
 | LOOP_EN | PG14 | GPIO out, high = U22 schließt WDATA↔RDATA, Q5 zieht TRK0 (100k Pull-down R106) (v1.0) |
 | WGATE_SENSE | PG15 | GPIO in ← U10F ← FD_WGATE, high = WGATE aktiv (v1.0) |
@@ -270,7 +270,7 @@ Ein Kurzschluss im Laufwerkskabel begrenzt der betroffene eFuse U28/U29 auf ≈ 
 | (Atari SIO, optional) | PD1 / PF6 / PD0 | UART4_TX → DATA OUT (über IEC_CLK_OUT), UART7_RX ← DATA IN (IEC_DATA_IN, RXINV wegen LVC14), COMMAND = IEC_ATN_OUT – nur Firmware + DIN-6→SIO-13-Kabel, keine Platinenänderung |
 | SWDIO / SWCLK / SWO | PA13 / PA14 / PB3 | Debug |
 | DBG_TX / DBG_RX | PD8 / PD9 | USART3 (AF7) |
-| LED_ACT / FDD / USB / ERR | PG0–PG3 | High = an |
+| LED_ACT / FDD / USB / ERR | PG0 / PC7 / PG2 / PG3 (bis v0.7 FDD auf PG1) | High = an; B3a: LED_FDD für das Routing auf PC7, Firmware wählt per Revision (board_pin()) |
 | PWR_SRC | PG4 | TPS2116 Status |
 | HSE | PH0 / PH1 | 25 MHz |
 

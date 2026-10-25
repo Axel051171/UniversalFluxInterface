@@ -29,7 +29,7 @@ typedef struct {
 
 /* ---- FDD outputs (34-pin J6 + Amiga J7), GPIOE ------------------------- */
 extern const gpio_pin_t PIN_FDD_MOTOR_A;    /* PE7  */
-extern const gpio_pin_t PIN_FDD_MOTOR_B;    /* PE8  (Amiga MTRXD) */
+extern const gpio_pin_t PIN_FDD_MOTOR_B;    /* PE8  (Amiga MTRXD) on v0.x; v1.0: PC13 (B3a), see board_pin() */
 extern const gpio_pin_t PIN_FDD_DRV_SEL_A;  /* PE9  */
 extern const gpio_pin_t PIN_FDD_DRV_SEL_B;  /* PE10 (Amiga SEL1B) */
 extern const gpio_pin_t PIN_FDD_STEP;       /* PE11 */
@@ -86,7 +86,7 @@ extern const gpio_pin_t PIN_IEC_RESET_IN;   /* PF8 */
 
 /* ---- Status, LEDs (high = on; power LED is hard-wired to 3V3) ------------ */
 extern const gpio_pin_t PIN_LED_ACT;        /* PG0 */
-extern const gpio_pin_t PIN_LED_FDD;        /* PG1 */
+extern const gpio_pin_t PIN_LED_FDD;        /* PG1 on v0.x; v1.0: PC7 (B3a), see board_pin() */
 extern const gpio_pin_t PIN_LED_USB;        /* PG2 */
 extern const gpio_pin_t PIN_LED_ERR;        /* PG3 */
 extern const gpio_pin_t PIN_PWR_SRC;        /* PG4, TPS2116 status input */
@@ -139,7 +139,7 @@ extern const gpio_pin_t PIN_LOOP_EN;        /* PG14, high = TS5A3166 closes WDAT
 extern const gpio_pin_t PIN_WGATE_SENSE;    /* PG15, WGATE bus read back through HC14 U10F (high = WGATE asserted) */
 extern const gpio_pin_t PIN_GUARD_OFF;      /* PG7, J20 pin 2: C64 PSU Guard OFF (high = both drive rails off) */
 extern const gpio_pin_t PIN_GUARD_ERR5;     /* PG8, J20 pin 3: Guard 5 V channel tripped (open drain, 10k pull-up R107) */
-extern const gpio_pin_t PIN_GUARD_ERR12;    /* PG13, J20 pin 4: Guard 12 V channel tripped (10k pull-up R108) */
+extern const gpio_pin_t PIN_GUARD_ERR12;    /* PC9 (B3a, was PG13), J20 pin 4: Guard 12 V channel tripped (10k pull-up R108) */
 #define INDEX_SIM_AF            GPIO_AF4_TIM15  /* TIM15_CH1 on PE5 */
 
 /* v1.0 LAN: WIZnet W5500 on SPI3 (schematic sheet LAN, stage A6).  No driver yet: the
@@ -188,6 +188,23 @@ extern const gpio_pin_t PIN_LAN_RST;        /* PD10, W5500 RSTn, low >= 500 us =
  * board_gpio_init() sets the flag from the board revision before it touches any bus output. */
 extern bool board_fdd_mosfet;
 
+/* Stage B3a (pin swap for the v1.0 routing): on v1.0 FDD_MOTOR_B moved from PE8 to PC13 and LED_FDD
+ * from PG1 to PC7.  PIN_FDD_MOTOR_B / PIN_LED_FDD keep the v0.x pins so the bench boards keep working;
+ * bus_out(), bus_out_state() and led_set() translate them here (board_fdd_mosfet = board v1.0).
+ * PC13 is a backup-domain pin (low speed, 3 mA): enough for the static Q6 gate (100k pull-down). */
+static inline const gpio_pin_t* board_pin(const gpio_pin_t* p, gpio_pin_t* v10)
+{
+    if (board_fdd_mosfet) {
+        if (p->port == GPIOE && p->pin == GPIO_PIN_8) {
+            v10->port = GPIOC; v10->pin = GPIO_PIN_13; return v10;
+        }
+        if (p->port == GPIOG && p->pin == GPIO_PIN_1) {
+            v10->port = GPIOC; v10->pin = GPIO_PIN_7; return v10;
+        }
+    }
+    return p;
+}
+
 static inline bool bus_out_inverted(const gpio_pin_t* p)
 {
     /* A11f: WGATE keeps the active-low convention on v1.0 as well - PE14 is WGATE_n into the NOR
@@ -198,6 +215,8 @@ static inline bool bus_out_inverted(const gpio_pin_t* p)
 /** Drive a bus output: true = assert (bus low), false = release. */
 static inline void bus_out(const gpio_pin_t* p, bool assert)
 {
+    gpio_pin_t v10;
+    p = board_pin(p, &v10);
     HAL_GPIO_WritePin(p->port, p->pin, (assert != bus_out_inverted(p)) ? BUS_OUT_ASSERT : BUS_OUT_RELEASE);
 }
 
@@ -210,11 +229,15 @@ static inline bool bus_in(const gpio_pin_t* p)
 /** True if the output pin currently asserts its bus line. */
 static inline bool bus_out_state(const gpio_pin_t* p)
 {
+    gpio_pin_t v10;
+    p = board_pin(p, &v10);
     return ((p->port->ODR & p->pin) == 0) != bus_out_inverted(p);
 }
 
 static inline void led_set(const gpio_pin_t* p, bool on)
 {
+    gpio_pin_t v10;
+    p = board_pin(p, &v10);
     HAL_GPIO_WritePin(p->port, p->pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 

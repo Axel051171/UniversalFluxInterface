@@ -58,6 +58,12 @@ per Überlaufzähler), nicht einen TIM2-Kanal.
 Frei nach A11: PC13 (nur RTC/Tamper, 3 mA), PC2_C, PC3_C (ADC3, Direktpins), PB4 (NJTRST), PC7, PC8,
 PC9 (TIM3/TIM8 CH2–CH4, SDMMC1), PA10 (TIM1_CH3, USART1_RX) = 8 Pins.
 
+B3a (Pin-Tausch fürs Routing, 25.10.): FDD_MOTOR_B PE8 → PC13 (GPIO out, langsam, statisches Q6-Gate),
+LED_FDD PG1 → PC7 (GPIO out), GUARD_ERR12 PG13 → PC9 (GPIO in); keine Timer-Funktion betroffen. PE8, PG1
+und PG13 sind auf v1.0 frei (no-connect), die Firmware nimmt für MOTOR_B/LED_FDD per Revision den
+alten Pin auf v0.x (board_pin() in board.h). Frei auf v1.0 damit: PE8, PG1, PG13, PC2_C, PC3_C, PB4,
+PC8, PA10 = 8 Pins.
+
 ## 4 Bereits belegte Pins (Referenz)
 
 Die vollständige Belegung steht in `kicad/UFI_Headless/README.md`, Abschnitt „GPIO-Belegung“;
