@@ -6994,6 +6994,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C5144580"
+			(at 259.08 109.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Connector_IDC:IDC-Header_2x12_P2.54mm_Vertical"
 			(at 259.08 109.22 0)
 			(effects
@@ -7682,6 +7691,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 252.222 201.93 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 252.222 201.93 90)
 			(hide yes)
@@ -7759,6 +7777,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 254.762 201.93 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 254.762 201.93 90)
 			(hide yes)
@@ -7834,6 +7861,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 257.302 201.93 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -8026,7 +8062,7 @@
 		(at 240.03 299.72 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "938fb2d7-a4d2-463e-8ee5-94fc4102b281")

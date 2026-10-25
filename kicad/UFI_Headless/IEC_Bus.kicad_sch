@@ -5764,6 +5764,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 71.882 171.45 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 71.882 171.45 90)
 			(hide yes)
@@ -5839,6 +5848,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 74.422 171.45 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -5918,6 +5936,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 76.962 171.45 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 76.962 171.45 90)
 			(hide yes)
@@ -5995,6 +6022,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 79.502 171.45 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 79.502 171.45 90)
 			(hide yes)
@@ -6070,6 +6106,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 92.202 171.45 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"

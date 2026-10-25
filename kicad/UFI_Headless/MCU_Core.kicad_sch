@@ -22945,6 +22945,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C23179"
+			(at 320.04 291.338 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 320.04 291.338 90)
 			(hide yes)
@@ -23020,6 +23029,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C23179"
+			(at 320.04 298.958 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -23099,6 +23117,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C23179"
+			(at 320.04 306.578 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 320.04 306.578 90)
 			(hide yes)
@@ -23174,6 +23201,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C23179"
+			(at 320.04 314.198 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -23351,6 +23387,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C2977594"
+			(at 355.6 264.16 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical"
@@ -23611,6 +23656,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 337.82 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 337.82 299.72 0)
 			(hide yes)
@@ -23697,6 +23751,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 347.98 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 347.98 299.72 0)
 			(hide yes)
@@ -23774,6 +23837,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 358.14 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 358.14 299.72 0)
 			(hide yes)
@@ -23849,6 +23921,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C51450"
+			(at 368.3 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
@@ -24008,6 +24089,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 378.46 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 378.46 299.72 0)
 			(hide yes)
@@ -24083,6 +24173,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C51450"
+			(at 388.62 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
@@ -24162,6 +24261,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 398.78 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 398.78 299.72 0)
 			(hide yes)
@@ -24239,6 +24347,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 408.94 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 408.94 299.72 0)
 			(hide yes)
@@ -24314,6 +24431,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C51450"
+			(at 419.1 299.72 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
@@ -24491,6 +24617,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C21190"
+			(at 340.36 250.698 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -25094,6 +25229,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C25804"
+			(at 369.062 55.88 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 369.062 55.88 90)
 			(hide yes)
@@ -25171,6 +25315,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C25804"
+			(at 381.762 55.88 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 381.762 55.88 90)
 			(hide yes)
@@ -25246,6 +25399,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C492427"
+			(at 383.54 165.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x10_P2.54mm_Vertical"
@@ -26141,6 +26303,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C21190"
+			(at 320.04 321.818 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 320.04 321.818 90)
 			(hide yes)
@@ -26216,6 +26387,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C23179"
+			(at 320.04 329.438 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
@@ -26335,6 +26515,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C51450"
+			(at 337.82 320.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
 			(at 337.82 320.04 0)
 			(hide yes)
@@ -26410,6 +26599,15 @@
 				(font
 					(size 1.27 1.27)
 				)
+			)
+		)
+		(property "LCSC" "C51450"
+			(at 347.98 320.04 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
 			)
 		)
 		(property "Footprint" "Diode_SMD:D_SOD-323"
