@@ -10,7 +10,7 @@ import pcbnew
 MM, T = pcbnew.FromMM, pcbnew.ToMM
 CLR = MM(float(os.environ.get("ROUTE_CLR", "0.2")))  # a bit above the 0.15 mm rule
 VIA_D, VIA_DR = MM(0.6), MM(0.3)
-LAY = {"F": pcbnew.F_Cu, "I2": pcbnew.In2_Cu, "B": pcbnew.B_Cu, "I1": pcbnew.In1_Cu}
+LAY = {"F": pcbnew.F_Cu, "I2": pcbnew.In2_Cu, "I3": pcbnew.In3_Cu, "B": pcbnew.B_Cu, "I1": pcbnew.In1_Cu}
 
 path, netname, width, mode = sys.argv[1], sys.argv[2], MM(float(sys.argv[3])), sys.argv[4]
 pts = []

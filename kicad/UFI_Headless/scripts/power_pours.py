@@ -11,10 +11,12 @@ import sys
 import pcbnew
 
 MM = pcbnew.FromMM
-SUPPLY_NETS = ["VBUS", "/Power/VBUS_F", "/Power/+12V_IN", "+12V", "/Power/+5V_DRV",
-               "/Power/BUCK_SW", "+5V", "FDD_5V", "FDD_12V"]
+SUPPLY_NETS = ["VBUS", "/Power/VBUS_F", "/Power/+12V_IN", "/Power/+12V_PSU", "+12V", "/Power/+5V_DRV",
+               "/Power/BUCK_SW", "/Power/+5V_PSU", "/Power/+5V_PSU_F", "/Power/+5V_PRI", "+5V",
+               "/Power/FDD5_F", "FDD_5V", "/Power/FDD12_F", "FDD_12V",   # B3: eFuse chain nets added
+               "+3V3"]   # B3 6-layer: +3V3 is routed as tracks (no In2 pour any more), pours widen them
 BUFFER = 0.4  # mm added on each side of the routed track
-LAYERS = (pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu)
+LAYERS = (pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.In3_Cu, pcbnew.B_Cu)   # B3: In3 on the 6-layer board
 
 board = pcbnew.LoadBoard(sys.argv[1])
 existing = {(z.GetNetname(), z.GetLayer()) for z in board.Zones() if z.GetAssignedPriority() >= 5}

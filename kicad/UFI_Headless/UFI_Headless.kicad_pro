@@ -590,6 +590,14 @@
       },
       {
         "netclass": "Load",
+        "pattern": "/Power/FDD5_S"
+      },
+      {
+        "netclass": "Load",
+        "pattern": "/Power/FDD12_S"
+      },
+      {
+        "netclass": "Load",
         "pattern": "VBUS"
       },
       {
@@ -607,6 +615,10 @@
       {
         "netclass": "Load",
         "pattern": "/Power/+12V_IN"
+      },
+      {
+        "netclass": "Load",
+        "pattern": "/Power/+12V_PSU"
       },
       {
         "netclass": "Load",
@@ -634,19 +646,11 @@
       },
       {
         "netclass": "Load",
-        "pattern": "/Power/FDD5_S"
-      },
-      {
-        "netclass": "Load",
         "pattern": "FDD_5V"
       },
       {
         "netclass": "Load",
         "pattern": "/Power/FDD12_F"
-      },
-      {
-        "netclass": "Load",
-        "pattern": "/Power/FDD12_S"
       },
       {
         "netclass": "Load",

@@ -24,10 +24,13 @@ H, STROKE, GAP, MARGIN, EDGE = 0.8, 0.15, 0.4, 0.2, 0.3
 LABELS = {
     "J8":  ("R", {1: "SRQ", 2: "GND", 3: "ATN", 4: "CLK", 5: "DATA", 6: "RST"}, H),
     "J20": ("R", {1: "GND", 2: "OFF", 3: "ERR5", 4: "ERR12"}, H),
-    "J17": ("R", {1: "5V", 3: "GND", 4: "12V"}, H),   # pin 2 is GND too, no room beside it (J17 ref / J2)
-    "J3":  ("R", {1: "5V", 2: "GND", 3: "GND", 4: "12V"}, H),
-    "J15": ("R", {1: "EN2", 2: "GND"}, H),
-    "J19": ("L", {1: "5V", 2: "GND", 3: "IDX"}, H),
+    "J17": ("R", {1: "5V", 2: "GND", 3: "GND", 4: "12V"}, H),   # B3: JST XH B4B (A9a), pins 2.5 mm apart
+    "J3":  ("R", {1: "5V", 2: "GND", 3: "GND", 4: "12V"}, H),   # B3: JST XH B4B in the J6/J7 pocket
+    "J19": ("L", {1: "5V", 2: "GND", 3: "SYNC"}, H),            # B3: JST XH B3B, pin 3 = SYNC_5V (A11d)
+    # J23 Mac 3.5" port (A11d part 2): Apple 20-pin pinout, 1/3/5/7 GND, 9 -12 V only via JP6,
+    # 20 CSTOUT (PWM only via JP5)
+    "J23": ("TB", {2: "CA0", 4: "CA1", 6: "CA2", 8: "LSTB", 10: "WREQ", 12: "SEL", 14: "ENBL", 16: "RD", 18: "WR", 20: "CSTO",
+                   1: "GND", 3: "GND", 5: "GND", 7: "GND", 9: "-12V", 11: "5V", 13: "12V", 15: "12V", 17: "12V", 19: "12V"}, H),
     "J5":  ("R", {1: "TX", 2: "RX", 3: "GND"}, H),
     "J4":  ("LR", {1: "3V3", 3: "GND", 5: "GND", 7: "KEY", 9: "GND",
                    2: "SWDIO", 4: "SWCLK", 6: "SWO", 8: "NC", 10: "RST"}, H),   # board rule: text height >= 0.8 mm
@@ -57,6 +60,7 @@ check = "check" in args
 args = [a for a in args if a != "check"]
 board = pcbnew.LoadBoard(args[0])
 only = args[1:] or list(LABELS)
+present = {f.GetReference() for f in board.GetFootprints()}  # B3: label groups of removed headers (J15) go too
 edge = board.GetBoardEdgesBoundingBox()
 edge_in = pcbnew.BOX2I(edge.GetPosition(), edge.GetSize())
 edge_in.Inflate(-MM(EDGE))
@@ -76,7 +80,7 @@ def remove_old():
             board.Remove(d)
             n += 1
     for g in list(board.Groups()):
-        if g.GetName().startswith("pinlabels ") and g.GetName()[10:] in only:
+        if g.GetName().startswith("pinlabels ") and (g.GetName()[10:] in only or g.GetName()[10:] not in present):
             board.Remove(g)
     return n
 
@@ -86,7 +90,7 @@ def doomed(d):
     if d.GetClass() != "PCB_TEXT":
         return False
     g = d.GetParentGroup()
-    if g is not None and g.GetName().startswith("pinlabels ") and g.GetName()[10:] in only:
+    if g is not None and g.GetName().startswith("pinlabels ") and (g.GetName()[10:] in only or g.GetName()[10:] not in present):
         return True
     return any(d.GetText() == txt and abs(T(d.GetPosition().x) - x) < 0.3 and abs(T(d.GetPosition().y) - y) < 0.3
                for txt, x, y in REMOVE)

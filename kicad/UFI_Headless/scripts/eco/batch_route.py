@@ -20,9 +20,9 @@ import sys
 import pcbnew
 
 MM, T = pcbnew.FromMM, pcbnew.ToMM
-LN = ["F", "I2", "B"]
-LID = {"F": pcbnew.F_Cu, "I2": pcbnew.In2_Cu, "B": pcbnew.B_Cu}
-VIA_D, VIA_DR = 0.6, 0.3
+LN = ["F", "I2", "B"]   # extended by In3 on a 6-layer board below
+LID = {"F": pcbnew.F_Cu, "I2": pcbnew.In2_Cu, "I3": pcbnew.In3_Cu, "B": pcbnew.B_Cu}
+VIA_D, VIA_DR = map(float, os.environ.get("ROUTE_VIA", "0.6,0.3").split(","))   # B3: ROUTE_VIA=0.5,0.25 in tight spots
 CLR = float(os.environ.get("ROUTE_CLR", "0.17"))     # track to other copper (rule 0.15)
 VCLR = 0.25                                           # via hole to any other hole (rule 0.25)
 EDGE = 0.6                                            # keep away from the outline (rule 0.3)
@@ -36,6 +36,8 @@ def arg(name, default=None):
 
 
 board = pcbnew.LoadBoard(sys.argv[1])
+if board.GetCopperLayerCount() >= 6:
+    LN = ["F", "I2", "I3", "B"]   # B3: 6-layer board, In1/In4 are GND planes
 report = json.load(open(sys.argv[2], encoding="utf-8"))
 apply = "--apply" in sys.argv
 only = set(arg("--only", "").split(",")) - {""}
@@ -97,7 +99,7 @@ def endpoint(item, other_pos):
         return T(pos.x), T(pos.y), list(LN), "via"
     if cls == "PCB_TRACK":
         lay = board.GetLayerName(item.GetLayer())
-        ln = {"F.Cu": "F", "In2.Cu": "I2", "B.Cu": "B"}.get(lay)
+        ln = {"F.Cu": "F", "In2.Cu": "I2", "In3.Cu": "I3", "B.Cu": "B"}.get(lay)
         if ln is None:
             return None
         ends = [item.GetStart(), item.GetEnd()]
@@ -292,7 +294,7 @@ class Router:
                         h = 0.0 if via_goal else (abs(v[1] - gcx) + abs(v[2] - gcy)) * 0.9
                         heapq.heappush(pq, (nd + h, nd, v))
             if not via_goal and self.via_ok(i, j):
-                for l2 in range(3):
+                for l2 in range(len(LN)):
                     v = (l2, i, j)
                     nd = d + via_cost / self.step   # via cost is given in mm of detour, independent of the grid
                     if l2 != l and nd < dist.get(v, 1e18):

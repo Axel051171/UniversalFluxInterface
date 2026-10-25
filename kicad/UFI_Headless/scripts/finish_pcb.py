@@ -16,7 +16,10 @@ bb = board.GetBoardEdgesBoundingBox()
 x0, y0 = pcbnew.ToMM(bb.GetX()), pcbnew.ToMM(bb.GetY())
 x1, y1 = x0 + pcbnew.ToMM(bb.GetWidth()), y0 + pcbnew.ToMM(bb.GetHeight())
 
-for layer, netname in ((pcbnew.F_Cu, "GND"), (pcbnew.B_Cu, "GND"), (pcbnew.In2_Cu, "+3V3")):
+POURS = ((pcbnew.F_Cu, "GND"), (pcbnew.B_Cu, "GND"), (pcbnew.In2_Cu, "+3V3"))
+if board.GetCopperLayerCount() >= 6:   # B3 6-layer: In1/In4 GND planes, +3V3 routed as tracks
+    POURS = ((pcbnew.F_Cu, "GND"), (pcbnew.B_Cu, "GND"))
+for layer, netname in POURS:
     # supply pours (power_pours.py) may already sit on this layer: look for this net's pour
     if any(z.GetLayer() == layer and z.GetNetname() == netname for z in board.Zones()):
         continue

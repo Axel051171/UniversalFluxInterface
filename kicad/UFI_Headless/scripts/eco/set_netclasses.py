@@ -10,8 +10,8 @@ import sys
 CLASSES = {
     "Load": (1.0, 0.8, 0.4, [
         "VBUS", "/Power/VBUS_F", "/Power/+5V_PSU", "/Power/+5V_PSU_F",
-        "/Power/+12V_IN", "+12V", "/Power/BUCK_SW", "/Power/+5V_DRV", "/Power/+5V_PRI", "+5V",
-        "/Power/FDD5_F", "/Power/FDD5_S", "FDD_5V", "/Power/FDD12_F", "/Power/FDD12_S", "FDD_12V"]),
+        "/Power/+12V_IN", "/Power/+12V_PSU", "+12V", "/Power/BUCK_SW", "/Power/+5V_DRV", "/Power/+5V_PRI", "+5V",
+        "/Power/FDD5_F", "FDD_5V", "/Power/FDD12_F", "FDD_12V"]),   # B3: eFuse chain, FDD5_S/FDD12_S no longer exist
 }
 path = sys.argv[1]
 p = json.load(open(path, encoding="utf-8"))

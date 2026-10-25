@@ -138,7 +138,40 @@ cd kicad/UFI_Headless
 "$PY" scripts/verify_netlist.py headless.net           # Soll/Ist-Vergleich aller Netze
 ```
 
-## Layout v1.0 (Stufe B2, 24.10.2026)
+## Layout v1.0 (Stufe B3, 25.10.2026, 6 Lagen)
+
+![layout v1.0, 6 Lagen](docs/layout_v1.0_2026-10-25.png)
+
+- **DRC 0 Fehler / 0 Warnungen / 0 unverbunden, Schaltplan-Parität ok** (`kicad-cli pcb drc --severity-all --schematic-parity` auf der Projektdatei, mit den Bibliotheks-Prüfungen), keine Ausnahmen (Exclusions); `check_routing.py` (Skill `pcb-routing`) Exit 0: 32 von 32 Lastpfaden OK, 0 FEHLER. Ohne Pours gemessen (Owner-Regel): 0 unverbunden, 0 Freiraum-Fehler, 12 717 mm Leiterbahn, 1057 Vias, 231 Netze
+- **Lagenaufbau JLC06161H-3313, 1,6 mm** (`scripts/eco/make_6layer.py`): F.Cu 35 µm / 3313 0,0994 mm εr 4,1 / In1 / Kern 0,55 mm εr 4,6 / In2 / 2116 0,1088 mm εr 4,16 / In3 / Kern 0,55 mm / In4 / 3313 0,0994 mm / B.Cu
+- **Lagennutzung:** F.Cu Signale + GND-Pour · In1 GND massiv · In2 Signale (bevorzugt waagrecht) · In3 Signale (bevorzugt senkrecht) · In4 GND massiv · B.Cu Signale + GND-Pour. **Abweichung von der Vorgabe S/G/S/S/G+P/S:** In4 ist reine GND-Fläche (Owner-Entscheid B, 25.10.); die Versorgungs-Pours (+3V3, +5V, +12V, FDD_5V, FDD_12V …) liegen per `scripts/power_pours.py` auf den übrigen Lagen, `finish_pcb.py` legt auf 6 Lagen nur die F/B-GND-Pours und Stitching-Vias. Damit hat B.Cu eine ungeteilte Bezugsfläche
+- **Kritische Netze** (von Hand vor Freerouting, im DSN gesperrt): USB D+/D− F/B mit 0,15 mm / 0,18 mm Abstand (D+ 3 Vias, D− 5 Vias); Ethernet TX±/RX± auf F.Cu, RXP mit 3,7 mm auf In2; HSE_IN und OSC32_IN/OUT nur F.Cu (≤ 8 mm); OCTOSPI (PSRAM_CLK/CS/IO0–3) und SDMMC2 (SD_CLK/CMD/D0–D3) nur F/B; FDD RDATA/WDATA/INDEX nur F/B
+- **Impedanz – Schätzwerte (IPC-2141A, nicht gemessen, vor der Bestellung mit dem JLC-Impedanzrechner bestätigen):** Bezug F→In1 bzw. B→In4 über 0,0994 mm 3313 (εr 4,1). USB 0,15 mm / Abstand 0,18 mm ≈ 50 Ω je Leitung, ≈ 91 Ω differenziell (Soll 90 Ω); Ethernet 0,13 mm ≈ 54 Ω je Leitung, gekoppelt bei 0,18 mm ≈ 99 Ω (Soll 100 Ω). Impedanzkontrolle ist nicht bestellt
+- **Lastpfade** (Netzklasse `Load` 1,0 mm, Lastnetze gesperrt; gemessen mit `check_routing.py`/`routing_rules.json`, Widerstand bei 35 µm geschätzt):
+
+| Pfad | Netz | Länge | schmalste Stelle | R |
+|---|---|---|---|---|
+| J1:A4 → F1 | VBUS | 16,0 mm | 0,6 mm | ≈ 8 mΩ |
+| F1 → C10 / C10 → U3 | VBUS_F | 93,8 / 3,1 mm | 1,0 / 0,3 mm | ≈ 46 / 5 mΩ |
+| J17:1 → F4 | +5V_PSU | 23,6 mm | 1,0 mm | ≈ 12 mΩ |
+| F4 → C57 / C57 → U19 | +5V_PSU_F | 44,2 / 2,1 mm | 1,0 / 0,3 mm | ≈ 22 / 3 mΩ |
+| J2 → D2 | +12V_IN | 6,0 mm | 1,0 mm | ≈ 3 mΩ |
+| J17:4 → D27 | +12V_PSU | 19,2 mm | 1,0 mm | ≈ 9 mΩ |
+| D2 → U2 / D27 → U2 / D2 → U29 | +12V | 39,5 / 32,6 / 63,0 mm | 1,0 mm | ≈ 19 / 16 / 31 mΩ |
+| U2 → L1 | BUCK_SW | 2,8 mm | 0,6 mm | ≈ 2 mΩ |
+| L1 → C6 / C6 → U19 | +5V_DRV | 6,4 / 37,0 mm | 1,0 / 0,3 mm | ≈ 3 / 20 mΩ |
+| U19 → U3 / C8 → U3 | +5V_PRI | 16,3 / 2,9 mm | 0,3 mm | ≈ 13 / 5 mΩ |
+| U28 → U3 / C11 → U3 / U4 → U3 | +5V | 39,3 / 3,6 / 21,9 mm | 0,3 mm | ≈ 22 / 6 / 20 mΩ |
+| U28 → R26 / R26 → U12 | FDD5_F | 2,4 / 2,1 mm | 1,0 / 0,3 mm | ≈ 1 / 3 mΩ |
+| R26 → J3 / J7 / J14 / J23 / J19 | FDD_5V | 16,3 / 64,3 / 57,7 / 59,7 / 34,1 mm | 1,0 mm | ≈ 8 / 32 / 28 / 29 / 17 mΩ |
+| U29 → R29 / R29 → U13 | FDD12_F | 2,2 / 2,4 mm | 1,0 / 0,3 mm | ≈ 1 / 4 mΩ |
+| R29 → J3 / J7 / J14 / J23 | FDD_12V | 32,4 / 94,7 / 67,3 / 70,8 mm | 1,0 mm | ≈ 16 / 47 / 33 / 35 mΩ |
+
+  „schmalste Stelle“ ist das schmalste Segment des kürzesten Pfads: 0,3-mm-Hälse an den SOT-583-Pins von U3/U19 (TPS2116, 0,5 mm Raster) und die Kelvin-Abgriffe der Shunts zu den INA180, so wie `routing_rules.json` sie je Pfad zulässt (Begründung im `_comment` dort); die Hauptstrecken sind 1,0 mm, Pours kommen dazu
+- Routing-Weg: Freerouting 2.4.1 auf 6 Lagen (0,5/0,25-Vias, 0,15-mm-Signale, Netzklassen im DSN, Lastnetze und kritische Netze gesperrt), mehrere Läufe mit unterschiedlichen Einstellungen, bester behalten; Rest per `batch_route.py` / `maze_route.py` und Fenster-Neurouten. Die drei letzten offenen U5-Verbindungen löste der Pin-Tausch der Stufe B3a (LED_FDD → PC7, GUARD_ERR12 → PC9, FDD_MOTOR_B → PC13); R138 (+12V) hängt über ein 0,45/0,2-Via an der +12V-Bahn. Kleinere Vias 0,45/0,2 nur an einzelnen Engstellen (Restring 0,125 mm); das +5V-Via bei (28,55; 43,74) hat Bohrung 0,35 mm
+- Neue Werkzeuge: `scripts/eco/make_6layer.py`, `plane_fanout.py` (GND/+3V3-Fanout zu den Ebenen), `pair_offset.py` (Differenzpaare), `bt1_keepout.py` (kein Pour unter BT1 auf B.Cu), `silk_b3.py` (Siebdruck-Texte)
+
+### Layout v1.0, Stufe B2 (24.10.2026, 4 Lagen, durch B3 ersetzt)
 
 ![layout v1.0](docs/layout_v1.0_2026-10-24.png)
 
