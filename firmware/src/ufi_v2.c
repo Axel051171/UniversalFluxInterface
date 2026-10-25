@@ -94,6 +94,7 @@ enum {
     V2_SENSOR = 0x44,                   /* A10b: SHT40 temperature / humidity */
     V2_SYNC = 0x46,                     /* A10c: SYNC sensor capture (TIM8) status / counting */
     V2_RAILS = 0x45,                    /* A10d: FDD_5V / FDD_12V at the drive connector */
+    V2_FDD_PINS = 0x47,                 /* A10e: J6 pin read-backs, pin 4 / pin 33 outputs (v1.0) */
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
@@ -1362,6 +1363,16 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             put16(&out[2], r.v12_mv);
             out[4] = r.flags;
             n = 5u;
+            break;
+        }
+        case V2_FDD_PINS: {                 /* A10e: v1.0 read-backs; 2 bytes pin4, pin33 (0 / 1 / 0xFF keep) set the outputs first */
+            if (len != 0u && len != 2u) { ret = UFI_ERR_BAD_ARGS; break; }
+            if (len == 2u) { ret = ufi_sense_fdd_pins_set(p[0], p[1]); }
+            if (ret == UFI_OK) {
+                out[0] = ufi_sense_fdd_pins();
+                out[1] = ufi_sense_fdd_pins_out();
+                n = 2u;
+            }
             break;
         }
 

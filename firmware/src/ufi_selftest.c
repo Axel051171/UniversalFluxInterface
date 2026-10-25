@@ -28,7 +28,7 @@ typedef struct {
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
     "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
-    "rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock",
+    "rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock", "fdd_pins",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -306,6 +306,18 @@ static void t_wgate_lock(st_item_t* it)
     it->status = leaked ? ST_FAIL : ST_OK;
 }
 
+/* v1.0 read-backs (A11d): value = FDD_PIN_* mask; informational, a WGATE bus seen asserted at
+ * idle or an eFuse fault is a warning */
+static void t_fdd_pins(st_item_t* it)
+{
+    if (ufi_board_rev() < 10u) {
+        it->status = ST_SKIP;
+        return;
+    }
+    it->value = ufi_sense_fdd_pins();
+    it->status = (it->value & (FDD_PIN_WGATE_SENSE | FDD_PIN_FLT5 | FDD_PIN_FLT12)) ? ST_WARN : ST_OK;
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -359,6 +371,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(18, t_vrail(&items[n], 0));
     ITEM(19, t_vrail(&items[n], 1));
     ITEM(20, t_wgate_lock(&items[n]));
+    ITEM(21, t_fdd_pins(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */
