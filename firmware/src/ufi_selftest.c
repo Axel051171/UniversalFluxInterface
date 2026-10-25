@@ -28,7 +28,7 @@ typedef struct {
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
     "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
-    "rtc", "sht40",
+    "rtc", "sht40", "sync",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -241,6 +241,28 @@ static void t_sht40(st_item_t* it)
     it->status = s.status == SHT40_OK ? ST_OK : (ufi_board_rev() >= 10u ? ST_FAIL : ST_SKIP);
 }
 
+/* SYNC sensor (J19 pin 3 -> U26 -> PC6 / TIM8_CH1, v1.0): count pulses for 250 ms - a spinning
+ * Apple drive with the sensor gives one per 200 ms; value = pulses, none = nothing to judge */
+static void t_sync(st_item_t* it)
+{
+    ufi_sync_status_t s;
+    ufi_sync_status(&s);
+    const bool was = s.active;
+    if (ufi_sync_enable(true) != UFI_OK) {
+        it->status = ST_SKIP;               /* v0.x: no SYNC input */
+        return;
+    }
+    ufi_sync_status(&s);
+    const uint32_t c0 = s.count;
+    HAL_Delay(250);
+    ufi_sync_status(&s);
+    it->value = s.count - c0;
+    if (!was) {
+        (void)ufi_sync_enable(false);       /* stays on only while it is the index source */
+    }
+    it->status = it->value ? ST_OK : ST_SKIP;
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -290,6 +312,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(13, t_stack(&items[n]));
     ITEM(15, t_rtc(&items[n]));             /* A10: board v1.0 sensing, ids 15.. (14 = log stays last) */
     ITEM(16, t_sht40(&items[n]));
+    ITEM(17, t_sync(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */

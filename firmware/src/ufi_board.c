@@ -62,6 +62,7 @@ void ufi_board_init(bool power_on)
 {
     last_activity_ms = HAL_GetTick();
     ufi_sense_init();                       /* A10: calendar access, SHT40, rail voltages (state in DTCM) */
+    ufi_sync_init();                        /* A10c: SYNC capture state (TIM8), board revision */
     safe_mode = !power_on;
     if (safe_mode) {
         ufi_board_power(0x00);              /* e.g. a shorted drive: host switches on */
@@ -238,6 +239,9 @@ void ufi_board_service(void)
     if (off_s && ufi_drive_motor_is_on() && now - last_activity_ms > (uint32_t)off_s * 1000u) {
         ufi_drive_motor(false);
     }
+
+    /* A10c (v1.0): SYNC replaces the INDEX line while an Apple drive is selected with apple_sync=1 */
+    ufi_sync_service();
 
     if (now - last_sample_ms >= SAMPLE_MS) {
         last_sample_ms = now;

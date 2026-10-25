@@ -415,14 +415,31 @@ static bool hs_is_index(uint32_t t)
     return gap < prev - prev / 4u;
 }
 
+static bool index_sync;                     /* A10c (v1.0): SYNC capture on TIM8 replaces the INDEX line */
+
 void ufi_flux_index_source(bool internal)
 {
     index_internal = internal;
 }
 
+/* SYNC as the index source: the TIM2 CC2 capture channel is switched off (CCER CC2E, set only
+ * once at flux init; capture and write arm nothing but CC2IE), so the INDEX line produces no
+ * events at all and the TIM2 ISR needs no further condition; the TIM8 capture ISR reports the
+ * sensor pulse as the index event instead (ufi_sync.c) */
+void ufi_flux_index_source_sync(bool on)
+{
+    index_sync = on;
+    if (on) {
+        TIM2->CCER &= ~TIM_CCER_CC2E;
+    } else {
+        TIM2->CCER |= TIM_CCER_CC2E;
+    }
+    TIM2->SR = ~(TIM_SR_CC2IF | TIM_SR_CC2OF);  /* nothing stale from before the switch */
+}
+
 bool ufi_flux_index_asserted(void)
 {
-    return index_internal ? ufi_index_sim_pulse() : bus_in(&PIN_FDD_INDEX);
+    return index_internal ? ufi_index_sim_pulse() : index_sync ? ufi_sync_asserted() : bus_in(&PIN_FDD_INDEX);
 }
 
 void ufi_flux_tim2_irq(void)
