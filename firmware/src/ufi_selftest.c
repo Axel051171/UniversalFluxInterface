@@ -28,7 +28,7 @@ typedef struct {
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
     "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
-    "rtc", "sht40", "sync",
+    "rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -263,6 +263,49 @@ static void t_sync(st_item_t* it)
     it->status = it->value ? ST_OK : ST_SKIP;
 }
 
+/* drive supply voltage at the connector (v1.0 dividers, A11d S4): value = mV, FAIL below
+ * 4.5 V / 10.8 V while the rail is on, skip while it is off or without dividers (v0.x) */
+static void t_vrail(st_item_t* it, int rail)
+{
+    ufi_rails_t r;
+    ufi_sense_rails(&r);
+    it->value = rail ? r.v12_mv : r.v5_mv;
+    const uint8_t on = rail ? RAIL_FLAG_12V_ON : RAIL_FLAG_5V_ON;
+    const uint8_t low = rail ? RAIL_FLAG_12V_LOW : RAIL_FLAG_5V_LOW;
+    if (!(r.flags & RAIL_FLAG_FITTED) || !(r.flags & on)) {
+        it->status = ST_SKIP;
+        return;
+    }
+    it->status = (r.flags & low) ? ST_FAIL : ST_OK;
+}
+
+/* A11f write lock (v1.0): with WLOCK_FW high (= LOCK high whatever the front switch says) an
+ * asserted WGATE_n must not reach the bus - the NOR U31 keeps Q9 off, U10F reads the bus back
+ * on PG15.  value 0 ok, 1 = WGATE asserted despite the lock, 2 = asserted before the test */
+static void t_wgate_lock(st_item_t* it)
+{
+    if (ufi_board_rev() < 10u) {
+        it->status = ST_SKIP;
+        return;
+    }
+    if (ufi_drive_get_current() != DRIVE_NONE || ufi_write_get_state() != WRITE_IDLE) {
+        it->status = ST_SKIP;               /* only with nothing selected and no write pending */
+        return;
+    }
+    ufi_board_write_enable(false);          /* WLOCK_FW high: locked regardless of WLOCK_HW */
+    if (bus_in(&PIN_WGATE_SENSE)) {
+        it->value = 2;
+        it->status = ST_FAIL;
+        return;
+    }
+    bus_out(&PIN_FDD_WGATE, true);          /* WGATE_n low: only the lock keeps the gate off now */
+    HAL_Delay(1);
+    const bool leaked = bus_in(&PIN_WGATE_SENSE);
+    bus_out(&PIN_FDD_WGATE, false);
+    it->value = leaked ? 1u : 0u;
+    it->status = leaked ? ST_FAIL : ST_OK;
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -313,6 +356,9 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(15, t_rtc(&items[n]));             /* A10: board v1.0 sensing, ids 15.. (14 = log stays last) */
     ITEM(16, t_sht40(&items[n]));
     ITEM(17, t_sync(&items[n]));
+    ITEM(18, t_vrail(&items[n], 0));
+    ITEM(19, t_vrail(&items[n], 1));
+    ITEM(20, t_wgate_lock(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */

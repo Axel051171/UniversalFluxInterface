@@ -93,6 +93,7 @@ enum {
     V2_RTC = 0x43,                      /* A10a: calendar read / set (board v1.0) */
     V2_SENSOR = 0x44,                   /* A10b: SHT40 temperature / humidity */
     V2_SYNC = 0x46,                     /* A10c: SYNC sensor capture (TIM8) status / counting */
+    V2_RAILS = 0x45,                    /* A10d: FDD_5V / FDD_12V at the drive connector */
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
@@ -438,6 +439,7 @@ static bool allowed_during_dump(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
         case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_RTC: case V2_SYNC:
+        case V2_RAILS:
         case V2_INDEX_SIM: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
             return true;
         default:
@@ -451,7 +453,7 @@ static bool uses_drive(uint8_t cmd)
     switch (cmd) {
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
         case V2_ABORT: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_QUALITY: case V2_ANALYSIS_JOB:
-        case V2_RTC: case V2_SYNC:          /* A10: board sensing, no drive involved */
+        case V2_RTC: case V2_SYNC: case V2_RAILS:   /* A10: board sensing, no drive involved */
             return false;
         default: return true; /* includes IEC, file I/O and mode/power changes */
     }
@@ -824,12 +826,13 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             uint32_t words;ufi_flux_store(&words);
             const bool idle=!ufi_operation_busy() && !ufi_dump_active() && ufi_resources_owner()!=UFI_OWNER_GW;
             /* ids 11+ (A10, board v1.0): the INFO caps word is full, new features are announced here */
-            enum {FEATURE_COUNT=13};
+            enum {FEATURE_COUNT=14};
             const bool enabled[FEATURE_COUNT]={true,true,true,ufi_board_has_apple(),true,
                 ufi_sd_present(),ufi_flux_store_is_psram(),ufi_usb_get_mode()==UFI_USB_COMPOSITE,true,true,
-                ufi_clock_rtc_ready(),ufi_sense_sht40_present(),ufi_board_rev()>=10u && ufi_config_apple_sync()};
+                ufi_clock_rtc_ready(),ufi_sense_sht40_present(),ufi_board_rev()>=10u && ufi_config_apple_sync(),
+                ufi_board_rev()>=10u};
             const uint32_t limits[FEATURE_COUNT]={REVOLUTIONS_STREAM,WAVE_MIN_TICKS,30,0,0,0,words,64,UFI_V2_MAX_PAYLOAD-UFI_JOB_HEADER,FLUX_TIMER_FREQ,
-                2099,0x44,FLUX_TIMER_FREQ};
+                2099,0x44,FLUX_TIMER_FREQ,((uint32_t)RAIL_12V_MIN_MV<<16)|RAIL_5V_MIN_MV};
             out[0]=1;out[1]=FEATURE_COUNT;
             for(unsigned i=0;i<FEATURE_COUNT;i++) {
                 uint8_t *f=out+2+i*8;
@@ -1348,6 +1351,17 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 put32(&out[11], s.last_t32); put32(&out[15], s.period);
                 n = 19u;
             }
+            break;
+        }
+        case V2_RAILS: {                    /* A10d: FDD_5V / FDD_12V at the drive connector (v1.0 dividers) */
+            if (len) { ret = UFI_ERR_BAD_ARGS; break; }
+            ufi_rails_t r;
+            memset(&r, 0, sizeof(r));
+            ufi_sense_rails(&r);
+            put16(&out[0], r.v5_mv);
+            put16(&out[2], r.v12_mv);
+            out[4] = r.flags;
+            n = 5u;
             break;
         }
 
