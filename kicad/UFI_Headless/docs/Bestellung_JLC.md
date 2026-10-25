@@ -40,8 +40,17 @@ Upload: **BOM** `UFI_Headless-bom-jlc.csv`, **CPL** `UFI_Headless-cpl-jlc.csv`.
 - Alle 99 BOM-Zeilen haben eine LCSC-Nummer (304 Bestückplätze, keine DNP-Teile). Lager und Basic/Extended wurden am
   25.10.2026 über die JLC-Teilesuche geprüft: 37 Basic, 1 Preferred, 61 Extended (je ~3 $ Rüstgebühr). Bauteilkosten
   bei der niedrigsten Staffel ca. 70,6 $ je Platine ohne Rüstgebühren.
-- **Knapp:** U5 STM32H723ZGT6 (C730146) **23 Stück** auf Lager – zuerst prüfen, bei Bedarf über „Parts Pre-order“
-  reservieren. J7 Wannenstecker 2×12 (C5144580) 81 Stück. U15 CSNP32GCR01-AOW (C2841139) 389 Stück, ca. 39,55 $ –
+- **U5 STM32H723ZGT6 (C730146): 23 Stück** am 25.10.2026 – vor allem anderen sichern, eine der beiden Wege:
+  1. **Reservieren:** im JLC-Konto unter der Teileverwaltung (Parts Manager / „My Parts“) mindestens
+     2 Stück + 1 Reserve von C730146 in die eigene Teilebibliothek kaufen. Diese Teile gehören dann dem
+     Konto und werden bei der Bestückung verwendet, auch wenn der freie Lagerbestand inzwischen leer ist.
+  2. **Beistellteil:** STM32H723ZGT6 selbst kaufen (z. B. Distributor, Gehäuse LQFP-144 20 × 20 mm, Endung
+     „T6“) und als Kundenteil an JLC schicken bzw. über die Teileverwaltung als eigenes Teil anlegen; in der
+     BOM bleibt die Zeile U5, im Bestückungsauftrag „vom Kunden beigestellt“ wählen. Lieferzeit einplanen.
+  Ausweichteil mit gleicher Pinbelegung: STM32H733ZGT6 (C730162, mit Krypto-Einheit, 4 Stück, ca. 14 $) –
+  dass die Firmware darauf unverändert läuft, ist nicht nachgewiesen, daher nur nach Rückfrage.
+  Die Bedienelemente heißen auf jlcpcb.com je nach Version anders; hier nicht im Konto geprüft.
+- J7 Wannenstecker 2×12 (C5144580) 81 Stück. U15 CSNP32GCR01-AOW (C2841139) 389 Stück, ca. 39,55 $ –
   das teuerste Teil, bleibt bestückt.
 - Bei „out of stock“: gleiches Bauteil mit anderer LCSC-Nummer wählen (Wert, Gehäuse und Pinbelegung identisch).
 - **Durchsteckteile (THT):** J2, J3, J4, J5, J6, J7, J8, J12, J14, J16, J17, J19, J20, J21, J22, J23 und BT1. Alle haben
@@ -52,7 +61,8 @@ Upload: **BOM** `UFI_Headless-bom-jlc.csv`, **CPL** `UFI_Headless-cpl-jlc.csv`.
 - **J16** (interner USB-Header 2×5): Stift 9 ist die Kodierung. Bei Maschinenbestückung bleibt er stehen und wird
   nachher gezogen oder abgekniffen (im Druck „X“).
 - Testpunkte TP1–TP13 und die Lötbrücken JP1, JP3, JP5–JP8 sind blankes Kupfer – nichts zu bestücken. Grundzustand
-  ab Werk: JP1 (DRATE auf J6 Pin 6) offen, JP3 (Amiga DF2) offen, JP5/JP6 offen, JP7 Pad 1–2 (J6 Pin 33 auf GND),
+  ab Werk: JP1 (DRATE auf J6 Pin 6) offen, JP3 (Amiga DF2) offen, JP5/JP6 offen (Rückseitendruck an JP6:
+  „nur 400K“ – −12 V an J23 Pin 9 nur für das 400K-Laufwerk), JP7 Pad 1–2 (J6 Pin 33 auf GND),
   JP8 (−12 V an Disk II) geschlossen.
 
 ### Platzierung prüfen (Viewer-Schritt)

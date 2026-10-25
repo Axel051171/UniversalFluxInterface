@@ -148,3 +148,28 @@ Ein verdrehter Stecker war bei den Stiftleisten nicht erkennbar und hätte 12 V 
 (6 V max.) bzw. auf den 5-V-Eingang des Laufwerks gelegt; das XH-Gehäuse passt nur in einer
 Lage. Beide 12-V-Quellen (J2 Hohlbuchse, J17 Pin 4) dürfen gleichzeitig stecken: D2 und D27
 (SS54) bilden ein Dioden-ODER.
+
+### Kabelbeschriftung J14 (Disk II) und J23 (Mac 3,5") – nicht vertauschen
+
+J14 und J23 sind gleiche 2×10-Wannenstecker nebeneinander an der Laufwerkskante; ein Kabel passt
+mechanisch in beide. Die Belegung unterscheidet sich an vier Pins (Netzliste vom 25.10.2026):
+
+| Pin | J14 Disk II | J23 Mac 3,5" |
+|---|---|---|
+| 9 | −12 V (über JP8, ab Werk geschlossen) | offen (JP6 ab Werk offen; nur 400K braucht −12 V) |
+| 12 | +5 V (FDD_5V) | SEL, Logikausgang von U27 |
+| 14 | /ENABLE Laufwerk 1 (AP_EN1) | /ENBL (AP_EN2) |
+| 20 | WRPROT, Eingang | !CSTOUT, 10 k nach FDD_5V, Rücklesung über U26 |
+
+Folgen beim Vertauschen: Ein Disk-II-Laufwerk an J23 bezieht seine 5 V über Pin 12 aus dem
+Logikausgang von U27 (überlastet U27, Laufwerk läuft nicht, ohne −12 V an Pin 9 ohnehin nicht).
+Ein Mac-800K/FDHD-Laufwerk an J14 bekommt −12 V auf Pin 9, wo es kein −12 V erwartet.
+
+Deshalb vor dem ersten Einstecken:
+
+1. Beide Kabelenden auf der Platinenseite beschriften: „J14 DISK II“ bzw. „J23 MAC 3,5"“,
+   am besten zusätzlich farbiger Schrumpfschlauch (z. B. J14 rot, J23 blau); rote Ader = Pin 1.
+2. Die Gehäusebuchsen ebenso beschriften, damit Kabel und Buchse zusammen bleiben.
+3. Ohne Laufwerk messen (Laufwerksversorgung an, `ufi power 3` = 5 V und 12 V; danach `ufi power 0`): J14 Pin 9 ≈ −11…−12 V und
+   Pin 12 = +5 V; J23 Pin 9 offen (kein −12 V) und Pin 12 kein Dauer-+5 V (SEL, Firmware steuert).
+4. Erst dann das jeweilige Laufwerk anschließen.

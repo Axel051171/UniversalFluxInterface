@@ -81150,6 +81150,18 @@
 			(justify mirror)
 		)
 	)
+	(gr_text "nur 400K"
+		(at 72.4 75.78 0)
+		(layer "B.SilkS")
+		(uuid "e0843a88-86b5-49a6-b53e-786e26bc2990")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+			(justify mirror)
+		)
+	)
 	(gr_text "5V"
 		(at 2.056191 9.99 0)
 		(layer "B.SilkS")
