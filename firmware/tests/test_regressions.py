@@ -42,7 +42,9 @@ def run(name, code, sources=()):
     subprocess.run([compiler(), "-std=c11", "-Wall", "-Wextra", "-Werror",
                     "-Wno-pointer-to-int-cast", "-I", str(FW / "include"), "-I", str(FW/'tests'), *extra_cflags(),
                     str(src), *[str(FW / s) for s in sources], "-o", str(exe)], check=True)
-    subprocess.run([str(exe)], check=True, timeout=15)
+    # ASan/UBSan builds (UFI_SANITIZE, CI) run several times slower; regression_quality_runtime
+    # takes about 4 s sanitized on a desktop and passed the 15 s limit on the shared CI runner
+    subprocess.run([str(exe)], check=True, timeout=120 if os.environ.get("UFI_SANITIZE") else 15)
     print(name + ": passed", flush=True)
 
 
