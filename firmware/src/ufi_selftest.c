@@ -95,6 +95,7 @@ static void t_psram(st_item_t* it)
         it->status = ST_SKIP;
         return;
     }
+    ufi_flux_invalidate();
     volatile uint32_t* p = store + words - 16384u;
     for (uint32_t i = 0; i < 16384u; i++) {
         p[i] = (i * 0x9E3779B9u) ^ 0xA5A5A5A5u;

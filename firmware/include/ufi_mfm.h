@@ -18,6 +18,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "ufi_sector_findings.h"
 
 #define MFM_TICK_HZ         275000000u
 #define MFM_MAX_SECTOR      1024u
@@ -37,6 +38,8 @@ typedef struct {
  * (format 7): id = {track, 0, physical sector 0-15, 1}, data[0..255] payload, volume in
  * the decoder's disk_id; DOS 3.3 / ProDOS logical order is applied by the host. */
 typedef void (*mfm_sector_cb)(void* ctx, const mfm_id_t* id, const uint8_t* data, bool crc_ok);
+typedef void (*mfm_diagnostic_cb)(void* ctx, const mfm_id_t* id, uint32_t checked,
+                                uint32_t findings, uint16_t expected, uint16_t actual, uint8_t reason);
 
 typedef struct {
     /* clock recovery: cell period in 1/256 tick, limited to +-12 % of nominal */
@@ -62,6 +65,7 @@ typedef struct {
     uint8_t buf[MFM_MAX_SECTOR + 2];
     uint32_t raw[AMIGA_RAW_LONGS];
     mfm_sector_cb cb;
+    mfm_diagnostic_cb diagnostic; /* analysis only; never changes acceptance */
     void* ctx;
     uint32_t ids_seen;          /* good ID fields / good Amiga headers (format detection) */
     uint8_t head_ids;           /* IBM: bit h set for every head number seen in IDs */
@@ -74,6 +78,7 @@ typedef struct {
     bool last_ff;               /* the nibble just framed was FF (sync candidate) */
     uint8_t nib_prev1, nib_prev2; /* the two nibbles framed before the current one (prologue variants) */
 } mfm_decoder_t;
+void mfm_dec_diagnostic_tail(mfm_decoder_t* d, uint8_t reason);
 
 /* Apple II (format 7) nibble statistics of the last analysis, ANALYSIS_JOB op 35 (1.18).
  * Wire format = memory layout, 178 bytes.  Counted by the profile-0 decoder only; a

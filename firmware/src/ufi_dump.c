@@ -775,6 +775,7 @@ static int copy_track(void)
     }
     uint32_t words = 0;
     uint32_t* store = ufi_flux_store(&words);
+    ufi_flux_invalidate();
     uint32_t prev = 0;
     for (uint32_t i = 0; i < n; i++) {                 /* timestamps -> deltas, in place */
         const uint32_t t = r->samples[i].timestamp;
@@ -1232,6 +1233,7 @@ static bool job_load_track(uint32_t* n, int* err)
 {
     uint32_t words = 0;
     uint32_t* store = ufi_flux_store(&words);
+    ufi_flux_invalidate();
     const uint32_t max = words>16u?words-16u:0;
     UINT got = 0;
     *n = 0;
@@ -1460,6 +1462,7 @@ static void sdwrite_service(void)
                 /* All v3 streams must be representable before any physical write. */
                 if(hfeh.v3){
                     uint32_t words=0,*store=ufi_flux_store(&words),n=0;
+                    ufi_flux_invalidate();
                     for(cyl=0;cyl<hfeh.tracks && valid;cyl++)for(head=0;head<hfeh.sides;head++){
                         if(!(table[cyl]&65535u))continue;
                         if(load_hfe_v3(store,words>16?words-16:0,&n)){valid=false;break;}

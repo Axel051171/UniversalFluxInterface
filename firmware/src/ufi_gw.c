@@ -706,6 +706,7 @@ static void w_put(uint32_t gw_ticks)
         w_overflow = true;
         return;
     }
+    if(!w_count)ufi_flux_invalidate();
     store[w_count++] = gw_ticks << GW_TICK_SHIFT;
 }
 

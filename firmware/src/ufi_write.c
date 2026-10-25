@@ -20,6 +20,7 @@
 
 #include "ufi_firmware.h"
 #include "ufi_metrics.h"
+#include "ufi_profile.h"
 #include "ufi_verify.h"
 #include "ufi_quality.h"
 #include "ufi_write_stream.h"
@@ -109,6 +110,7 @@ __attribute__((section(".dtcm"))) static mfm_decoder_t verify_dec;
 static uint32_t source_index_ticks, reference_started;
 static bool local_reference_ready;
 #include "ufi_raw_verify.h"
+#include "ufi_precision.h"
 static uint8_t raw_flags;
 static uint16_t raw_tolerance=30;
 static bool raw_available;
@@ -141,8 +143,18 @@ static wstream_t ws;
 static wave_cursor_t wave_cursor;
 static uint32_t wave_segments, write_timeout_ms;
 static uint32_t last_ndtr;          /* DMA counter at the previous update interrupt */
+static volatile int write_start_error;
+static volatile bool diagnostic_write;
+enum {VERIFY_CAPTURE=1,VERIFY_PRECISION,VERIFY_RAW,VERIFY_SECTORS};
+static uint8_t verify_phase;
+static uint32_t verify_since;
+static bool verify_count_ok;
+static raw_builder_t verify_raw_builder;
+__attribute__((section(".backup"),aligned(4))) static raw_profile_t verify_observed;
 static void dma_stop(void);
 static void ring_fill(const wstream_fill_t* f);
+static void start_now(uint32_t t);
+static void write_verify_cancel(void);
 
 /* Write data lives in the shared flux store (ufi_flux.c); capture and write never
  * run at the same time.  A verify capture overwrites it (only counts are compared). */
@@ -295,14 +307,18 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
         ufi_stream_active() || receive_failed) {
         return UFI_ERR_BUSY;
     }
+    write_buffer=ufi_flux_store(&write_buffer_words);write_arr=(uint16_t*)write_buffer;
     if (flux_count < 3 || flux_count > write_buffer_words) {
         return UFI_ERR_BUFFER_FULL;
     }
 
     g_write.track = track;
+    write_start_error=UFI_OK;
+    diagnostic_write=false;
+    ufi_flux_invalidate();
     source_index_ticks=0;
     local_reference_ready=false;
-    raw_available=false;raw_source.valid=false;
+    raw_available=false;raw_source.valid=false;ufi_precision_reset();
     expected_sectors=0;
     expected_c=expected_h=expected_n=0;
     memset(&verify_ref,0,sizeof(verify_ref));
@@ -518,6 +534,8 @@ int ufi_write_start(void) {
     if (g_write.bytes_received < g_write.bytes_expected) {
         return UFI_ERR_BUFFER_FULL;
     }
+    write_start_error=UFI_OK;
+    if(ufi_cancel_requested()){g_write.state=WRITE_ERROR;return UFI_ERR_CANCELLED;}
     if(!g_write.gw_mode && !ufi_drive_media_matches(write_media_token)){
         g_write.state=WRITE_ERROR;return UFI_ERR_MEDIA_CHANGED;
     }
@@ -536,9 +554,13 @@ int ufi_write_start(void) {
     if(!g_write.gw_mode && (g_write.apple || !g_write.wave_mode) && (active_pre_ticks || active_post_ticks)){
         g_write.state=WRITE_ERROR;return UFI_ERR_NOT_IMPL;
     }
-    if(g_write.verify_after && (raw_flags&1)){
+    if(g_write.verify_after && (raw_flags&1) && !g_write.wave_mode){
         bool valid=raw_profile_build(&raw_source,write_buffer,g_write.flux_count,source_index_ticks,false);
         if(!valid && (raw_flags&2)){g_write.state=WRITE_ERROR;return UFI_ERR_BAD_ARGS;}
+    }
+    if(!g_write.gw_mode && (g_write.verify_after || g_write.raw_check) && ufi_precision_enabled() &&
+       (!g_write.wave_mode || active_pre_ticks || active_post_ticks)){
+        g_write.state=WRITE_ERROR;return UFI_ERR_NOT_IMPL;
     }
     {
         const int pret = pack_deltas();     /* before seek and WGATE: refuse, write nothing */
@@ -547,12 +569,17 @@ int ufi_write_start(void) {
             return pret;
         }
     }
-    if (g_write.raw_check) {                /* flags2 bit4 (4.17): source fingerprint after the weak pass, u32 deltas intact */
+    if (g_write.raw_check || (g_write.wave_mode && g_write.verify_after && (raw_flags&1))) {
+        /* Fingerprint the actual waveform, after the weak pass and before DMA. */
         if (!g_write.wave_mode || !source_index_ticks ||
             !raw_profile_build(&raw_source, write_buffer, g_write.flux_count, source_index_ticks, false)) {
             g_write.state = WRITE_ERROR;
             return UFI_ERR_BAD_ARGS;
         }
+    }
+    if(!g_write.gw_mode && (g_write.verify_after || g_write.raw_check) && ufi_precision_enabled()){
+        int ret=ufi_precision_source(write_buffer,g_write.flux_count,source_index_ticks,g_write.start_offset);
+        if(ret){g_write.state=WRITE_ERROR;return ret;}
     }
     if (ufi_board_soft_locked()) {          /* session lock engaged after acceptance (op 37) */
         g_write.state = WRITE_ERROR;
@@ -593,7 +620,10 @@ int ufi_write_start(void) {
         !(g_write.apple && !ufi_config_apple_sync())) {
         /* op 41: the drive's own index period against the source revolution, before any seek */
         diag_rpm_t r;
-        if (ufi_diag_rpm(2, &r) == UFI_OK) {
+        speed_measured=0;speed_source=source_index_ticks;
+        int rpm_ret=ufi_diag_rpm(2, &r);
+        if(rpm_ret){g_write.state=WRITE_ERROR;return rpm_ret;}
+        {
             speed_measured = r.period_avg;
             speed_source = source_index_ticks;
             const uint64_t allowed = (uint64_t)source_index_ticks * speed_tolerance_permille / 1000u;
@@ -684,7 +714,7 @@ int ufi_write_start(void) {
     }
     ufi_delay_us(g_write.gw_mode?20000u:extra.write_settle_us);
     if (g_write.gw_pre_us) ufi_delay_us(g_write.gw_pre_us);
-    if (ufi_cancel_requested()) {ufi_write_abort();return UFI_ERR_TIMEOUT;}
+    if (ufi_cancel_requested()) {ufi_write_abort();return UFI_ERR_CANCELLED;}
     if(!g_write.gw_mode && !ufi_drive_media_matches(write_media_token)){
         ufi_write_abort();return UFI_ERR_MEDIA_CHANGED;
     }
@@ -693,13 +723,8 @@ int ufi_write_start(void) {
     g_write.wait_since = HAL_GetTick();
     if (g_write.apple && !ufi_config_apple_sync()) {
         /* no index pulse: start right away, /WRREQ low; ends after the last interval */
-        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
-        g_write.state = WRITE_ACTIVE;
-        g_write.updates_left = 0;
-        TIM3->DIER |= TIM_DIER_UDE;
-        __HAL_TIM_ENABLE(&htim3);
-        ufi_sched_arm(TIM2->CNT);
-        return UFI_OK;
+        start_now(TIM2->CNT);
+        return write_start_error;
     }
     g_write.wait_since = HAL_GetTick();
     const uint32_t irq_mask = __get_PRIMASK();
@@ -741,6 +766,10 @@ static void ring_fill(const wstream_fill_t* f) {
 }
 
 static void write_finish(write_state_t final_state) {
+    /* End the destructive signal before waiting for DMA to acknowledge its stop. */
+    bus_out(&PIN_FDD_WGATE, false);
+    HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
+    ufi_board_write_enable(false);          /* v1.0 (A9b): hardware WGATE gate locked again */
     if (g_write.state == WRITE_WAITING_INDEX || g_write.state == WRITE_ACTIVE) {
         TIM2->DIER &= ~TIM_DIER_CC2IE;
     }
@@ -748,20 +777,24 @@ static void write_finish(write_state_t final_state) {
     TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
     dma_stop();
     wdata_idle();
-    bus_out(&PIN_FDD_WGATE, false);
-    HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
-    ufi_board_write_enable(false);          /* v1.0 (A9b): hardware WGATE gate locked again */
     apple_wrdata(false);
     led_set(&PIN_LED_FDD, false);
     erase_pending = false;
     TIM2->DIER &= ~TIM_DIER_CC4IE;          /* a pending delayed start dies with the write */
     start_pending = false;
     g_write.state = final_state;
+    diagnostic_write=false;
 }
 
 /* Open the gate and start the write timer at flux-timer time t: at the index / sensor
  * pulse, or at index + start_offset from the compare-channel interrupt. */
 static void start_now(uint32_t t) {
+    /* EP0 cancellation can arrive after main-loop preparation, before INDEX/CC4.
+     * Only IRQ-safe flag/GPIO reads here; media observation stays in main context. */
+    int ret=ufi_cancel_requested()?UFI_ERR_CANCELLED:
+        ufi_board_soft_locked()?UFI_ERR_SOFT_LOCK:
+        (ufi_board_write_locked() || ufi_drive_write_protected())?UFI_ERR_WRITE_PROT:UFI_OK;
+    if(ret){write_start_error=ret;write_finish(WRITE_ERROR);return;}
     if (g_write.apple) {
         /* Disk II with sync sensor: start at the sensor pulse (track alignment kept);
          * the end comes from the last interval, not from the next pulse */
@@ -787,6 +820,7 @@ void ufi_write_delayed_start(uint32_t t) {
 
 /* Called from the TIM2 index-capture interrupt */
 void ufi_write_index_handler(uint32_t t) {
+    if(diagnostic_write)return; /* timed ERASE/PATTERN owns its duration */
     if (g_write.state == WRITE_WAITING_INDEX) {
         if (start_pending) return;          /* another index while waiting for index + offset */
         if (g_write.start_offset) {
@@ -935,52 +969,57 @@ int ufi_erase_track(uint8_t track, uint8_t side) {
     return ufi_erase_track_ms(track, side, 220u);   /* one revolution and a bit */
 }
 
+/* Blocking diagnostics must honour EP0 cancel/disconnect while the main loop is
+ * occupied. Recheck physical interlocks and the same medium throughout. */
+static int blocking_write_guard(uint32_t media) {
+    if(ufi_cancel_requested())return UFI_ERR_CANCELLED;
+    if(ufi_board_soft_locked())return UFI_ERR_SOFT_LOCK;
+    if(ufi_board_write_locked() || ufi_drive_write_protected())return UFI_ERR_WRITE_PROT;
+    if(!ufi_drive_motor_is_on())return UFI_ERR_NO_DRIVE;
+    if(!ufi_drive_media_matches(media))return UFI_ERR_MEDIA_CHANGED;
+    return UFI_OK;
+}
+
+static int blocking_write_wait(uint32_t ms,uint32_t media) {
+    const uint32_t start=HAL_GetTick();
+    int ret;
+    do {
+        ret=blocking_write_guard(media);if(ret)return ret;
+        UFI_WATCHDOG_FEED();
+    } while(HAL_GetTick()-start<ms);
+    return blocking_write_guard(media);
+}
+
 int ufi_erase_track_ms(uint8_t track, uint8_t side, uint32_t ms) {
+    if(g_write.state!=WRITE_IDLE || g_capture.state==CAPTURE_WAITING_INDEX ||
+       g_capture.state==CAPTURE_RUNNING || ufi_stream_active())return UFI_ERR_BUSY;
     if (ms < 1u) ms = 1u;
     if (ms > 5000u) ms = 5000u;
-    if (ufi_board_write_locked() || ufi_drive_write_protected()) {
-        return UFI_ERR_WRITE_PROT;
-    }
-    if (ufi_drive_seek(track) != 0) {
-        return UFI_ERR_SEEK_FAIL;
-    }
-    ufi_drive_select_side(side);
-    HAL_Delay(20);
+    const uint32_t media=ufi_drive_media_token();
+    int ret=blocking_write_guard(media);if(ret)return ret;
+    ret=ufi_drive_seek(track);if(ret)return ret;
+    ret=ufi_drive_select_side(side);if(ret)return ret;
+    ret=blocking_write_wait(20,media);if(ret)return ret;
 
-    led_set(&PIN_LED_FDD, true);
-
-    if (ufi_drive_is_apple()) {             /* Disk II: /WRREQ without level changes */
-        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_RESET);
-        HAL_Delay(ms);
-        HAL_GPIO_WritePin(PIN_APL_WRREQ.port, PIN_APL_WRREQ.pin, GPIO_PIN_SET);
-        led_set(&PIN_LED_FDD, false);
-        return UFI_OK;
-    }
-
-    const uint32_t start = HAL_GetTick();
-
-    /* Wait for the start of an index pulse (INDEX pin stays readable in AF mode; or the
-     * internal index simulation) */
-    while (ufi_flux_index_asserted()) {
-        if (HAL_GetTick() - start > 500) {
-            led_set(&PIN_LED_FDD, false);
-            return UFI_ERR_NO_INDEX;
+    if(!ufi_drive_is_apple()) {
+        const uint32_t start=HAL_GetTick();
+        /* Leave an existing pulse, then wait for its next leading edge. */
+        for(unsigned phase=0;phase<2;phase++) {
+            while(ufi_flux_index_asserted()==(phase==0)) {
+                ret=blocking_write_guard(media);if(ret)return ret;
+                UFI_WATCHDOG_FEED();
+                if(HAL_GetTick()-start>500u)return UFI_ERR_NO_INDEX;
+            }
         }
     }
-    while (!ufi_flux_index_asserted()) {
-        if (HAL_GetTick() - start > 500) {
-            led_set(&PIN_LED_FDD, false);
-            return UFI_ERR_NO_INDEX;
-        }
-    }
-
-    bus_out(&PIN_FDD_WGATE, true);          // gate on, no WDATA pulses = DC erase
-    HAL_Delay(ms);
-    bus_out(&PIN_FDD_WGATE, false);
-
-    led_set(&PIN_LED_FDD, false);
-
-    return UFI_OK;
+    ret=blocking_write_guard(media);if(ret)return ret;
+    wdata_idle();
+    led_set(&PIN_LED_FDD,true);diagnostic_write=true;g_write.state=WRITE_ACTIVE;
+    if(ufi_drive_is_apple())HAL_GPIO_WritePin(PIN_APL_WRREQ.port,PIN_APL_WRREQ.pin,GPIO_PIN_RESET);
+    else bus_out(&PIN_FDD_WGATE,true); /* no WDATA pulses = DC erase */
+    ret=blocking_write_wait(ms,media);
+    write_finish(WRITE_IDLE);
+    return ret;
 }
 
 /* ============================================================================
@@ -992,14 +1031,35 @@ int ufi_erase_track_ms(uint8_t track, uint8_t side, uint32_t ms) {
  * revolutions are read back and every reference sector must come back with the same
  * data (level 3).  Tracks the decoder does not understand (GCR, protections) only get
  * the transition-count check (level 2).  Anything else fails with UFI_ERR_DMA (6). */
-int ufi_write_verify(void) {
+static int write_verify_result(uint8_t level) {
+    int ret=ufi_cancel_requested()?UFI_ERR_CANCELLED:
+        !ufi_drive_media_matches(write_media_token)?UFI_ERR_MEDIA_CHANGED:UFI_OK;
+    g_write.verify_level=ret?VERIFY_NONE:level;
+    g_write.state=ret?WRITE_ERROR:WRITE_IDLE;
+    return ret;
+}
+
+static void write_verify_cancel(void){
+    if(!verify_phase)return;
+    if(verify_phase==VERIFY_SECTORS)ufi_quality_async_cancel();
+    ufi_precision_verify_cancel();
+    if(g_capture.state==CAPTURE_WAITING_INDEX || g_capture.state==CAPTURE_RUNNING)ufi_capture_abort();
+    verify_phase=0;
+}
+static int write_verify_end(int ret,uint8_t level){
+    if(ret){write_verify_cancel();g_write.verify_level=(ret==UFI_ERR_MEDIA_CHANGED || ret==UFI_ERR_CANCELLED)?
+        VERIFY_NONE:VERIFY_WRITE_COMPLETED;g_write.state=WRITE_ERROR;return ret;}
+    verify_phase=0;return write_verify_result(level);
+}
+static int write_verify_begin(void) {
     if (g_write.state != WRITE_COMPLETE) {
         return UFI_ERR_BUSY;
     }
     if(!ufi_drive_media_matches(write_media_token)){
-        g_write.state=WRITE_ERROR;return UFI_ERR_MEDIA_CHANGED;
+        g_write.verify_level=VERIFY_NONE;g_write.state=WRITE_ERROR;return UFI_ERR_MEDIA_CHANGED;
     }
     g_write.state = WRITE_VERIFYING;
+    g_write.verify_level=VERIFY_WRITE_COMPLETED;
     if (!g_write.wave_mode && !local_reference_ready) verify_ref_build(&verify_ref, &verify_dec, write_arr, g_write.flux_count);
 
     int ret = ufi_capture_start_q(g_write.track, g_write.side, 2, 0, g_write.quarter);
@@ -1007,66 +1067,76 @@ int ufi_write_verify(void) {
         g_write.state = WRITE_ERROR;
         return ret;
     }
-    if(!ufi_drive_media_matches(write_media_token)){
-        ufi_capture_abort();g_write.state=WRITE_ERROR;return UFI_ERR_MEDIA_CHANGED;
-    }
-    const uint32_t start = HAL_GetTick();
-    while (ufi_capture_get_state() != CAPTURE_COMPLETE) {
-        UFI_WATCHDOG_FEED();
-        if (ufi_cancel_requested()) {
-            ufi_capture_abort();g_write.state=WRITE_ERROR;return UFI_ERR_CANCELLED;
-        }
-        if (HAL_GetTick() - start > 1500 || g_capture.state == CAPTURE_ERROR) {
-            ufi_flux_capture_stop();
-            g_write.state = WRITE_ERROR;
-            return g_capture.error_code==4?UFI_ERR_MEDIA_CHANGED:UFI_ERR_TIMEOUT;
-        }
-    }
+    verify_phase=VERIFY_CAPTURE;verify_since=HAL_GetTick();return UFI_OK;
+}
+static int write_verify_step_impl(void){
+    if(!verify_phase || g_write.state!=WRITE_VERIFYING)return UFI_ERR_BUSY;
+    UFI_WATCHDOG_FEED();
+    ufi_metric_add(&ufi_metrics.verify_steps,1);
+    if(ufi_cancel_requested())return write_verify_end(UFI_ERR_CANCELLED,0);
+    if(!ufi_drive_media_matches(write_media_token))return write_verify_end(UFI_ERR_MEDIA_CHANGED,0);
+    if(HAL_GetTick()-verify_since>(verify_phase==VERIFY_CAPTURE?1500u:10000u))return write_verify_end(UFI_ERR_TIMEOUT,0);
+    if(verify_phase==VERIFY_CAPTURE){
+        capture_state_t state=ufi_capture_get_state();
+        if(state==CAPTURE_ERROR)return write_verify_end(g_capture.error_code==4?UFI_ERR_MEDIA_CHANGED:
+            g_capture.error_code==2?UFI_ERR_DMA:g_capture.error_code==3?UFI_ERR_NO_INDEX:UFI_ERR_BUFFER_FULL,0);
+        if(state!=CAPTURE_COMPLETE)return UFI_ERR_BUSY;
     const uint8_t revs = ufi_flux_get_revolution_count();
-    if(!ufi_drive_media_matches(write_media_token)){
-        g_write.state=WRITE_ERROR;return UFI_ERR_MEDIA_CHANGED;
-    }
     if (revs < 2u || g_capture.error_code) {
-        g_write.state = WRITE_ERROR;
-        return UFI_ERR_DMA;
+        return write_verify_end(UFI_ERR_DMA,0);
     }
-
     const flux_revolution_t* r0 = ufi_flux_get_revolution(0);
-    if (g_write.raw_check) {
-        /* flags2 bit4 (4.17): the fingerprint is the verdict; level 2 on a match, level 1 (write
-         * completed) on a deviation, status 6 only when op 31 flag 0x02 demands the match */
-        raw_profile_t observed;
-        (void)raw_profile_build(&observed,(const uint32_t*)r0->samples,r0->count,r0->index_time,true);
-        const bool matches=raw_profile_compare(&raw_source,&observed,raw_tolerance,raw_report);
+    if(!r0)return write_verify_end(UFI_ERR_DMA,0);
+    uint32_t diff=r0->count>g_write.flux_count?r0->count-g_write.flux_count:g_write.flux_count-r0->count;
+    uint32_t tolerance=g_write.flux_count/20u;if(tolerance<100)tolerance=100;
+    verify_count_ok=diff<=tolerance;
+    g_capture.state=CAPTURE_IDLE;
+    int ret=g_write.gw_mode?UFI_OK:ufi_precision_verify_begin();
+    if(ret)return write_verify_end(ret,0);
+    verify_phase=VERIFY_PRECISION;verify_since=HAL_GetTick();return UFI_ERR_BUSY;
+    }
+    if(verify_phase==VERIFY_PRECISION){
+        int ret=g_write.gw_mode?UFI_OK:ufi_precision_verify_step();
+        if(ret==UFI_ERR_BUSY)return ret;
+        if(ret)return write_verify_end(ret,0);
+        if(g_write.raw_check || (raw_flags&1)){
+            const flux_revolution_t* r0=ufi_flux_get_revolution(0);
+            if(!r0)return write_verify_end(UFI_ERR_DMA,0);
+            /* An invalid raw profile is still reported as unavailable, as before. */
+            (void)raw_profile_begin(&verify_observed,&verify_raw_builder,(const uint32_t*)r0->samples,r0->count,r0->index_time,true);
+            verify_phase=VERIFY_RAW;verify_since=HAL_GetTick();return UFI_ERR_BUSY;
+        }
+        verify_phase=VERIFY_SECTORS;
+        if(verify_ref.n){ret=ufi_quality_async_verify(&verify_ref,verify_count_ok);if(ret)return write_verify_end(ret,0);}
+        verify_since=HAL_GetTick();return UFI_ERR_BUSY;
+    }
+    if(verify_phase==VERIFY_RAW){
+        int step=raw_profile_step(&verify_observed,&verify_raw_builder,256);if(!step)return UFI_ERR_BUSY;
+        bool matches=raw_profile_compare(&raw_source,&verify_observed,raw_tolerance,raw_report);
         raw_available=true;
-        if(!matches && (raw_flags&2)){g_write.state=WRITE_ERROR;return UFI_ERR_DMA;}
-        g_write.verify_level=matches?VERIFY_READBACK_PLAUSIBLE:1u;
-        g_write.state=WRITE_IDLE;
-        return UFI_OK;
+        if(!matches && (raw_flags&2))return write_verify_end(UFI_ERR_DMA,0);
+        if(g_write.raw_check)return write_verify_end(UFI_OK,matches?VERIFY_READBACK_PLAUSIBLE:VERIFY_WRITE_COMPLETED);
+        verify_phase=VERIFY_SECTORS;verify_since=HAL_GetTick();
+        if(verify_ref.n){int ret=ufi_quality_async_verify(&verify_ref,verify_count_ok);if(ret)return write_verify_end(ret,0);}
+        return UFI_ERR_BUSY;
     }
-    /* plausibility: transition count of revolution 0 within 5 % (at least 100) */
-    int32_t diff = (int32_t)r0->count - (int32_t)g_write.flux_count;
-    if (diff < 0) diff = -diff;
-    uint32_t tolerance = g_write.flux_count / 20;
-    if (tolerance < 100) tolerance = 100;
-    const bool count_ok = (uint32_t)diff <= tolerance;
-    if(raw_flags&1){
-        raw_profile_t observed;
-        (void)raw_profile_build(&observed,(const uint32_t*)r0->samples,r0->count,r0->index_time,true);
-        bool matches=raw_profile_compare(&raw_source,&observed,raw_tolerance,raw_report);
-        raw_available=true;
-        if(!matches && (raw_flags&2)){g_write.state=WRITE_ERROR;return UFI_ERR_DMA;}
+    uint8_t level=verify_count_ok?VERIFY_READBACK_PLAUSIBLE:VERIFY_NONE;
+    int ret=UFI_OK;
+    if(verify_ref.n){
+        ret=ufi_quality_async_step();if(ret==UFI_ERR_BUSY)return ret;
+        level=ufi_quality_async_verify_level();
     }
-
-    uint8_t level=count_ok?VERIFY_READBACK_PLAUSIBLE:VERIFY_NONE;
-    ret=verify_ref.n?ufi_quality_verify(&verify_ref,count_ok,&level):UFI_OK;
-    if (ret || !level) {
-        g_write.state = WRITE_ERROR;
-        return ret?ret:UFI_ERR_DMA;
-    }
-    g_write.verify_level = level;
-    g_write.state = WRITE_IDLE;
-    return UFI_OK;
+    return write_verify_end(ret?ret:!level?UFI_ERR_DMA:UFI_OK,level);
+}
+static int write_verify_step(void){
+    ufi_profile_mark_t profile=ufi_profile_begin();
+    int ret=write_verify_step_impl();
+    ufi_profile_end(UFI_CYCLE_VERIFY,profile);return ret;
+}
+int ufi_write_verify(void) {
+    int ret=write_verify_begin();if(ret)return ret;
+    do{ret=write_verify_step();}while(ret==UFI_ERR_BUSY);
+    return ret;
 }
 
 /* ============================================================================
@@ -1090,6 +1160,7 @@ uint32_t ufi_write_get_progress(void) {
 }
 
 void ufi_write_abort(void) {
+    write_verify_cancel();
     write_finish(WRITE_IDLE);
     g_write.flux_count = 0;
     g_write.bytes_received = 0;
@@ -1147,12 +1218,15 @@ void ufi_write_service(void) {
         const uint8_t cmd=write_event_cmd();
         ufi_write_abort();ufi_usb_send_event(cmd,UFI_ERR_TIMEOUT);return;
     }
-    if (g_write.state == WRITE_COMPLETE || g_write.state == WRITE_ERROR) {
+    if (g_write.state == WRITE_COMPLETE || g_write.state == WRITE_ERROR || g_write.state==WRITE_VERIFYING) {
         const uint8_t cmd = write_event_cmd();
-        int ret = index_cut ? UFI_ERR_TRACK_LONG : UFI_ERR_DMA;
+        int ret = write_start_error ? write_start_error : index_cut ? UFI_ERR_TRACK_LONG : UFI_ERR_DMA;
         if (g_write.state == WRITE_COMPLETE) {
             g_write.verify_level = 1;           /* timer and DMA finished */
-            ret = (g_write.verify_after || g_write.raw_check) ? ufi_write_verify() : UFI_OK;
+            if(g_write.verify_after || g_write.raw_check){ret=write_verify_begin();if(!ret)return;}
+            else ret=UFI_OK;
+        }else if(g_write.state==WRITE_VERIFYING){
+            ret=write_verify_step();if(ret==UFI_ERR_BUSY)return;
         }
         g_capture.state = CAPTURE_IDLE;     /* verify capture is internal, not sent */
         g_write.state = WRITE_IDLE;
@@ -1178,7 +1252,7 @@ static int write_local_run(void) {
             }
         }
         if (ret == UFI_OK && g_write.state != WRITE_COMPLETE) {
-            ret = UFI_ERR_DMA;
+            ret = write_start_error ? write_start_error : UFI_ERR_DMA;
         }
     }
     if(ret==UFI_OK && g_write.verify_after){
@@ -1245,15 +1319,11 @@ int ufi_write_local_gw(uint8_t track, uint8_t side, uint32_t flux_count,
  * write/capture path, motor running.  Blocking; duration capped at 5 s. */
 int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_t duration_ms) {
     if (g_write.state != WRITE_IDLE ||
-        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING) {
+        g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING || ufi_stream_active()) {
         return UFI_ERR_BUSY;
     }
-    if (ufi_board_write_locked() || ufi_drive_write_protected()) {
-        return UFI_ERR_WRITE_PROT;
-    }
-    if (!ufi_drive_motor_is_on()) {
-        return UFI_ERR_NO_DRIVE;
-    }
+    const uint32_t media=ufi_drive_media_token();
+    int ret=blocking_write_guard(media);if(ret)return ret;
     if (ufi_drive_is_apple()) {
         return UFI_ERR_NOT_IMPL;            /* pattern test drives the 34-pin WDATA only */
     }
@@ -1264,28 +1334,30 @@ int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_
     if (duration_ms > 5000u) {
         duration_ms = 5000u;
     }
-    if (ufi_drive_seek(track) != UFI_OK) {
-        return UFI_ERR_SEEK_FAIL;
-    }
-    ufi_drive_select_side(side);
-    HAL_Delay(20);
+    if(!duration_ms)duration_ms=1;
+    ret=ufi_drive_seek(track);if(ret)return ret;
+    ret=ufi_drive_select_side(side);if(ret)return ret;
+    ret=blocking_write_wait(20,media);if(ret)return ret;
 
     __HAL_TIM_DISABLE(&htim3);
     TIM3->DIER &= ~(TIM_DIER_UDE | TIM_DIER_UIE);
+    /* Waveform writes leave up-counting and an arbitrary CCR/preload behind. */
+    TIM3->CR1 |= TIM_CR1_DIR;
+    TIM3->CCMR1 &= ~TIM_CCMR1_OC1PE;
+    TIM3->CCR1 = WRITE_PULSE_TICKS-1u;
     TIM3->ARR = ticks - 1u;
     TIM3->EGR = TIM_EGR_UG;
     TIM3->SR = 0;
     TIM3->CCMR1 = (TIM3->CCMR1 & ~TIM_CCMR1_OC1M) | TIM_OCMODE_PWM1;
     led_set(&PIN_LED_FDD, true);
+    diagnostic_write=true;
+    g_write.state=WRITE_ACTIVE;
     bus_out(&PIN_FDD_WGATE, true);
     __HAL_TIM_ENABLE(&htim3);
 
-    const uint32_t start = HAL_GetTick();
-    while (HAL_GetTick() - start < duration_ms) {
-        UFI_WATCHDOG_FEED();
-    }
+    ret=blocking_write_wait(duration_ms,media);
     write_finish(WRITE_IDLE);
-    return UFI_OK;
+    return ret;
 }
 
 void ufi_write_set_extended(bool on) { g_write.wave_mode=on; }

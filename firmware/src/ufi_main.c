@@ -10,6 +10,8 @@
 #include "ufi_analysis_job.h"
 #include "ufi_evidence.h"
 #include "ufi_media.h"
+#include "ufi_metrics.h"
+#include "ufi_profile.h"
 
 /* ============================================================================
  * GLOBALE VARIABLEN (extern referenziert in ufi_flux.c, ufi_write.c)
@@ -85,6 +87,8 @@ void ufi_init(void)
     HAL_Init();
     SystemClock_Config();       /* 550 MHz */
     UFI_DWT_INIT();             /* cycle counter for us delays (Fix #6) */
+    const uint32_t cycle_probe=DWT->CYCCNT;__NOP();__NOP();__NOP();
+    ufi_cycles_init(SystemCoreClock,(DWT->CTRL&DWT_CTRL_CYCCNTENA_Msk)!=0 && DWT->CYCCNT!=cycle_probe);
     UFI_WATCHDOG_INIT();        /* Fix #9 */
 
     board_gpio_init();          /* all pins in their released / idle state */
@@ -226,6 +230,8 @@ void ufi_main_loop(void)
     uint32_t last_blink = 0;
 
     while (1) {
+        const uint32_t loop_start=HAL_GetTick();
+        ufi_profile_mark_t profile=ufi_profile_begin();
         UFI_WATCHDOG_FEED();
 
         ufi_usb_process_command();
@@ -240,7 +246,9 @@ void ufi_main_loop(void)
         ufi_floppy_service();           /* USB floppy mode: write back idle tracks */
 
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
-        if (ufi_analysis_job_active()) {
+        if(ufi_write_get_state()==WRITE_VERIFYING){
+            /* Internal read-back belongs to write_service, never a READ response. */
+        } else if (ufi_analysis_job_active()) {
             ufi_analysis_job_service();
         } else if (ufi_survey_active()) {
             ufi_survey_service();           /* track survey (op 46): one revolution per track */
@@ -273,6 +281,9 @@ void ufi_main_loop(void)
                 last_blink = now;
             }
         }
+        ufi_metric_add(&ufi_metrics.main_steps,1);
+        ufi_metric_max(&ufi_metrics.main_max_ms,HAL_GetTick()-loop_start);
+        ufi_profile_end(UFI_CYCLE_MAIN,profile);
     }
 }
 

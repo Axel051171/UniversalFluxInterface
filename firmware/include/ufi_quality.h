@@ -30,13 +30,15 @@ typedef struct {
 #define QUALITY_FEATURE_CODING  0x0001u
 #define QUALITY_FEATURE_MARKS   0x0002u
 #define QUALITY_FEATURE_MARGIN  0x0004u
-#define QUALITY_FEATURE_MASK    0x0007u
+#define QUALITY_FEATURE_FAST_HINT 0x0008u /* opt-in cached detection; protection analysis remains exhaustive */
+#define QUALITY_FEATURE_MASK    0x000Fu
 typedef struct {
     uint8_t flags,format,limit,window,bits;
     uint8_t side,position;      /* request byte 1: side = bit 0; position = 0 or 0x80 | quarter << 4 (Apple, 1.18) */
     uint16_t features,margin_permille;
     uint32_t rate,glitch,gap,cell,pattern,budget_ms;
     uint16_t report_mask;
+    uint8_t require_full_search; /* internal: confirmation must exclude competing formats */
     uint32_t compare_tolerance;
 } quality_options_t;
 typedef struct {
@@ -59,6 +61,30 @@ typedef struct {
     uint8_t seen, nominal, bad, flags; /* flags bit0: conflicting valid content */
 } quality_sector_t;
 typedef struct { uint64_t seen; uint32_t header_errors, data_errors; } quality_attempt_t;
+
+#define SECTOR_DETAILS_PAGE 8u
+#define SECTOR_DETAILS_WIRE 32u
+typedef struct {
+    mfm_id_t id;
+    uint32_t checked, findings, offset;
+    uint16_t expected, actual;
+    uint8_t reasons, revs, profiles, unit;
+    uint8_t raw_offset,rule;
+} sector_detail_t;
+typedef struct {
+    mfm_id_t id;
+    uint32_t crc,hash,first,last,findings;
+    uint16_t bytes,observations;
+    uint8_t revs,profiles,valid_revs,reserved;
+} sector_variant_t;
+typedef struct {
+    sector_detail_t sectors[QUALITY_SECTORS];
+    uint32_t dropped;
+    uint8_t count;
+    sector_variant_t variants[QUALITY_SECTORS];
+    uint32_t variants_dropped;
+    uint8_t variants_count;
+} sector_details_t;
 typedef struct {
     uint8_t format, revs, n, status; /* 0 unknown, 1 IBM MFM, 2 Amiga MFM, 3 IBM FM, 4 HP MMFM, 5 CBM GCR */
     uint32_t rate, dropped;
@@ -70,12 +96,19 @@ typedef struct {
     uint8_t profiles, ambiguous;
     uint8_t track, side, position;  /* position byte of the capture (report offset 19) */
     uint32_t generation, elapsed_ms;
-    uint8_t profile, revolution;
+    uint8_t profile, revolution,hint_used;
     quality_extra_t extra;
     quality_local_t local[QUALITY_LOCAL_WINDOWS];
     mfm_decoder_t* dec;
     verify_match_t* match;
+    sector_details_t* details; /* optional bounded caller-owned storage */
+    struct protection_state* protection; /* optional native analysis, never a write verdict */
 } quality_t;
+void quality_details_attach(quality_t* q, sector_details_t* storage);
+uint16_t quality_details_pack(const quality_t* q, uint8_t first, uint8_t count,
+                             uint8_t* out, uint16_t capacity);
+void quality_details_profile(uint8_t* page,const uint8_t expected[5]);
+uint16_t quality_variants_pack(const quality_t* q,uint8_t first,uint8_t count,uint8_t* out,uint16_t capacity);
 uint16_t quality_observation_pack(const quality_t* q,uint8_t* out,uint16_t capacity);
 uint32_t quality_recognition(const quality_t* q,uint64_t expected,uint8_t c,uint8_t h,uint8_t n,
                              bool check_position,uint32_t* valid,uint32_t* mismatches);
@@ -101,7 +134,11 @@ void quality_tail(quality_t* q,uint32_t previous,uint32_t end);
 
 /* Cooperative analysis over a completed capture. One step consumes <=256 edges. */
 int ufi_quality_async_start(const quality_options_t* options);
+int ufi_quality_async_archive(const quality_options_t* options,const uint8_t position[3]);
 int ufi_quality_async_step(void); /* BUSY until terminal */
+int ufi_quality_async_verify(const verify_ref_t* reference,bool count_ok);
+uint8_t ufi_quality_async_verify_level(void);
+bool ufi_quality_variation_mask(uint32_t* mask);
 void ufi_quality_async_cancel(void);
 void ufi_quality_async_progress(uint8_t* phase,uint8_t* candidate,uint8_t* rev,uint32_t* edge);
 const quality_t* ufi_quality_result(void);

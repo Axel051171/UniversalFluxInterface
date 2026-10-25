@@ -43,7 +43,7 @@ def main():
     exe = BUILD / 'hfe_corpus_decoder.exe'
     subprocess.run([compiler(), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror', *extra_cflags(),
         '-D_CRT_SECURE_NO_WARNINGS', '-I', str(FW/'include'), str(FW/'tests/hfe_corpus_decoder.c'),
-        *[str(FW/'src'/s) for s in ('ufi_mfm.c', 'ufi_verify.c', 'ufi_quality.c')],
+        *[str(FW/'src'/s) for s in ('ufi_mfm.c', 'ufi_verify.c', 'ufi_quality.c','ufi_protection.c','ufi_metrics.c')],
         '-o', str(exe)], check=True)
     subprocess.run([str(exe), str(vectors)], check=True, timeout=90)
 

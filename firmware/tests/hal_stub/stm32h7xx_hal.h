@@ -7,6 +7,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Device identity reads must use host storage, never physical MCU addresses. */
+extern uint32_t stub_uid[3];
+#define UID_BASE ((uintptr_t)&stub_uid[0])
+typedef struct { volatile uint32_t IDCODE; } DBGMCU_TypeDef;
+extern DBGMCU_TypeDef stub_dbgmcu;
+#define DBGMCU (&stub_dbgmcu)
+
 typedef struct {
     volatile uint32_t MODER, OTYPER, OSPEEDR, PUPDR, IDR, ODR, BSRR, LCKR, AFR[2];
 } GPIO_TypeDef;
@@ -95,8 +102,11 @@ void HAL_GPIO_WritePin(GPIO_TypeDef* port, uint16_t pin, GPIO_PinState state);
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef* port, uint16_t pin);
 void HAL_GPIO_TogglePin(GPIO_TypeDef* port, uint16_t pin);
 
-static inline void __disable_irq(void) {}
-static inline void __enable_irq(void) {}
+extern uint32_t stub_primask;
+static inline uint32_t __get_PRIMASK(void) {return stub_primask;}
+static inline void __set_PRIMASK(uint32_t value) {stub_primask=value;}
+static inline void __disable_irq(void) {stub_primask=1;}
+static inline void __enable_irq(void) {stub_primask=0;}
 static inline void __DSB(void) {}
 static inline void __ISB(void) {}
 static inline void __DMB(void) {}

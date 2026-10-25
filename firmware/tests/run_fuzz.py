@@ -2,6 +2,7 @@
 artifacts stay in build/.
 
 Targets:
+  protection  flag configuration, bounded evidence collection, raw scanner and report paging
   parsers  HFEv3, HFE header, fragmented compact write codec, raw-track profiles,
            job and resource transitions (fuzz_parsers.c)
   v2       the whole UFI v2 dispatcher behind generated driver stubs (fuzz_v2.c)
@@ -53,6 +54,8 @@ PARSER_SEEDS = (bits([0xf2, 72, 0x80, 0xf1, 0xf2, 36, 0x40, 0xf3, 7, 1]),
                 bits([0xf2, 72, 0xf4, 0xf3, 5, 0xf4]), bits([0xf2, 72, 0xf1, 0x80, 0xf1, 0x80]))
 
 V2_SEEDS = (
+    b'\x00' + record(4,0x0d,35,b'\x02'),  # real bounded cycle/loss diagnostic
+    b'\x00' + record(4,0x0d,34,b'\x01'),  # real bounded performance provider, not an unconstrained generated length
     b'\x00' + record(4, 0x00, 1, b'ping') + record(4, 0x01, 2) + record(4, 0x02, 3) + record(4, 0x09, 4),
     b'\x00' + record(4, 0x0F, 1, b'\x00') + record(4, 0x0F, 2, b'\x14') + record(4, 0x0C, 3) + record(4, 0x0D, 4),
     b'\x00' + record(4, 0x20, 1, bytes([0, 0, 2, 0, 0, 0])) + record(0x08, 0, 0) + record(4, 0x0E, 2),
@@ -91,14 +94,14 @@ GW_SEEDS = (
 
 STUBBED = {
     'v2': dict(harness='fuzz_v2.c', units=('ufi_v2',),
-               real=('ufi_job', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media',
-                     'ufi_write_codec', 'ufi_quality'),
+               real=('ufi_job', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media', 'ufi_metrics',
+                     'ufi_write_codec', 'ufi_quality','ufi_protection'),
                extra={'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'), **LINKER_SYMBOLS}),
     'gw': dict(harness='fuzz_gw.c', units=('ufi_gw',), real=('ufi_resources', 'ufi_cancel'),
                extra={'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'),
                       'hUsbDevice': ('usbd_def.h', 'USBD_HandleTypeDef hUsbDevice;'), **LINKER_SYMBOLS}),
     'sd': dict(harness='fuzz_sd.c', units=('ufi_dump',),
-               real=('ufi_image', 'ufi_hfe_v3', 'ufi_mfm', 'ufi_verify', 'ufi_quality', 'ufi_compare',
+               real=('ufi_image', 'ufi_hfe_v3', 'ufi_mfm', 'ufi_verify', 'ufi_quality','ufi_protection', 'ufi_compare',
                      'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
                extra=dict(LINKER_SYMBOLS)),
     'drive': dict(harness='fuzz_drive.c', units=('ufi_drive',),
@@ -164,6 +167,14 @@ def build_parsers():
     return exe
 
 
+def build_protection():
+    exe=BUILD/('fuzz_protection'+EXE)
+    subprocess.run([compiler(),*COMMON,*sanitizer_flags(),str(FW/'tests/fuzz_protection.c'),
+                    *[str(FW/'src'/f) for f in ('ufi_protection.c','ufi_quality.c','ufi_mfm.c','ufi_verify.c','ufi_compare.c','ufi_metrics.c')],
+                    '-o',str(exe)],check=True)
+    return exe
+
+
 def build_stubbed(name):
     """Whole production units + real HAL-free modules + generated stubs for the rest."""
     spec = STUBBED[name]
@@ -191,6 +202,8 @@ def build_stubbed(name):
 
 
 TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
+           'protection': (build_protection,(bytes([1,63,1,0,30,2,0,0])+bytes(range(256)),
+                                           bytes([55,1,63,0,3,2,30,0])), 'fuzz_protection_corpus',2048),
            'v2': (lambda: build_stubbed('v2'), V2_SEEDS, 'fuzz_v2_corpus', 8192),
            'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
            'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192),
@@ -216,7 +229,7 @@ def run_target(name, seconds, replay):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=('parsers', 'v2', 'gw', 'sd', 'drive', 'all'), default='all')
+    parser.add_argument('--target', choices=('parsers','protection', 'v2', 'gw', 'sd', 'drive', 'all'), default='all')
     parser.add_argument('--seconds', type=int, default=30)
     parser.add_argument('--replay', action='store_true', help='execute the stored corpus once, no mutation')
     args = parser.parse_args()

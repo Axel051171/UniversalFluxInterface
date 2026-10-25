@@ -13,6 +13,23 @@ def main():
 static uint8_t resource_owner;
 uint8_t ufi_resources_owner(void){return resource_owner;}
 static uint32_t media_token=1;
+static uint32_t archive_id=10;
+static uint32_t archive_fingerprint=0x12345678u;
+uint32_t ufi_flux_archive_id(void){return archive_id;}
+uint32_t ufi_flux_archive_fingerprint(void){return archive_fingerprint;}
+uint32_t ufi_flux_archive_media(void){return media_token;}
+void ufi_flux_archive_info(uint8_t out[8]){memset(out,0,8);out[4]=7;}
+bool ufi_flux_store_is_psram(void){return true;}
+static bool retained_loss;
+bool ufi_flux_loss_snapshot(uint32_t info[4],uint8_t position[4]){
+    memset(info,0,16);memset(position,0,4);if(!retained_loss)return false;
+    info[0]=77;info[1]=3;info[2]=0xaabbccdd;info[3]=100;
+    position[0]=2;position[1]=1;position[3]=3;return true;
+}
+bool ufi_flux_loss_read(uint32_t offset,uint16_t count,uint8_t* out){
+    if(offset>3 || count>3-offset)return false;
+    for(unsigned i=0;i<count;i++){uint32_t value=1000+offset+i;memcpy(out+4*i,&value,4);}return true;
+}
 static bool soft_lock,jumper_lock;
 static uint8_t refusal_stub[6]={1,0x22,9,16,2,0x40};
 static uint16_t speed_tol;static uint32_t speed_meas=55500000u,speed_src=55000000u;
@@ -29,6 +46,8 @@ void ufi_board_soft_lock(void){soft_lock=true;}
 bool ufi_board_soft_locked(void){return soft_lock;}
 bool ufi_board_jumper_locked(void){return jumper_lock;}
 int ufi_raw_verify_options(const uint8_t* p,uint16_t n,uint8_t* out){(void)p;(void)n;memset(out,0,8);return 0;}
+int ufi_precision_options(const uint8_t* p,uint16_t n,uint8_t* out){(void)p;(void)n;memset(out,0,24);return 0;}
+uint16_t ufi_precision_report(uint8_t first,uint8_t count,uint8_t* out){(void)first;(void)count;(void)out;return 0;}
 uint16_t ufi_raw_verify_report(uint8_t* out){(void)out;return 0;}
 static uint8_t saved_slots[2][128];
 static uint16_t saved_lengths[2];
@@ -88,6 +107,9 @@ static bool cancelled,busy,integrity;
 static bool change_at_start;
 static flux_sample_t samples[100000];
 static flux_revolution_t revolution={samples,0,55000000,0};
+static flux_sample_t alternate_samples[100000];
+static bool alternate;
+static flux_revolution_t alternate_revolution;
 static uint32_t HAL_GetTick(void){return ticks;}
 #define UFI_WATCHDOG_FEED() ((void)0)
 #define FLUX_TIMER_FREQ 275000000u
@@ -95,8 +117,9 @@ static bool ufi_cancel_requested(void){return cancelled;}
 static void ufi_cancel_clear(void){cancelled=false;}
 static bool ufi_operation_busy(void){return busy || ufi_analysis_job_active() || ufi_survey_active();}
 static bool ufi_job_live(void){return integrity;}
-static uint8_t ufi_flux_get_revolution_count(void){return 1;}
-static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i?NULL:&revolution;}
+static uint8_t stored_revs=1;
+static uint8_t ufi_flux_get_revolution_count(void){return stored_revs;}
+static flux_revolution_t* ufi_flux_get_revolution(uint8_t i){return i<stored_revs?(alternate && i==1?&alternate_revolution:&revolution):NULL;}
 static bool apple_drive;
 bool ufi_drive_is_apple(void){return apple_drive;}
 static bool half_track_ok;
@@ -153,6 +176,7 @@ int main(void){
     uint8_t p[61]={0};assert(ufi_analysis_command(p,1,out,&size)==0 && size==192 && rd(out+160)==24);
     uint8_t mac_caps=19;assert(!ufi_analysis_command(&mac_caps,1,out,&size) && size==48 && out[1]==6 && rd(out+4)==525 && rd(out+36)==251256);
     uint8_t local_caps=20;assert(!ufi_analysis_command(&local_caps,1,out,&size) && size==24 && out[1]==14 && rd(out+4)==1312 && rd(out+8)==0x84);
+    uint8_t retry_caps=12;assert(!ufi_analysis_command(&retry_caps,1,out,&size) && size==32 && out[2]==31);
     uint8_t recognition_caps=21;assert(!ufi_analysis_command(&recognition_caps,1,out,&size) && size==24 && out[1]==15 && out[2]==16 && rd(out+8)==1023);
     p[0]=1;wr(p+1,42);p[7]=2;wr(p+8,60000);p[26]=1;p[27]=3;p[28]=2;wr(p+29,250000);
     uint8_t config[5]={23};assert(!ufi_analysis_command(config,1,out,&size) && size==24);
@@ -195,6 +219,60 @@ int main(void){
     assert(ufi_analysis_command(page,16,out,&size)==UFI_ERR_BUSY);
     ufi_analysis_job_service();assert(ufi_analysis_job_active()); /* yields before entire track */
     pump();assert(job.state==A_DONE && job.attempt==1 && result.n==11 && result.profiles==3);
+    /* Incomplete windows require opt-in; never masquerade as complete/replayable archives. */
+    uint8_t incomplete[17]={48};incomplete[1]=1;
+    assert(!ufi_analysis_command(incomplete,2,out,&size) && size==48 && out[0]==2 && !rd(out+4));
+    retained_loss=true;uint32_t clean_archive_id=archive_id;archive_id=0;
+    assert(!ufi_analysis_command(incomplete,2,out,&size) && out[0]==2 && out[3]==1 && rd(out+4)==77);
+    assert(out[24]==6 && out[25]==6 && out[26]==3 && rd(out+32)==3 && rd(out+40)==100);
+    assert(!ufi_analysis_command(incomplete,1,out,&size) && out[0]==1 && !out[3] && !rd(out+4));
+    memset(incomplete,0,sizeof incomplete);incomplete[0]=48;wr(incomplete+1,77);
+    wr(incomplete+6,1);incomplete[10]=128;wr(incomplete+12,0xaabbccdd);incomplete[16]=1;
+    assert(!ufi_analysis_command(incomplete,17,out,&size) && size==48 && out[0]==2 && out[2]==2);
+    assert(rd(out+40)==1001 && rd(out+44)==1002 && out[28]==6 && out[29]==6 && out[30]==3);
+    assert(rd(out+32)==ufi_crc32(ufi_crc32(0,out,32),out+36,size-36));
+    incomplete[16]=2;assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_BAD_ARGS);incomplete[16]=1;
+    incomplete[5]=1;assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_RANGE);incomplete[5]=0;
+    wr(incomplete+1,78);assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_NOT_FOUND);wr(incomplete+1,77);
+    wr(incomplete+12,0);assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_NOT_FOUND);wr(incomplete+12,0xaabbccdd);
+    incomplete[10]=129;assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_BAD_ARGS);
+    incomplete[10]=0;assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_BAD_ARGS);incomplete[10]=1;
+    wr(incomplete+6,4);assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_RANGE);
+    wr(incomplete+6,3);assert(!ufi_analysis_command(incomplete,17,out,&size) && size==40 && !out[2]);
+    busy=true;assert(ufi_analysis_command(incomplete,17,out,&size)==UFI_ERR_BUSY);busy=false;
+    retained_loss=false;archive_id=clean_archive_id;
+    uint8_t detail_req[12]={47};
+    assert(!ufi_analysis_command(detail_req,1,out,&size) && size==16 && out[3]==8 && rd(out+4)==SF_IMPLEMENTED);
+    wr(detail_req+1,result.generation);detail_req[6]=8;
+    assert(!ufi_analysis_command(detail_req,7,out,&size) && size==288 && out[8]==11 && out[10]==8);
+    detail_req[5]=8;assert(!ufi_analysis_command(detail_req,7,out,&size) && size==128 && out[10]==3);
+    detail_req[7]=0;detail_req[8]=0;detail_req[9]=2;detail_req[10]=1;detail_req[11]=11;
+    assert(!ufi_analysis_command(detail_req,12,out,&size) && out[30]==1);
+    detail_req[9]=8;assert(ufi_analysis_command(detail_req,12,out,&size)==UFI_ERR_BAD_ARGS);detail_req[9]=2;
+    detail_req[5]=12;assert(ufi_analysis_command(detail_req,7,out,&size)==UFI_ERR_BAD_ARGS);detail_req[5]=0;
+    busy=true;assert(ufi_analysis_command(detail_req,7,out,&size)==UFI_ERR_BUSY);
+    assert(!ufi_analysis_command(detail_req,1,out,&size));busy=false;
+    wr(detail_req+1,result.generation+1);assert(ufi_analysis_command(detail_req,7,out,&size)==UFI_ERR_NOT_FOUND);
+    assert(ufi_analysis_command(detail_req,6,out,&size)==UFI_ERR_BAD_ARGS);
+    uint8_t archive[16]={48};wr(archive+12,archive_fingerprint);
+    assert(!ufi_analysis_command(archive,1,out,&size) && size==40 && out[3]==1 && rd(out+4)==10 && rd(out+32)==n);
+    wr(archive+1,10);archive[10]=128;
+    assert(!ufi_analysis_command(archive,16,out,&size) && size==552 && out[2]==128 && rd(out+40)==samples[0].timestamp);
+    assert(rd(out+32)==ufi_crc32(ufi_crc32(0,out,32),out+36,516));
+    uint8_t archived_page[552];memcpy(archived_page,out,552);
+    assert(!ufi_analysis_command(archive,16,out,&size) && !memcmp(out,archived_page,552));
+    out[20]^=1;assert(rd(out+32)!=ufi_crc32(ufi_crc32(0,out,32),out+36,516)); /* metadata covered */
+    wr(archive+6,n);assert(!ufi_analysis_command(archive,16,out,&size) && size==40 && !out[2]);
+    wr(archive+6,n+1);assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_RANGE);wr(archive+6,0);
+    archive[5]=1;assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_RANGE);archive[5]=0;
+    archive[10]=129;assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_BAD_ARGS);archive[10]=128;
+    archive_id=11;assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_NOT_FOUND);archive_id=10;
+    archive_fingerprint++;assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_NOT_FOUND);archive_fingerprint--;
+    busy=true;assert(ufi_analysis_command(archive,16,out,&size)==UFI_ERR_BUSY);busy=false;
+    uint8_t variant_page[7]={49};wr(variant_page+1,result.generation);variant_page[6]=8;
+    assert(!ufi_analysis_command(variant_page,7,out,&size) && size==288 && out[8]==11);
+    uint8_t statistics[7]={51};wr(statistics+1,result.generation);statistics[6]=8;
+    assert(ufi_analysis_command(statistics,7,out,&size)==UFI_ERR_NOT_FOUND); /* report not selected yet */
     unsigned length=ufi_quality_report(saved,sizeof(saved));wr(page+5,job.generation);
     for(unsigned offset=0;offset<length;offset+=97){
         wr(page+10,offset);page[14]=97;
@@ -320,11 +398,65 @@ int main(void){
     assert((rd(job.assessment[1])&RECOG_CONTENT_CONFIRMED) && job.assessment[1][17]==2);
     wr(page+5,job.generation);page[9]=7;assert(!ufi_analysis_command(page,16,out,&size));
     assert(rd(out+16)==COMPARE_WIRE_SIZE && out[24]==1 && out[25]==128 && out[26]==0); /* one revolution: no comparison */
+    wr(statistics+1,result.generation);assert(!ufi_analysis_command(statistics,7,out,&size) && size==288 && !out[16]);
     page[9]=8;assert(!ufi_analysis_command(page,16,out,&size) && out[27]==1);
+    /* A cached hint deliberately leaves ambiguity; confirmation must search fully. */
+    recovery[2]=0;assert(!ufi_analysis_command(recovery,12,out,&size));
+    uint8_t fast_confirmation[61]={0};memcpy(fast_confirmation,p,28);
+    fast_confirmation[33]=2;fast_confirmation[34]=48;fast_confirmation[35]=4;fast_confirmation[36]=16;
+    wr(fast_confirmation+37,220);wr(fast_confirmation+41,4400);
+    wr(fast_confirmation+49,0x4489);wr(fast_confirmation+53,10000);
+    fast_confirmation[57]=QUALITY_FEATURE_FAST_HINT;fast_confirmation[59]=250;
+    assert(quality_options(fast_confirmation+24,37,&options));
+    assert(!ufi_quality_analyze_options(&options));
+    assert(!ufi_quality_analyze_options(&options) && result.hint_used && result.ambiguous);
+    uint8_t full_confirmation[33];memcpy(full_confirmation,fast_confirmation,sizeof full_confirmation);
+    assert(!ufi_analysis_command(full_confirmation,sizeof full_confirmation,out,&size));pump();
+    uint8_t full_state=job.state,full_attempts=job.attempt,full_confirmed=job.confirmed;
+    uint8_t full_reason=job.stop_reason,full_status=job.status;
+    uint32_t hint_hits=ufi_metrics.format_hint_hits;
+    uint32_t full_candidates=ufi_metrics.format_candidates;
+    assert(!ufi_analysis_command(fast_confirmation,sizeof fast_confirmation,out,&size));pump();
+    assert(job.state==full_state && job.attempt==full_attempts && job.confirmed==full_confirmed);
+    assert(job.stop_reason==full_reason && job.status==full_status);
+    assert(!result.hint_used && ufi_metrics.format_hint_hits==hint_hits);
+    assert(ufi_metrics.format_candidates-full_candidates>job.attempt);
+    assert(result.extra.options.features&QUALITY_FEATURE_FAST_HINT); /* preserve requested bits */
+    recovery[2]=1;assert(!ufi_analysis_command(recovery,12,out,&size));
     recovery[4]=2;recovery[6]=1;assert(!ufi_analysis_command(recovery,12,out,&size));
     assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BAD_ARGS); /* no retry trigger */
     p[5]=5;wr64(p+12,0x1ffe);assert(!ufi_analysis_command(p,33,out,&size));pump();
     assert(job.attempt==2 && job.stagnant==1 && job.stop_reason==2 && job.status==-UFI_ERR_DMA);
+    recovery[4]=3;assert(!ufi_analysis_command(recovery,12,out,&size));
+    p[7]=4;assert(!ufi_analysis_command(p,33,out,&size));
+    unsigned gain_steps=0;
+    while(job.attempt==1){g_capture.state=CAPTURE_COMPLETE;ufi_analysis_job_service();assert(++gain_steps<100000);}
+    assert(job.assessment[0][18]==11 && !job.stagnant);
+    data[0]=1;n=mfm_encode_amiga_track(250000,100000,0,0,11,data,flux,100000);t=0;
+    for(unsigned i=0;i<n;i++){t+=flux[i];samples[i].timestamp=t;}revolution.count=n;
+    pump();assert(job.attempt==3 && job.stop_reason==2 && job.assessment[1][18]==1 && !job.assessment[2][18]);
+    assert(!job.assessment[1][19]); /* new data despite unchanged sector count */
+    assert(!ufi_analysis_command(p,33,out,&size));job.previous_n=VERIFY_MAX_SECTORS;
+    memset(job.previous,0xff,sizeof job.previous);pump();
+    assert(job.attempt==4 && job.stop_reason==3 && job.assessment[3][19] && !job.stagnant); /* full registry cannot prove plateau */
+    data[0]=0;n=mfm_encode_amiga_track(250000,100000,0,0,11,data,flux,100000);t=0;
+    for(unsigned i=0;i<n;i++){t+=flux[i];samples[i].timestamp=t;}revolution.count=n;
+    /* Investigative recovery: weak-region evidence can advance while sector contents stay equal. */
+    recovery[4]=4;recovery[6]=2;recovery[8]=1;p[5]=2;p[7]=5;wr64(p+12,0);
+    assert(!ufi_analysis_command(recovery,12,out,&size));
+    assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BAD_ARGS); /* needs at least two revolutions */
+    p[26]=2;stored_revs=2;
+    assert(!ufi_analysis_command(p,33,out,&size) && (job.options.report_mask&1));
+    unsigned investigate_steps=0;
+    while(job.attempt==1){g_capture.state=CAPTURE_COMPLETE;ufi_analysis_job_service();assert(++investigate_steps<100000);}
+    assert(job.assessment[0][18]==12 && !job.assessment[0][19]);
+    memcpy(alternate_samples,samples,n*sizeof(*samples));
+    alternate_samples[50].timestamp+=50;alternate_samples[150].timestamp+=50;alternate_samples[250].timestamp+=50;
+    alternate_revolution=revolution;alternate_revolution.samples=alternate_samples;alternate=true;
+    pump();
+    assert(job.attempt==4 && job.stop_reason==2 && job.state==A_DONE && job.assessment[1][18]>=1);
+    assert(!job.assessment[2][18] && !job.assessment[3][18] && !job.assessment[3][19]);
+    alternate=false;stored_revs=1;p[26]=1;recovery[6]=1;recovery[8]=110;
     recovery[2]=2;assert(ufi_analysis_command(recovery,12,out,&size)==UFI_ERR_BAD_ARGS);
     recovery[2]=1;recovery[4]=1;assert(!ufi_analysis_command(recovery,12,out,&size));
     /* Empty decoded tracks cannot meet a confirmation policy. */
@@ -350,11 +482,15 @@ int main(void){
     uint8_t create[49]={27},step[8]={29},poll=28;
     wr(create+1,0xffffffffu);wr(create+5,ufi_config_generation());wr(create+9,media_token);
     create[13]=0;create[14]=1;create[15]=2;memcpy(create+16,p,33);
+    create[21]|=64; /* JOB_RESEEK is valid for both standalone and multitrack jobs. */
     assert(!ufi_analysis_command(create,49,out,&size) && size==32 && out[1]==P_READY && out[22]==4);
+    uint8_t blocked_decoder[4]={34,1,1,0};
+    assert(ufi_analysis_command(blocked_decoder,4,out,&size)==UFI_ERR_BUSY && !mfm_get_tolerance());
     assert(ufi_analysis_command(p,33,out,&size)==UFI_ERR_BUSY);
     wr(step+1,0xffffffffu);
     assert(!ufi_analysis_command(step,8,out,&size) && out[1]==P_RUNNING);
     assert(job.track==0 && job.side==0 && job.id==0xffffffffu);
+    assert(job.flags&64);
     assert(ufi_analysis_command(step,8,out,&size)==UFI_ERR_BUSY);
     pump();assert(!ufi_analysis_command(&poll,1,out,&size) && out[1]==P_RESULT && out[20]==0);
     assert(job.state==A_DONE);step[7]=1;
@@ -381,7 +517,13 @@ int main(void){
     assert(ufi_analysis_command(persist,28,out,&size)==UFI_ERR_BAD_ARGS); /* missing confirmation flag */
     persist[2]=3;persist[12]=78;
     assert(ufi_analysis_command(persist,28,out,&size)==UFI_ERR_MEDIA_CHANGED && !plan.id);
-    persist[12]=77;assert(!ufi_analysis_command(persist,28,out,&size) && plan.cursor==1 && plan.state==P_READY);
+    persist[12]=77;mfm_set_tolerance(1);
+    assert(ufi_analysis_command(persist,28,out,&size)==UFI_ERR_BAD_ARGS && !plan.id);
+    mfm_set_tolerance(0);
+    saved_slots[0][4]=1;wr(saved_slots[0]+124,ufi_crc32(0,saved_slots[0],124));
+    assert(ufi_analysis_command(persist,28,out,&size)==UFI_ERR_BAD_ARGS && !plan.id); /* legacy record has no settings binding */
+    saved_slots[0][4]=2;wr(saved_slots[0]+124,ufi_crc32(0,saved_slots[0],124));
+    assert(!ufi_analysis_command(persist,28,out,&size) && plan.cursor==1 && plan.state==P_READY);
     memset(&plan,0,sizeof(plan));saved_slots[0][50]^=1; /* corrupt latest -> older valid checkpoint */
     assert(!ufi_analysis_command(persist,28,out,&size) && plan.cursor==0 && plan.sequence==1);
     memset(&plan,0,sizeof(plan));saved_slots[1][50]^=1;
@@ -537,7 +679,38 @@ int main(void){
     assert(ufi_analysis_command(svs,6,out,&size)==UFI_ERR_BUSY && !ufi_analysis_command(svq,1,out,&size) && size==28);
     uint8_t end2[8]={29};wr(end2+1,0x77);end2[7]=2;assert(!ufi_analysis_command(end2,8,out,&size) && out[1]==P_DONE);
     assert(!ufi_analysis_command(svs,6,out,&size));survey_pump();assert(!ufi_analysis_command(svq,1,out,&size) && out[2]==2 && (out[10]|out[11]<<8)==4);
-    puts("analysis jobs: pages/CRC, retries, durable multitrack ACK/reset/torn checkpoint, media binding, cancel, timing presets and track survey passed");
+    /* Archive replay analyzes saved position even after another media/position was selected. */
+    uint8_t replay[22]={52};wr(replay+1,archive_id);wr(replay+5,77);wr(replay+9,archive_fingerprint);replay[16]=1;replay[17]=2;wr(replay+18,250000);
+    uint32_t before_replay=captures;g_capture.current_track=70;g_capture.current_side=1;
+    assert(!ufi_analysis_command(replay,sizeof replay,out,&size) && out[43]==1 && job.replay);
+    media_token++;pump();assert(job.state==A_DONE && result.track==0 && result.side==0 && result.n==11 && captures==before_replay);
+    wr(replay+1,archive_id+1);assert(ufi_analysis_command(replay,sizeof replay,out,&size)==UFI_ERR_NOT_FOUND);
+    wr(replay+1,archive_id);replay[13]=1;assert(ufi_analysis_command(replay,sizeof replay,out,&size)==UFI_ERR_BAD_ARGS);
+    uint8_t protection_cfg[8]={55,1,0x3f,0,3,2,30,0},protection_page[7]={56};
+    assert(!ufi_analysis_command(protection_cfg,1,out,&size) && size==24 && out[1]==56 && out[2]==63 && !out[4]);
+    assert(!ufi_analysis_command(protection_page,1,out,&size) && size==16 && out[4]==48);
+    uint32_t configuration_before=ufi_config_generation();protection_cfg[2]=64;
+    assert(ufi_analysis_command(protection_cfg,8,out,&size)==UFI_ERR_BAD_ARGS && ufi_config_generation()==configuration_before);
+    protection_cfg[2]=63;busy=true;
+    assert(ufi_analysis_command(protection_cfg,8,out,&size)==UFI_ERR_BUSY && !ufi_analysis_command(protection_cfg,1,out,&size));busy=false;
+    assert(!ufi_analysis_command(protection_cfg,8,out,&size) && out[4]==63 && ufi_config_generation()!=configuration_before);
+    replay[13]=0;stored_revs=3;
+    assert(!ufi_analysis_command(replay,sizeof replay,out,&size));
+    wr(protection_page+1,result.generation);protection_page[6]=8;
+    assert(ufi_analysis_command(protection_page,7,out,&size)==UFI_ERR_BUSY);
+    pump();wr(protection_page+1,result.generation);
+    assert(!ufi_analysis_command(protection_page,7,out,&size) && size==32 && out[1]==PROTECT_NO_INDICATOR && out[8]==63 && out[10]==63 && !out[12]);
+    assert(comparison_available && comparison.completed==6); /* content flag requests raw comparison automatically */
+    protection_page[5]=1;assert(ufi_analysis_command(protection_page,7,out,&size)==UFI_ERR_BAD_ARGS);protection_page[5]=0;
+    wr(protection_page+1,result.generation+1);assert(ufi_analysis_command(protection_page,7,out,&size)==UFI_ERR_NOT_FOUND);wr(protection_page+1,result.generation);
+    protection_cfg[2]=0;assert(!ufi_analysis_command(protection_cfg,8,out,&size));
+    assert(!ufi_analysis_command(protection_page,7,out,&size) && out[8]==63); /* retained report has old settings snapshot */
+    assert(!ufi_analysis_command(replay,sizeof replay,out,&size));pump();wr(protection_page+1,result.generation);
+    assert(!ufi_analysis_command(protection_page,7,out,&size) && out[1]==PROTECT_DISABLED);
+    protection_cfg[2]=63;assert(!ufi_analysis_command(protection_cfg,8,out,&size));stored_revs=1;
+    assert(!ufi_analysis_command(replay,sizeof replay,out,&size));pump();wr(protection_page+1,result.generation);
+    assert(!ufi_analysis_command(protection_page,7,out,&size) && out[1]==PROTECT_INSUFFICIENT && out[12]==63);
+    puts("analysis jobs: protection flag snapshots/pages/coverage, archive replay, information gain, durable multitrack, media binding, cancel and survey passed");
 }
 '''
     run('regression_analysis_job',code,('src/ufi_mfm.c','src/ufi_verify.c','src/ufi_compare.c','src/ufi_quality.c','src/ufi_evidence.c','src/ufi_drive_extra.c','src/ufi_media.c','src/ufi_capabilities.c'))

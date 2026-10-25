@@ -373,6 +373,15 @@ capture_state_t ufi_flux_poll(void);           // finalises a completed capture
 flux_revolution_t* ufi_flux_get_revolution(uint8_t index);
 uint8_t ufi_flux_get_revolution_count(void);
 uint32_t* ufi_flux_store(uint32_t* words);      // shared buffer (write path uses it too)
+void ufi_flux_invalidate(void);               // call before any CPU writer reuses the shared store
+uint32_t ufi_flux_archive_id(void);           // complete non-streamed capture only; session-local
+uint32_t ufi_flux_archive_media(void);
+uint32_t ufi_flux_archive_fingerprint(void);
+bool ufi_flux_loss_snapshot(uint32_t info[4],uint8_t position[4]);
+bool ufi_flux_loss_read(uint32_t offset,uint16_t count,uint8_t* out);
+void ufi_flux_archive_info(uint8_t out[8]);
+int ufi_flux_reference_reserve(bool enable);
+uint32_t* ufi_flux_reference(uint32_t* words);
 bool ufi_flux_store_is_psram(void);
 int ufi_psram_init(void);                       // ufi_psram.c
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter

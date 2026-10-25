@@ -45,8 +45,16 @@ jobs:
       - name: Toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build cmake
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build cmake ccache
           arm-none-eabi-gcc --version | head -1
+
+      - name: Cache compiler objects
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: ~/.cache/ccache
+          key: ufi-ccache-${{ runner.os }}-${{ hashFiles('firmware/CMakeLists.txt') }}-${{ github.sha }}
+          restore-keys: |
+            ufi-ccache-${{ runner.os }}-${{ hashFiles('firmware/CMakeLists.txt') }}-
 
       - name: Cache STM32CubeH7 (HAL, CMSIS, USB device library, FatFs)
         id: cube
@@ -73,6 +81,10 @@ jobs:
           # our sources build without warnings; ST vendor code is not policed
           ! grep -E "warning:" build.log | grep -v "STM32CubeH7"
           arm-none-eabi-size firmware/build/ufi_firmware.elf
+          ccache --show-stats
+
+      - name: Analyze all project modules with the real ARM SDK headers
+        run: python3 firmware/tools/check_static.py --compile-commands firmware/build/compile_commands.json
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -82,3 +94,4 @@ jobs:
             firmware/build/ufi_firmware.hex
             firmware/build/ufi_firmware.elf
             firmware/build/memory_usage.json
+            firmware/build/stack_usage.json

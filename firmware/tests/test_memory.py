@@ -1,10 +1,21 @@
 """Heap bounds, PSRAM failure selection and deliberately broken ELF budgets."""
 import sys
 from pathlib import Path
-from test_regressions import BASE, function, run
+from test_regressions import BASE, ERRORS, function, run
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from check_memory import validate
+from check_stack import validate as validate_stack
+
+
+def stack_tests():
+    def row(size,kind='static'):return dict(function='test',bytes=size,kind=kind)
+    assert validate_stack([row(2048),row(64)])[0]['bytes']==2048
+    assert validate_stack([row(128,'dynamic,bounded')])
+    for invalid in ([],[row(2049)],[row(64,'dynamic')]):
+        try:validate_stack(invalid)
+        except ValueError:pass
+        else:raise AssertionError('invalid stack budget accepted')
 
 
 def heap_tests():
@@ -37,7 +48,7 @@ int main(void) {
 
 
 def psram_selection_tests():
-    code = BASE + r'''
+    code = BASE + ERRORS + r'''
 #define CHUNK_MAX_WORDS 32768u
 #define FLUX_STORE_FALLBACK_WORDS (56u*1024u)
 #define PSRAM_SIZE_BYTES (8u*1024u*1024u)
@@ -45,10 +56,12 @@ static uint32_t external[PSRAM_SIZE_BYTES/4], flux_fallback[FLUX_STORE_FALLBACK_
 #define OCTOSPI1_BASE ((uintptr_t)external)
 static uint32_t *flux_store,*dma_scratch;
 static uint32_t chunk_words,n_chunks,store_words;
-static bool store_psram;
+static bool store_psram,reference_reserved;
 '''
     code += function('ufi_flux.c', 'configure_store')
     code += function('ufi_flux.c', 'select_store')
+    code += function('ufi_flux.c', 'ufi_flux_reference_reserve')
+    code += function('ufi_flux.c', 'ufi_flux_reference')
     code += r'''
 int main(void) {
     const bool outcomes[]={false,true,true,false,false,true};
@@ -65,6 +78,13 @@ int main(void) {
         for(uint32_t k=0;k<chunk_words;k++)dma_scratch[k]=k;
         assert(flux_store[store_words-1]==0xfeedbeef);
     }
+    select_store(true);uint32_t words;
+    assert(!ufi_flux_reference_reserve(true));
+    assert(ufi_flux_reference(&words)==external+PSRAM_SIZE_BYTES/8 && words==PSRAM_SIZE_BYTES/8);
+    assert(store_words+chunk_words<=PSRAM_SIZE_BYTES/8); /* scratch never overlaps reference */
+    uint32_t before=flux_invalidations;assert(!ufi_flux_reference_reserve(true) && flux_invalidations==before);
+    assert(!ufi_flux_reference_reserve(false) && !ufi_flux_reference(&words) && !words);
+    select_store(false);assert(ufi_flux_reference_reserve(true)==UFI_ERR_NOT_IMPL);
     return 0;
 }
 '''
@@ -101,6 +121,7 @@ def budget_tests():
 
 
 if __name__=='__main__':
+    stack_tests()
     heap_tests()
     psram_selection_tests()
     budget_tests()

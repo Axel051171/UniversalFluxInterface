@@ -13,7 +13,11 @@
 #if BOARD_HAS_PSRAM
 
 static OSPI_HandleTypeDef hospi;
+#if defined(UFI_FORCE_INTERNAL_FLUX_STORE)
+static const char* psram_result = "PSRAM bypassed (qualification)";
+#else
 static const char* psram_result = "PSRAM init failed";
+#endif
 
 #define PSRAM_CMD_RESET_EN      0x66
 #define PSRAM_CMD_RESET         0x99

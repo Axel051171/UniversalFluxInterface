@@ -157,6 +157,7 @@ int ufi_format_track(const format_req_t* q, uint32_t* flux_count, uint8_t* good)
     /* sector data at the end of the flux store, the deltas grow from its start */
     uint32_t words = 0;
     uint32_t* store = ufi_flux_store(&words);
+    ufi_flux_invalidate();
     const uint32_t data_words = ((uint32_t)q->spt * 512u + 3u) / 4u;
     if (words < data_words + 1024u) {
         return UFI_ERR_BUFFER_FULL;

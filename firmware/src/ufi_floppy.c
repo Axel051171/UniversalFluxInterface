@@ -219,6 +219,7 @@ static int write_track(slot_t* s)
         motor_ready();
         uint32_t words = 0;
         uint32_t* store = ufi_flux_store(&words);
+    ufi_flux_invalidate();
         const uint32_t n = fmt.amiga
             ? mfm_encode_amiga_track(fmt.rate, f.track_cells, (uint8_t)s->cyl, s->head, fmt.spt, s->data,
                                      store, words)

@@ -1,11 +1,18 @@
 #include "ufi_raw_verify.h"
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 int main(void){
     uint32_t source[4096],jitter[4096],wrong[4096];
     for(unsigned i=0;i<4096;i++){source[i]=1000;jitter[i]=1000+(i&1?2:-2);wrong[i]=i&1?1500:500;}
     raw_profile_t a,b;uint8_t report[RAW_REPORT_SIZE];
     assert(raw_profile_build(&a,source,4096,4096000,false));
+    raw_builder_t builder;
+    assert(raw_profile_begin(&b,&builder,source,4096,4096000,false));
+    assert(!raw_profile_step(&b,&builder,0) && !builder.edge && !b.valid);
+    unsigned steps=0;int step;
+    do{step=raw_profile_step(&b,&builder,256);steps++;}while(!step);
+    assert(step==1 && steps==16 && !memcmp(&a,&b,sizeof a));
     assert(raw_profile_build(&b,jitter,4096,4096000,false));
     assert(raw_profile_compare(&a,&b,30,report) && report[2]==1 && report[3]==1);
     assert(raw_profile_build(&b,wrong,4096,4096000,false));

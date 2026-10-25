@@ -32,6 +32,8 @@
 #include "ufi_evidence.h"
 #include "ufi_composite.h"
 #include "ufi_job.h"
+#include "ufi_metrics.h"
+#include "ufi_profile.h"
 #include <string.h>
 
 extern capture_context_t g_capture;
@@ -39,6 +41,7 @@ extern capture_context_t g_capture;
 #define STREAM_BUF      8192u       /* payload bytes per message */
 #define SEND_AT         4096u       /* hand a buffer to USB once it holds this much */
 #define ROOM            32u         /* worst case per loop step: index markers + one delta */
+#define STREAM_WORK_WORDS 1024u     /* bound one CPU/cache slice independently of backlog */
 #define TS_MARGIN       2750        /* 10 us: the index IRQ for older samples has run */
 #define DELTA_MAX       (1u << 28)  /* ~0.98 s; larger while running = not yet written */
 #define STALL_MS        1000u       /* host stopped reading */
@@ -192,18 +195,17 @@ static void encode(bool halted)
 
     /* The store is a ring here: logical sample n sits at n % words */
     uint32_t phys = rd % words;
-    if (wr > rd) {                          /* DMA wrote behind the cache's back */
-        uint32_t from = phys & ~7u;         /* 32-byte lines */
-        uint32_t left = wr - rd + (phys - from);
-        while (left > 0) {
-            const uint32_t run = (words - from < left) ? words - from : left;
-            SCB_InvalidateDCache_by_Addr((void*)&s[from], (int32_t)((run * 4u + 31u) & ~31u));
-            left -= run;
-            from = 0;
+    uint32_t cache_end=phys,work=0;
+    while (!done && rd < wr && fill <= cap - ROOM && work<STREAM_WORK_WORDS) {
+        if(phys==cache_end){
+            uint32_t run=wr-rd;
+            if(run>words-phys)run=words-phys;
+            if(run>STREAM_WORK_WORDS-work)run=STREAM_WORK_WORDS-work;
+            uint32_t from=phys&~7u;
+            uint32_t bytes=((run+phys-from)*4u+31u)&~31u;
+            SCB_InvalidateDCache_by_Addr((void*)&s[from],(int32_t)bytes);
+            ufi_metric_add(&ufi_metrics.cache_bytes,bytes);cache_end=phys+run;
         }
-    }
-
-    while (!done && rd < wr && fill <= cap - ROOM) {
         const uint32_t ts = s[phys];
         if (gw && ufi_flux_gw_past_end(ts)) {
             if (halted) rd = wr;             /* discard DMA samples after the deadline */
@@ -220,10 +222,12 @@ static void encode(bool halted)
         put_delta(ts - t_last);             /* an index SPACE may advance the cursor */
         t_last = ts;
         rd++;
+        work++;
         if (++phys == words) {
-            phys = 0;
+            phys = cache_end = 0;
         }
     }
+    ufi_metric_add(&ufi_metrics.stream_samples,work);
     ufi_flux_stream_consumed(rd);           /* frees ring chunks for the DMA */
     /* Advance a silent GW cursor regularly so even a gap spanning timer wraps is
      * represented by SPACE records. Leave a margin for in-flight input DMA. */
@@ -390,7 +394,7 @@ bool ufi_stream_active(void)
     return active;
 }
 
-void ufi_stream_service(void)
+static void stream_service(void)
 {
     if (!active) {
         return;
@@ -441,4 +445,11 @@ void ufi_stream_service(void)
     if (done && fill == 0) {
         finish(g_capture.error_code == 1 ? UFI_ERR_BUFFER_FULL : UFI_OK);
     }
+}
+
+void ufi_stream_service(void)
+{
+    ufi_profile_mark_t profile=ufi_profile_begin();
+    stream_service();
+    ufi_profile_end(UFI_CYCLE_STREAM,profile);
 }

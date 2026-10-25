@@ -4,6 +4,10 @@
 #define RAW_WINDOWS 64u
 #define RAW_REPORT_SIZE (32u+RAW_WINDOWS*4u)
 typedef struct {uint16_t bins[RAW_WINDOWS][8];uint32_t period,count;bool valid;} raw_profile_t;
+typedef struct {const uint32_t* flux;uint32_t edge,previous;bool timestamps,failed;} raw_builder_t;
+bool raw_profile_begin(raw_profile_t* p,raw_builder_t* builder,const uint32_t* flux,
+                       uint32_t count,uint32_t period,bool timestamps);
+int raw_profile_step(raw_profile_t* p,raw_builder_t* builder,uint32_t budget); /* -1 invalid, 0 busy, 1 complete */
 bool raw_profile_build(raw_profile_t* p,const uint32_t* flux,uint32_t count,uint32_t period,bool timestamps);
 bool raw_profile_compare(const raw_profile_t* source,const raw_profile_t* observed,
                          uint16_t tolerance,uint8_t report[RAW_REPORT_SIZE]);

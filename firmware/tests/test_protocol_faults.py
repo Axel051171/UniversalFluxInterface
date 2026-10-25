@@ -1,5 +1,79 @@
 """Production frame parser fuzzing and generated composite descriptor checks."""
-from test_regressions import BASE, function, run
+from test_regressions import BASE, ERRORS, function, run
+
+
+def diagnostics_tests():
+    code=BASE+ERRORS+r'''
+#define FLUX_TIMER_FREQ 275000000u
+char __heap_start[4],__heap_end[4],_edtcm[4],_estack[4];
+static uint32_t irq_mask;
+static uint32_t __get_PRIMASK(void){return irq_mask;}
+static void __disable_irq(void){irq_mask=1;}
+static void __set_PRIMASK(uint32_t value){irq_mask=value;}
+static uint32_t* ufi_flux_store(uint32_t* words){*words=12345;return NULL;}
+static uint32_t ufi_flux_written(void){return 0;}
+static bool ufi_flux_store_is_psram(void){return true;}
+static uint8_t ufi_resources_owner(void){return 2;}
+static uint32_t ufi_native_tx_timeouts(void){return 17;}
+static uint32_t rd(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+static void put32(uint8_t* p,uint32_t value){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(value>>(8*i));}
+'''+function('ufi_v2.c','cmd_diagnostics')+r'''
+int main(void){
+    uint8_t out[65],expected[64],request[2]={1,0};uint16_t size;
+    memset(out,0xa5,sizeof out);ufi_metrics.capture_overruns=3;
+    assert(!cmd_diagnostics(NULL,0,out,&size) && size==64 && out[64]==0xa5);
+    assert(out[0]==1 && out[1]==1 && out[2]==2 && !out[3] && rd(out+4)==275000000);
+    assert(rd(out+8)==12345 && rd(out+20)==3 && rd(out+40)==17 && rd(out+60)==30000);
+    ufi_metrics_pack(expected,64);
+    assert(!cmd_diagnostics(request,1,out,&size) && !memcmp(out,expected,64) && out[64]==0xa5);
+    ufi_cycles_init(550000000,true);ufi_cycles_record(UFI_CYCLE_STREAM,20,220,0,550000000,true);
+    request[0]=2;irq_mask=7;ufi_metrics.capture_index_loss=2;
+    assert(!cmd_diagnostics(request,1,out,&size) && size==64 && irq_mask==7 && out[64]==0xa5);
+    assert(out[0]==1 && out[1]==2 && out[2]==15 && out[3]==1 && rd(out+4)==550000000);
+    assert(rd(out+32)==1 && rd(out+36)==200 && rd(out+60)==2);
+    for(unsigned i=3;i<256;i++){request[0]=(uint8_t)i;memset(out,0xa5,sizeof out);
+        assert(cmd_diagnostics(request,1,out,&size)==UFI_ERR_BAD_ARGS && !size && out[0]==0xa5);}
+    request[0]=2;assert(cmd_diagnostics(request,2,out,&size)==UFI_ERR_BAD_ARGS && !size);
+    puts("diagnostics: legacy/millisecond layouts, cycles, snapshot mask, bounds and unknown selectors passed");
+    return 0;
+}
+'''
+    run('regression_diagnostics',code)
+
+
+def reply_bounds_tests():
+    code=BASE+ERRORS+r'''
+#define UFI_V2_HDR 8u
+#define UFI_V2_MAX_PAYLOAD 4096u
+#define UFI_V2_FRAME_MAX 4106u
+enum {UFI_OWNER_GW=2};
+static uint8_t tx[UFI_V2_FRAME_MAX],last[UFI_V2_FRAME_MAX];
+static uint32_t sent,cancels;
+static unsigned ufi_resources_owner(void){return 0;}
+static void ufi_cancel_request(void){cancels++;}
+static int ufi_native_tx_blocking(const uint8_t* p,uint32_t n){
+    assert(n<=sizeof last);memcpy(last,p,n);sent=n;return UFI_OK;
+}
+static void put16(uint8_t* out,uint32_t value){out[0]=(uint8_t)value;out[1]=(uint8_t)(value>>8);}
+'''
+    for name in ('st','crc16','ufi_v2_frame','send'):code+=function('ufi_v2.c',name)
+    code+=r'''
+int main(void){
+    memset(tx,0xa5,sizeof tx);
+    assert(!ufi_v2_frame(tx,2,1,1,0,4097) && tx[0]==0xa5);
+    assert(!ufi_v2_frame(NULL,2,1,1,0,0));
+    uint8_t tiny=0x55;
+    send(2,0x0d,34,0,&tiny,UINT16_MAX);
+    assert(sent==10 && last[3]==0x0d && last[4]==34 && last[5]==10 && !last[6] && !last[7]);
+    send(2,0x0d,35,0,NULL,1);
+    assert(sent==10 && last[4]==35 && last[5]==10);
+    static uint8_t payload[4096];memset(payload,0x5a,sizeof payload);
+    send(2,0,36,0,payload,sizeof payload);
+    assert(sent==4106 && !last[5] && last[6]==0 && last[7]==16 && last[8]==0x5a && last[4103]==0x5a && !cancels);
+    return 0;
+}
+'''
+    run('regression_reply_bounds',code)
 
 
 def parser_tests():
@@ -109,6 +183,8 @@ return 0;
 
 
 if __name__=='__main__':
+    diagnostics_tests()
+    reply_bounds_tests()
     parser_tests()
     descriptor_tests()
     clock_tests()

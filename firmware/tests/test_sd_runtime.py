@@ -100,8 +100,9 @@ int main(void){
     run('regression_sd_verify',code,('src/ufi_mfm.c','src/ufi_verify.c'))
     code=BASE+ERRORS+r'''
 #include "ufi_verify.h"
-enum {WRITE_IDLE,WRITE_COMPLETE,WRITE_VERIFYING,WRITE_ERROR,CAPTURE_COMPLETE=8,CAPTURE_ERROR=9};
-static struct {unsigned state;bool wave_mode,raw_check;uint32_t flux_count;uint8_t track,side,quarter,verify_level;} g_write;
+enum {WRITE_IDLE,WRITE_COMPLETE,WRITE_VERIFYING,WRITE_ERROR,CAPTURE_COMPLETE=8,CAPTURE_ERROR=9,CAPTURE_WAITING_INDEX,CAPTURE_RUNNING,CAPTURE_IDLE=0};
+typedef unsigned capture_state_t;
+static struct {unsigned state;bool wave_mode,raw_check,gw_mode;uint32_t flux_count;uint8_t track,side,quarter,verify_level;} g_write;
 static struct {unsigned state,error_code;} g_capture;
 typedef struct {uint32_t count,index_time;const uint32_t* samples;} flux_revolution_t;
 static flux_revolution_t revolution={.count=1000};
@@ -110,30 +111,44 @@ static uint8_t raw_flags,raw_report[RAW_REPORT_SIZE];
 static uint16_t raw_tolerance=30;
 static bool raw_available;
 static raw_profile_t raw_source;
+enum {VERIFY_CAPTURE=1,VERIFY_PRECISION,VERIFY_RAW,VERIFY_SECTORS};
+static uint8_t verify_phase;
+static uint32_t verify_since;
+static bool verify_count_ok;
+static raw_builder_t verify_raw_builder;
+static raw_profile_t verify_observed;
 static verify_ref_t verify_ref;
 static mfm_decoder_t verify_dec;
 static uint16_t write_arr[1000];
 static uint32_t write_media_token=42,media=42;
-static bool local_reference_ready=true,cancelled,change_on_capture;
+static bool local_reference_ready=true,cancelled,change_on_capture,change_on_verify,cancel_on_verify;
 static unsigned captures;
+static bool capture_pending;
+static unsigned quality_pending;
+static uint32_t ticks;
 #define UFI_WATCHDOG_FEED() ((void)0)
 static bool ufi_drive_media_matches(uint32_t token){return token==media;}
 static int ufi_capture_start_q(uint8_t t,uint8_t s,uint8_t n,uint32_t p,uint8_t q){
-    (void)t;(void)s;(void)n;(void)p;(void)q;captures++;g_capture.state=CAPTURE_COMPLETE;
+    (void)t;(void)s;(void)n;(void)p;(void)q;captures++;g_capture.state=capture_pending?CAPTURE_RUNNING:CAPTURE_COMPLETE;
     if(change_on_capture)media++;
     return 0;
 }
 static unsigned ufi_capture_get_state(void){return g_capture.state;}
-static uint32_t HAL_GetTick(void){return 0;}
+static uint32_t HAL_GetTick(void){return ticks;}
 static bool ufi_cancel_requested(void){return cancelled;}
-static void ufi_capture_abort(void){}
-static void ufi_flux_capture_stop(void){}
+static void ufi_capture_abort(void){g_capture.state=0;}
 static uint8_t ufi_flux_get_revolution_count(void){return 2;}
 static const flux_revolution_t* ufi_flux_get_revolution(uint8_t n){(void)n;return &revolution;}
-static int ufi_quality_verify(const verify_ref_t* ref,bool count_ok,uint8_t* level){
-    assert(ref==&verify_ref && count_ok);*level=VERIFY_CONTENT;return 0;
+static int ufi_quality_async_verify(const verify_ref_t* ref,bool count_ok){
+    if(change_on_verify)media++;
+    if(cancel_on_verify)cancelled=true;
+    assert(ref==&verify_ref && count_ok);return 0;
 }
-'''+function('ufi_write.c','ufi_raw_verify_options')+function('ufi_write.c','ufi_raw_verify_report')+function('ufi_write.c','ufi_write_verify')+r'''
+static int ufi_quality_async_step(void){if(quality_pending){quality_pending--;return UFI_ERR_BUSY;}return 0;}
+static uint8_t ufi_quality_async_verify_level(void){return VERIFY_CONTENT;}
+static void ufi_quality_async_cancel(void){}
+'''+''.join(function('ufi_write.c',name) for name in ('ufi_raw_verify_options','ufi_raw_verify_report','write_verify_result',
+        'write_verify_cancel','write_verify_end','write_verify_begin','write_verify_step_impl','write_verify_step','ufi_write_verify'))+r'''
 int main(void){
     uint8_t options[5]={31,1,0,30,0},option_reply[8];
     for(unsigned flags=0;flags<256;flags++){
@@ -172,6 +187,23 @@ int main(void){
     options[2]=0;assert(!ufi_raw_verify_options(options,5,option_reply));g_write.state=WRITE_COMPLETE;
     assert(!ufi_write_verify() && g_write.verify_level==VERIFY_READBACK_PLAUSIBLE && raw_report[2]==1 && captures==7);
     g_write.raw_check=false;verify_ref.n=0;
+    verify_ref.n=1;g_write.state=WRITE_COMPLETE;change_on_verify=true;
+    assert(ufi_write_verify()==UFI_ERR_MEDIA_CHANGED && g_write.state==WRITE_ERROR && !g_write.verify_level);
+    change_on_verify=false;media--;g_write.state=WRITE_COMPLETE;cancel_on_verify=true;
+    assert(ufi_write_verify()==UFI_ERR_CANCELLED && g_write.state==WRITE_ERROR && !g_write.verify_level);
+    cancelled=cancel_on_verify=false;capture_pending=true;g_write.state=WRITE_COMPLETE;
+    assert(!write_verify_begin() && g_capture.state==CAPTURE_RUNNING && verify_phase==VERIFY_CAPTURE);
+    for(unsigned step=0;step<8;step++)assert(write_verify_step()==UFI_ERR_BUSY && g_write.state==WRITE_VERIFYING);
+    cancelled=true;assert(write_verify_step()==UFI_ERR_CANCELLED && !verify_phase && g_capture.state==CAPTURE_IDLE);
+    cancelled=false;g_write.state=WRITE_COMPLETE;assert(!write_verify_begin());ticks=2000;
+    assert(write_verify_step()==UFI_ERR_TIMEOUT && !verify_phase && g_capture.state==CAPTURE_IDLE);
+    ticks=0;g_write.state=WRITE_COMPLETE;assert(!write_verify_begin());g_capture.state=CAPTURE_ERROR;g_capture.error_code=2;
+    assert(write_verify_step()==UFI_ERR_DMA && !verify_phase);g_capture.error_code=0;
+    capture_pending=false;g_write.state=WRITE_COMPLETE;quality_pending=1;
+    assert(!write_verify_begin() && write_verify_step()==UFI_ERR_BUSY && verify_phase==VERIFY_PRECISION);
+    assert(write_verify_step()==UFI_ERR_BUSY && verify_phase==VERIFY_SECTORS);
+    assert(write_verify_step()==UFI_ERR_BUSY && g_write.state==WRITE_VERIFYING);
+    assert(!write_verify_step() && g_write.state==WRITE_IDLE && g_write.verify_level==VERIFY_CONTENT);
     puts("write readback: media binding before capture, explicit content/plausibility levels and the raw-only verdict passed");
 }
 '''

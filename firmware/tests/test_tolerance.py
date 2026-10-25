@@ -9,8 +9,8 @@ from test_regressions import BASE, ERRORS, run
 def main():
     code = BASE + ERRORS + r'''
 #include "ufi_mfm.h"
-#include "../legacy_fixture.h"
-#include "../mac_fixture.h"
+#include "legacy_fixture.h"
+#include "mac_fixture.h"
 
 /* -- shared capture of what the decoder reports ------------------------------------- */
 static struct { mfm_id_t id; bool ok; uint8_t flags; uint8_t data[1024]; } got[16];

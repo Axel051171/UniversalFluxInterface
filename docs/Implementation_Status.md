@@ -1450,3 +1450,284 @@ holds every byte layout; the INFO caps word is full, so FEATURES ids 11-14 annou
   drives - all listed as measurements in docs/Bringup_2026-10-24.md section 6.
 - Open from the owner's A10 list: ring buffer before the index (DMA capture rebuild in
   `ufi_flux.c`).
+
+## Sektorbefunde mit getrennten Prüfmasken — 2026-10-22
+
+Firmware-only extension inspired by the KryoFlux diagnostic categories: ANALYSIS_JOB
+op47 discovers and pages the latest quality result, with a required analysis generation
+and optional caller-declared C/H/N plus inclusive sector range. Each 32-byte record
+has independent 32-bit checked/findings masks, length units, position, reason and
+revolution/profile masks. Full observations and selected rejected headers/partial
+fields are retained without changing decoder acceptance, tolerance policy, old QX
+layouts or Greaseweazle. A declared profile affects only the returned interpretation.
+No host software changes in this step.
+
+The bounded 64-record store occupies1544 bytes of SRAM1; AXI grows by8 bytes and
+retains33008 bytes free (240 above the required32KiB). FLASH208020 bytes; DTCM stack
+space21088 bytes. Firmware SHA256:
+`95967ddcd979e48e5e7426fa7f683905c66442734f6bfd31e5a29aa3c705153d`.
+
+Validation: full offline gate with all five corpora,25/25 groups,197 host compatibility
+tests and23/23 IEC checks; static analysis35 modules. New native findings tests cover
+real IBM/Amiga decoding, explicit geometry, separate checksum/uncheckable states,
+partial fields, variants, page bounds, missing headers and overflow. Final targeted
+run31/31 under Linux GCC with ASan/UBSan; runtime and analysis command harnesses
+also pass after the final mask refinements. ARM build and memory checks pass.
+
+Limits: masks aggregate observations for a CHRN identity, not a full event journal.
+Offsets identify observed field positions, not a verdict that the position is legal.
+Protection, illegal-offset and checksum-absent bits remain reserved and unchecked;
+they need format-specific rules. Nonzero metadata is not automatically hidden data,
+variants do not prove post-format modifications, and decoder rejection is not an
+image-export decision. Hardware qualification is still open. Wire specification:
+USB_Protokoll.md4.18. Reference terminology:
+[KryoFlux manual, page17](https://www.kryoflux.com/download/kryoflux_manual.pdf).
+
+### 2026-10-22 — Retained captures, precise readback and bounded evidence
+
+This follow-up supersedes the memory figures and reserved-OFFSET statement in
+the preceding entry. Firmware changes only; the host application and board were
+not changed by this follow-up.
+
+1. Op48 exposes finalized non-streamed capture manifests and indexed timestamp
+   pages with capture ID, whole-capture fingerprint and CRC32 over metadata/data.
+   All shared-buffer writers invalidate the old ID before reuse. Op52 runs the
+   cooperative analyzer again against that capture with its original position;
+   it does not move the head or update the currently selected medium's profile.
+2. Op50 optionally reserves half of U11 for the actual native u32 waveform after
+   weak-cell processing. Two readback revolutions are compared edge by edge before
+   applying the existing content/plausibility verdict. Op54 pages the bounded
+   missing/extra-edge report, with an optional strict failure policy. Unsupported
+   splices, gate padding, classic u16 writes and missing periods fail before WGATE.
+3. Op49 preserves up to64 sector variants independently, with CHRN, dual content
+   fingerprints, position, checksum/coding findings and revolution/profile masks.
+   Payloads remain reconstructible from retained raw captures rather than being
+   duplicated in internal RAM. Overflow is explicit.
+4. Recovery policy3 tracks newly observed valid CHRN+CRC32 identities across
+   attempts; unchanged sector counts can still provide new information. Full or
+   incomplete registries disable the early plateau decision. Existing attempt,
+   timeout and expected-sector limits remain authoritative.
+5. Op51 reports matched/missing/extra edges, mean absolute/signed deviation,
+   maximum deviation and revolution masks in128 windows. Storage is initialized
+   explicitly in SRAM4. Index alignment and tolerance remain declared limitations;
+   these observations do not classify physical weak bits automatically.
+6. AmigaDOS OFFSET rule1 checks sectors-to-gap against1…11/22 and reports the raw
+   value/rule ID. Other format-specific observations remain available through
+   Op47. Generic PROTECTION and DATA_ABSENT verdicts remain unsupported.
+7. Complete captures survive USB reset while the MCU and storage remain alive.
+   Idempotent pages can resume after manifest/ID/fingerprint checks. There is no
+   guarantee of RAM retention across power loss or MCU restart, no cryptographic
+   identity claim and no automatic replay of physical writes.
+8. `firmware/tests/benchmark_quality.py` generates deterministic JSON metrics from
+   production algorithms. Seven fixtures include four deliberately subtle faults
+   and three controls. The precise comparison finds all four faults with zero
+   false positives in these controls; the configured lossy histogram accepts all
+   four fault fixtures. This measures selected synthetic cases, not comparative
+   KryoFlux hardware performance.
+
+Wire layouts, flag semantics and limits: USB_Protokoll.md4.19–4.22. The new settings
+are native UFI operations; Greaseweazle protocol flags retain their meanings.
+An active U11 reference reservation reduces the common available capture/write
+capacity; disabling it restores the previous capacity.
+
+### 2026-10-22 — Flag-controlled protection evidence (Op55/56)
+
+This follow-up implements a native optional classifier; the generic
+`SF_PROTECTION` bit in Op47 remains reserved. Op55 selects six groups: content
+variation, stable CRC/coding errors, layout, timing, position/order and known
+signatures. Op56 pages generation-bound records with rule IDs, CHRN or track
+scope, positions, values, revolution masks, severity and explicit limitations.
+Disabled, no indicator within checked rules, anomaly, candidate, known signature
+component and insufficient coverage are distinct states. No state asserts that
+a disk is unprotected or that an anomaly was intentional.
+
+The first concrete signature rule recognizes a modern Copylock sector6 using
+raw sync, matching sector ID, signature, the complete nonzero23-bit LFSR data
+sequence, MFM clocks and a zero footer, repeated over the configured minimum
+revolutions. It does not validate the full track, old/extended variants, game
+behavior or physical reproduction. Format reference: Keir Fraser's public-domain
+disk-utilities Copylock description, linked in USB_Protokoll.md4.23. No firmware
+code from a proprietary binary was used.
+
+Only nominal PLL observations count as independent revolutions. Static duplicate
+IDs are separated from changing content. Circular rotation and fixed interleave
+are accepted. Overflow, insufficient revolutions, unsupported local timing,
+ambiguous decoding, missing raw comparison and failed/incomplete analysis remain
+visible. Incomplete analysis cannot promote a finding to candidate/signature.
+The configuration defaults to disabled and affects future native detailed analyses,
+including archive replay; ordinary READ, WRITE verification and Greaseweazle retain
+their own paths. The stored report retains its configuration snapshot.
+
+Validation: full offline gate28/28 groups,21 native suites, all five corpora,
+197 host tests and23/23 IEC checks. The expanded targeted classifier suite passes
+179/179 on Windows Clang and Linux GCC ASan/UBSan; it includes positive and false
+signature controls, seven decoder-family evidence controls, ordinary IBM flux,
+duplicate identities, circular order, incomplete analysis and bounded overflow.
+Runtime tests cover opt-in configuration, snapshot retention, pages, generations,
+three-revolution archive analysis and insufficient one-revolution input. Static
+analysis37 modules passes (13 pure,24 stubbed;15 excluded). Dedicated ASan fuzzer:
+56585 executions in16 seconds, no failures.
+
+ARM build: FLASH220768 bytes, AXI294736/free32944, DTCM109984 with21088 stack space,
+SRAM1 13808, SRAM2 8192, SRAM4 12396. The classifier state occupies6724 bytes in
+SRAM4; no large AXI allocation. Binary SHA256:
+`311019f603107689c3ae2c51210ec0197b9a3bda06bd4b1a7aab5eefdf1a1b56`.
+Hardware qualification and labeled real protected-disk corpus validation remain
+open. Software fixtures and successful existing corpus decoding do not establish
+universal protection recognition or a comparative KryoFlux hardware result.
+
+## Hard firmware audit, 2026-10-22
+
+Current hard audit: [detailed findings, checks and limits](Firmware_Hartaudit_2026-10-22.md).
+Twelve corrected groups cover uninitialized NOLOAD report memory, destructive
+diagnostic guards/cancellation, late index/offset starts, gate shutdown ordering,
+failed speed measurements, post-weak raw references, final readback media/cancel
+checks, capture bounds/PRIMASK, multitrack JOB_RESEEK, checkpoint settings binding,
+bad-CRC variant arrival order, and diagnostic timer state after waveform writes.
+
+Checkpoint files now use schema2 while retaining128 bytes and the USB request/
+response layouts. Restoring an unbound schema1 record returns BAD_ARGS. Enabled
+native speed checks now reject measurement failures before WGATE. Greaseweazle
+command and wire layouts remain unchanged.
+
+The gate now has29 groups, including timed destructive-write fault injection.
+All29 groups pass with all five external corpora,197 host tests and23 IEC checks.
+Static analysis with actual ARM SDK headers covers all59 project C modules.
+Targeted Linux GCC ASan/UBSan checks pass, including181 protection assertions.
+Six ASan fuzz targets completed2,232,169 executions in their latest runs, including
+fresh mutations beyond corpus initialization, without detected failures.
+
+Cross-builds now emit compile_commands.json and measured GCC stack usage. A new
+per-frame2048-byte gate runs before BIN/HEX generation; maximum measured project
+frame1080 bytes. This is not a cumulative call-chain/interrupt bound. CI runs the
+full ARM-header analysis and archives stack_usage.json alongside memory_usage.json.
+
+Final ARM build: FLASH221976 bytes; AXI294744/free32936, DTCM109984 with21088 stack
+space; SRAM1 13808, SRAM2 8192, SRAM4 12396. Protection state remains6724 bytes.
+BIN SHA256: `77b825f8d8987e89c9099551b43833ca45467411b1a604f05314b1b53609ea3c`.
+Physical timing, U11 throughput/cache coherency, real protection classification and
+complete call-chain stack qualification remain outside the hardware-free result.
+
+## Process optimization, 2026-10-22
+
+Current follow-up: [implementation, measurements and limits](Firmware_Prozessoptimierung_2026-10-22.md).
+Native post-write readback now advances through cooperative capture, precision,
+raw-profile and sector phases, with bounded comparison work and cleanup on
+cancel, media change, timeout or DMA failure. Re-enabling a running motor avoids
+another spin-up wait. Initial mechanical waits and reference preprocessing still
+have synchronous paths.
+
+Shared CRC32/FNV32 fingerprints avoid repeated scans; streaming processes at most
+1024 flux words per encoder call and invalidates only the corresponding cache
+slices. Two decoders and the raw readback profile use SRAM1/SRAM4. Net AXI reserve
+increases by3880 bytes to36816 bytes; stack reserve and heap remain unchanged.
+
+Opt-in QUALITY feature0x0008 validates a cached format hint, with full-search
+fallback and conservative ambiguity reporting. Protection analysis and raw
+revolution comparison retain full search. New explicit retry Policy4 includes
+bad-data-CRC variants and bounded raw variation evidence. Missing evidence or
+registry overflow cannot produce a false plateau. Native DIAGNOSTICS payload01
+returns versioned64-byte performance counters; empty diagnostics and Greaseweazle
+wire layouts retain their meanings. See USB_Protokoll.md for flags and limits.
+
+Full offline gate passes31/31 groups both serially and with four workers, including
+23 native suites, five external corpora,197 host tests and23 IEC checks. The22
+independent groups took141.70s serially and46.59s with four workers on this host
+(3.04x); later sequential groups are excluded from these times. CMake supports
+ccache; a local ARM cache probe also restored GCC stack sidecars correctly.
+CI configuration is updated but has not been executed remotely for this change.
+
+All59 project modules pass static analysis with actual ARM SDK headers. Linux GCC
+ASan/UBSan runtime checks pass. Six60-second ASan fuzz runs completed10,318,897
+executions including fresh mutations without a detected failure. An earlier
+fuzz stub returned an impossible diagnostic response length; the harness now
+uses the real bounded provider. The central framing path additionally rejects
+oversized/null responses before copy and CRC, with explicit boundary regressions.
+
+ARM build: FLASH225076 bytes; AXI290864/free36816; DTCM109984 with21088 stack
+space; SRAM1 16040, SRAM2 8192, SRAM4 15668. Largest measured project frame848
+bytes across723 functions; this is not a cumulative stack bound. BIN SHA256:
+`669e8acf0e25db32b61d16dab434286a25de477fd4bde8ccb4ac76582a435327`.
+Real DMA/cache timing, U11 throughput, electrical/mechanical operation and actual
+USB/flux throughput remain hardware qualification work.
+
+### Flag interaction follow-up, 2026-10-22
+
+CONFIRM_CONTENT now requires exhaustive format search even when FAST_FORMAT_HINT
+was requested: cached recognition deliberately reports ambiguity, which could
+otherwise interrupt confirmation. Requested feature bits remain visible; actual
+hint use remains clear. Genuine full-search ambiguity still blocks confirmation.
+No wire changes or extra RAM allocation. The regression warms the cache and
+compares confirmation outcomes against the complete-search baseline. The expanded
+quality suite passes6328/6328 assertions, including all4096 base/feature mask
+combinations. USB_Protokoll.md3.6 collects exclusions, dependencies and precedence.
+
+Fresh validation: full offline gate31/31, static ARM analysis59/59, ARM build,
+Linux GCC ASan/UBSan analysis-job/quality runtime checks. FLASH225108 bytes;
+RAM and maximum stack frame unchanged. Current BIN SHA256:
+`7b35c00e1b24a139c59f66b131ec56bce369f4902e2da5e071093bb75a08e161`.
+
+## Targeted Cortex-M7 optimization, 2026-10-22
+
+[Implementation, reference comparisons and compiler profiles](Firmware_CortexM7_Optimierung_2026-10-22.md).
+CRC16 now folds the polynomial with XOR/shifts without a table; ARM O2 function
+size36 bytes instead of50. MFM data-bit extraction gathers bits with masks/shifts.
+PLL quotients use guarded32-bit division, retaining64-bit arithmetic for out-of-range
+values and identical signed truncation. ARM disassembly confirms three SDIV paths.
+The new suite passes504972 exact-reference checks, including100000 complete decoder
+state comparisons. No USB wire/flag changes.
+
+Explicit release profiles2/3/s and fresh-build default Release/O2 are implemented.
+All three ARM builds pass memory/frame gates. O2: FLASH225260, AXI free36816,
+maximum project frame848. O3: FLASH284848, AXI free36816, frame872. Os: FLASH186832,
+AXI free36912, frame856. O2 remains the default: no MCU performance evidence selects
+O3 or Os. The standard build adds152 bytes Flash versus the preceding flag fix,
+without changing RAM usage or maximum frame. No LTO or Fast-Math activation.
+
+Final gate31/31 passes with24 native suites, all five corpora,197 host tests and
+23 IEC checks; Linux GCC ASan/UBSan passes24 native suites. Static ARM analysis
+59/59 passes. Targeted protection/decoder fuzzer:438082 executions in31 seconds,
+including fresh mutations, no detected failures. Other fuzz targets were not rerun.
+PC microbenchmarks are labeled host-only and do not establish Cortex-M7 throughput.
+Real cycle/interrupt/bus measurements and hardware qualification remain open.
+Current standard BIN SHA256:
+`a7967aac676c5b244c6077cf147d4613055e8b74823774f7c1690c4542419a8f`.
+
+## Capture integrity and hardware qualification, 2026-10-23
+
+[Implementation, reproducible qualification matrix and outstanding limits](Firmware_Hardwarequalifikation_2026-10-22.md).
+The existing H723/U11 board remains the target. Active RDATA CH1/Apple CH3 and
+physical INDEX overcapture now stop capture with an explicit error, including
+last-index and deadline paths. The stopped DMA cursor bounds a retained raw window;
+scratch samples are excluded. A long stream fails before its logical sample cursor
+overflows. No per-edge IRQs were introduced.
+
+Native DIAGNOSTICS payload02 reports six DWT cycle scopes and saturating loss
+episode counters. Frozen/unavailable counters, clock changes and ambiguous spans
+are flagged. Empty and01 diagnostics and GW wire layouts retain their meanings.
+Op48 selector1 exposes an explicitly incomplete raw timestamp window after hardware
+overcapture; ordinary archives/replay cannot accept it as a clean capture. Exact
+formats and limits are documented in USB_Protokoll.md. A separate CMake option
+UFI_FORCE_INTERNAL_FLUX_STORE builds the internal fallback qualification image;
+the production default still selects U11 normally.
+
+Final offline gate passes32/32 groups,0 skipped, with25 native suites, five external
+corpora,197 host tests and23 IEC checks. Static analysis passes all59 project
+modules with actual ARM SDK headers. Linux GCC ASan/UBSan passes all25 native suites
+plus capture-integrity, analysis-job and protocol runtime tests. Targeted v2/GW
+ASan fuzz runs completed2,272,246 and283,449 executions with fresh mutations and no
+detected failure. Other fuzz targets were not rerun for this step.
+
+Standard ARM Release/O2: FLASH228380B, AXI290992/free36688B, DTCM109984 with21088B
+stack space; SRAM1 16040B, SRAM2 8192B, SRAM4 15668B, heap8192B. Largest measured
+project frame848B across731 functions; this is not a cumulative stack bound.
+Standard BIN SHA256:
+`1de7b1105784134979fb7d1e47a694314c11d594b37d9db560a53aadc709722b`.
+The forced-fallback build also passes memory/stack gates: FLASH224156B, AXI free36784B.
+Its separate hash and full results are in the linked report.
+
+All physical tests remain NOT_RUN. Board population/power checks, real DMA/U11/cache
+operation, USB throughput, write/readback and independent comparisons remain open.
+In particular, RDATA is armed in the external INDEX interrupt: latency from the
+physical index can exclude early edges and must be measured. Zero overcapture flags
+alone do not prove a complete track or a guaranteed timing bound.

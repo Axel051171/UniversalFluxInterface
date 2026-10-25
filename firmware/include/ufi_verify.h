@@ -61,6 +61,9 @@ typedef struct {
 } verify_match_t;
 
 uint32_t ufi_crc32(uint32_t crc, const uint8_t* p, uint32_t n);     /* init 0, IEEE, final xor done */
+typedef struct {uint32_t crc,hash,prefix_crc,prefix_hash;} verify_fingerprint_t;
+/* One data traversal; prefix may exclude format-specific labels/trailers. */
+bool ufi_fingerprint(const uint8_t* p,uint32_t n,uint32_t prefix,verify_fingerprint_t* out);
 
 /* data rate from the shortest common period (ticks - 1 values as in the ARR array);
  * one of 250000, 300000, 500000, 1000000 or 0 */

@@ -7,6 +7,7 @@
 
 #include "stm32h7xx_hal.h"
 #include "ufi_firmware.h"
+#include "ufi_profile.h"
 
 /* ============================================================================
  * EXTERNE HANDLES (definiert in anderen Modulen)
@@ -75,7 +76,9 @@ void TIM2_IRQHandler(void)
  */
 void DMA1_Stream0_IRQHandler(void)
 {
+    ufi_profile_mark_t profile=ufi_profile_begin();
     ufi_flux_dma_irq();
+    ufi_profile_end(UFI_CYCLE_CAPTURE_DMA,profile);
 }
 
 /**
@@ -91,7 +94,9 @@ void TIM3_IRQHandler(void)
  */
 void DMA1_Stream1_IRQHandler(void)
 {
+    ufi_profile_mark_t profile=ufi_profile_begin();
     ufi_write_dma_irq();
+    ufi_profile_end(UFI_CYCLE_WRITE_DMA,profile);
 }
 
 /**

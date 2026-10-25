@@ -20,7 +20,8 @@
 
 extern capture_context_t g_capture;
 
-static mfm_decoder_t dec;
+/* Initialized by mfm_dec_init* for every decode; no DMA access, no boot state. */
+__attribute__((section(".backup"),aligned(4))) static mfm_decoder_t dec;
 static uint16_t hist[HIST_BINS];
 
 static int analysis_progress(uint32_t since)

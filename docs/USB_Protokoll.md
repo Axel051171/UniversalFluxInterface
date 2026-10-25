@@ -1,6 +1,6 @@
 # USB-Protokoll der UFI Flux Engine (UFI Headless)
 
-Stand: Firmware 1.18-dev, Board v0.7; sachlich gegliederte Fassung vom 17.10.2026.
+Stand: Firmware 1.18-dev, Board v0.7; ergänzt am 22.10.2026 (4.18–4.23).
 Alle Mehrbyte-Werte **little endian**. Die Kapitel 1–9 beschreiben den implementierten
 Softwarestand des UFI-v2-Protokolls, Kapitel 10 den Greaseweazle-Modus. Hardware-,
 Betriebssystem- und Laufwerksqualifikation stehen aus. Die Abschnitte sind inhaltlich
@@ -27,6 +27,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 3.3 Festlegungen im Detail
   - 3.4 Ergänzungen ab Firmware 1.18-dev (IEC-Adressierung)
   - 3.5 Beispiel: Spur lesen
+  - 3.6 Flag-Abhängigkeiten und Wechselwirkungen
 - 4 Laufwerk und Medien
   - 4.1 Aufnahmebelege und zusätzliche Laufwerkszeiten (INFO Bit25)
   - 4.2 Positionsgültigkeit, Laufwerksprofile und Mediengeneration (INFO Bit27)
@@ -45,6 +46,12 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
   - 4.16 Schwache Zellen schreiben (`flags2` Bit3, 1.18-dev)
   - 4.17 Rohprüfung je Schreibauftrag (`flags2` Bit4, 1.18-dev)
+  - 4.18 Sektor-Befundbericht mit Prüfmasken (Op 47, 22.10.2026)
+  - 4.19 Gespeicherte Flux-Aufnahme abrufen und erneut analysieren (Op48/52)
+  - 4.20 Einzelne Inhaltsvarianten (Op49) und Informationsgewinn
+  - 4.21 Zeitabweichungen über mehrere Umdrehungen (Op51)
+  - 4.22 Präzises Roh-Prüflesen mit U11-Referenz (Op50/54)
+  - 4.23 Flaggesteuerte Kopierschutz-Hinweisanalyse (Op55/56)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -143,7 +150,7 @@ Keine Dateiformat-Fähigkeitsmatrix.
 | 16 | u32 | Flux-Takt, 275000000 Hz |
 | 20 | u8 | Ausgewählter Port/Laufwerkstyp |
 | 21, 22 | je u8 | Konfigurationsabfrage 23, geprüfter Start 24 |
-| 23, 24 | je u8 | Erweiterte Discovery 25 und mediengebundener Analyse-Start 26 (siehe 4.20); 0 bei älteren Builds |
+| 23, 24 | je u8 | Erweiterte Discovery25 und mediengebundener Analyse-Start26 (siehe4.5);0 bei älteren Builds |
 | 25–27 | Bytes | Mehrspur-Operationen: 27 Anlegen, 28 Status, 29 Steuern |
 | 28–30 | Bytes | Operationen30 Checkpoint,31 Rohspur-Optionen,32 Rohspur-Bericht |
 | 31 | u8 | Reserviert, 0 |
@@ -567,7 +574,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0A | RESOURCE (1.18) | leer, 0 freigeben oder 1 beanspruchen | Besitzer u8; Abschnitt 1.4 |
 | 0x0B | JOB (1.18) | Status / Öffnen / Commit | 24 Byte; Abschnitt 2.6 |
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
-| 0x0D | DIAGNOSTICS (1.18) | leer | 64 Byte, Schema 1; Abschnitt 5.1 |
+| 0x0D | DIAGNOSTICS (1.18) | leer; `01` Prozessmesswerte; `02` Zyklen-/Verlustdiagnose | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
 | 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–46), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
@@ -775,6 +782,42 @@ Gerät: 55 AA 02 20 03 00 00 00                   crc   angenommen
 Gerät: 55 AA 04 20 03 00 00 10  <4096 Byte Fluss> crc  Daten …
 Gerät: 55 AA 05 20 03 00 01 00  03               crc   Ende, 3 Umdrehungen
 ```
+
+### 3.6 Flag-Abhängigkeiten und Wechselwirkungen
+
+Flags gehören immer zu ihrem jeweiligen Request-/Konfigurationsfeld. Gleiche
+Bitwerte in READ, WRITE, ANALYZE, Jobflags und Op55 haben verschiedene Bedeutungen;
+Masken aus verschiedenen Feldern dürfen nicht miteinander verodert werden.
+Es gibt keine sinnvolle globale Einstellung „alle Flags einschalten“.
+
+| Kombination | Implementiertes Verhalten |
+|---|---|
+| ANALYZE Bit1–7 ohne DETAIL Bit0 | BAD_ARGS; auch ADAPTIVE benötigt DETAIL. `0xFF` ist als Basis-Analysemaske zulässig. |
+| QUALITY-Diagnosefeatures CODING/MARKS/MARGIN | Miteinander und mit den Basis-Analyseflags kombinierbar. Schema2 mit37 Bytes benötigt mindestens ein bekanntes Feature sowie gültige Parameter. |
+| FAST_FORMAT_HINT + CONFIRM_CONTENT (Policy1) | Bestätigung hat Vorrang: vollständige Suche, kein Cache-Kurzlauf. Angefordertes Feature bleibt in QD-Byte8 sichtbar; QD-Byte9 Bit3 bleibt aus. Echte Mehrdeutigkeit der vollständigen Suche verhindert weiterhin eine Bestätigung. |
+| FAST_FORMAT_HINT + aktive Op55-Optionen / REV_COMPARE / Policy4 | Hinweis wird nicht verwendet; vollständige Suche. Auch explizites Format oder explizite Rate verhindern den Kurzlauf. |
+| ADAPTIVE + Kopierschutzhinweise | Alternative PLL-Profile dürfen Decoderbefunde liefern; sie zählen nicht als zusätzliche unabhängige Umdrehungen für Kopierschutzhinweise. |
+| RETRY_MISSING ohne EXPECT_SET | BAD_ARGS. EXPECT_SET benötigt eine nichtleere Sektormaske; ohne EXPECT_SET muss sie0 sein. |
+| Policies2–4 ohne RETRY_MISSING oder RETRY_ERRORS | BAD_ARGS. Policy1 steuert Wiederholungen selbst; sie benötigt genügend Versuche für die verlangten Bestätigungen. |
+| Policy4 mit nur einer Umdrehung je Versuch | BAD_ARGS. Ab zwei Umdrehungen zulässig; REV_COMPARE wird automatisch angefordert. |
+| WRITE Inhaltsprüfung Bit0 + Weak-Marker `flags2` Bit3 | BAD_ARGS. Weak-Marker benötigen den erweiterten Schreibpfad. |
+| WRITE Inhaltsprüfung Bit0 + Rohprüfung `flags2` Bit4 | BAD_ARGS. Dies sind alternative Auftragsarten. Das zusätzliche Op31-Timingprofil darf dagegen mit Inhaltsprüfung laufen. |
+| Weak-Marker + Rohprüfung `flags2` Bit4 | Zulässig im erweiterten Pfad mit Quell-Indexperiode; Referenz entsteht nach der Weak-Verarbeitung aus der tatsächlich erzeugten Vorlage. Keine Bestätigung vollständiger Sektorinhalte. |
+| Extended-WRITE + Viertelspur-/Skalierungs-/CLAMP-Bits oder Präkompensation | NOT_IMPL; diese Optionen gehören zum klassischen Writer. Extended-Daten sind bereits durch den Sender zeitlich festgelegt. |
+| Op31 REQUIRE_TIMING_MATCH ohne RAW_TIMING_PROFILE | BAD_ARGS. Bei Rohprüfung `flags2` Bit4 gilt der konfigurierte Pflichtvergleich ebenfalls. |
+| Op50 strenger Vergleich ohne Aktivierung | BAD_ARGS. Aktivierung reserviert U11-Speicher und verkleinert den gemeinsamen Capture-/Write-Puffer. |
+| Op50 aktiv + geprüftes WRITE mit Splice-Offset, Gate-Vor-/Nachlauf, klassischem Pfad oder fehlender Quellperiode | Vor WGATE abgelehnt; siehe4.22. Ohne angefordertes Prüflesen wird durch Op50 allein kein Prüflesen gestartet. |
+| Decoder-Toleranzen + Fehler-/Kopierschutzanalyse | Kombinierbar. Annahme beschädigter Sektoren bedeutet keine Reparatur: Fehlerzähler und Befundbits bleiben maßgeblich. |
+| Op55 + zu wenige Aufnahmeumdrehungen / zu kleines Zeitbudget | Kein zusätzlicher Leseauftrag durch die Flags allein. Bericht meldet unzureichende Abdeckung beziehungsweise die Analyse endet mit Timeout. |
+
+Mehr angeforderte Auswertung benötigt zusätzliche Rechenzeit und Berichtskapazität.
+Ein Zeitbudget muss dazu passen. Strenge Op31-/Op50-Vergleiche können absichtlich
+einen Fehler liefern, obwohl ein Sektorinhalt erfolgreich dekodiert wurde. Ihre
+Toleranzen sind verschieden: Op31 in Promille, Op50 in Flux-Ticks. Das Tool muss
+Inhaltsbefund, Timingbefund und Fehlerstatus getrennt auswerten.
+
+Greaseweazle besitzt eigene Befehle/Flags. Die nativen Analysemasken werden dort
+nicht in bestehende Greaseweazle-Flags eingebettet.
 
 ## 4 Laufwerk und Medien
 
@@ -1338,7 +1381,7 @@ Byte24 der Op22-Matrix kündigt Op26 an.
 Fehlercodes wie oben; Antworten und Berichte wie Op1. Op24 bleibt für die
 bisherige reine Konfigurationsprüfung verfügbar. Diese Befehle sichern einen
 einzelnen Start, keine atomare gesamte Diskettenkopie. Sitzungsgültigkeit und
-Überlaufregeln der Generationen aus4.19 gelten unverändert.
+Überlaufregeln der Generationen aus1.3 gelten unverändert.
 
 Hostbeispiel:
 
@@ -1459,7 +1502,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | 5 | u8 | höchster Formathinweis | 7 |
 | 6 | u16 | Op-33-Flags (Apple-GCR) | 0x003F |
 | 8 | u16 | Op-34-Toleranzflags | 0x001F |
-| 10 | u16 | QUALITY-Merkmale (`features`, Op 1 Länge 37) | 0x0007 |
+| 10 | u16 | QUALITY-Merkmale (`features`, Op 1 Länge 37) | 0x000F |
 | 12 | u16 | Diagnoseflags (`diagnostic_flags`, 5.2) | 0x0018 |
 | 14 | u8 | Positionsbyte der Analyse (Seite, Viertelspurmodus, Viertel) | 0xB1 |
 | 15 | u8 | reserviert | 0 |
@@ -1563,8 +1606,10 @@ und weist zu große Abweichungen ab:
   Drehzahlen nennen kann.
 - Ohne Bit 6 gibt es keine Quelldauer, die Prüfung entfällt. Greaseweazle-Schreibbefehle
   prüfen nicht. Apple-Disk-II-Laufwerke ohne Sync-Sensor haben keinen Index: Prüfung
-  entfällt. Misslingt die Messung (kein Index), fällt kein Urteil; der normale Ablauf
-  meldet den fehlenden Index später wie bisher.
+  entfällt. Misslingt eine aktivierte Messung, wird der Auftrag bereits hier mit dem
+  Messfehler abgewiesen (etwa NO_INDEX, TIMEOUT oder CANCELLED); das Schreibtor bleibt
+  geschlossen. Op41 setzt die gemessene Dauer dabei auf0 und zeigt die aktuelle
+  Quelldauer, damit kein alter erfolgreicher Messwert als neuer erscheint.
 
 Die Prüfung ersetzt keine Zeitskala: Wer ein 360-U/min-Abbild auf 300 U/min schreiben
 will, setzt `scale` (Bit 3) und schickt kein Bit 6 oder eine passend umgerechnete Quelle.
@@ -1858,6 +1903,595 @@ Vergleich gedacht ist. `flags2` Bit4 fordert den Fingerabdruck ohne Inhaltsrefer
   `raw_verify_options(flags=, tolerance_permille=)`, `raw_verify_report()`,
   `ufi --extended write … --raw-check`, `ufi raw-check [--tolerance N] [--profile] [--require] [--off]`.
 
+### 4.18 Sektor-Befundbericht mit Prüfmasken (Op 47, 22.10.2026)
+
+Die Firmware sammelt bei der Detailanalyse (synchron und Analysejob) sowie beim
+sektorbasierten Firmware-Prüflesen zusätzliche Beobachtungen. Kein neues Startflag:
+die bestehenden Decoder-/Toleranzeinstellungen bleiben maßgeblich. Reines READ,
+Spurübersicht, Rohprofil-Prüflesen und Greaseweazle erzeugen diesen Bericht nicht.
+Die bisherigen Berichte und ihre Flagbytes bleiben unverändert.
+
+`ANALYSIS_JOB 0x0F [47]` fragt die Unterstützung ab, auch während einer Operation:
+16 Byte, Byte0 Schema1, Byte1 Kopfgröße32, Byte2 Datensatzgröße32, Byte3 maximale
+Seitengröße8, bei4 u32 unterstützte Befundmaske `0x0001EFFF`, Byte8 Kapazität64,
+Rest0. Keine SD-Zugriffe. Ältere Firmware weist die unbekannte Operation ab.
+
+Seite abrufen: `[47, analyse_generation:u32, erster:u8, anzahl:u8]`, insgesamt7 Byte.
+Generation aus dem QX-Analysebericht (u32 bei Offset36) verwenden, nicht Konfigurationsgeneration oder
+Job-ID. `anzahl`1–8, `erster`0–Datensatzanzahl; der Endcursor liefert einen leeren Kopf.
+Während aktiver Operationen BUSY, bei fehlendem/veraltetem Bericht NOT_FOUND,
+bei ungültiger Länge, Generation0, Cursor oder Seitengröße BAD_ARGS. Es gibt keinen
+beständigen Snapshot über eine neue Analyse hinweg: jede Seite muss zur selben
+Analyse-Generation gehören. Beim Start einer neuen Detailanalyse wird der Speicher
+geleert. Fehler-/Abbruchberichte können unvollständig sein.
+
+Optional12 Byte: an die7 Byte `erwartetes_C, erwartetes_H, erwartetes_N,
+erste_Sektornummer, letzte_Sektornummer` anhängen. C/H/N=255 bedeutet unbekannt,
+N sonst0–7 (128<<N Byte), Sektorintervall inklusive, erste≤letzte. Das ist eine vom
+Tool erklärte Erwartung, keine automatisch erkannte Geometrie. Die Firmware
+vergleicht sie ausschließlich für diese Antwort, ohne den Bericht oder Decoder zu
+verändern. So lassen sich auch abweichende Längen oder Seitennummern gezielt prüfen.
+Die gleiche Erwartung für alle Seiten verwenden. Ein CBM-/Apple-Kopf enthält keine
+Seitenkennung; dafür bleibt die Seitenprüfung auch bei vorgegebenem H unausgeführt.
+
+Antwortkopf32 Byte:
+
+| Offset | Typ | Bedeutung |
+|---|---|---|
+| 0–3 | 4×u8 | Schema1, Kopf32, Datensatz32, Decoderformat |
+| 4 | u32 | Analyse-Generation |
+| 8–10 | 3×u8 | Gespeicherte Datensätze, erster, gelieferte Anzahl |
+| 11 | u8 | Bit0 Beobachtungen verworfen (Speicher voll), Bit1 Analysefehler, Bit2 Format mehrdeutig |
+| 12 | u32 | Verworfene Beobachtungen, sättigend; keine Anzahl eindeutiger Sektoren |
+| 16 | u32 | Unterstützte Befundmaske |
+| 20–23 | 4×u8 | Aufnahmespur, Seite, Viertelspur-Positionsbyte, Analysestatus |
+| 24 | u32 | Decodierrate |
+| 28–29 | 2×u8 | Abgeschlossene nominale Umdrehungsmaske, angeforderte Umdrehungen |
+| 30 | u8 | 1 bei expliziter Profilerwartung in dieser Anfrage, sonst0 |
+| 31 | u8 | Reserviert0 |
+
+Anschließend höchstens8 Datensätze à32 Byte; maximale Antwort288 Byte:
+
+| Offset im Datensatz | Typ | Bedeutung |
+|---|---|---|
+| 0–3 | 4×u8 | Beobachtetes C/H/R/N in der bestehenden Decoder-Konvention |
+| 4 | u32 | `checked`: mindestens einmal tatsächlich ausgeführte Prüfungen |
+| 8 | u32 | `findings`: jemals beobachtete Auffälligkeiten |
+| 12 | u32 | Position des ersten Feldes mit bekannter Länge, in275-MHz-Ticks relativ zur Umdrehung; bei reiner Kopfbeobachtung Kopfende |
+| 16,18 | je u16 | Erwartete und erreichte Feldlänge dieser Beobachtung, Einheit bei23 |
+| 20 | u8 | Ursachenmaske: Bit0 abgeschlossenes Datenfeld, Bit1 Kopf/Block abgewiesen oder Kopf beobachtet, Bit2 lange Lücke, Bit3 ungültiger Code, Bit4 Aufnahmeende, Bit5 neue GCR-Synchronisation |
+| 21–22 | 2×u8 | Beobachtete Umdrehungen und PLL-Profile als Bitmasken |
+| 23 | u8 | Längeneinheit:0 Nutzbytes,1 Decoderbytes inkl. Markierungen/Prüfsumme,2 Amiga-Rohlongwords; Länge0 bedeutet nicht bestimmt |
+| 24–25 | 2×u8 | Erwartetes C/H (ohne explizites Profil: Aufnahmezuordnung, CBM C=Aufnahmespur+1) |
+| 26–29 | 4×u8 | Nur bei Profil: erwartetes N, erster/letzter Sektor, Profilkennzeichen1; sonst0 |
+| 30–31 | 2×u8 | Rohwert des Format-Offsets, Regel-ID; derzeit AmigaDOS Sektoren bis Lücke und Regel1, sonst0 |
+
+Ein Eintrag fasst gleiche CHRN-IDs über Umdrehungen und PLL-Profile zusammen.
+Masken werden vereinigt: ein später gutes Feld löscht einen früheren Fehler nicht.
+Die Längen/Position gehören zur ersten Beobachtung mit bestimmter Länge; sie sind
+kein eigener Datensatz pro Ursache. Für die genaue Wiederholung Rohdaten behalten.
+`findings & bit` bedeutet auffällig, `checked & bit` bei freiem Befundbit bedeutet
+mindestens einmal ohne diesen Befund geprüft. Beide Bits0 bedeutet **nicht geprüft**,
+nicht „korrekt“. Wiederholte IDs mit anderen Daten sind kein Beweis nachträglichen
+Schreibens seit Formatierung und kein physischer Weak-Nachweis.
+
+| Bit | Name | Bedeutung / Umsetzung |
+|---|---|---|
+| 0 | DATA_BAD | Datenprüfsumme geprüft und falsch; auch bei tolerierter Annahme |
+| 1 | DATA_UNCHECKED | Datenprüfung nicht möglich, z.B. unvollständiges Feld oder nicht unterstützter HP-ECC-Block |
+| 2 | TRACK | Kopfspur weicht von Erwartung ab |
+| 3 | SIDE | Kopfseite weicht von Erwartung ab |
+| 4 | LENGTH | N weicht vom erklärten Profil ab; ohne Profil bei IBM auch N>3 außerhalb der Decoderkapazität |
+| 5 | NUMBER | Sektornummer außerhalb erklärtem Profil bzw. formatbekannter Grenzen |
+| 6 | TRUNCATED | Datenfeld durch Lücke, Codefehler, GCR-Sync oder Aufnahmeende unterbrochen |
+| 7 | REJECTED | Beobachtung vom Decoder unter aktueller Policy verworfen; kein Image-Exporturteil |
+| 8 | EXTRA | Nichtleere Amiga-Labels/Mac-Tags oder abweichende CBM-Kopffüllbytes; nicht automatisch versteckte Daten |
+| 9 | ENDING | Abweichende GCR-Schlussmarken/Füllbytes |
+| 10 | BLOCK_ID | Abweichendes Amiga-Formatbyte, Mac-Datensektor-ID oder nicht unterstützter HP-ECC-Block |
+| 11 | OFFSET | AmigaDOS-Regel1: Sektoren-bis-Lücke außerhalb1…11 (DD) bzw.1…22 (HD); keine allgemeine Winkelabweichung |
+| 12 | PROTECTION | Im Sektorbericht reserviert; Kopierschutz-Hinweise und konkrete Signaturregeln separat über Op56 (4.23) |
+| 13 | VARIANTS | Unterschiedliche Inhalte bei wiederholten prüfsummengültigen Beobachtungen; kein KryoFlux-`+n`-Äquivalent |
+| 14 | HEADER_BAD | Kopfprüfsumme falsch |
+| 15 | NO_HEADER | Keine brauchbare Kopfzuordnung |
+| 16 | CODING | Kodierungsfehler, sofern der betreffende Decoder diese Prüfung ausführt |
+| 17 | DATA_ABSENT | Reserviert für Formate ohne Datenprüfsumme; nicht mit falscher/nicht prüfbarer Prüfsumme gleichsetzen |
+
+Ohne explizites Profil wird für IBM kein Sektornummernbereich geraten. Die bekannten
+Grenzen der übrigen Decoder sind nicht stets die konkrete Diskettengeometrie (z.B.
+CBM höchstens21 Sektoren statt automatisch zonenspezifischer Anzahl). Kopf-CRC-Fehler,
+fehlende Köpfe und Viertelspurmodus verhindern die automatische Positionsbewertung.
+Mit explizitem Profil müssen Kopfkennung und Kopfprüfung verwertbar sein.
+
+Abgebrochene Felder an der Aufnahmegrenze können normale, über den Index laufende
+Sektoren sein. Nicht jeder verworfene Synchronisationskandidat besitzt eine
+zuordenbare Sektor-ID und damit einen Eintrag. Ein voller Bericht meldet den Verlust
+ausdrücklich. PROTECTION und DATA_ABSENT sind reserviert, weil ohne konkrete
+Formatregeln keine belastbare Aussage möglich ist. Exportentscheidungen entsprechend
+KryoFlux `*N` gehören weiterhin zum Tool. Die Kürzel waren eine Anregung für die
+Diagnose, keine Übernahme der DTC-Semantik oder des DTC-Protokolls.
+
+Speicher:64 Befunde plus64 Inhaltsvarianten (4.20) in3856 Byte SRAM1,
+kein Heap, keine unbeschränkte Liste. AmigaDOS-Regel1 wird nur bei verwertbarem
+Header geprüft; Bytes30/31 bewahren den zuletzt beobachteten auffälligen Rohwert
+und die Regelkennung. Andere Format-Offsets bleiben ungeprüft. Grundlage:
+[Greaseweazle AmigaDOS-Decoder](https://github.com/keirf/greaseweazle/blob/master/src/greaseweazle/codec/amiga/amigados.py)
+(Formatbyte, Sektor-ID und `0 < togo <= nsec`).
+Bestehende Start-, Toleranz- und Greaseweazle-Flags ändern sich nicht.
+
+### 4.19 Gespeicherte Flux-Aufnahme abrufen und erneut analysieren (Op48/52)
+
+Alle folgenden Ops sind Unterbefehle von `ANALYSIS_JOB 0x0F`, keine
+Greaseweazle-Kommandos. Mehrbyte-Werte bleiben little endian. `[48]` liefert
+ein Manifest der letzten abgeschlossenen und finalisierten Aufnahme:
+32 Byte Kopf, danach je Umdrehung8 Byte (höchstens8 Umdrehungen).
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0–3 | 4×u8 | Schema1, Op48, maximal128 Samples pro Seite, verfügbare Umdrehungen |
+| 4,8,12 | je u32 | Speicher-Aufnahme-ID, eingefrorene Mediengeneration, Beleg-Capture-ID |
+| 16–19 | 4×u8 | Spur, Seite, Positionsbyte wie Op47, Speicherart (1 U11,0 interner Puffer) |
+| 20 | u32 | Timerfrequenz275000000 Hz |
+| 24 | u8 | 1 bei synthetischen Umdrehungsgrenzen, sonst0 |
+| 25–27 | Bytes | Reserviert0 |
+| 28 | u32 | Inhaltsfingerabdruck der gesamten Aufnahme einschließlich Grenzen/Kontext |
+| 32+8·r | 2×u32 | Samplezahl und Indexperiode der Umdrehung r |
+
+Aufnahme-ID0 bedeutet keine erhaltene Aufnahme. Ein neuer Capture-Start, eine
+Speicherumschaltung oder ein CPU-Schreiber (WRITE, Formatierung, SD-Laden/Kopieren,
+PSRAM-Selbsttest, GW-Schreibdaten) entwertet die vorherige ID **vor** der Änderung.
+Reines Lesen/Analysieren entwertet sie nicht. Standard-READ und GW-Livestreaming
+werden nicht nachträglich als erhaltene, vollständige Aufnahmen angeboten.
+
+Seitenrequest16 Byte: `[48, id:u32, rev:u8, first_sample:u32, count:u16,
+fingerprint:u32]`. `count`1…128; `rev`0-basiert. ID und Fingerabdruck müssen
+zum Manifest passen, sonst NOT_FOUND. Cursor über dem Ende oder ungültige
+Umdrehung: RANGE. Cursor am Ende: gültige leere Seite. Die Antwort besteht aus
+40 Byte Kopf und `returned_count × 4` Byte absoluten Timestamps relativ zum
+jeweiligen Index; **keine** Deltas und keine komprimierten Streambytes.
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0–3 | 4×u8 | Schema1, Umdrehung, zurückgegebene Samplezahl, Samplebreite4 |
+| 4,8,12,16 | je u32 | Aufnahme-ID, Startcursor, Samplezahl der Umdrehung, Indexperiode |
+| 20,24 | je u32 | Eingefrorene Mediengeneration, Beleg-Capture-ID |
+| 28 | u8 | Synthetische Grenzen wie im Manifest |
+| 29–31 | Bytes | Reserviert0 |
+| 32 | u32 | CRC32 über Bytes0…31, danach Bytes36…Ende (CRC-Feld ausgelassen) |
+| 36 | u32 | Inhaltsfingerabdruck aus dem Manifest |
+| 40 | u32[] | Timestamps in nativen Timerticks |
+
+CRC-Konvention wie `ufi_crc32`: Start0, Verkettung über den zurückgegebenen
+CRC-Wert. Der Inhaltsfingerabdruck ist eine schnelle, nicht kryptographische
+32-Bit-Mischung: Start2166136261; für jeden normalisierten Timestamp, danach
+je Umdrehung Samplezahl/Indexperiode, dann die8 Kontextbytes
+(Spur,Seite,Position,synthetisch,Beleg-ID LE), zuletzt Mediengeneration jeweils
+`h = (h XOR Wert) * 16777619 mod 2^32`. Das Tool gibt den Manifestwert zurück.
+Er ergänzt die Sitzungs-ID um eine Inhaltsbindung; Hash-Kollisionen sind möglich.
+
+Bei USB-Trennung bleiben bereits finalisierte Daten im laufenden MCU erhalten.
+Nach Wiederverbindung Manifest abfragen, ID/Fingerabdruck/Grenzen/Kontext mit dem
+gespeicherten Manifest vergleichen und erst dann ab dem letzten vollständig
+CRC-geprüften Block fortsetzen. Seiten sind idempotent; verlorene Antworten
+werden mit identischem Request wiederholt. Aktive Vorgänge werden vom bestehenden
+USB-Abbruch beendet und nicht automatisch neu gestartet. MCU-Neustart und
+Stromverlust garantieren keine Erhaltung. Bei abweichendem Manifest die lokale
+Teilaufnahme verwerfen oder als unvollständig getrennt aufbewahren. Es gibt
+keine Wiederaufnahme eines Schreibvorgangs über dieses Verfahren.
+
+Erneute Firmware-Analyse ohne Laufwerkszugriff:
+`[52, id:u32, new_job_id:u32, fingerprint:u32, ANALYZE-Parameter]`.
+Der Parameterblock entspricht Op1 ab dessen Byte24, Länge4/9/33/37, mit
+Detailflag Bit0; Spur/Seite/Positionsbyte müssen zum Manifest passen. Seine
+Umdrehungsanforderung wird durch die tatsächlich gespeicherte Anzahl ersetzt.
+Ein Durchlauf ohne Retry; Format/Rate/PLL- und Diagnoseoptionen bleiben wählbar.
+Der Vergleichsschalter und die Flankentoleranz kommen aus Op11. Status/Ergebnis
+werden wie bei Op1 mit neuer Job-ID und neuer Ergebnisgeneration abgeholt.
+Statusbyte43 ist1 für diese Speicheranalyse,0 für eine neue Aufnahme.
+Ein zwischenzeitlicher Medienwechsel beendet die Speicheranalyse nicht; ihr
+Kontext bleibt an die ursprüngliche Aufnahme gebunden und aktualisiert kein
+aktuelles Laufwerks-Medienprofil. Beide Ops liefern BUSY bei belegtem Datenpfad.
+Op52 wird auch von einem offenen Mehrspurplan/Integritätsjob blockiert.
+
+**Unvollständige Hardware-Verlustaufnahme, ausdrückliches Opt-in (Schema2):**
+Wird während der Aufnahme RDATA-/INDEX-Overcapture erkannt, endet sie mit
+Status6 (`DMA`). Die normale Op48-Abfrage bietet diese Daten weiterhin nicht als
+vollständiges Archiv an. `[48,1]` fragt stattdessen ein festes48-Byte-Manifest ab.
+Es beschreibt ein chronologisch geordnetes erhaltenes Rohdatenfenster; beim
+Ringpuffer kann dessen ältester Teil bereits überschrieben sein. Kein Nachweis
+der Vollständigkeit und keine Lokalisierung oder exakte Anzahl verlorener Flanken.
+
+| Offset | Typ | Manifest Schema2 |
+|---:|---|---|
+| 0–3 | 4×u8 | Schema2, Op48, maximal128 Samples je Seite, Fenster vorhanden0/1 |
+| 4,8,12 | je u32 | Aufnahme-ID, Mediengeneration, reserviert0 |
+| 16–19 | 4×u8 | Spur, Seite, Positionsbyte, Speicherart wie Schema1 |
+| 20 | u32 | Native Timerfrequenz275000000 Hz |
+| 24 | u8 | Flags6: Bit1 INCOMPLETE, Bit2 ABSOLUTE_TIMESTAMPS |
+| 25,26,27 | 3×u8 | Status6, Verlustmaske (Bit0 RDATA, Bit1 INDEX), reserviert0 |
+| 28 | u32 | Nicht kryptographischer Inhaltsfingerabdruck |
+| 32,36 | je u32 | Zahl erhaltener Samples, Indexperiode0 (nicht bestätigt) |
+| 40,44 | je u32 | Logischer Startsample des Fensters, reserviert0 |
+
+Ohne erhaltenes Fenster sind ID/Anzahl/Status/Flags0. Seitenrequest17 Bytes:
+`[48,id:u32,region=0:u8,offset:u32,count:u16,fingerprint:u32,selector=1:u8]`.
+Die Antwort verwendet den40-Byte-Seitenkopf aus Schema1 mit Schema2 bei Byte0,
+Region0 bei Byte1, Indexperiode/Beleg-ID0, Flags6 bei28, Status6 bei29 und
+Verlustmaske bei30. Byte31 bleibt0. Nutzdaten folgen ab40, höchstens128 Samples.
+CRC32 und ID-/Fingerprint-Bindung entsprechen dem Seitenverfahren oben.
+Unbekannter Selektor oder Count0/>128: BAD_ARGS; fremde ID/Fingerprint:
+NOT_FOUND; Region ungleich0 oder Offset hinter dem Ende: RANGE. Am Ende ist
+eine leere Seite gültig. Verlorene Antworten dürfen identisch wiederholt werden.
+
+Die Samples sind **unveränderte absolute32-Bit-TIM2-Zeitstempel modulo2^32**,
+keine indexrelativen Zeiten, keine Deltas und keine64-Bit-Wanduhr. Die Reihenfolge
+folgt dem logischen Aufnahmefenster. Verlorene Ereignisse werden weder ergänzt
+noch interpoliert. Fingerprintfolge: FNV-Start2166136261, dann Aufnahme-ID,
+logischer Start, Samplezahl, vier Positions-/Verlustbytes, alle Rohzeitstempel,
+zuletzt Mediengeneration, jeweils `(h XOR Wert)*16777619 modulo2^32`.
+Die ID/Fingerprint-Bindung ist sitzungsbezogen und nicht kollisionssicher.
+
+Neue Aufnahme, Speicherumschaltung oder anderer Pufferschreiber entwerten auch
+dieses Fenster. MCU-Neustart/Stromverlust erhalten es nicht garantiert. Op52
+akzeptiert diese unvollständigen Fenster nicht. Der erste Manifestabruf berechnet
+den Fingerprint nach gestoppter DMA; dabei wird kein weiterer Vollpuffer angelegt.
+Dieser Abruf ist für Hardware-Overcapture vorgesehen, nicht als allgemeines
+Archiv für jeden Abbruch-, Medienwechsel- oder USB-Fehler.
+
+### 4.20 Einzelne Inhaltsvarianten (Op49) und Informationsgewinn
+
+`[49]` liefert16 Byte Discovery: Schema1, Kopfgröße32, Satzgröße32,
+Seitengröße8, Kapazität64, danach0. Seitenrequest
+`[49, generation:u32, first:u8, count:u8]`, `count`1…8. Die Generation gehört
+zum Analyseergebnis, nicht zur Speicher-Aufnahme-ID. BUSY während Operationen,
+NOT_FOUND bei veralteter Generation, BAD_ARGS bei ungültigem Cursor/Umfang.
+Ein Cursor genau am Ende liefert nur den32-Byte-Kopf.
+
+| Kopfoffset | Inhalt |
+|---:|---|
+| 0–3 | Schema1, Kopfgröße32, Satzgröße32, Format |
+| 4 | u32 Ergebnisgeneration |
+| 8–11 | Gesamtzahl, erster Index, Anzahl dieser Seite, Flags (Bit0 Überlauf,Bit1 Analysefehler) |
+| 12 | u32 Anzahl nicht gespeicherter Variantenbeobachtungen, sättigend |
+| 16–19 | Spur, Seite, Positionsbyte,1 (Fingerabdruckvergleich) |
+| 20–31 | Reserviert0 |
+
+| Satzoffset | Inhalt |
+|---:|---|
+| 0–3 | C,H,R,N |
+| 4,8 | je u32 CRC32 und FNV-1a32 über den beobachteten Inhaltsblock |
+| 12,16 | je u32 erste/letzte beobachtete Feld-Endposition, Timerticks relativ zum Index |
+| 20 | u32 vereinigte Befundmaske |
+| 24,26 | je u16 Blocklänge und Zahl der Beobachtungen (sättigend) |
+| 28–30 | Masken der beobachteten Umdrehungen, PLL-Profile, gültigen Umdrehungen |
+| 31 | Reserviert0 |
+
+Gültige Umdrehungen benötigen Decoderannahme ohne Daten-/Headerprüfsummenfehler,
+fehlenden Header oder gemeldeten Kodierungsfehler. Auch fehlerhafte Varianten
+bleiben als Beobachtung erhalten. Identität: CHRN, Blocklänge und beide Hashwerte.
+Die Blocklänge umfasst Amiga529 Byte (512 Daten+16 Label+Lückenoffset), CBM258
+(Daten+Disk-ID), Mac525 (Tags+Daten+Format), sonst Decoder-Nutzdaten. FNV-1a32
+startet bei2166136261, pro Byte XOR und Multiplikation mit16777619.
+Keine Mehrheitsentscheidung und keine Zusammenführung widersprüchlicher Inhalte.
+Die Nutzdaten selbst werden nicht nochmals intern kopiert; Op48 liefert die
+erhaltenen Rohdaten zur Rekonstruktion im Tool. Die Variante gehört zu ihrer
+Ergebnisgeneration; vor einem Retry benötigte Rohaufnahmen zuerst abrufen.
+
+Op11 akzeptiert zusätzlich Policy3 `STOP_ON_NO_NEW_CONTENT`. Bestehende
+RETRY_MISSING/RETRY_ERRORS-Flags bestimmen den Wiederholungsbedarf. Neue gültige
+CHRN+CRC32/FNV32-Identitäten gegenüber den bisherigen Versuchen gelten als Gewinn,
+auch wenn die Anzahl guter Sektoren unverändert ist. Nach der konfigurierten Zahl
+Versuche ohne neuen Inhalt endet der Job mit Grund2. Versuchslimit, Budget und
+EXPECT_SET-Endprüfung bleiben gültig. Es werden höchstens64 Identitäten über
+Versuche gespeichert. Bei voller Registrierung oder verloren gegangenen
+Variantenbeobachtungen wird kein Stillstand behauptet; dann begrenzen Zeit/Versuche.
+Versuchsbewertung (Jobabschnitt16), Byte18: neu registrierte gültige Identitäten;
+Byte19 Bit0: Registrierung unvollständig. Das ist CRC-basierter Informationsgewinn,
+keine kryptographische Gleichheit oder Wiederherstellung aus mehreren Versuchen.
+
+**Policy4 `INVESTIGATE_VARIANTS` (1.18-dev):** benötigt weiterhin ein Retry-Flag
+und mindestens zwei Umdrehungen pro Versuch. Zusätzlich zu gültigen Varianten
+zählen nominal beobachtete Varianten mit fehlerhafter Datenprüfsumme bei brauchbarem
+Header sowie der Übergang einer bekannten Variante zu gültiger Datenprüfsumme.
+Reine alternative PLL-Beobachtungen und unsichere/fehlende Header gelten nicht
+als neue unabhängige Variante. REV_COMPARE wird für diese Policy automatisch
+aktiviert; eine verkürzte Formaterkennung bleibt damit aus.
+
+Je vier der128 Vergleichsfenster ergeben einen von32 Bereichen. Mindestens drei
+fehlende/zusätzliche Flanken markieren einen Bereich. Ein gegenüber bisherigen
+Versuchen neues32-Bit-Bereichsmuster zählt einmal als zusätzlicher Gewinn,
+einschließlich des ersten unveränderten Ausgangsmusters. Es werden höchstens
+acht Muster und64 Inhaltsidentitäten gespeichert. Das ist eine grobe Evidenz für
+die Planung weiterer Leseversuche, kein Kopierschutzurteil und keine vollständige
+Timing- oder Nutzdatenrekonstruktion.
+
+Policy4 liest auch bei bereits fehlerfreien Sektoren weiter, bis das konfigurierte
+Stagnationslimit ohne neue Evidenz erreicht ist. Fehlende Vergleichsevidenz oder
+überfüllte Registrierung erlauben keinen vorzeitigen Stagnationsschluss; dann
+begrenzen Budget und Versuchszahl. Bewertungsbyte18 zählt die neuen Evidenzeinträge;
+Byte19 Bit0 meldet unvollständige Inhaltsregistrierung, Bit1 fehlenden Rohvergleich.
+EXPECT_SET und die bisherigen Endprüfungen bleiben wirksam. Die neue Policy ist
+ausdrücklich zu wählen; Policies0–3 behalten ihre bisherigen Aufgaben.
+
+### 4.21 Zeitabweichungen über mehrere Umdrehungen (Op51)
+
+Aktivierung wie bisher über Op11 `report_mask` Bit0 `REV_COMPARE` für Analysejobs
+einschließlich Op52. Gegenüber Umdrehung0 werden Umdrehungen1…7 monoton und
+eins-zu-eins verglichen, mit linearer Normierung auf die Referenz-Indexperiode.
+`[51]`:16 Byte Discovery mit Schema1,Fensterzahl128,Satzgröße32,Seitengröße8,Rest0.
+Request `[51, generation:u32, first_window:u8, count:u8]`, maximal8 Fenster.
+Cursor128 liefert leere Seite; größerer Cursor BAD_ARGS. BUSY während Operationen;
+ohne gewählten, fertiggestellten Vergleich oder mit falscher Generation NOT_FOUND.
+
+Kopf32 Byte: Bytes0–3 Schema1,Fensterzahl128,erster Index,Anzahl; u32 bei4 Generation,
+bei8 Toleranz in Ticks,bei12 Referenzperiode. Byte16 verglichene Umdrehungsmaske,
+Byte17=1 (nur Indexausrichtung), Rest0. Je32-Byte-Satz:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0,4,8 | je u32 | Zugeordnete, fehlende, zusätzliche Flanken |
+| 12,16 | je u32 | Mittlere absolute und maximale absolute Zeitabweichung |
+| 20 | i32 | Mittlere vorzeichenbehaftete Abweichung (Beobachtung minus Referenz) |
+| 24,25 | je u8 | Masken der Umdrehungen mit Zuordnungen bzw. Differenzen |
+| 26–31 | Bytes | Reserviert0 |
+
+Mittelwerte werden ganzzahlig gegen0 gerundet und beziehen sich ausschließlich
+auf zugeordnete Flanken innerhalb der Toleranz. Fehlende/zusätzliche Flanken
+separat auswerten; fehlende Zuordnungen ergeben Mittelwert0 ohne Aussage über
+Gleichheit. Die Statistik wiegt Flanken, nicht Umdrehungen, gleich. Gleichmäßige
+Drehzahldifferenz wird ausgeglichen; lokaler Jitter, Indexversatz und echtes
+wechselndes Verhalten können sich weiterhin überlagern. Keine automatische
+Kopierschutz- oder physische Weak-Bit-Klassifikation. Statistik4096 Byte in SRAM4,
+explizit je Vergleich initialisiert; bisherige Berichte behalten ihr Layout.
+
+### 4.22 Präzises Roh-Prüflesen mit U11-Referenz (Op50/54)
+
+`[50]` liest die Einstellungen. Setzen:12 Byte
+`[50, schema=1, flags:u8, reserved=0, tolerance_ticks:u32, phase_ticks:u32]`.
+Flags Bit0 aktiviert den Vergleich, Bit1 verlangt Übereinstimmung (nur mit Bit0).
+Andere Bits BAD_ARGS. Vorgabe aus; Toleranz1…1000000, Vorgabe110 Ticks.
+Setzen nur ohne aktiven Vorgang, offenen Mehrspurplan oder Integritätsjob;
+es erhöht die Konfigurationsgeneration. Aktivieren ohne U11: NOT_IMPL.
+
+Antwort24 Byte: Bytes0–3 Schema1,Flags,Bericht-Op54,Fensterzahl128; u32 bei4
+Toleranz,bei8 Phase,bei12 reservierte Referenzkapazität in u32-Worten.
+Bytes16/17: Referenz bereit/Bericht verfügbar, Byte18=1 (sitzungslokal), Byte19=0;
+u32 bei20 aktuelle Bericht-ID oder0. Die Phase verschiebt nur die erwarteten
+Zeitpositionen für den Vergleich; sie verändert nicht die Schreibausgabe.
+
+Aktivierung reserviert die obere Hälfte des8-MiB-U11 als Referenz. Capture-Daten
+und der komplette DMA-Überlaufchunk bleiben in der unteren Hälfte. Nutzbare
+Capture-Kapazität dann1015808 Samples, Referenz1048576 Samples; ohne Reservierung
+2064384 Capture-Samples. Deaktivieren gibt die Hälfte wieder frei. Die Umschaltung
+entwertet erhaltene Aufnahmen. WRITE liest die Kapazität bei jeder Vorbereitung
+neu. Die Reservierung kostet kein zusätzliches AXI-Array; Vergleichszustand liegt
+in SRAM4. Diese Speichergröße ist kein Nachweis erreichbarer U11-DMA-Bandbreite.
+
+Anwendung für native indexgebundene WRITE-Aufträge mit erweitertem u32-Pfad,
+Quell-Indexperiode und Firmware-Prüflesen (WRITE Bit0 oder `flags2` Bit4 Rohprüfung).
+Nach dem Weak-Durchlauf und vor WGATE kopiert die Firmware die tatsächliche
+Vorlage als kumulierte Timestamps nach U11. Splice-Offset, zusätzliche Gate-Vor-/
+Nachläufe, klassischer u16-Pfad oder fehlende Periode werden vor WGATE abgelehnt.
+Phase plus kumulierte Deltas müssen in eine Referenzumdrehung passen; Umbruch
+über die Indexgrenze benötigt ein späteres Teilbereichsmodell. Ein partieller
+Schreibbereich kann deshalb keine uneingeschränkte Spurgleichheit behaupten.
+
+Beide Rückleseumdrehungen werden einzeln mit der Vorlage verglichen. Im strengen
+Modus führt jede fehlende/zusätzliche Flanke außerhalb der Toleranz zu Status6;
+im beobachtenden Modus bleibt der bisherige Prüflesestatus maßgeblich und der
+genaue Bericht zeigt die Differenzen. Ungültige Timestamps, Abbruch und Timeout
+bleiben Fehler. Der Vergleich erhöht den Inhaltsnachweis nicht automatisch auf
+Stufe3. Drehzahl-Normierung und monotone Zuordnung wie4.21; es gibt keine heimliche
+Phasenanpassung. Indexjitter und Laufwerkselektronik können Abweichungen verursachen.
+
+`[54]`: Discovery16 Byte (Schema1,Kopf32,Satz12,Seitengröße8,Fenster128,Rest0).
+Request `[54, report_id:u32, first_window:u8, count:u8]`. Bericht-ID aus Op50;
+BUSY während Operationen, NOT_FOUND bei fehlendem/veraltetem Bericht.
+Cursor0…128, count1…8. Antwort32 Byte Kopf plus12 Byte je Fenster:
+Bytes0–3 Schema1,erster Index,Anzahl,Umdrehungsmaske (Bits1/2 = Rücklese0/1);
+u32 bei4 Bericht-ID,8 Toleranz,12 Referenzperiode,16 Phase,20 Quell-Flankenzahl;
+Byte24=1 (explizite Indexausrichtung),25 Flags,26…31=0.
+Satz: u32 fehlende Flanken, u32 zusätzliche Flanken, u8 Umdrehungsmaske,3 Byte0.
+Vorbereitung eines neuen WRITE oder Änderung von Op50 entwertet den Bericht.
+Greaseweazle verwendet weiterhin seinen bestehenden Protokoll- und Schreibpfad;
+die nativen Vergleichsflags werden dort nicht angewendet. Eine aktive U11-
+Reservierung begrenzt weiterhin die gemeinsame verfügbare Speicherkapazität.
+
+### 4.23 Flaggesteuerte Kopierschutz-Hinweisanalyse (Op55/56)
+
+Die Firmware wertet beim nativen Detail-ANALYZE sowie bei Analysejobs und
+Speicheranalyse Op52 auf Wunsch Kopierschutzmerkmale aus. Sie meldet konkrete
+Beobachtungen, Schutzkandidaten und bekannte Signaturbestandteile. Ein Kandidat
+kann auch durch Medienfehler oder Lesebedingungen entstehen. Keine automatische
+Reparatur, keine Änderung der Rohdaten und kein höherer WRITE-Prüflesegrad.
+Sektorbasiertes WRITE-Prüflesen, gewöhnliches READ, Spurübersicht und Greaseweazle
+aktivieren diese Klassifikation nicht. Standardmäßig sind alle Prüfgruppen aus.
+
+#### Einstellungen und sechs Flags: Op55
+
+`ANALYSIS_JOB 0x0F [55]` liest die Einstellungen. Setzen: genau8 Byte
+`[55, schema=1, flags:u16, min_revs:u8, min_repeat:u8, timing_permille:u16]`.
+
+| Flag | Name | Prüfung |
+|---:|---|---|
+| `0x0001` | CONTENT | Inhaltsvarianten über unabhängige Umdrehungen sowie Differenzen der Rohflanken |
+| `0x0002` | ERRORS | Wiederkehrende stabile Daten-CRC-Fehler und Kodierungsfehler |
+| `0x0004` | LAYOUT | Doppelte CHRN-Kennungen, Kopfpositionen und Längenauffälligkeiten |
+| `0x0008` | TIMING | Lokale Bitzellen-Zeitabweichungen und lange Bereiche ohne Fluxwechsel |
+| `0x0010` | POSITION | Verschobene Sektorpositionen und veränderte zyklische Sektorreihenfolge |
+| `0x0020` | SIGNATURE | Bekannte, einzeln implementierte Signaturregeln; Katalogversion1 siehe unten |
+
+Maske `0x003F`; andere Bits ergeben BAD_ARGS ohne Teiländerung. `min_revs`2…8,
+Vorgabe3: benötigte vollständige Umdrehungen. `min_repeat`2…8, Vorgabe2:
+übereinstimmende Wiederholungen für den stabilen CRC-Fehlerbefund.
+`timing_permille`10…250, Vorgabe30: Schwelle des absoluten lokalen Unterschieds
+zur Median-Bitzellenzeit. Einstellungen gelten für folgende Analysen und werden
+beim Beginn übernommen. Der Bericht behält diese Werte auch nach späterer
+Umkonfiguration. Keine SD-/Flash-Persistenz; nach MCU-Neustart Flags0.
+
+Setzen ist während einer Operation, bei offenem Integritätsjob oder Mehrspurplan
+BUSY; Lesen bleibt erlaubt. Erfolgreiches Setzen erhöht die Konfigurationsgeneration.
+Für einen generationgebundenen Start danach die neue Generation verwenden.
+
+Antwort24 Byte:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0,1 | je u8 | Schema1, Bericht-Op56 |
+| 2 | u16 | Unterstützte Flags `0x003F` |
+| 4 | u16 | Eingestellte Flags |
+| 6,7 | je u8 | `min_revs`, `min_repeat` |
+| 8 | u16 | `timing_permille` |
+| 10–14 | je u8 | Berichtslimit48, Seitengröße8, Kopfgröße32, Satzgröße32, Regelkatalogversion1 |
+| 15–23 | Bytes | Reserviert0 |
+
+Beispiel für alle Prüfgruppen mit Standardgrenzen:
+`[55, 1, 0x3F, 0, 3, 2, 30, 0]`. Danach einen Detailanalysejob mit vorzugsweise
+4…8 Umdrehungen starten oder eine erhaltene Aufnahme über Op52 erneut auswerten.
+Op52 erfindet keine weiteren Umdrehungen. Reicht die Aufnahme nicht, meldet der
+Bericht unzureichende Prüfung. Ausschalten: `[55, 1, 0, 0, 3, 2, 30, 0]`.
+
+CONTENT veranlasst bei kooperativen Analysejobs den Roh-Umdrehungsvergleich auch
+ohne Op11 `REV_COMPARE`. Bei synchronem Detail-ANALYZE sind die sektorbasierten
+Regeln verfügbar; der fehlende Rohvergleich wird ausdrücklich gemeldet.
+ERRORS aktiviert im Analysedecoder zusätzlich die Kodierungsprüfung. Damit können
+Sektoren mit falschen Clockbits im bestehenden Qualitätsbericht anders bewertet
+werden. Die eingestellten Decoder-Toleranzflags bleiben maßgeblich; der
+Greaseweazle-Pfad und die Bewertung von WRITE werden nicht umgestellt.
+
+#### Bericht und Zustände: Op56
+
+`[56]` liefert16 Byte Discovery: Schema1,Kopfgröße32,Satzgröße32,Seitengröße8,
+Limit48,Katalogversion1,danach0. Seitenrequest7 Byte:
+`[56, generation:u32, first_record:u8, count:u8]`, `count`1…8.
+Die Generation ist die des Qualitätsberichts. BUSY während Operationen;
+NOT_FOUND ohne Ergebnis oder bei veralteter Generation; BAD_ARGS für ungültige
+Länge/Seitengröße/Cursor. Der Cursor am Ende liefert einen leeren32-Byte-Kopf.
+Auch eine Analyse ohne aktivierte Prüfgruppen besitzt einen Bericht mit Zustand0.
+
+| Kopfoffset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema1 |
+| 1 | u8 | Zustand gemäß folgender Tabelle |
+| 2,3 | je u8 | Erster Datensatz, Anzahl dieser Seite |
+| 4 | u32 | Ergebnisgeneration |
+| 8,10,12 | je u16 | Angeforderte, ausreichend geprüfte, unzureichend geprüfte Gruppen |
+| 14 | u16 | Einschränkungsmasken |
+| 16 | u32 | Nicht gespeicherte Beobachtungen/Berichtseinträge, sättigend |
+| 20–24 | je u8 | Gesamtzahl der Einträge, `min_revs`, `min_repeat`, vollständige Umdrehungsmaske, Format |
+| 25–27 | je u8 | Spur, Seite, Positionsbyte |
+| 28 | u16 | `timing_permille` |
+| 30,31 | je u8 | Analysestatus, reserviert0 |
+
+| Zustand | Bedeutung |
+|---:|---|
+| 0 | Nicht aktiviert; keine Kopierschutzprüfung durchgeführt |
+| 1 | Keine Hinweise innerhalb der ausreichend geprüften aktivierten Regeln |
+| 2 | Auffälligkeit erkannt |
+| 3 | Schutzkandidat; Ursache weiterhin mehrdeutig |
+| 4 | Konkreter bekannter Signaturbestandteil erkannt |
+| 5 | Nicht ausreichend untersucht; kein positiver Befund |
+
+Der höchste vorhandene Befund bestimmt Zustand2…4. Er kann mit unzureichend
+geprüften anderen Gruppen zusammen auftreten. Daher immer alle Masken auswerten.
+Zustand1 bedeutet niemals „Diskette ungeschützt“. Abbruch, fehlerhafte oder
+unvollständige Analyse begrenzt positive Aussagen auf Auffälligkeiten, Zustand2.
+
+Einschränkungen bei Offset14, bitweise:
+
+| Bit | Bedeutung |
+|---:|---|
+| 0 | Analyse/Beobachtung unvollständig oder fehlerhaft |
+| 1 | Begrenzter Speicher voll; Beobachtungen oder Einträge gingen verloren |
+| 2 | Weniger vollständige Umdrehungen als `min_revs` |
+| 3 | Keine verwertbaren vollständigen Sektorbeobachtungen für die gewählten Regeln |
+| 4 | Benötigter Roh-Umdrehungsvergleich fehlt |
+| 5 | Rohvergleich ist nur am Index ausgerichtet; Differenzen können Ausrichtungsfehler enthalten |
+| 6 | Gewöhnliche Formaterkennung mehrdeutig |
+| 7 | Lokale Zeitbasis/Abdeckung für die Dichteprüfung unzureichend |
+
+Ein32-Byte-Datensatz enthält:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0,2 | je u16 | Regel-ID, Prüfgruppe als Flag |
+| 4,8 | je u32 | Repräsentative Fundposition und Bereichslänge in Timerticks; normale Bezugsumdrehung0 |
+| 12,16 | je u32 | Beobachteter Wert und Vergleichswert, regelabhängig |
+| 20–23 | 4×u8 | C,H,R,N; jeweils255 bei spurbezogenen Befunden ohne CHRN |
+| 24 | u8 | Umdrehungsmaske; bei Rohdifferenzen Bits1…7 ohne Referenz0 |
+| 25 | u8 | Befundstufe:1 Auffälligkeit,2 Kandidat,3 bekannte Signatur |
+| 26 | u8 | Qualifier: Bit0 nur Indexausrichtung, Bit1 keine genaue Einzelposition, Bit2 Daten-CRC ungültig, Bit3 Befund aus zusammengefasstem Decoderbericht |
+| 27 | u8 | Werteinheit:0 Anzahl,1 Timerticks,2 Promille,3 Formatwert |
+| 28 | u32 | Stützende Beobachtungen; je nach Regel Umdrehungen, Sektoren oder Flankenintervalle |
+
+Fundpositionen stammen aus erfassten Feld-Enden bzw. der Flanke, an der ein Sync
+erkannt wurde. Sie sind keine erfundenen exakten Sektorstartpositionen. Bei
+Qualifier Bit1 sind Position/Bereich nicht als genaue Lokalisierung zu verwenden.
+Je nach Regel beziehen sich Masken und Stützzahl auf unterschiedliche Arten von
+Beobachtungen; eine größere Zahl ist keine Prozentwahrscheinlichkeit.
+
+#### Regelkatalog1
+
+Nur der nominale PLL-Durchlauf liefert unabhängige Sektorbeobachtungen.
+Alternative PLL-Profile zählen nicht als weitere Umdrehungen. Kopf-CRC-Fehler
+und fehlende Header verhindern die Zuordnung dieser Sektorregeln.
+
+| ID | Gruppe | Regel und Bewertung |
+|---:|---|---|
+| 1 | CONTENT | Verschiedene angenommene Inhalte ohne gemeldete Daten-/Kodierungsfehler bei gleicher CHRN über mindestens `min_revs`; Kandidat. Wert/Stütze=Anzahl gültiger Umdrehungen. Nicht aktivierte Kodierungsprüfungen werden dadurch nicht nachträglich bestätigt. |
+| 2 | CONTENT | Fehlende/zusätzliche Rohflanken in einem1/128-Fenster; Auffälligkeit. Wert=Summe fehlend+zusätzlich, Vergleich=Toleranz in Ticks, Stütze=Anzahl betroffener Vergleichsumdrehungen. |
+| 3 | ERRORS | Gleicher Datenfingerabdruck mit falscher Daten-CRC in mindestens `min_repeat` Umdrehungen; Kandidat bei ausreichender Aufnahme, sonst Auffälligkeit. Keine Behauptung, dass der Fehler absichtlich erzeugt wurde. |
+| 4 | ERRORS | Kodierungsfehler im beobachteten Sektor; Auffälligkeit. Wert/Stütze=Anzahl betroffener Umdrehungen. |
+| 5 | LAYOUT | Gleiche CHRN an mindestens zwei verschiedenen Winkelpositionen pro Umdrehung; Kandidat bei Wiederholung in `min_revs`, sonst Auffälligkeit. Positionen müssen mehr als1/1000 Umdrehung auseinanderliegen. |
+| 6 | LAYOUT | Verwertbarer Header passt nicht zur Aufnahmeposition; Auffälligkeit. Wert/Vergleich sind `(C<<8)\|H`, bei Formaten ohne Seitenfeld ist die Erwartungsseite0. Keine automatische Kopfkorrektur. |
+| 7 | LAYOUT | Unterschiedliche N-Werte unter den beobachteten Sektoren; Auffälligkeit. Wert/Stütze=Sektoranzahl, Vergleich=N der ersten Beobachtung. Gemischte Längen können beabsichtigt und legitim sein. |
+| 8 | TIMING | Lokaler Median-bezogener Unterschied der geschätzten Bitzellenzeit erreicht `timing_permille`; Auffälligkeit. Wert=absoluter Unterschied in Promille, Vergleich=Schwelle, Stütze=Flankenintervalle. |
+| 9 | TIMING | Längste beobachtete Lücke mindestens1/8 Umdrehung; Auffälligkeit, auch bei leeren/defekten Spuren möglich. Wert=maximale Lücke, Vergleich=zugehörige Schwelle, keine genaue Einzelposition. |
+| 10 | POSITION | Sektorposition nach Drehzahlnormierung um mehr als1/100 Umdrehung verschoben; Auffälligkeit. Wert=maximale Abweichung zur ersten Beobachtung, Vergleich=Schwelle; Indexjitter nicht ausgeschlossen. |
+| 11 | POSITION | Zyklische Reihenfolge derselben eindeutigen Sektormenge verändert; Auffälligkeit. Normales Interleave und reine zyklische Rotation werden akzeptiert. Wert/Stütze=abweichende Umdrehungen. |
+| 12 | CONTENT | Wechselnder Inhalt bei ungültiger Daten-CRC und verwertbarem Header über `min_revs`; Kandidat mit Qualifier Bit2. Weak-Verhalten und beschädigte Medien bleiben mögliche Ursachen. |
+| 13 | LAYOUT | IBM-MFM/FM-Header N>3 außerhalb der unterstützten Decodergröße; Auffälligkeit aus dem Befundbericht. Wert=N, Vergleich=unterstütztes Maximum3; kein Beweis eines ungültigen Diskettenformats. |
+| `0x1001` | SIGNATURE | Moderner Copylock-Sektor6: siehe unten. Wert/Stütze=Anzahl vollständiger Treffer, Vergleich=`min_revs`. |
+
+Bei mehrfach vorkommenden CHRN-IDs werden Inhaltswechsel und Positionswechsel
+nicht pauschal als wechselndes Einzelmaterial bewertet; diese Gruppen werden
+als unzureichend zuordenbar markiert. CRC32 und FNV-1a dienen als nicht
+kryptographische Inhaltsfingerabdrücke. Metadaten-/Labelvarianten können über
+Op47/49 zusätzlich untersucht werden; die CONTENT-Regeln vergleichen die
+zugeordneten Nutzdaten (Mac einschließlich Tags/Format).
+
+Die Dichteprüfung benötigt pro Fenster mindestens64 geeignete Intervalle mit
+mindestens zwei verschiedenen Zellvielfachen. Höchstens10% verworfene Intervalle,
+Streuung höchstens5% der mittleren Zellzeit; Median aus mindestens drei geeigneten
+Fenstern. Gleichmäßige Drehzahlunterschiede und normale Interleave-Reihenfolgen
+sind keine eigenen Schutzkandidaten. Die Aufnahmedauer- und Transportbelege
+Op7/43 bleiben für die Bewertung von Messfehlern relevant.
+
+#### Erste konkrete Signaturregel: moderner Copylock-Sektor6
+
+Der unabhängige DD-MFM-Scanner sucht raw Sync `0x8914`, danach die MFM-kodierte
+Sektor-ID6, den16-Byte-Kenntext,496 passende Bytes eines nichtnullen23-Bit-LFSR
+und einen Null-Abschluss. Die Clockbits des gesamten dekodierten Felds werden
+mitgeprüft. Stufe3 erfordert vollständige Treffer in mindestens `min_revs`
+unabhängigen, vollständigen Umdrehungen. Ein einzelner Treffer bleibt Stufe1.
+Ein Textfund, ein falscher Sync, ein falscher Index, eine beschädigte Datenfolge,
+illegale Clockbits, ein falscher Abschluss oder ein abgeschnittenes Feld genügen nicht.
+
+Die Regel erkennt diesen Signaturbestandteil, nicht sämtliche Copylock-Varianten
+oder die vollständige Schutzfunktion eines Titels. Die übrigen10 Sektoren,
+gemeinsamer Track-Seed und die speziellen schnelleren/langsameren Sektorzeiten
+werden damit nicht vollständig bestätigt. Alte/erweiterte Copylock-Varianten
+und am Aufnahmeindex durchschnittene Signaturfelder sind noch nicht unterstützt.
+Der Scanner startet bei einer DD-Zellzeit von2µs und folgt innerhalb±12,5%.
+Grundlage der eigenständigen Implementierung ist die öffentlich freigegebene
+[Copylock-Formatbeschreibung in disk-utilities](https://github.com/keirf/disk-utilities/blob/master/libdisk/format/amiga/copylock.c).
+
+Der Bericht hält höchstens48 Einträge und64 CHRN-Beobachtungssätze. Überlauf
+wird gemeldet und verhindert einen vollständigen Negativbefund. Speicher liegt
+in SRAM4, ohne Heap und ohne zusätzliches großes AXI-Array. `SF_PROTECTION`
+im bisherigen Op47 bleibt reserviert; Op56 liefert die regelgebundene Aussage.
+Softwaretests mit synthetischen Merkmalen und Referenzformaten ersetzen keine
+spätere Laufwerks-/U11-/Signalqualifikation auf der Platine.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
@@ -1891,6 +2525,92 @@ Stack/Heap-Felder melden Reservierungen, keine aktuelle Nutzung. Für tatsächli
 Stackverbrauch weiterhin SELFTEST `stack_free` verwenden. IRQ-Zähler können
 zwischen einzelnen Feldern fortschreiten; dies ist keine transaktionsweite Momentaufnahme.
 Host: `Device2.diagnostics()` oder `ufi --port usb diagnostics`.
+
+**Prozessmesswerte (1.18-dev):** `0D` mit exakt einem Nutzbyte `01` liefert
+ebenfalls64 Bytes: `schema=1, mode=1, count=13, reserved=0`, danach13 u32-LE-Werte
+und8 reservierte Nullbytes. Die leere Anfrage behält das bisherige Format.
+
+| Index | Wert |
+|---:|---|
+| 0 | Zeitbasis1000 Hz; Zeitmaxima sind Millisekunden aus HAL_GetTick |
+| 1 / 2 | Anzahl Hauptschleifendurchläufe / längster Durchlauf |
+| 3 / 4 | Anzahl kooperativer Analyseschritte / längster Schritt |
+| 5 | Anzahl Prüfleseschritte |
+| 6 / 7 | Streaming-Flusswechsel verarbeitet / Cachebytes invalidiert |
+| 8 | Gestartete Erkennungs-Kandidatenläufe |
+| 9 / 10 | Genutzte Format-Hinweise / Rückfälle vom Hinweis auf vollständige Suche |
+| 11 / 12 | Gemeinsame Sektor-Fingerabdruckberechnungen / dabei gelesene Datenbytes |
+
+Die neuen Summenzähler sättigen bei UINT32_MAX; Maxima gelten seit MCU-Start.
+Sehr kurze Schritte können0 ms messen. Keine CPU-Zyklusmessung, keine garantierte
+Echtzeitlatenz und kein transaktionsweiter Schnappschuss. Ein älterer Firmwarestand
+kann die Anfrage mit BAD_ARGS ablehnen. Die bisherige Host-Diagnosemethode fragt
+weiter das alte Format ab; das eigene Tool kann `0D/01` ergänzen.
+
+**Zyklus-/Verlustdiagnose (1.18-dev):** `0D` mit Nutzlast `02` liefert64 Bytes:
+`schema=1, mode=2, count=15, flags:u8`, danach15 u32-LE-Werte ohne Reservebytes.
+Die bisherigen Varianten leer/`01` behalten ihre Formate. Ältere Firmware darf
+`02` mit BAD_ARGS ablehnen; das Tool kann diese reine Abfrage zum Erkennen nutzen.
+
+| Index | Wert |
+|---:|---|
+| 0 | CPU-Takt aus SystemCoreClock in Hz, keine externe Frequenzkalibrierung |
+| 1 / 2 | Gültig gemessene Hauptschleifen-Aufrufe / maximale Zyklen |
+| 3 / 4 | Capture-DMA-Handler: gültige Aufrufe / maximale Zyklen |
+| 5 / 6 | Write-DMA-Handler: gültige Aufrufe / maximale Zyklen |
+| 7 / 8 | Gesamter Streaming-Service: gültige Aufrufe / maximale Zyklen |
+| 9 / 10 | Kooperativer Analyseschritt einschließlich Erkennung/Rohvergleich: gültige Aufrufe / maximale Zyklen |
+| 11 / 12 | Prüfleseschritt: gültige Aufrufe / maximale Zyklen |
+| 13 / 14 | Erkannte RDATA-/INDEX-Overcapture-Episoden seit MCU-Start |
+
+Flags: Bit0 Zyklusmessung verfügbar; Bit1 mindestens ein zu langer/mehrdeutiger
+Zeitraum verworfen; Bit2 abweichender CPU-Takt beobachtet; Bit3 Zähler gesättigt;
+Bit4 DWT nicht verfügbar/angehalten oder ohne Zählerfortschritt. Fehlerbits bleiben
+bis MCU-Neustart gesetzt. Bit4 löscht zusätzlich Bit0; ohne Bit0 sind die Werte
+kein gültiger Leistungsnachweis. Maxima gültiger früherer Messungen bleiben erhalten.
+
+Die Messung verwendet DWT CYCCNT, ohne den Zähler im Betrieb zurückzusetzen.
+Der Start prüft neben dem Freigabebit auch tatsächlichen Zählerfortschritt.
+Bei550MHz wird ein beobachteter Abschnitt ab7808ms verworfen; eine volle
+SysTick-Periode wird als Unsicherheit berücksichtigt. Der32-Bit-DWT-Umbruch
+innerhalb einer ausreichend kurzen Messung ist zulässig. SysTick muss regulär
+laufen; insbesondere ist dies kein Nachweis gegen mehrsekündig festhängende
+Interrupts oder externe Debugger-Eingriffe. Die Messpunkte klammern den
+Treiberaufruf ein; IRQ-Eintritt/-Austritt und der Verwaltungsaufwand der Messung
+sind nicht vollständig enthalten. Keine per-Flanke-Interrupts werden hinzugefügt.
+
+Vordergrundmessungen enthalten Unterbrechungen durch IRQs. Verschachtelte
+Prüflese-/Analyseschritte überlappen; Maxima nicht addieren und daraus keine
+CPU-Auslastung ableiten. Die Streaming-Arbeitsmenge je Serviceaufruf variiert.
+Es handelt sich um Zyklen je Service-/Verarbeitungsschritt, keine feste Zyklenzahl
+pro Sample. Aufrufzähler zählen gültige Messungen, nicht verworfene Abschnitte.
+Die Momentaufnahme wird kurz unter erhaltener PRIMASK kopiert; Serialisierung
+erfolgt danach. Es gibt keine USB-Ausgabe oder Heap-Allokation im Messpfad.
+
+Overcapture wird am aktiven RDATA-Kanal (TIM2 CH1 oder Apple CH3) und am tatsächlich
+verwendeten physischen INDEX-Kanal erkannt. Vor dem Datenfenster angesammelte
+RDATA-Flags, der inaktive RDATA-Kanal sowie absichtlich ignorierte physische
+INDEX-Pulse bei internem Index zählen nicht als Aufnahmeverlust. Synthetische
+Aufnahmen überwachen physisches INDEX nur bei angeforderten RAW_INDEX-Belegen.
+Erkannter Verlust stoppt den Eingabekanal/DMA und liefert Status6 statt Erfolg.
+Je Aufnahme und Kategorie zählt höchstens eine Episode; viele verlorene Flanken
+können hinter einem einzigen Hardwareflag stehen. Diese beiden Zähler sättigen.
+Die alten DMA-Fehlerzähler zählen weiterhin DMA-Bus-/Transferfehler und ersetzen
+die neuen Overcapture-Zähler nicht. Ein lang laufender Stream endet außerdem
+explizit mit BUFFER_FULL vor dem Überlauf seines32-Bit-Samplecursors.
+
+Das Ausbleiben eines Hardwareflags beweist weder intakte Eingangselektronik noch einen
+verlustfreien Start am physischen Index. Prüfablauf und Grenzen:
+[Hardwarequalifikation](Firmware_Hardwarequalifikation_2026-10-22.md).
+
+**Kooperatives Firmware-Prüflesen:** Native WRITE-Aufträge bleiben bis zum Abschluss
+im Zustand WRITE_VERIFYING. Aufnahme, präziser Vergleich, Rohprofil und Inhaltsprüfung
+werden schrittweise bearbeitet; der Host wartet weiterhin auf denselben WRITE-END,
+ohne weitere Bestätigung zu senden. Die internen Capture-Daten erzeugen keine
+zusätzlichen READ-Antworten. Zwischen den Schritten werden USB, Schutzüberwachung
+und Abbruch bedient. Greaseweazle-Befehle und die synchronen internen Aufrufer
+behalten ihre Aufruf-/Antwortreihenfolge. Vorverarbeitung und erste mechanische
+Anlauf-/Positionierungswartezeiten sind damit nicht vollständig asynchronisiert.
 
 Bei `--extended --verify` dekodiert der Host vor WRITE CRC-gültige IBM-MFM-Sektoren
 bei 250/300/500/1000 kbit/s aus der Quelle. Ohne solche Sektoren wird anschließend auf Amiga geprüft; ohne unterstützte
@@ -2219,16 +2939,36 @@ Erweiterungen; Formatnamen werden nicht als einzelne Flags kodiert.
 | 0 | `0x0001` | CODING_ERRORS | Regeln der Clock-/Datenzellen nach Feld-Synchronisation prüfen; Verletzungen getrennt von CRC zählen und lokalisieren |
 | 1 | `0x0002` | ADDRESS_MARKS | Erkannte Feld-/Adressmarken im Standardprofil als Fundstellen ausgeben |
 | 2 | `0x0004` | PLL_MARGIN | Große digitale PLL-Restfehler in synchronisierten Feldern zählen und lokalisieren |
-| 3–15 | — | Reserviert | Müssen null sein |
+| 3 | `0x0008` | FAST_FORMAT_HINT | Optionaler, validierter Format-Suchhinweis; Einschränkungen unten |
+| 4–15 | — | Reserviert | Müssen null sein |
 
 `diagnostic_flags=0x0007` aktiviert alle drei Diagnosefunktionen.
-Zusammen mit `Basisflags=0xFF` sind alle derzeit verfügbaren Analysefunktionen
+Zusammen mit `Basisflags=0xFF` sind alle drei Diagnosefunktionen und die Basisanalysen
 angefordert. Beispiel für HP-MMFM, Spur 0, Seite 0, drei Umdrehungen, 500 kbit/s:
 
 ```text
 00 00 03 FF 04 20 A1 07 00 02 30 04 10 DC 00 00 00
 30 11 00 00 00 00 00 00 89 44 00 00 10 27 00 00 07 00 FA 00
 ```
+
+`FAST_FORMAT_HINT` ist standardmäßig aus und nur für automatische Format-/Ratensuche
+wirksam. Ein früherer erfolgreicher Lauf mit mindestens zwei brauchbaren
+Sektorkennungen liefert einen Suchhinweis, gebunden an Archiv-Medientoken,
+Konfigurationsgeneration, Decoder-Toleranzen, Apple-Marken/Symboltabelle und
+formatabhängige GCR-Zone. Beim nächsten passenden Auftrag wird dieser Decoder
+zunächst auf den Erkennungsumdrehungen geprüft. Mindestens zwei CRC-gültige
+Beobachtungen erlauben den verkürzten Suchlauf; andernfalls folgt die vollständige
+Suche. Ein Medien-, Einstellungs- oder Zonenwechsel verhindert die Wiederverwendung.
+
+QD-Byte8 enthält die angeforderte Maske; QD-Byte9 Bit3 ist nur gesetzt, wenn der
+Hinweis tatsächlich genutzt wurde. Dann bleibt `ambiguous=1`, weil konkurrierende
+Decoder nicht vollständig geprüft wurden. Die übrigen Diagnosebits behalten ihre
+Bedeutung. Explizite Format-/Ratenvorgaben, aktive Kopierschutzoptionen (Op55),
+CONFIRM_CONTENT (Retry-Policy1) und angeforderte Roh-Umdrehungsvergleiche nutzen
+keinen verkürzten Suchlauf. Bei Policy1 bleibt das angeforderte Feature sichtbar,
+die Erkennung prüft jedoch alle passenden Kandidaten; echte Mehrdeutigkeit bleibt
+ein Hindernis für die Bestätigung. Für eine
+vollständige Formaterkennung weiterhin0x0007 beziehungsweise kein Bit3 verwenden.
 
 Die feste SYNC-Mustersuche ist unabhängig vom Decoder. Nützliche Suchmuster
 für eigene Requests: FM-ID `0xAAAAF57E` (32 Bits, bei 250 kbit/s 550 Ticks je
@@ -2388,7 +3128,7 @@ Indexdauer (WRITE Bit6) übergeben. Keine Garantie für Kopierschutzreproduktion
 #### Op 12: Fähigkeiten, 32 Bytes
 
 Request `[12]`. Antwort: Schema 1 bei Byte 0, unterstützte Berichtsmaske u8=1
-bei 1, Policy-Bitmaske u8=7 bei 2 (Policies 0/1/2), maximale Versuchszahl u8=8
+bei 1, Policy-Bitmaske u8=31 bei 2 (Policies0–4), maximale Versuchszahl u8=8
 bei 3. Toleranzminimum u32=1 bei 4, Maximum u32=10000 bei 8,
 Vergleichsberichtgröße u32=1568 bei 12, Fensterzahl u8=128 bei 16.
 Übrige Bytes sind 0.
@@ -2402,7 +3142,7 @@ Request `[11]` liest. Setzen verwendet exakt 12 Bytes:
 | 0 | u8 | Op 11 |
 | 1 | u8 | Schema 1 |
 | 2 | u16 | Berichtsmaske, Default 0; nur REV_COMPARE=0x0001 erlaubt |
-| 4 | u8 | Retry-Policy 0–2, Default 0 |
+| 4 | u8 | Retry-Policy0–4, Default0; Policy3/4 siehe4.20 |
 | 5 | u8 | Benötigte aufeinanderfolgende Inhaltsbestätigungen 2–8, Default 2 |
 | 6 | u8 | Stagnationslimit 1–7, Default 2 |
 | 7 | u8 | Reserviert, muss 0 sein |
@@ -2705,7 +3445,7 @@ gleichzeitig gesetzt werden.
 RAND und mehrere Indexmarken bleiben als Metadaten zugänglich, werden aber
 ohne implementierte physische Weak-Write-/Hartsektor-Zuordnung nicht automatisch
 geschrieben. Export solcher HFEv3-Objekte als HFEv1 wird abgewiesen, damit keine
-Zeit-/Weak-Metadaten verloren gehen. SD-Firmware unterstützt zusätzlich v3 gemäß4.22/4.23; Greaseweazle-
+Zeit-/Weak-Metadaten verloren gehen. SD-Firmware unterstützt zusätzlich v3 gemäß7.1/6.3; Greaseweazle-
 Kommandos und Flags bleiben unverändert.
 
 ### 5.6 Erkennungszustände, Positionsbefunde und Wiederholungsursachen
@@ -2785,7 +3525,11 @@ Ursachenbit20. Bestehende Mac-Zonenbefunde bleiben separat erhalten.
 
 **Abschnitt 16:** 20 Bytes je tatsächlich begonnenem Versuch, maximal 160 Bytes.
 u32 bei 0: Erkennungsflags; bei 4: Ursachen; bei 8: gültige Sektor-Datensätze;
-bei 12: C/H-Abweichungen; Byte16 Phase, Byte17 Entscheidung, Bytes18–19 reserviert.
+bei12: C/H-Abweichungen; Byte16 Phase, Byte17 Entscheidung. Policy3 verwendet
+Byte18 für neue gültige Inhaltsidentitäten und Byte19 Bit0 für unvollständige
+Registrierung (4.20). Policy4 zählt in Byte18 neue Evidenzeinträge einschließlich
+Rohvergleichsmustern; Byte19 Bit0 meldet unvollständige Registrierung, Bit1 fehlende
+Rohvergleichsevidenz. Bei Policies0–2 bleiben diese Bytes0.
 Reihenfolge wie Abschnitt 1. Früh gescheiterte Wiederholungen erben keine
 Decoderbefunde des vorherigen Versuchs. Entscheidungen beschreiben den Ablauf,
 Ursachen den Befund; ein Befund muss keine Wiederholung ausgelöst haben.
@@ -2995,6 +3739,15 @@ So werden Decoderbefunde und Wiederholungsstrategie nicht vermischt.
 | 44 | 1 / 2 | Weak-Positionen fein des letzten ANALYZE: Fenster je 1/1024 Umdrehung, deren Maximum − Minimum der Flusswechselzahl die Schwelle (Vorgabe 2, optional u8 1–255) erreicht; Kopf 10 Byte plus n × 4, höchstens 266 (4.13); reine Abfrage, nie BUSY |
 | 45 | 1 / 2 / 3 + 3·n | Präkompensationsprofil (4.14): `[45]` liest, `[45, 0]` löscht, `[45, 1, n, Zonen]` setzt 1–4 Zonen (ab physischer Spur u8, ns u16); Antwort 19 Bytes mit Quelle, Zonen und letzter angewandter Präkompensation; Setzen während eines Vorgangs BUSY |
 | 46 | 1 / 2 / 6 | Spurübersicht (4.15): `[46]` liest Kopf 28 Byte + fertige Einträge à 20 Byte (nie BUSY, auch während des Laufs), `[46, 1, erste, letzte, seitenmaske, flags]` startet eine Umdrehung je Spur und Seite auf dem Board, `[46, 0]` bricht ab; höchstens 3388 Byte |
+| 47 | 1 / 7 / 12 | Sektor-Befunde (4.18): Discovery oder generationgebundener Seitenabruf, optional mit erwartetem C/H/N und Sektorintervall; maximal288 Byte |
+| 48 | 1 / 16; zusätzlich2 / 17 | Vollständiges Archiv / ausdrücklicher Abruf unvollständiger Hardware-Verlustfenster, höchstens552 Byte (4.19) |
+| 49 | 1 / 7 | Inhaltsvarianten der Ergebnisgeneration, höchstens288 Byte (4.20) |
+| 50 | 1 / 12 | Präzises Roh-Prüflesen lesen / konfigurieren,24 Byte Antwort (4.22) |
+| 51 | 1 / 7 | Statistik der Zeitabweichungen je Fenster, höchstens288 Byte (4.21) |
+| 52 | 17 / 22 / 46 / 50 | Gespeicherte Aufnahme erneut analysieren;64 Byte Jobstatus (4.19) |
+| 54 | 1 / 7 | Präziser Roh-Prüflesebericht, höchstens128 Byte pro Seite (4.22) |
+| 55 | 1 / 8 | Kopierschutz-Hinweisanalyse konfigurieren: sechs Flags und Schwellen,24 Byte Antwort (4.23) |
+| 56 | 1 / 7 | Generationgebundener Kopierschutz-Hinweisbericht mit Regel-IDs und Einschränkungen, höchstens288 Byte (4.23) |
 | 14 | 1 / 9 | Laufwerksprofil lesen / setzen, Antwort 40-Byte-Status |
 | 15 | 1 / 13 | Medienprofil lesen / deklarieren, Antwort 40-Byte-Status |
 | 16 | 1 | Medienwechsel manuell melden, Antwort 40-Byte-Status |
@@ -3113,6 +3866,7 @@ Versuch; die Historie hält Zusammenfassungen aller bis zu acht Versuche.
 | 40 | u8 | Analysephase: 1 Erkennung, 2 Detailauswertung, 3 Umdrehungsvergleich; nur im Zustand 2 gültig |
 | 41 | u8 | Suchkandidat 0–17 oder PLL-Profil 0–2 |
 | 42 | u8 | Aktuelle Umdrehung, 0-basiert |
+| 43 | u8 | 1 Speicheranalyse über Op52,0 neue Aufnahme |
 | 44 | u32 | Verarbeitete Flanken der aktuellen Umdrehung |
 | 48, 49 | je u8 | Maximale Versuche, aktuelle Jobflags (derzeit fünf Bits) |
 | 50–52 | je u8 | Erwartete C/H/N |
@@ -3307,7 +4061,7 @@ abfragen; insbesondere eine verlorene ACK-Antwort nicht blind wiederholen.
 Die Erweiterungen betreffen ausschließlich das native Protokoll. Keine zusätzlichen
 Greaseweazle-Flags. Op22-Headerbytes28/29/30 kündigen Op30/31/32 an. Alte Op27–29
 bleiben im bisherigen Wireformat; ohne ausdrückliche Aktivierung bleibt ein Plan
-nur im RAM. Die Reset-Grenze aus4.21 gilt für solche nicht gespeicherten Pläne.
+nur im RAM. Die Reset-Grenze aus6.2 gilt für solche nicht gespeicherten Pläne.
 
 **Op30 — Checkpoint auf SD:** `[30]` liefert16 Bytes: Schema1 an0,
 unterstützte Optionsmaske3 an1, Recordgröße128 an2, Anzahl Slots2 an3,
@@ -3331,15 +4085,22 @@ beweisen. Tool muss Medium tatsächlich neu zuordnen, nicht bloß das Flag setze
 
 Beide Aktionen verlangen aktuelle Konfigurations-/Medientoken. Beim Laden müssen
 Medienkennung, Laufwerksauswahl, Betriebsparameter, deklarierte Medien-/Laufwerks-
-profile und Recovery-Einstellungen zum gespeicherten Stand passen. Dafür speichert
+profile und Recovery-Einstellungen zum gespeicherten Stand passen. Ebenso werden
+Decoder-Toleranzen (Op34), Apple-Marken/Optionen (Op33), die Apple-Symboltabelle
+(Op36), Evidenzflags, Zusatzzeiten und Kopierschutzoptionen (Op55) verglichen. Dafür speichert
 die Firmware CRC32-Fingerprints; diese sind keine Authentifizierung. Das Tool stellt
 Profile vor dem Laden wieder her und liest danach die neuen Generationen.
 Erfolg liefert den unveränderten32-Byte-Op28-Status. Falsche Parameter/Profile:
 BAD_ARGS; andere Medienkennung: MEDIA_CHANGED; SD-/CRC-Fehler: STORAGE.
 
 Dateien `UFIPLAN0.CKP` und `UFIPLAN1.CKP` sind reservierte128-Byte-Records mit
-Magic UFP1, Schema1, Sequenz, Plan-ID, Cursor, START-Vorlage, Medienkennung,
-Recovery-Einstellungen und CRC32. Schreiben abwechselnd, schließen und zurücklesen.
+Magic UFP1, Dateischema2, Sequenz, Plan-ID, Cursor, START-Vorlage, Medienkennung,
+Recovery-Einstellungen und CRC32. Der zusätzliche Einstellungsfingerabdruck liegt
+in den bisher reservierten Bytes5–7 (untere24 Bits) und18 (obere8 Bits), ebenfalls
+von der Record-CRC geschützt. Alte Dateischema1-Records besitzen diese Bindung nicht
+und werden beim Fortsetzen mit BAD_ARGS abgewiesen; dafür einen neuen Plan anlegen.
+USB-Anfrageformat, Antwortschema und Recordlänge bleiben unverändert. Während eines
+offenen Plans sind auch Änderungen über Op33/34/36 BUSY. Schreiben abwechselnd, schließen und zurücklesen.
 Ein zerrissener neuester Record fällt auf den älteren gültigen zurück; dabei kann
 eine bereits gelesene Spur erneut anstehen. Ergebnisse bleiben im Tool, nicht im
 Checkpoint. Vor ACK muss das Tool den Bericht sichern. Schlägt das Speichern fehl,
@@ -3347,6 +4108,18 @@ bleibt der RAM-Cursor unverändert. ACK erst nach erfolgreichem Persistieren.
 FAT-Metadatenkorruption kann beide Slots verlieren; keine Zusage atomarer Hardware-
 Stromausfallsicherheit. Abbrechen löscht den gespeicherten Prüfstand nicht; erneutes
 Laden erfordert wieder Action2/Flags3. Sequenzüberlauf wird abgewiesen.
+
+**Schreibschutz im Hartaudit ergänzt (1.18-dev):** ERASE und PATTERN verlangen
+einen laufenden Motor und freie Capture-/Schreib-/Streamingpfade. Fehler bei SEEK
+und Seitenwahl werden vor dem Schreibtor zurückgegeben. Während Wartezeit und
+Schreibdauer prüfen sie Abbruch, Schreibsperren, Schreibschutz und Medientoken und
+bedienen den Watchdog; jeder Ausgang nach Schreibbeginn schließt WGATE beziehungsweise
+Apple-WRREQ und stoppt den Timer. PATTERN begrenzt die Dauer auf1–5000 ms und setzt
+seinen Timer unabhängig von einer vorherigen erweiterten Waveform zurück.
+Native WRITE prüft Abbruch und Sperren nochmals im tatsächlichen Index-/Offset-Start;
+CANCELLED wird nicht als TIMEOUT ausgegeben. Das Prüflesen bestätigt Erfolg erst
+nach einer abschließenden Abbruch-/Medienprüfung. Ein Op40-Bericht vor dem ersten
+Prüfauftrag besteht deterministisch aus sechs Bytes (`01 00 00 00 00 00`).
 
 **Op31 — Rohspur-Timingprüfung:** Abfrage `[31]`, Setzen
 `[31, schema=1, flags:u8, tolerance_permille:u16]`.

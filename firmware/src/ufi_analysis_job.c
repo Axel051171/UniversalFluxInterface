@@ -12,6 +12,8 @@
 #include "ufi_capabilities.h"
 #include "ufi_resources.h"
 #include "ufi_raw_verify.h"
+#include "ufi_precision.h"
+#include "ufi_protection.h"
 #include <string.h>
 extern capture_context_t g_capture;
 enum { A_IDLE,A_CAPTURE,A_ANALYZE,A_DONE,A_FAILED };
@@ -26,10 +28,13 @@ static struct {
     uint8_t recovery[11],confirmed,stagnant,stop_reason,previous_n,best_good;
     uint32_t best_errors;
     verify_sector_t previous[VERIFY_MAX_SECTORS];
+    uint32_t previous_hash[VERIFY_MAX_SECTORS],variation_patterns[8];
+    uint64_t previous_valid;
+    uint8_t variation_count;
     uint8_t media_snapshot[MEDIA_STATUS_SIZE];
     uint32_t media_token;
     uint8_t profile_check[MEDIA_CHECK_SIZE];
-    bool profile_checked;
+    bool profile_checked,replay;
     uint8_t port_snapshot[24];
     uint8_t history[8][40];
     uint8_t assessment[8][20],recognition_profile[12];
@@ -153,7 +158,7 @@ static bool confirmed_content(const quality_t* q,bool clean){
 }
 void ufi_analysis_job_service(void) {
     if(!ufi_analysis_job_active())return;
-    if(!ufi_drive_media_matches(job.media_token)){record(UFI_ERR_MEDIA_CHANGED);finish(UFI_ERR_MEDIA_CHANGED);return;}
+    if(!job.replay && !ufi_drive_media_matches(job.media_token)){record(UFI_ERR_MEDIA_CHANGED);finish(UFI_ERR_MEDIA_CHANGED);return;}
     if(ufi_cancel_requested()){record(UFI_ERR_CANCELLED);finish(UFI_ERR_CANCELLED);return;}
     if(HAL_GetTick()-job.started>=job.budget){record(UFI_ERR_TIMEOUT);finish(UFI_ERR_TIMEOUT);return;}
     int ret=UFI_ERR_BUSY;
@@ -206,7 +211,7 @@ void ufi_analysis_job_service(void) {
             wr(job.profile_check+8,rd(job.profile_check+8)|(1u<<20));
         }
     }
-    if((rd(job.assessment[job.attempt-1])&RECOG_FORMAT_OBSERVED) && observed && !observed->ambiguous)
+    if(!job.replay && (rd(job.assessment[job.attempt-1])&RECOG_FORMAT_OBSERVED) && observed && !observed->ambiguous)
         ufi_drive_media_observed(observed->format,observed->rate);
     const uint8_t* h=job.history[job.attempt-1];
     bool missing=(job.seen&job.expected)!=job.expected;
@@ -230,6 +235,41 @@ void ufi_analysis_job_service(void) {
             job.best_good=good;job.best_errors=error_count;job.stagnant=0;
         } else job.stagnant++;
         if(job.stagnant>=job.recovery[5]){retry=false;job.stop_reason=2;}
+    } else if(policy==3 || policy==4){
+        unsigned gain=0;
+        bool saturated=!observed || !observed->details || observed->details->variants_dropped;
+        if(observed && observed->details)for(unsigned i=0;i<observed->details->variants_count;i++){
+            const sector_variant_t* v=&observed->details->variants[i];
+            if(policy==3 && !v->valid_revs)continue;
+            if(policy==4 && (!(v->profiles&1u) || (v->findings&(SF_HEADER_BAD|SF_NO_HEADER))))continue;
+            bool known=false;
+            for(unsigned k=0;k<job.previous_n;k++){
+                const verify_sector_t* s=&job.previous[k];
+                if(s->c==v->id.c && s->h==v->id.h && s->r==v->id.r && s->n==v->id.n && s->crc==v->crc && job.previous_hash[k]==v->hash){
+                    known=true;
+                    if(v->valid_revs && !(job.previous_valid&(1ull<<k))){job.previous_valid|=1ull<<k;gain++;}
+                    break;
+                }
+            }
+            if(known)continue;
+            if(job.previous_n==VERIFY_MAX_SECTORS){saturated=true;continue;}
+            unsigned slot=job.previous_n++;
+            job.previous[slot]=(verify_sector_t){v->id.c,v->id.h,v->id.r,v->id.n,v->crc};
+            job.previous_hash[slot]=v->hash;if(v->valid_revs)job.previous_valid|=1ull<<slot;gain++;
+        }
+        uint8_t incomplete=saturated?1u:0u;
+        if(policy==4){
+            retry=true;uint32_t pattern;
+            if(ufi_quality_variation_mask(&pattern)){
+                unsigned i;for(i=0;i<job.variation_count;i++)if(job.variation_patterns[i]==pattern)break;
+                if(i==job.variation_count && job.variation_count<8){job.variation_patterns[job.variation_count++]=pattern;gain++;}
+            }else{incomplete|=2;saturated=true;}
+        }
+        job.assessment[job.attempt-1][18]=(uint8_t)gain;
+        job.assessment[job.attempt-1][19]=incomplete;
+        if(gain || saturated)job.stagnant=0;
+        else if(job.stagnant<255)job.stagnant++;
+        if(retry && !saturated && job.stagnant>=job.recovery[5]){retry=false;job.stop_reason=2;}
     }
     job.assessment[job.attempt-1][17]=job.stop_reason==1?2:job.stop_reason==2?3:0;
     if(retry && job.attempt<job.max_attempts){job.assessment[job.attempt-1][17]=1;(void)capture();return;}
@@ -242,6 +282,7 @@ static uint16_t status(uint8_t* out) {
     wr(out+4,job.id);wr(out+8,ufi_analysis_job_active()?HAL_GetTick()-job.started:job.elapsed);wr(out+12,job.generation);
     wr64(out+16,job.expected);wr64(out+24,job.seen);wr64(out+32,job.expected&~job.seen);
     uint32_t edge=0;ufi_quality_async_progress(out+40,out+41,out+42,&edge);wr(out+44,edge);
+    out[43]=job.replay?1:0;
     out[48]=job.max_attempts;out[49]=(uint8_t)job.flags;out[50]=job.c;out[51]=job.h;out[52]=job.n;
     out[53]=job.stop_reason;out[54]=job.confirmed;out[55]=job.stagnant;
     wr(out+56,job.budget);wr(out+60,job.capture_id);return 64;
@@ -284,13 +325,28 @@ static uint16_t plan_status(uint8_t* out){
 }
 /* Two independently closed files: a torn newest record leaves the older slot.
  * FAT metadata failure can still lose both: CRC is detection, not a power guarantee. */
+static uint32_t analysis_settings_crc(void){
+    /* Explicit bytes, no structure padding or volatile configuration generation. */
+    uint8_t settings[24],query=55;
+    (void)ufi_protection_options(&query,1,settings);
+    uint32_t crc=ufi_crc32(0,settings+4,6);
+    uint16_t tolerance=mfm_get_tolerance();settings[0]=(uint8_t)tolerance;settings[1]=(uint8_t)(tolerance>>8);
+    uint16_t evidence=ufi_evidence_configured();settings[2]=(uint8_t)evidence;settings[3]=(uint8_t)(evidence>>8);
+    crc=ufi_crc32(crc,settings,4);
+    apple_gcr_options_t apple=mfm_apple_get_options();
+    crc=ufi_crc32(crc,(const uint8_t*)&apple,sizeof apple);
+    crc=ufi_crc32(crc,mfm_apple_get_table(),64);
+    drive_extra_t extra=ufi_drive_extra_get();
+    return ufi_crc32(crc,(const uint8_t*)&extra,sizeof extra);
+}
+
 static int checkpoint_read(uint8_t record[128]){
     uint8_t candidate[129];uint32_t newest=0;bool bad=false;
     for(unsigned slot=0;slot<2;slot++){
         uint16_t got=0;int ret=ufi_file_read(slot?"UFIPLAN1.CKP":"UFIPLAN0.CKP",0,candidate,sizeof(candidate),&got);
         if(ret==UFI_ERR_NOT_FOUND)continue;
         if(ret)return ret;
-        if(got!=128 || memcmp(candidate,"UFP1",4) || candidate[4]!=1 ||
+        if(got!=128 || memcmp(candidate,"UFP1",4) || (candidate[4]!=1 && candidate[4]!=2) ||
            !rd(candidate+8) || rd(candidate+124)!=ufi_crc32(0,candidate,124)){bad=true;continue;}
         if(rd(candidate+8)>newest){newest=rd(candidate+8);memcpy(record,candidate,128);}
     }
@@ -299,7 +355,10 @@ static int checkpoint_read(uint8_t record[128]){
 static int checkpoint_save(void){
     uint8_t record[128]={0};
     if(plan.sequence==UINT32_MAX)return UFI_ERR_RANGE;
-    memcpy(record,"UFP1",4);record[4]=1;wr(record+8,plan.sequence+1);wr(record+12,plan.id);
+    memcpy(record,"UFP1",4);record[4]=2;wr(record+8,plan.sequence+1);wr(record+12,plan.id);
+    uint32_t settings=analysis_settings_crc();
+    for(unsigned i=0;i<3;i++)record[5+i]=(uint8_t)(settings>>(8*i));
+    record[18]=(uint8_t)(settings>>24);
     record[16]=(uint8_t)plan.cursor;record[17]=(uint8_t)(plan.cursor>>8);
     record[20]=plan.first;record[21]=plan.last;record[22]=plan.sides;record[23]=plan.length;
     memcpy(record+24,plan.media_id,16);memcpy(record+40,plan.request,plan.length);
@@ -318,6 +377,48 @@ static int checkpoint_save(void){
 }
 int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size) {
     *size=0;if(!n)return UFI_ERR_BAD_ARGS;
+    if(p[0]==55){
+        if(n>1 && (plan_live() || ufi_operation_busy() || ufi_job_live()))return UFI_ERR_BUSY;
+        int ret=ufi_protection_options(p,n,out);if(!ret){*size=24;if(n>1)ufi_config_changed();}return ret;
+    }
+    if(p[0]==56){
+        if(n==1){memset(out,0,16);out[0]=1;out[1]=32;out[2]=32;out[3]=8;out[4]=PROTECT_RECORDS;out[5]=1;*size=16;return UFI_OK;}
+        if(n!=7 || !rd(p+1) || !p[6] || p[6]>8)return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        const quality_t* q=ufi_quality_result();if(!q || q->generation!=rd(p+1))return UFI_ERR_NOT_FOUND;
+        *size=protection_pack(q,p[5],p[6],out,288);return *size?UFI_OK:UFI_ERR_BAD_ARGS;
+    }
+    if(p[0]==52){
+        quality_options_t options;
+        if(n<=13 || !rd(p+1) || !rd(p+5) || !quality_options(p+13,n-13,&options) || !(options.flags&1))return UFI_ERR_BAD_ARGS;
+        if(plan_live() || ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
+        (void)ufi_flux_get_revolution_count();
+        if(rd(p+1)!=ufi_flux_archive_id() || rd(p+9)!=ufi_flux_archive_fingerprint())return UFI_ERR_NOT_FOUND;
+        uint8_t info[8];ufi_flux_archive_info(info);
+        if(p[13]!=info[0] || options.side!=info[1] || options.position!=info[2])return UFI_ERR_BAD_ARGS;
+        memset(&job,0,sizeof(job));job.replay=true;job.id=rd(p+5);job.capture_id=rd(info+4);
+        job.media_token=ufi_flux_archive_media();wr(job.media_snapshot+4,job.media_token);
+        if(job.capture_id && evidence_id()==job.capture_id)(void)evidence_pack(3,job.media_snapshot,sizeof(job.media_snapshot));
+        job.track=info[0];job.side=info[1];job.position=info[2];job.c=info[0];job.h=info[1];
+        job.attempt=job.max_attempts=1;job.state=A_ANALYZE;job.started=job.attempt_started=HAL_GetTick();
+        job.budget=options.budget_ms;options.report_mask=recovery_config[1];options.compare_tolerance=rd(recovery_config+7);
+        memcpy(job.recovery,recovery_config,11);job.recovery[3]=0;
+        job.options=options;ufi_cancel_clear();
+        int ret=ufi_quality_async_archive(&options,info);if(ret){record(ret);finish(ret);}
+        *size=status(out);return ret;
+    }
+    if(p[0]==50){
+        if(n>1 && (plan_live() || ufi_operation_busy() || ufi_job_live()))return UFI_ERR_BUSY;
+        int ret=ufi_precision_options(p,n,out);if(!ret){*size=24;if(n>1)ufi_config_changed();}return ret;
+    }
+    if(p[0]==54){
+        if(n==1){memset(out,0,16);out[0]=1;out[1]=32;out[2]=12;out[3]=8;out[4]=128;*size=16;return UFI_OK;}
+        if(n!=7 || !rd(p+1) || p[5]>128 || !p[6] || p[6]>8)return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        *size=ufi_precision_report(p[5],p[6],out);
+        if(!*size || rd(out+4)!=rd(p+1)){*size=0;return UFI_ERR_NOT_FOUND;}
+        return UFI_OK;
+    }
     if(p[0]==31){
         if(n>1 && (plan_live() || ufi_operation_busy() || ufi_job_live()))return UFI_ERR_BUSY;
         int ret=ufi_raw_verify_options(p,n,out);
@@ -343,6 +444,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             if(plan_live())return UFI_ERR_BUSY;
             if(ret)return ret;
             if(memcmp(record+24,p+12,16))return UFI_ERR_MEDIA_CHANGED;
+            if(record[4]!=2 || ((rd(record+5)&0xffffffu)|((uint32_t)record[18]<<24))!=analysis_settings_crc())return UFI_ERR_BAD_ARGS;
             if(record[23]<28 || record[23]>61 || memcmp(record+101,recovery_config,11))return UFI_ERR_BAD_ARGS;
             uint8_t profile[40];ret=ufi_drive_operating_profile(NULL,profile);if(ret)return ret;
             if(rd(record+112)!=ufi_crc32(0,profile,39))return UFI_ERR_BAD_ARGS;
@@ -372,10 +474,10 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         uint16_t flags=(uint16_t)(t[5]|(uint16_t)t[6]<<8);
         uint64_t expected=rd(t+12)|(uint64_t)rd(t+16)<<32;
         if(!quality_options(t+24,n-40,&options) || !(options.flags&1) ||
-           (flags&~63u) || !t[7] || t[7]>8 || !rd(t+8) || rd(t+8)>60000 || t[23] || t[22]>3 ||
+           (flags&~127u) || !t[7] || t[7]>8 || !rd(t+8) || rd(t+8)>60000 || t[23] || t[22]>3 ||
            ((flags&1)&&!(flags&4)) || ((flags&4)?!expected:expected!=0) ||
            (recovery_config[3]==1 && t[7]<recovery_config[4]) ||
-           (recovery_config[3]==2 && !(flags&3)))return UFI_ERR_BAD_ARGS;
+           (recovery_config[3]>=2 && !(flags&3)) || (recovery_config[3]==4 && t[26]==1))return UFI_ERR_BAD_ARGS;
         memset(&plan,0,sizeof(plan));plan.id=rd(p+1);plan.config=rd(p+5);plan.media=rd(p+9);
         plan.first=p[13];plan.last=p[14];plan.sides=p[15];plan.total=(uint16_t)((p[14]-p[13]+1u)*p[15]);
         plan.length=(uint8_t)(n-16);memcpy(plan.request,t,plan.length);plan.state=P_READY;
@@ -410,7 +512,8 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         return ufi_survey_command(p,n,out,size);
     }
     if(plan_live() && !plan.starting && (p[0]==1 || p[0]==24 || p[0]==26 ||
-       ((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18) && n>1) || p[0]==16))return UFI_ERR_BUSY;
+       ((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18 ||
+         p[0]==33 || p[0]==34 || p[0]==36) && n>1) || p[0]==16))return UFI_ERR_BUSY;
     if(p[0]==0 && n==1){*size=capabilities(out);return UFI_OK;}
     if(p[0]==25 && n==1){
         /* Media-bound starts (4.5), schema 2: write start 0x27 (data/end 0x22), then
@@ -419,6 +522,96 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         wr(out+4,3);wr(out+8,ufi_config_generation());wr(out+12,ufi_drive_media_token());
         out[16]=0x28;out[17]=0x20;out[18]=8;
         *size=20;return UFI_OK;
+    }
+    if(p[0]==51){
+        if(n==1){memset(out,0,16);out[0]=1;out[1]=128;out[2]=32;out[3]=8;*size=16;return UFI_OK;}
+        if(n!=7 || !rd(p+1) || p[5]>128 || !p[6] || p[6]>8)return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        *size=ufi_compare_stats_report(out,288,rd(p+1),p[5],p[6]);return *size?UFI_OK:UFI_ERR_NOT_FOUND;
+    }
+    if(p[0]==49){
+        if(n==1){memset(out,0,16);out[0]=1;out[1]=32;out[2]=32;out[3]=8;out[4]=64;*size=16;return UFI_OK;}
+        if(n!=7 || !rd(p+1) || !p[6] || p[6]>8)return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        const quality_t* q=ufi_quality_result();if(!q || q->generation!=rd(p+1))return UFI_ERR_NOT_FOUND;
+        *size=quality_variants_pack(q,p[5],p[6],out,288);return *size?UFI_OK:UFI_ERR_BAD_ARGS;
+    }
+    if(p[0]==48){
+        /* Explicit opt-in to retained incomplete timestamp windows (schema 2).
+         * Ordinary schema-1 archives and replay never accept these captures. */
+        if(n==2 || n==17){
+            if(p[n-1]!=1)return UFI_ERR_BAD_ARGS;
+            if(ufi_operation_busy())return UFI_ERR_BUSY;
+            uint32_t info[4];uint8_t position[4];
+            bool present=ufi_flux_loss_snapshot(info,position);
+            if(n==2){
+                memset(out,0,48);out[0]=2;out[1]=48;out[2]=128;out[3]=present?1:0;
+                wr(out+4,info[0]);wr(out+8,present?ufi_flux_archive_media():0);
+                memcpy(out+16,position,3);out[19]=ufi_flux_store_is_psram()?1:0;
+                wr(out+20,FLUX_TIMER_FREQ);out[24]=present?6:0;
+                out[25]=present?6:0;out[26]=position[3];wr(out+28,info[2]);
+                wr(out+32,info[1]);wr(out+40,info[3]);*size=48;return UFI_OK;
+            }
+            uint32_t offset=rd(p+6);uint16_t count=(uint16_t)(p[10]|(uint16_t)p[11]<<8);
+            if(!rd(p+1) || !count || count>128)return UFI_ERR_BAD_ARGS;
+            if(!present || rd(p+1)!=info[0] || rd(p+12)!=info[2])return UFI_ERR_NOT_FOUND;
+            if(p[5] || offset>info[1])return UFI_ERR_RANGE;
+            if(count>info[1]-offset)count=(uint16_t)(info[1]-offset);
+            memset(out,0,40);out[0]=2;out[2]=(uint8_t)count;out[3]=4;
+            wr(out+4,info[0]);wr(out+8,offset);wr(out+12,info[1]);
+            wr(out+20,ufi_flux_archive_media());out[28]=6;out[29]=6;out[30]=position[3];
+            if(!ufi_flux_loss_read(offset,count,out+40))return UFI_ERR_NOT_FOUND;
+            wr(out+36,info[2]);wr(out+32,ufi_crc32(ufi_crc32(0,out,32),out+36,4u+4u*count));
+            *size=(uint16_t)(40+4*count);return UFI_OK;
+        }
+        /* Complete stored capture: idempotent indexed pages survive USB re-enumeration.
+         * New capture / any buffer writer invalidates the ID before changing data. */
+        if(n!=1 && n!=16)return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        uint8_t revs=ufi_flux_get_revolution_count();uint32_t id=ufi_flux_archive_id();
+        uint8_t info[8];ufi_flux_archive_info(info);
+        if(n==1){
+            memset(out,0,32);out[0]=1;out[1]=48;out[2]=128;out[3]=id?revs:0;
+            wr(out+4,id);wr(out+8,ufi_flux_archive_media());wr(out+12,rd(info+4));
+            memcpy(out+16,info,3);out[24]=info[3];
+            out[19]=ufi_flux_store_is_psram()?1:0;wr(out+20,FLUX_TIMER_FREQ);
+            wr(out+28,id?ufi_flux_archive_fingerprint():0);
+            *size=32;
+            if(id)for(unsigned i=0;i<revs;i++){
+                const flux_revolution_t* r=ufi_flux_get_revolution((uint8_t)i);
+                if(!r)return UFI_ERR_NOT_FOUND;
+                wr(out+32+8*i,r->count);wr(out+36+8*i,r->index_time);*size+=8;
+            }
+            return UFI_OK;
+        }
+        uint32_t offset=rd(p+6);uint16_t count=(uint16_t)(p[10]|(uint16_t)p[11]<<8);
+        if(!rd(p+1) || !count || count>128)return UFI_ERR_BAD_ARGS;
+        if(!id || rd(p+1)!=id || rd(p+12)!=ufi_flux_archive_fingerprint())return UFI_ERR_NOT_FOUND;
+        const flux_revolution_t* r=ufi_flux_get_revolution(p[5]);
+        if(!r || p[5]>=revs || offset>r->count)return UFI_ERR_RANGE;
+        if(count>r->count-offset)count=(uint16_t)(r->count-offset);
+        memset(out,0,40);out[0]=1;out[1]=p[5];out[2]=count;out[3]=4;
+        wr(out+4,id);wr(out+8,offset);wr(out+12,r->count);wr(out+16,r->index_time);
+        wr(out+20,ufi_flux_archive_media());wr(out+24,rd(info+4));out[28]=info[3];
+        for(unsigned i=0;i<count;i++)wr(out+40+4*i,r->samples[offset+i].timestamp);
+        wr(out+36,ufi_flux_archive_fingerprint());
+        wr(out+32,ufi_crc32(ufi_crc32(0,out,32),out+36,4u+4u*count));
+        *size=(uint16_t)(40+4*count);return UFI_OK;
+    }
+    if(p[0]==47){
+        /* Discovery is always readable. Pages require a stable, generation-bound result. */
+        if(n==1){
+            memset(out,0,16);out[0]=1;out[1]=32;out[2]=32;out[3]=SECTOR_DETAILS_PAGE;
+            wr(out+4,SF_IMPLEMENTED);out[8]=QUALITY_SECTORS;*size=16;return UFI_OK;
+        }
+        if((n!=7 && n!=12) || !rd(p+1) || !p[6] || p[6]>SECTOR_DETAILS_PAGE)return UFI_ERR_BAD_ARGS;
+        if(n==12 && ((p[9]>7 && p[9]!=255) || p[10]>p[11]))return UFI_ERR_BAD_ARGS;
+        if(ufi_operation_busy())return UFI_ERR_BUSY;
+        const quality_t* q=ufi_quality_result();
+        if(!q || q->generation!=rd(p+1) || !q->details)return UFI_ERR_NOT_FOUND;
+        *size=quality_details_pack(q,p[5],p[6],out,32u+SECTOR_DETAILS_PAGE*32u);
+        if(*size && n==12)quality_details_profile(out,p+7);
+        return *size?UFI_OK:UFI_ERR_BAD_ARGS;
     }
     if(p[0]==43 && n==1){*size=ufi_provenance_block(out);return UFI_OK;}   /* provenance block (4.12) */
     if(p[0]==44 && (n==1 || (n==2 && p[1]))){*size=ufi_analyze_weak_positions(n==2?p[1]:2u,out);return UFI_OK;}   /* weak positions (4.13) */
@@ -571,13 +764,13 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         ufi_drive_media_status(out);*size=40;return UFI_OK;
     }
     if(p[0]==12 && n==1){
-        memset(out,0,32);out[0]=1;out[1]=1;out[2]=7;out[3]=8;
+        memset(out,0,32);out[0]=1;out[1]=1;out[2]=31;out[3]=8;
         wr(out+4,1);wr(out+8,10000);wr(out+12,COMPARE_WIRE_SIZE);out[16]=COMPARE_WINDOWS;
         *size=32;return UFI_OK;
     }
     if(p[0]==11 && (n==1 || n==12)){
         if(n==12){
-            if(p[1]!=1 || (p[2]&~1u) || p[3] || p[4]>2 || p[5]<2 || p[5]>8 ||
+            if(p[1]!=1 || (p[2]&~1u) || p[3] || p[4]>4 || p[5]<2 || p[5]>8 ||
                !p[6] || p[6]>7 || p[7] || !rd(p+8) || rd(p+8)>10000)return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
             memcpy(recovery_config,p+1,11);
@@ -636,11 +829,13 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
            ((flags&1)&&!(flags&4)) || ((flags&4)?!expected:expected!=0))return UFI_ERR_BAD_ARGS;
         if(ufi_analysis_job_active() || ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
         if((recovery_config[3]==1 && p[7]<recovery_config[4]) ||
-           (recovery_config[3]==2 && !(flags&3)))return UFI_ERR_BAD_ARGS;
+           (recovery_config[3]>=2 && !(flags&3)) || (recovery_config[3]==4 && p[26]==1))return UFI_ERR_BAD_ARGS;
         memset(&job,0,sizeof(job));job.id=rd(p+1);job.flags=flags;job.expected=expected;
         ufi_drive_media_status(job.media_snapshot);job.media_token=rd(job.media_snapshot+4);
         memcpy(job.recovery,recovery_config,11);
         options.report_mask=recovery_config[1];options.compare_tolerance=rd(recovery_config+7);
+        if(recovery_config[3]==4)options.report_mask|=1;
+        options.require_full_search=recovery_config[3]==1;
         job.c=p[20];job.h=p[21];job.n=p[22];job.max_attempts=p[7];job.budget=rd(p+8);
         if(options.position && !ufi_drive_quarter_ok((uint8_t)((options.position>>4)&3u)))return UFI_ERR_BAD_ARGS;    /* quarter form: Apple, or Shugart half track with double step */
         job.track=p[24];job.side=options.side;job.position=options.position;job.revs=p[26]?p[26]:3;if(job.revs>8)job.revs=8;

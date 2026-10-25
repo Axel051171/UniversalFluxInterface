@@ -7,7 +7,7 @@ def main():
 #include "ufi_mfm.h"
 #include <assert.h>
 #include <string.h>
-#include "../apple_fixture.h"
+#include "apple_fixture.h"
 static const apple_gcr_options_t apple_defaults={{0xd5,0xaa,0x96},{0xd5,0xaa,0xad},{0xde,0xaa},{0xde,0xaa},0};
 static struct { mfm_id_t id; uint8_t data[256]; bool ok; } found[64];
 static unsigned nfound;

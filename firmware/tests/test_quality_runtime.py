@@ -5,8 +5,8 @@ from test_regressions import BASE, ERRORS, FW, run, function
 def runtime_tests():
     code = BASE + ERRORS + r'''
 #include "ufi_quality.h"
-#include "../legacy_fixture.h"
-#include "../mac_fixture.h"
+#include "legacy_fixture.h"
+#include "mac_fixture.h"
 typedef struct {uint32_t timestamp;} flux_sample_t;
 typedef struct {flux_sample_t* samples;uint32_t count,index_time;uint8_t revolution;} flux_revolution_t;
 typedef struct {uint8_t current_track,current_side,current_quarter;uint32_t error_code;} capture_context_t;
@@ -15,6 +15,9 @@ static flux_sample_t samples[100000];
 static flux_revolution_t revolutions[8];
 static uint8_t revolution_count=2;
 static uint32_t ticks,tick_step=1,watchdogs;
+static uint32_t capture_media=42,configuration=1;
+static uint32_t ufi_flux_archive_media(void){return capture_media;}
+uint32_t ufi_config_generation(void){return configuration;}
 static bool cancelled;
 static uint32_t HAL_GetTick(void) {uint32_t t=ticks;ticks+=tick_step;return t;}
 #define UFI_WATCHDOG_FEED() (++watchdogs)
@@ -37,6 +40,11 @@ static uint32_t capture_track(void) {
     return n;
 }
 int main(void) {
+    /* NOLOAD DTCM is arbitrary at boot; the report must not trust its count. */
+    memset(verify_report,0xff,sizeof verify_report);
+    uint8_t boot_report[VERIFY_REPORT_MAX+1];memset(boot_report,0xa5,sizeof boot_report);
+    assert(ufi_quality_verify_report(boot_report)==6 && boot_report[0]==1 && !boot_report[2]);
+    assert(boot_report[6]==0xa5);
     assert(ufi_quality_report(report,sizeof(report))==0);
     uint32_t n=capture_track();
     assert(ufi_quality_analyze(0,0,false)==0 && watchdogs);
@@ -55,6 +63,13 @@ int main(void) {
     assert(ufi_quality_verify(&ref,true,&level)==0 && level==VERIFY_CONTENT);
     assert(ufi_quality_verify_report(vr)==6+5*11 && vr[1]==2 && vr[2]==11 && vr[3]==4 && vr[4]==3 && vr[5]==1);
     { unsigned ok=0;for(unsigned i=0;i<11;i++){ok+=vr[6+5*i+4]==VERIFY_SECTOR_OK;assert(vr[6+5*i]==0 && vr[6+5*i+1]==0 && vr[6+5*i+3]==2);}assert(ok==11); }
+    uint8_t synchronous[VERIFY_REPORT_MAX];memcpy(synchronous,vr,sizeof vr);
+    tick_step=0;assert(!ufi_quality_async_verify(&ref,true));
+    assert(ufi_quality_async_verify(&ref,true)==UFI_ERR_BUSY);
+    unsigned verify_steps=0;int verify_step;
+    do{verify_step=ufi_quality_async_step();assert(++verify_steps<10000);}while(verify_step==UFI_ERR_BUSY);
+    assert(!verify_step && verify_steps>10 && ufi_quality_async_verify_level()==VERIFY_CONTENT);
+    assert(ufi_quality_verify_report(vr)==6+5*11 && !memcmp(vr,synchronous,6+5*11));tick_step=1;
     data[0]=1;capture_track();
     ufi_quality_verify_begin(3,1);
     assert(ufi_quality_verify(&ref,true,&level)==UFI_ERR_DMA);
@@ -62,6 +77,9 @@ int main(void) {
     { unsigned ok=0,diff=0;assert(ufi_quality_verify_report(vr)==6+5*11 && !(vr[3]&4));
       for(unsigned i=0;i<11;i++){ok+=vr[6+5*i+4]==VERIFY_SECTOR_OK;diff+=vr[6+5*i+4]==VERIFY_SECTOR_DIFFERENT;}
       assert(ok==10 && diff==1); }                       /* exactly the changed sector reads back different */
+    tick_step=0;assert(!ufi_quality_async_verify(&ref,true));
+    do{verify_step=ufi_quality_async_step();}while(verify_step==UFI_ERR_BUSY);
+    assert(verify_step==UFI_ERR_DMA && !ufi_quality_async_verify_level());tick_step=1;
     cancelled=true;
     assert(ufi_quality_analyze(2,250000,true)==UFI_ERR_CANCELLED && result.status==20);
     cancelled=false;tick_step=10001;
@@ -162,7 +180,7 @@ int main(void) {
     options.flags=1;
     for(uint32_t i=20;i<revolutions[0].count;i+=100)samples[i].timestamp+=220;
     assert(ufi_quality_analyze_options(&options)==0 && result.extra.diagnostics[0][0][2]>0);
-    v2[33]=8;assert(!quality_options(v2,37,&options));v2[33]=7;
+    v2[33]=16;assert(!quality_options(v2,37,&options));v2[33]=7;
     v2[35]=0;assert(!quality_options(v2,37,&options));v2[35]=250;
     v2[3]=0;assert(!quality_options(v2,37,&options));v2[3]=1;
     assert(!quality_options(v2,36,&options));v2[9]=1;assert(!quality_options(v2,37,&options));
@@ -184,6 +202,39 @@ int main(void) {
     while(!comparison_active)assert(ufi_quality_async_step()==UFI_ERR_BUSY);
     cancelled=true;assert(ufi_quality_async_step()==UFI_ERR_CANCELLED && !comparison_available);cancelled=false;
     ufi_quality_clear();assert(ufi_quality_report(report,sizeof(report))==0);
+    /* Optional detection hint: only a validated cached decoder may skip the full search. */
+    uint32_t strict_score=0;const uint8_t unsafe[]={MFM_SF_HEADER_CHECKSUM,MFM_SF_DATA_CHECKSUM,MFM_SF_NO_HEADER,4};
+    for(unsigned i=0;i<sizeof unsafe;i++){decoder.sector_flags=unsafe[i];strict_scout(&strict_score,NULL,NULL,true);}
+    assert(!strict_score);decoder.sector_flags=0;decoder.field_bad=false;strict_scout(&strict_score,NULL,NULL,true);assert(strict_score==1);
+    capture_track();tick_step=0;options.format=0;options.rate=0;options.flags=1;
+    options.features=QUALITY_FEATURE_FAST_HINT;options.report_mask=0;
+    uint32_t candidates=ufi_metrics.format_candidates;
+    assert(!ufi_quality_analyze_options(&options) && result.format==2 && !result.hint_used);
+    assert(ufi_metrics.format_candidates-candidates>1);
+    candidates=ufi_metrics.format_candidates;
+    assert(!ufi_quality_analyze_options(&options) && result.hint_used && result.n==11);
+    assert(ufi_metrics.format_candidates==candidates+1 && ufi_metrics.format_hint_hits);
+    assert(ufi_quality_report(diag_report,sizeof diag_report)==QUALITY_MAX_WIRE);
+    assert(diag_report[QUALITY_WIRE_SIZE+QUALITY_EXTRA_SIZE+9]&QUALITY_FEATURE_FAST_HINT);
+    configuration++;candidates=ufi_metrics.format_candidates;
+    assert(!ufi_quality_analyze_options(&options) && !result.hint_used && ufi_metrics.format_candidates-candidates>1);
+    capture_media++;candidates=ufi_metrics.format_candidates;
+    assert(!ufi_quality_analyze_options(&options) && !result.hint_used && ufi_metrics.format_candidates-candidates>1);
+    mfm_set_tolerance(1);assert(!ufi_quality_analyze_options(&options) && !result.hint_used);mfm_set_tolerance(0);
+    uint8_t protection_options[8]={55,1,4,0,3,2,30,0},protection_reply[24];
+    assert(!ufi_protection_options(protection_options,8,protection_reply));
+    candidates=ufi_metrics.format_candidates;
+    assert(!ufi_quality_analyze_options(&options) && !result.hint_used && ufi_metrics.format_candidates-candidates>1);
+    protection_options[2]=0;assert(!ufi_protection_options(protection_options,8,protection_reply));
+    assert(!ufi_quality_analyze_options(&options)); /* restore a verified Amiga hint */
+    mfm_track_fmt_t ibm={.rate_bps=250000,.track_cells=100000,.spt=9,.gap3=84};
+    uint32_t ibm_n=mfm_encode_track(&ibm,0,0,data,flux,100000),ibm_time=0;
+    assert(ibm_n);for(unsigned i=0;i<ibm_n;i++){ibm_time+=flux[i];samples[i].timestamp=ibm_time;}
+    for(unsigned r=0;r<2;r++)revolutions[r]=(flux_revolution_t){samples,ibm_n,55000000,(uint8_t)r};
+    uint32_t fallbacks=ufi_metrics.format_fallbacks;
+    assert(!ufi_quality_analyze_options(&options) && result.format==1 && !result.hint_used && result.n==9);
+    assert(ufi_metrics.format_fallbacks==fallbacks+1);
+    options.features=7;
     /* Native Mac timing and all fixed-300-RPM zones, synchronous and cooperative. */
     const uint32_t mac_rates[]={500000,380228,346021,312500,280112,251256};
     uint8_t mac_data[524]={0},summary[48];

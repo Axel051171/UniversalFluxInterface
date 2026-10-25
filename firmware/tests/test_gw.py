@@ -121,7 +121,7 @@ return 0;
 def deadline_tests():
     code = BASE + r'''
 enum {CAPTURE_RUNNING, CAPTURE_COMPLETE};
-static struct {int state;} g_capture;
+static struct {int state;unsigned error_code;} g_capture;
 static bool gw_capture = true, gw_linger;
 static uint64_t gw_origin64, gw_limit, gw_end, now;
 static unsigned halted;

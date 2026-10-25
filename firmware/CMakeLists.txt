@@ -18,6 +18,12 @@ set(CMAKE_SIZE arm-none-eabi-size)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
 project(ufi_firmware C ASM)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Firmware build type" FORCE)
+endif()
 
 # Firmware version + git revision for GET_INFO.  -DUFI_GIT_REV=... overrides; otherwise the
 # revision comes only from a git work tree whose top level is this project's root (the
@@ -75,7 +81,13 @@ set(MCU_FLAGS "-mcpu=${MCU_SPEC} -mthumb -mfpu=${MCU_FPU} -mfloat-abi=${MCU_FLOA
 
 set(CMAKE_C_FLAGS "${MCU_FLAGS} -Wall -Wextra -fdata-sections -ffunction-sections")
 set(CMAKE_C_FLAGS_DEBUG "-Og -g3 -DDEBUG")
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
+set(UFI_RELEASE_OPTIMIZATION "2" CACHE STRING "Release optimization: 2 (baseline), 3 (speed candidate), s (size)")
+set_property(CACHE UFI_RELEASE_OPTIMIZATION PROPERTY STRINGS 2 3 s)
+if(NOT UFI_RELEASE_OPTIMIZATION MATCHES "^(2|3|s)$")
+    message(FATAL_ERROR "UFI_RELEASE_OPTIMIZATION must be 2, 3 or s")
+endif()
+set(CMAKE_C_FLAGS_RELEASE "-O${UFI_RELEASE_OPTIMIZATION} -DNDEBUG")
+option(UFI_FORCE_INTERNAL_FLUX_STORE "Qualification image: bypass U11 and use internal flux fallback" OFF)
 
 set(CMAKE_ASM_FLAGS "${MCU_FLAGS} -x assembler-with-cpp")
 
@@ -187,6 +199,7 @@ set(PROJECT_SOURCES
     src/ufi_verify.c
     src/ufi_quality.c
     src/ufi_quality_runtime.c
+    src/ufi_protection.c
     src/ufi_compare.c
     src/ufi_media.c
     src/ufi_capabilities.c
@@ -199,6 +212,7 @@ set(PROJECT_SOURCES
     src/ufi_image.c
     src/ufi_hfe_v3.c
     src/ufi_raw_verify.c
+    src/ufi_precision.c
     src/ufi_debug.c
     src/ufi_diag.c
     src/ufi_clock.c
@@ -249,6 +263,14 @@ add_executable(${PROJECT_NAME}.elf
     ${FATFS_SOURCES}
     ${STARTUP_SOURCE}
 )
+target_compile_options(${PROJECT_NAME}.elf PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-usage>)
+if(UFI_FORCE_INTERNAL_FLUX_STORE)
+    target_compile_definitions(${PROJECT_NAME}.elf PRIVATE UFI_FORCE_INTERNAL_FLUX_STORE=1)
+endif()
+find_program(UFI_CCACHE ccache)
+if(UFI_CCACHE AND NOT CMAKE_C_COMPILER_LAUNCHER)
+    set_property(TARGET ${PROJECT_NAME}.elf PROPERTY C_COMPILER_LAUNCHER "${UFI_CCACHE}")
+endif()
 
 # Vendor code (ST HAL / USB library) is used unmodified; silence its unused-parameter
 # noise only, project sources keep the full -Wall -Wextra set.
@@ -260,11 +282,15 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set_property(TARGET ${PROJECT_NAME}.elf APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/STM32H723ZGTX_FLASH.ld"
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py")
+set_property(TARGET ${PROJECT_NAME}.elf APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_stack.py")
 # Generate .hex and .bin only after the memory gate succeeds.
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py"
             "$<TARGET_FILE:${PROJECT_NAME}.elf>" --nm "${CMAKE_NM}" --objdump "${CMAKE_OBJDUMP}"
             --report "${CMAKE_CURRENT_BINARY_DIR}/memory_usage.json"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_stack.py"
+            "${CMAKE_CURRENT_BINARY_DIR}" --report "${CMAKE_CURRENT_BINARY_DIR}/stack_usage.json"
     COMMAND ${CMAKE_OBJCOPY} -O ihex ${PROJECT_NAME}.elf ${PROJECT_NAME}.hex
     COMMAND ${CMAKE_OBJCOPY} -O binary ${PROJECT_NAME}.elf ${PROJECT_NAME}.bin
     COMMAND ${CMAKE_SIZE} ${PROJECT_NAME}.elf

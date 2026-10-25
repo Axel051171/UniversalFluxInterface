@@ -27,22 +27,31 @@ def typedef(file, name):
 
 
 def run(name, code, sources=()):
-    BUILD.mkdir(exist_ok=True)
+    if 'src/ufi_quality.c' in sources and 'src/ufi_protection.c' not in sources:
+        sources=(*sources,'src/ufi_protection.c')
+    if 'ufi_metrics.h' in code and 'volatile ufi_metrics_t ufi_metrics;' not in code and 'src/ufi_metrics.c' not in sources:
+        sources=(*sources,'src/ufi_metrics.c')
+    BUILD.mkdir(parents=True,exist_ok=True)
     src = BUILD / (name + ".c")
     exe = BUILD / (name + (".exe" if os.name == "nt" else ""))
     src.write_text(code, encoding="utf-8")
     if os.environ.get("UFI_ANALYZE"):
         subprocess.run([compiler(), '--analyze', '-Xanalyzer', '-analyzer-output=text',
                         '-Xanalyzer', '-analyzer-werror', '-Wno-pointer-to-int-cast',
-                        '-I', str(FW/'include'), str(src)],check=True,timeout=60)
+                        '-I', str(FW/'include'), '-I', str(FW/'tests'), str(src)],check=True,timeout=60)
     subprocess.run([compiler(), "-std=c11", "-Wall", "-Wextra", "-Werror",
-                    "-Wno-pointer-to-int-cast", "-I", str(FW / "include"), *extra_cflags(),
+                    "-Wno-pointer-to-int-cast", "-I", str(FW / "include"), "-I", str(FW/'tests'), *extra_cflags(),
                     str(src), *[str(FW / s) for s in sources], "-o", str(exe)], check=True)
     subprocess.run([str(exe)], check=True, timeout=15)
     print(name + ": passed", flush=True)
 
 
-BASE = "#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n"
+BASE = "#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n#include \"ufi_metrics.h\"\n#include \"ufi_profile.h\"\n"
+BASE += "unsigned flux_invalidations; void ufi_flux_invalidate(void){flux_invalidations++;}\n"
+BASE += "bool precision_enabled; int precision_result; unsigned precision_sources,precision_verifications;\n"
+BASE += "bool ufi_precision_enabled(void){return precision_enabled;} void ufi_precision_reset(void){}\n"
+BASE += "int ufi_precision_source(const uint32_t* p,uint32_t n,uint32_t t,uint32_t o){(void)p;(void)n;(void)t;(void)o;precision_sources++;return precision_result;} int ufi_precision_verify(void){precision_verifications++;return precision_result;}\n"
+BASE += "int ufi_precision_verify_begin(void){return 0;} int ufi_precision_verify_step(void){return ufi_precision_verify();} void ufi_precision_verify_cancel(void){}\n"
 ERRORS = typedef(FW / "include/ufi_fixes.h", "ufi_error_t")
 
 
@@ -227,6 +236,8 @@ static uint16_t speed_tolerance_permille;
 static uint32_t speed_measured, speed_source;
 static bool start_pending;
 static uint32_t start_index_time, start_applied;
+static volatile int write_start_error;
+static volatile bool diagnostic_write;
 typedef struct { uint32_t period_min, period_avg, period_max, pulse_avg; uint16_t rpm_x100; uint8_t revs; } diag_rpm_t;
 static uint32_t drive_period = 55000000u;
 static unsigned rpm_measurements;
@@ -246,11 +257,14 @@ static const int PIN_LED_FDD, PIN_FDD_WGATE;
 static const struct { int port, pin; } PIN_APL_WRREQ = {0,0};
 static uint32_t HAL_GetTick(void) { return now; }
 static void ufi_delay_us(unsigned n) {now+=n/1000;}
-static bool ufi_cancel_requested(void) {return false;}
+static bool cancelled;
+static bool ufi_cancel_requested(void) {return cancelled;}
+static bool mutate_wave;
 static uint32_t __get_PRIMASK(void) { return irq_mask; }
 static void __disable_irq(void) { irq_mask = 1; }
 static void __set_PRIMASK(uint32_t v) { irq_mask = v; }
 static int pack_deltas(void) {
+    if(mutate_wave)write_buffer[0]=write_buffer[1]=write_buffer[2]=1000;
     static const uint32_t d[3]={1000,1000,1000}; wave_init(&wave_cursor,d,3); return 0;
 }
 static bool ufi_drive_is_apple(void) { return false; }
@@ -276,12 +290,16 @@ static void led_set(const int* p, bool b) { (void)p; (void)b; }
 static void bus_out(const int* p, bool b) { (void)p; gate = b; }
 static void HAL_GPIO_WritePin(int p,int n,int v) { (void)p; (void)n; (void)v; }
 static void ufi_sched_arm(uint32_t t) { (void)t; }
-static int ufi_write_verify(void) { return 0; }
+static unsigned verify_cancels;
+static void write_verify_cancel(void){verify_cancels++;}
+static int write_verify_begin(void){g_write.state=WRITE_VERIFYING;return 0;}
+static unsigned verify_mock_steps;
+static int write_verify_step(void){if(!verify_mock_steps++)return UFI_ERR_BUSY;g_write.state=WRITE_IDLE;return 0;}
 static void ufi_usb_send_event(uint8_t c, int r) { (void)c; events++; last_result = r; }
 '''
     # The Apple-only path references TIM2 CNT; its value is immaterial to these tests.
     code = code.replace("#define CR CR1", "#define CR CR1\n#define CNT ARR")
-    code += "void ufi_write_index_handler(uint32_t t);\nvoid ufi_write_abort(void);\n"
+    code += "void ufi_write_index_handler(uint32_t t);\nvoid ufi_write_abort(void);\nstatic void start_now(uint32_t t);\n"
     for name in ("ufi_write_start", "write_finish", "ufi_write_abort", "data_done", "start_now", "ufi_write_delayed_start",
                  "ufi_write_index_handler", "end_of_data", "write_event_cmd", "ufi_write_receive_failed",
                  "ufi_write_data_complete", "ufi_write_service"):
@@ -314,6 +332,18 @@ int main(void) {
     prepare(); g_write.raw_check = true; g_write.wave_mode = true; source_index_ticks = 55000000u;
     write_buffer[0] = write_buffer[1] = write_buffer[2] = 1000;
     assert(ufi_write_start() == 0 && raw_source.valid && raw_source.period == 55000000u); ufi_write_abort(); source_index_ticks = 0;
+    precision_enabled=true;precision_result=UFI_ERR_RANGE;
+    prepare();g_write.raw_check=g_write.wave_mode=true;source_index_ticks=55000000u;
+    assert(ufi_write_start()==UFI_ERR_RANGE && !gate && precision_sources==1); /* snapshot refusal precedes WGATE */
+    prepare();g_write.raw_check=true;
+    assert(ufi_write_start()==UFI_ERR_NOT_IMPL && !gate && precision_sources==1); /* classic packing cannot preserve source */
+    prepare();g_write.gw_mode=g_write.wave_mode=true;g_write.cue_index=false;
+    assert(!ufi_write_start() && precision_sources==1);ufi_write_abort(); /* native option never enters GW path */
+    precision_enabled=false;precision_result=0;source_index_ticks=0;
+    prepare();g_write.wave_mode=g_write.verify_after=true;source_index_ticks=55000000u;
+    raw_flags=3;mutate_wave=true;write_buffer[0]=0xffffffffu;
+    assert(ufi_write_start()==UFI_ERR_NOT_IMPL && raw_source.valid && !gate); /* snapshot follows weak-marker expansion */
+    mutate_wave=false;raw_flags=0;source_index_ticks=0;ufi_write_abort();
     soft_locked = false;
     /* flags2 bit0 (1.18): after the data the gate stays on, WDATA idle, until the index;
      * the END reports the erased tail; without the option the gate drops at once. */
@@ -350,8 +380,8 @@ int main(void) {
     assert(last_result == UFI_ERR_SPEED_MISMATCH && !gate && g_write.state == WRITE_IDLE && rpm_measurements == 2);
     prepare(); drive_period = 53000000u;                                     /* -3.6 %: refused as well */
     assert(ufi_write_start() == UFI_ERR_SPEED_MISMATCH && !gate && g_write.state == WRITE_ERROR); ufi_write_abort();
-    prepare(); rpm_error = UFI_ERR_NO_INDEX;                                 /* no measurement: no verdict, write proceeds */
-    assert(ufi_write_start() == 0 && rpm_measurements == 4); ufi_write_abort(); rpm_error = 0;
+    prepare(); rpm_error = UFI_ERR_NO_INDEX;                                 /* an enabled safety check must not fail open */
+    assert(ufi_write_start() == UFI_ERR_NO_INDEX && !gate && rpm_measurements == 4); ufi_write_abort(); rpm_error = 0;
     prepare(); g_write.gw_mode = g_write.wave_mode = true; drive_period = 60000000u;   /* GW path never checks */
     assert(ufi_write_start() == 0 && rpm_measurements == 4); ufi_write_abort();
     speed_tolerance_permille = 0; source_index_ticks = 0; drive_period = 55000000u;
@@ -370,9 +400,24 @@ int main(void) {
     assert(start_pending); ufi_write_abort();
     assert(g_write.state == WRITE_IDLE && !start_pending && !(TIM2->DIER & TIM_DIER_CC4IE));
     ufi_write_delayed_start(5100); assert(g_write.state == WRITE_IDLE && !gate);      /* late compare: ignored */
+    prepare(); assert(!ufi_write_start()); cancelled=true;
+    ufi_write_index_handler(42);
+    assert(!gate && g_write.state==WRITE_ERROR);
+    ufi_write_service();assert(last_result==UFI_ERR_CANCELLED);cancelled=false;
+    prepare();assert(!ufi_write_start());locked=true;ufi_write_index_handler(42);
+    assert(!gate && g_write.state==WRITE_ERROR);ufi_write_service();assert(last_result==UFI_ERR_WRITE_PROT);locked=false;
+    prepare();assert(!ufi_write_start());soft_locked=true;ufi_write_index_handler(42);
+    assert(!gate && g_write.state==WRITE_ERROR);ufi_write_service();assert(last_result==UFI_ERR_SOFT_LOCK);soft_locked=false;
+    prepare();g_write.start_offset=5000;assert(!ufi_write_start());ufi_write_index_handler(100);
+    cancelled=true;ufi_write_delayed_start(5100);
+    assert(!gate && g_write.state==WRITE_ERROR && !start_pending);
+    ufi_write_service();assert(last_result==UFI_ERR_CANCELLED);cancelled=false;
     prepare(); assert(ufi_write_start() == 0); ufi_write_index_handler(100);
     assert(g_write.state == WRITE_ACTIVE && gate && !start_applied);                /* no offset: start at the index, 0 */
+    diagnostic_write=true;ufi_write_index_handler(101);
+    assert(g_write.state==WRITE_ACTIVE && gate); /* timed diagnostics ignore the ordinary track-end index */
     ufi_write_abort();
+    assert(!diagnostic_write);
     prepare(); unsigned before = events; ufi_write_receive_failed();
     assert(events == before && receive_failed && g_write.state == WRITE_ERROR);
     ufi_write_service(); assert(events == before+1 && last_result == UFI_ERR_BUFFER_FULL);
@@ -383,6 +428,12 @@ int main(void) {
     media_matches=true;prepare();assert(!ufi_write_start());ufi_write_index_handler(42);assert(gate);
     media_matches=false;ufi_write_service();assert(!gate && g_write.state==WRITE_IDLE && last_result==UFI_ERR_MEDIA_CHANGED);
     media_matches=true;
+    prepare();g_write.verify_after=true;g_write.state=WRITE_COMPLETE;
+    unsigned before_verify=events;ufi_write_service();
+    assert(g_write.state==WRITE_VERIFYING && events==before_verify);
+    ufi_write_service();assert(events==before_verify && g_write.state==WRITE_VERIFYING);
+    ufi_write_service();assert(events==before_verify+1 && g_write.state==WRITE_IDLE && !last_result);
+    assert(verify_cancels);
     for (unsigned cue = 0; cue < 2; cue++) for (unsigned term = 0; term < 2; term++) {
         prepare(); g_write.gw_mode = g_write.wave_mode = true;
         g_write.cue_index = cue; g_write.terminate_index = term;

@@ -67,6 +67,20 @@ int main(void) {
     extended[13]=220;extended[17]=0x30;extended[18]=0x11;
     extended[25]=0x89;extended[26]=0x44;extended[29]=0x10;extended[30]=0x27;
     CHECK(quality_options(extended,33,&options),"extended parameter block defaults");
+    uint8_t diagnostic[37]={0};memcpy(diagnostic,extended,33);
+    diagnostic[9]=2;diagnostic[35]=250;
+    for(unsigned f=0;f<256;f++)for(unsigned features=0;features<16;features++){
+        diagnostic[3]=(uint8_t)f;diagnostic[33]=(uint8_t)features;
+        bool accepted=quality_options(diagnostic,sizeof diagnostic,&options);
+        CHECK(accepted==((f&1u)!=0 && features!=0),"all base/diagnostic flag combinations");
+        if(accepted)CHECK(options.flags==f && options.features==features && !options.require_full_search,
+                          "wire flags preserved, internal full search not host-controlled");
+    }
+    diagnostic[3]=1;
+    for(unsigned bit=4;bit<16;bit++){
+        diagnostic[33]=(uint8_t)(1u<<bit);diagnostic[34]=(uint8_t)((1u<<bit)>>8);
+        CHECK(!quality_options(diagnostic,sizeof diagnostic,&options),"unknown diagnostic feature rejected");
+    }
     for(unsigned f=0;f<256;f++) {
         extended[3]=(uint8_t)f;
         CHECK(quality_options(extended,4,&options)==(!f || (f&1)),"flag dependency matrix");

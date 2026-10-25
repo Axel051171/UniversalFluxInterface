@@ -19,7 +19,17 @@ bool track_compare_step(track_compare_t* c,const uint32_t* a,uint32_t na,
     while(budget-- && (c->i<na || c->j<nb)){
         uint32_t x=c->i<na?a[c->i]:0;
         uint32_t y=c->j<nb?(uint32_t)((uint64_t)b[c->j]*c->reference_period/period):0;
-        if(c->i<na && c->j<nb && (x>y?x-y:y-x)<=c->tolerance){c->i++;c->j++;}
+        if(c->i<na && c->j<nb && (x>y?x-y:y-x)<=c->tolerance){
+            if(c->stats){
+                unsigned bin=(unsigned)((uint64_t)x*COMPARE_WINDOWS/c->reference_period);
+                if(bin>=COMPARE_WINDOWS)bin=COMPARE_WINDOWS-1;
+                compare_stats_t* s=&c->stats[bin];uint32_t d=x>y?x-y:y-x;
+                if(s->matched!=UINT32_MAX){s->matched++;s->absolute+=d;s->signed_sum+=(int64_t)y-x;}
+                if(d>s->maximum)s->maximum=d;
+                s->revs|=(uint8_t)(1u<<rev);
+            }
+            c->i++;c->j++;
+        }
         else if(c->i<na && (c->j==nb || x<y)){difference(c,x,rev,false);c->i++;}
         else {difference(c,y,rev,true);c->j++;}
     }
@@ -27,6 +37,25 @@ bool track_compare_step(track_compare_t* c,const uint32_t* a,uint32_t na,
     c->completed|=(uint8_t)(1u<<rev);c->i=c->j=0;return true;
 }
 static void put(uint8_t* p,uint32_t v){for(unsigned k=0;k<4;k++)p[k]=(uint8_t)(v>>(8*k));}
+void track_compare_stats_attach(track_compare_t* c,compare_stats_t storage[COMPARE_WINDOWS]){
+    c->stats=storage;if(storage)memset(storage,0,COMPARE_WINDOWS*sizeof(*storage));
+}
+uint16_t track_compare_stats_pack(const track_compare_t* c,uint8_t first,uint8_t count,uint8_t* out,uint16_t capacity){
+    if(!c->generation || !c->stats || first>COMPARE_WINDOWS || !count || count>8)return 0;
+    if(count>COMPARE_WINDOWS-first)count=(uint8_t)(COMPARE_WINDOWS-first);
+    uint16_t size=(uint16_t)(32u+32u*count);if(capacity<size)return 0;
+    memset(out,0,size);out[0]=1;out[1]=COMPARE_WINDOWS;out[2]=first;out[3]=count;
+    put(out+4,c->generation);put(out+8,c->tolerance);put(out+12,c->reference_period);
+    out[16]=c->completed;out[17]=1; /* index alignment only, no weak-bit verdict */
+    for(unsigned k=0;k<count;k++){
+        const compare_stats_t* s=&c->stats[first+k];const compare_window_t* w=&c->windows[first+k];
+        uint8_t* p=out+32+32*k;put(p,s->matched);put(p+4,w->missing);put(p+8,w->extra);
+        put(p+12,s->matched?(uint32_t)(s->absolute/s->matched):0);put(p+16,s->maximum);
+        put(p+20,s->matched?(uint32_t)(s->signed_sum/(int64_t)s->matched):0);
+        p[24]=s->revs;p[25]=w->revolutions;
+    }
+    return size;
+}
 uint16_t track_compare_pack(const track_compare_t* c,uint8_t* out,uint16_t capacity){
     if(capacity<COMPARE_WIRE_SIZE || !c->generation)return 0;
     memset(out,0,COMPARE_WIRE_SIZE);out[0]=1;out[1]=COMPARE_WINDOWS;out[2]=c->completed;

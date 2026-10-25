@@ -17,10 +17,16 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 FW = HERE.parent
-BUILD = HERE / "build"
+BUILD = pathlib.Path(os.environ.get('UFI_TEST_BUILD',str(HERE/'build')))
 
 # test program -> firmware sources it exercises
 TESTS = {
+    "test_mfm_fastpaths": [],
+    "test_cycle_profile": [],
+    "test_metrics": ["src/ufi_metrics.c"],
+    "test_fingerprint": ["src/ufi_verify.c","src/ufi_mfm.c"],
+    "test_protection": ["src/ufi_mfm.c","src/ufi_verify.c","src/ufi_quality.c","src/ufi_protection.c","src/ufi_compare.c"],
+    "test_sector_details": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
     "test_raw_verify": ["src/ufi_raw_verify.c"],
     "test_hfe_v3": ["src/ufi_hfe_v3.c"],
     "test_capabilities": ["src/ufi_capabilities.c"],
@@ -74,10 +80,14 @@ def extra_cflags():
 
 def main(argv):
     cc = compiler()
-    BUILD.mkdir(exist_ok=True)
+    BUILD.mkdir(parents=True,exist_ok=True)
     exe = ".exe" if sys.platform == "win32" else ""
     failed = []
     for name, sources in TESTS.items():
+        if 'src/ufi_quality.c' in sources and 'src/ufi_protection.c' not in sources:
+            sources=[*sources,'src/ufi_protection.c']
+        if 'src/ufi_quality.c' in sources and 'src/ufi_metrics.c' not in sources:
+            sources=[*sources,'src/ufi_metrics.c']
         if argv and not any(a in name for a in argv):
             continue
         out = BUILD / (name + exe)

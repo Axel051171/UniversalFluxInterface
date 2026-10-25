@@ -56,7 +56,7 @@ def main():
     vectors=cache.parent/'tracks.bin';vectors.write_bytes(struct.pack('<I',len(records))+b''.join(records))
     exe=BUILD/'mac_corpus_decoder.exe'
     subprocess.run([compiler(),'-std=c11','-O2','-Wall','-Wextra','-Werror','-D_CRT_SECURE_NO_WARNINGS','-I',str(FW/'include'),
-        *extra_cflags(),str(FW/'tests/mac_corpus_decoder.c'),*[str(FW/'src'/s) for s in ('ufi_mfm.c','ufi_verify.c','ufi_quality.c')],'-o',str(exe)],check=True)
+        *extra_cflags(),str(FW/'tests/mac_corpus_decoder.c'),*[str(FW/'src'/s) for s in ('ufi_mfm.c','ufi_verify.c','ufi_quality.c','ufi_protection.c','ufi_metrics.c')],'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(vectors)],check=True,timeout=90)
 
 if __name__=='__main__':main()

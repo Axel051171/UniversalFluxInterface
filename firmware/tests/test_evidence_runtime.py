@@ -85,6 +85,7 @@ static uint32_t rd_de=1;
 static struct {uint32_t DIER;} timer;
 #define TIM2 (&timer)
 #define TIM_DIER_CC2IE 2u
+static void capture_rdata_arm(void){timer.DIER|=rd_de;}
 #define REVOLUTIONS_STREAM 255u
 static uint64_t ufi_flux_now64(void){return now;}
 static uint32_t dma_pos(void){return 123;}

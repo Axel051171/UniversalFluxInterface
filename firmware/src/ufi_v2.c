@@ -166,6 +166,7 @@ static uint16_t crc16(const uint8_t* p, uint32_t n)
 uint32_t ufi_v2_frame(uint8_t* f, uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
                       uint16_t len)
 {
+    if(!f || len>UFI_V2_MAX_PAYLOAD)return 0;
     f[0] = 0x55;
     f[1] = 0xAA;
     f[2] = type;
@@ -182,6 +183,10 @@ uint32_t ufi_v2_frame(uint8_t* f, uint8_t type, uint8_t cmd, uint8_t seq, uint8_
 static void send(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
                  const uint8_t* payload, uint16_t len)
 {
+    /* Internal providers are bounded too. Never copy or CRC an impossible reply. */
+    if(len>UFI_V2_MAX_PAYLOAD || (len && !payload)){
+        len=0;payload=NULL;status=st(UFI_ERR_BUFFER_FULL);
+    }
     if (len && payload != &tx[UFI_V2_HDR]) {
         memmove(&tx[UFI_V2_HDR], payload, len);
     }
@@ -768,6 +773,32 @@ static bool locked_write(uint8_t cmd, const uint8_t* p, uint16_t len)
     }
 }
 
+static int cmd_diagnostics(const uint8_t* p,uint16_t len,uint8_t* out,uint16_t* size)
+{
+    *size=0;
+    if(len==1 && p[0]==1){*size=ufi_metrics_pack(out,64);return UFI_OK;}
+    if(len==1 && p[0]==2){
+        ufi_cycle_snapshot_t snapshot;
+        const uint32_t mask=__get_PRIMASK();__disable_irq();
+        ufi_cycles_snapshot(&snapshot);__set_PRIMASK(mask);
+        *size=ufi_cycles_pack(&snapshot,out,64);return UFI_OK;
+    }
+    if(len)return UFI_ERR_BAD_ARGS;
+    extern char __heap_start[],__heap_end[],_edtcm[],_estack[];
+    uint32_t words;ufi_flux_store(&words);(void)ufi_flux_written();
+    out[0]=1;out[1]=ufi_flux_store_is_psram()?1u:0u;
+    out[2]=ufi_resources_owner();out[3]=0;
+    const uint32_t values[]={FLUX_TIMER_FREQ,words,
+        ufi_metrics.capture_pending_words,ufi_metrics.capture_peak_words,
+        ufi_metrics.capture_overruns,ufi_metrics.capture_dma_errors,
+        ufi_metrics.write_dma_errors,ufi_metrics.write_underruns,
+        ufi_metrics.native_rx_pauses,ufi_native_tx_timeouts(),ufi_metrics.lease_releases,
+        (uintptr_t)__heap_end-(uintptr_t)__heap_start,
+        0x24050000u-(uintptr_t)__heap_end,(uintptr_t)_estack-(uintptr_t)_edtcm,30000u};
+    for(unsigned i=0;i<15;i++)put32(out+4+4*i,values[i]);
+    *size=64;return UFI_OK;
+}
+
 static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
 {
     ufi_resources_touch(HAL_GetTick());
@@ -807,20 +838,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             if (!n) ret=UFI_ERR_BUSY;
             break;
         case V2_DIAGNOSTICS: {
-            if(len) {ret=UFI_ERR_BAD_ARGS;break;}
-            extern char __heap_start[],__heap_end[],_edtcm[],_estack[];
-            uint32_t words;ufi_flux_store(&words);(void)ufi_flux_written();
-            out[0]=1;out[1]=ufi_flux_store_is_psram()?1u:0u;
-            out[2]=ufi_resources_owner();out[3]=0;
-            const uint32_t values[]={FLUX_TIMER_FREQ,words,
-                ufi_metrics.capture_pending_words,ufi_metrics.capture_peak_words,
-                ufi_metrics.capture_overruns,ufi_metrics.capture_dma_errors,
-                ufi_metrics.write_dma_errors,ufi_metrics.write_underruns,
-                ufi_metrics.native_rx_pauses,ufi_native_tx_timeouts(),ufi_metrics.lease_releases,
-                (uintptr_t)__heap_end-(uintptr_t)__heap_start,
-                0x24050000u-(uintptr_t)__heap_end,(uintptr_t)_estack-(uintptr_t)_edtcm,30000u};
-            for(unsigned i=0;i<15;i++)put32(out+4+4*i,values[i]);
-            n=64;break;
+            ret=cmd_diagnostics(p,len,out,&n);break;
         }
         case V2_FEATURES: {
             if(len) {ret=UFI_ERR_BAD_ARGS;break;}

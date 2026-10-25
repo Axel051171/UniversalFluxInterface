@@ -1,4 +1,6 @@
 #include "ufi_quality.h"
+#include "ufi_protection.h"
+#include "ufi_metrics.h"
 #include <string.h>
 
 static uint32_t get32(const uint8_t* p) {
@@ -6,9 +8,169 @@ static uint32_t get32(const uint8_t* p) {
 }
 static void put32(uint8_t* p,uint32_t v);
 
+void quality_details_attach(quality_t* q,sector_details_t* storage) {
+    q->details=storage;
+    if(storage)memset(storage,0,sizeof(*storage));
+}
+
+static void detail(void* ctx,const mfm_id_t* id,uint32_t checked,uint32_t findings,
+                   uint16_t expected,uint16_t actual,uint8_t reason) {
+    quality_t* q=ctx;sector_details_t* d=q->details;
+    if(!d)return;
+    if((checked&SF_HEADER_BAD) && !(findings&(SF_HEADER_BAD|SF_NO_HEADER)) && !q->position){
+        checked|=SF_TRACK;
+        if(id->c!=(q->format==5?(uint8_t)(q->track+1u):q->track))findings|=SF_TRACK;
+        if(q->format!=5 && q->format!=7){checked|=SF_SIDE;if(id->h!=q->side)findings|=SF_SIDE;}
+    }
+    unsigned i;
+    for(i=0;i<d->count;i++)if(!memcmp(&d->sectors[i].id,id,sizeof(*id)))break;
+    if(i==d->count){
+        if(i==QUALITY_SECTORS){if(d->dropped!=UINT32_MAX)d->dropped++;return;}
+        d->count++;d->sectors[i].id=*id;
+    }
+    sector_detail_t* s=&d->sectors[i];
+    s->checked|=checked;s->findings|=findings;
+    /* Length/position describe the first observation; masks aggregate all observations. */
+    if(!s->profiles || (!s->expected && expected)){
+        s->expected=expected;s->actual=actual;s->offset=q->extra.position;
+        s->unit=reason?(q->format==2?2u:1u):0u;
+    }
+    s->reasons|=(uint8_t)(1u<<reason);
+    s->revs|=(uint8_t)(1u<<q->revolution);s->profiles|=(uint8_t)(1u<<q->profile);
+}
+
+static void detail_sector(quality_t* q,const mfm_id_t* id,const uint8_t* data,bool accepted,
+                          const verify_fingerprint_t* fingerprint) {
+    if(!q->details)return;
+    const mfm_decoder_t* dec=q->dec;
+    uint32_t checked=SF_DATA_BAD|SF_DATA_UNCHECKED|SF_HEADER_BAD|SF_NO_HEADER|SF_REJECTED;
+    uint32_t f=accepted?0:SF_REJECTED;
+    if(dec->sector_flags&MFM_SF_DATA_CHECKSUM)f|=SF_DATA_BAD;
+    if(dec->sector_flags&MFM_SF_HEADER_CHECKSUM)f|=SF_HEADER_BAD;
+    if(dec->sector_flags&MFM_SF_NO_HEADER)f|=SF_NO_HEADER;
+    if(f&SF_NO_HEADER)checked&=~SF_HEADER_BAD;
+    if(dec->check_encoding || q->format>=3){checked|=SF_CODING;if(dec->field_bad)f|=SF_CODING;}
+    if(q->format==6 || q->format==7){checked|=SF_ENDING;if(dec->sector_flags&MFM_SF_EPILOGUE)f|=SF_ENDING;}
+    /* Bad or missing headers cannot establish geometry. Quarter-track mapping is not guessed. */
+    if(!(f&(SF_HEADER_BAD|SF_NO_HEADER)) && !q->position){
+        checked|=SF_TRACK;
+        if(id->c!=(q->format==5?(uint8_t)(q->track+1u):q->track))f|=SF_TRACK;
+        if(q->format!=5 && q->format!=7){checked|=SF_SIDE;if(id->h!=q->side)f|=SF_SIDE;}
+        if(q->format>=2 && q->format!=3){
+            checked|=SF_NUMBER;
+            unsigned max=q->format==2?(q->rate>=500000?22u:11u):q->format==4?30u:
+                         q->format==5?21u:q->format==6?(id->c<80?12u-id->c/16u:0u):
+                         (mfm_apple_get_options().flags&APPLE_GCR_FIVE_AND_THREE)?13u:16u;
+            if(q->format==2 ? (!id->r || id->r>max) : id->r>=max)f|=SF_NUMBER;
+        }
+    }
+    if(q->format==2){
+        checked|=SF_EXTRA|SF_BLOCK_ID;
+        if(!(f&(SF_HEADER_BAD|SF_NO_HEADER))){
+            checked|=SF_OFFSET;
+            if(!data[528] || data[528]>(q->rate>=500000?22u:11u))f|=SF_OFFSET;
+        }
+        for(unsigned k=512;k<528;k++)if(data[k])f|=SF_EXTRA;
+        if((q->dec->raw[0]&0x55000000u)!=0x55000000u ||
+           (q->dec->raw[1]&0x55000000u)!=0x55000000u)f|=SF_BLOCK_ID;
+    }
+    if(q->format==6){checked|=SF_EXTRA;for(unsigned k=0;k<12;k++)if(data[k])f|=SF_EXTRA;}
+    uint16_t length=q->format==2 || q->format==6?512u:q->format==4 || q->format==5 || q->format==7?256u:
+                    id->n<=3?(uint16_t)(128u<<id->n):0u;
+    detail(q,id,checked,f,length,length,0);
+    if(q->details && (checked&SF_OFFSET))for(unsigned k=0;k<q->details->count;k++){
+        sector_detail_t* s=&q->details->sectors[k];
+        if(!memcmp(&s->id,id,4) && (!s->rule || (f&SF_OFFSET))){s->rule=1;s->raw_offset=data[528];break;}
+    }
+    if(q->details && length){
+        sector_details_t* d=q->details;
+        /* Include metadata just like the existing reference comparison. */
+        uint16_t bytes=q->format==2?529:q->format==5?258:q->format==6?525:length;
+        uint32_t crc=fingerprint->crc,hash=fingerprint->hash;
+        unsigned i;for(i=0;i<d->variants_count;i++){
+            sector_variant_t* v=&d->variants[i];
+            if(!memcmp(&v->id,id,4) && v->crc==crc && v->hash==hash && v->bytes==bytes)break;
+        }
+        if(i==d->variants_count){
+            if(i==QUALITY_SECTORS){if(d->variants_dropped!=UINT32_MAX)d->variants_dropped++;return;}
+            d->variants_count++;sector_variant_t* v=&d->variants[i];v->id=*id;
+            v->crc=crc;v->hash=hash;v->first=q->extra.position;v->bytes=bytes;
+        }
+        sector_variant_t* v=&d->variants[i];v->last=q->extra.position;v->findings|=f;
+        if(v->observations!=UINT16_MAX)v->observations++;
+        v->revs|=(uint8_t)(1u<<q->revolution);v->profiles|=(uint8_t)(1u<<q->profile);
+        if(accepted && !(f&(SF_DATA_BAD|SF_HEADER_BAD|SF_NO_HEADER|SF_CODING)))v->valid_revs|=(uint8_t)(1u<<q->revolution);
+    }
+}
+
+uint16_t quality_variants_pack(const quality_t* q,uint8_t first,uint8_t count,uint8_t* out,uint16_t capacity){
+    if(!q || !q->details || !count || count>8 || first>q->details->variants_count)return 0;
+    const sector_details_t* d=q->details;
+    if(count>d->variants_count-first)count=(uint8_t)(d->variants_count-first);
+    uint16_t size=(uint16_t)(32+32*count);if(capacity<size)return 0;
+    memset(out,0,size);out[0]=1;out[1]=32;out[2]=32;out[3]=q->format;put32(out+4,q->generation);
+    out[8]=d->variants_count;out[9]=first;out[10]=count;out[11]=(d->variants_dropped?1:0)|(q->status?2:0);
+    put32(out+12,d->variants_dropped);out[16]=q->track;out[17]=q->side;out[18]=q->position;
+    out[19]=1; /* fingerprints, not a cryptographic equality proof */
+    for(unsigned i=0;i<count;i++){
+        const sector_variant_t* v=&d->variants[first+i];uint8_t* p=out+32+32*i;
+        memcpy(p,&v->id,4);put32(p+4,v->crc);put32(p+8,v->hash);put32(p+12,v->first);
+        put32(p+16,v->last);put32(p+20,v->findings);p[24]=(uint8_t)v->bytes;p[25]=(uint8_t)(v->bytes>>8);
+        p[26]=(uint8_t)v->observations;p[27]=(uint8_t)(v->observations>>8);p[28]=v->revs;p[29]=v->profiles;p[30]=v->valid_revs;
+    }
+    return size;
+}
+
+uint16_t quality_details_pack(const quality_t* q,uint8_t first,uint8_t count,uint8_t* out,uint16_t capacity) {
+    if(!q || !q->details || !count || count>SECTOR_DETAILS_PAGE || first>q->details->count)return 0;
+    const sector_details_t* d=q->details;
+    if(count>d->count-first)count=(uint8_t)(d->count-first);
+    uint16_t size=(uint16_t)(32u+count*SECTOR_DETAILS_WIRE);
+    if(capacity<size)return 0;
+    memset(out,0,size);out[0]=1;out[1]=32;out[2]=SECTOR_DETAILS_WIRE;out[3]=q->format;
+    put32(out+4,q->generation);out[8]=d->count;out[9]=first;out[10]=count;
+    out[11]=(uint8_t)((d->dropped?1u:0u)|(q->status?2u:0u)|(q->ambiguous?4u:0u));
+    put32(out+12,d->dropped);put32(out+16,SF_IMPLEMENTED);
+    out[20]=q->track;out[21]=q->side;out[22]=q->position;out[23]=q->status;
+    put32(out+24,q->rate);out[28]=q->extra.completed;out[29]=q->revs;
+    for(unsigned i=0;i<count;i++){
+        const sector_detail_t* s=&d->sectors[first+i];uint8_t* p=out+32+i*32;
+        memcpy(p,&s->id,4);put32(p+4,s->checked);put32(p+8,s->findings);put32(p+12,s->offset);
+        p[16]=(uint8_t)s->expected;p[17]=(uint8_t)(s->expected>>8);
+        p[18]=(uint8_t)s->actual;p[19]=(uint8_t)(s->actual>>8);
+        p[20]=s->reasons;p[21]=s->revs;p[22]=s->profiles;p[23]=s->unit;
+        p[24]=q->format==5?(uint8_t)(q->track+1u):q->track;p[25]=q->side;
+        p[30]=s->raw_offset;p[31]=s->rule;
+    }
+    return size;
+}
+
+/* Optional caller-declared C/H/N and inclusive sector interval. 255 means unknown
+ * for C/H/N. This is an explicit interpretation, never a detected geometry. */
+void quality_details_profile(uint8_t* page,const uint8_t expected[5]) {
+    page[30]=1;
+    for(unsigned i=0;i<page[10];i++){
+        uint8_t* p=page+32+32*i;uint32_t checked=get32(p+4),found=get32(p+8);
+        const uint32_t mask=SF_TRACK|SF_SIDE|SF_LENGTH|SF_NUMBER;
+        checked&=~mask;found&=~mask;
+        memcpy(p+24,expected,5);p[29]=1;
+        if(!(found&(SF_HEADER_BAD|SF_NO_HEADER)) && (checked&SF_HEADER_BAD)){
+            for(unsigned j=0;j<3;j++)if(expected[j]!=255){
+                uint32_t bit=j==0?SF_TRACK:j==1?SF_SIDE:SF_LENGTH;
+                /* CBM / Apple headers have no side field. */
+                if(j==1 && (page[3]==5 || page[3]==7))continue;
+                checked|=bit;if(p[j==2?3:j]!=expected[j])found|=bit;
+            }
+            checked|=SF_NUMBER;if(p[2]<expected[3] || p[2]>expected[4])found|=SF_NUMBER;
+        }
+        put32(p+4,checked);put32(p+8,found);
+    }
+}
+
 static quality_local_t* local_window(quality_t* q) {
     uint32_t period=q->revolution_ticks[q->revolution];
-    if(q->profile || !(q->extra.options.flags&0x84) || !period)return NULL;
+    if(q->profile || (!(q->extra.options.flags&0x84) &&
+       !(q->protection && (q->protection->options.flags&PROTECT_TIMING))) || !period)return NULL;
     unsigned bin=(unsigned)((uint64_t)q->extra.position*QUALITY_LOCAL_WINDOWS/period);
     if(bin>=QUALITY_LOCAL_WINDOWS)bin=QUALITY_LOCAL_WINDOWS-1;
     return &q->local[bin];
@@ -135,6 +297,17 @@ void quality_init(quality_t* q, uint8_t format, uint32_t rate, uint8_t revs)
 static void sector(void* ctx, const mfm_id_t* id, const uint8_t* data, bool ok)
 {
     quality_t* q = ctx;
+    uint16_t payload=q->format==2?512u:q->format==6?525u:
+        q->format==4 || q->format==5 || q->format==7?256u:id->n<=3?(uint16_t)(128u<<id->n):0u;
+    uint16_t bytes=q->format==2?529u:q->format==5?258u:q->format==6?525u:payload;
+    verify_fingerprint_t fingerprint={0};
+    if(bytes && (q->details || q->protection || ok)){
+        if(q->details || q->protection)(void)ufi_fingerprint(data,bytes,payload,&fingerprint);
+        else fingerprint.crc=ufi_crc32(0,data,bytes);
+        ufi_metric_add(&ufi_metrics.fingerprint_calls,1);ufi_metric_add(&ufi_metrics.fingerprint_bytes,bytes);
+    }
+    detail_sector(q,id,data,ok,&fingerprint);
+    if(q->protection)protection_sector_hashed(q,id,data,ok,&fingerprint);
     if (!q->profile && (q->extra.options.flags&0x20)) {
         uint8_t* p=event(q,3,q->extra.field_start,q->extra.position);
         if(p){p[2]=q->extra.field_rev;p[3]=ok?1:0;memcpy(p+12,id,4);put32(p+16,q->extra.index);}
@@ -155,11 +328,15 @@ static void sector(void* ctx, const mfm_id_t* id, const uint8_t* data, bool ok)
     if(q->dec->field_bad)s->flags|=16;
     const uint8_t revbit=(uint8_t)(1u<<q->revolution);
     if (!ok) {s->bad|=revbit;return;}
-    const uint32_t crc=ufi_crc32(0,data,q->format==2 ? 529u : q->format==5 ? 258u : q->format==6 ? 525u : (128u<<id->n));
+    const uint32_t crc=fingerprint.crc;
     if (s->seen && s->crc!=crc) {
+        if(!(s->flags&(MFM_SF_DATA_CHECKSUM|MFM_SF_HEADER_CHECKSUM|MFM_SF_NO_HEADER)))
+            detail(q,id,SF_VARIANTS,SF_VARIANTS,0,0,0);
         s->flags|=1u;if(!q->profile)window(q,6);
         quality_local_t* w=local_window(q);if(w && w->conflicts!=UINT32_MAX)w->conflicts++;
     }
+    if(s->seen && !(s->flags&(MFM_SF_DATA_CHECKSUM|MFM_SF_HEADER_CHECKSUM|MFM_SF_NO_HEADER)))
+        detail(q,id,SF_VARIANTS,0,0,0,0);
     if (!s->seen) s->crc=crc;
     s->seen|=revbit;
     if (!q->profile) s->nominal|=revbit;
@@ -171,8 +348,10 @@ void quality_begin(quality_t* q, mfm_decoder_t* dec, uint8_t profile, verify_mat
     q->dec=dec;q->profile=profile<3u?profile:0;q->match=match;q->revolution=0;
     if (q->profiles<q->profile+1u) q->profiles=q->profile+1u;
     mfm_dec_init_format(dec,q->format?q->format:1,q->rate?q->rate:250000u,sector,q);
+    dec->diagnostic=q->details?detail:NULL;
     dec->tolerance=mfm_get_tolerance();          /* op 34 flags apply to the analysis decoders only */
     if(q->extra.options.features&QUALITY_FEATURE_CODING)dec->check_encoding=true;
+    if(q->protection && (q->protection->options.flags&PROTECT_ERRORS))dec->check_encoding=true;
     if(q->extra.options.features&QUALITY_FEATURE_MARGIN)dec->margin_permille=q->extra.options.margin_permille;
     mfm_dec_profile(dec,q->profile);
 }
@@ -189,6 +368,7 @@ void quality_revolution(quality_t* q, uint8_t rev)
 
 void quality_interval(quality_t* q, uint32_t ticks)
 {
+    if(q->protection)protection_interval(q,ticks);
     local_interval(q,ticks);
     extra_interval(q,ticks);
     if (!q->profile) {
@@ -224,6 +404,7 @@ void quality_interval(quality_t* q, uint32_t ticks)
 
 void quality_end_revolution(quality_t* q)
 {
+    if(q->revolution+1u==q->revs)mfm_dec_diagnostic_tail(q->dec,4);
     quality_attempt_t* a=&q->attempts[q->revolution][q->profile];
     a->header_errors=q->dec->header_errors;
     a->data_errors=q->dec->data_errors;
@@ -387,7 +568,8 @@ uint16_t quality_pack(const quality_t* q,uint8_t* out,uint16_t capacity)
         uint8_t* d=out+QUALITY_WIRE_SIZE+QUALITY_EXTRA_SIZE;
         d[0]='Q';d[1]='D';d[2]=1;d[3]=q->format;
         put32(d+4,QUALITY_DIAG_SIZE);d[8]=(uint8_t)q->extra.options.features;
-        d[9]=q->format?(uint8_t)q->extra.options.features:0;
+        d[9]=q->format?(uint8_t)(q->extra.options.features&7u):0;
+        if(q->hint_used)d[9]|=QUALITY_FEATURE_FAST_HINT;
         d[10]=(uint8_t)q->extra.options.margin_permille;d[11]=(uint8_t)(q->extra.options.margin_permille>>8);
         d[12]=q->extra.completed;d[13]=q->status;
         d[14]=q->extra.profile_complete[1];d[15]=q->extra.profile_complete[2];

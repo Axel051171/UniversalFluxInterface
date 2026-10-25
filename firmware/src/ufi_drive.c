@@ -15,6 +15,7 @@
 #include "ufi_verify.h"             /* ufi_crc32 for the stored profile file */
 #include "ufi_media.h"
 #include "ufi_capabilities.h"
+#include "ufi_cancel.h"
 #include <string.h>
 #define DEFAULT_EXTRA_INIT {0,0,20000,0,0,0}
 static drive_extra_t extra_timing=DEFAULT_EXTRA_INIT;
@@ -392,6 +393,9 @@ static void amiga_motor(bool on)
 
 int ufi_drive_motor(bool on)
 {
+    /* All successful calls finish the spin-up before returning. Repeated MOTOR ON
+     * therefore needs neither another latch pulse nor another spin-up delay. */
+    if(on && ufi_drive_motor_is_on())return UFI_OK;
     if(on && !ufi_drive_motor_is_on()){motor_started_ms=HAL_GetTick();motor_step_pending=true;}
     if(!on)motor_step_pending=false;
     switch (g_current_drive) {
@@ -423,7 +427,7 @@ int ufi_drive_motor(bool on)
                 g_drive_status[t].motor_on = on;
             }
             if (on && !was_on) {
-                HAL_Delay(MOTOR_SPINUP_MS);
+                if(!ufi_delay_ms(MOTOR_SPINUP_MS)){ufi_drive_motor(false);return UFI_ERR_CANCELLED;}
             }
             return UFI_OK;
         }
@@ -433,7 +437,7 @@ int ufi_drive_motor(bool on)
 
     g_drive_status[g_current_drive].motor_on = on;
     if (on) {
-        HAL_Delay(MOTOR_SPINUP_MS);
+        if(!ufi_delay_ms(MOTOR_SPINUP_MS)){ufi_drive_motor(false);return UFI_ERR_CANCELLED;}
     }
     return UFI_OK;
 }
