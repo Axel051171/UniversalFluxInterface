@@ -1,0 +1,26 @@
+ERC report (2026-10-25T23:25:05, Encoding UTF8)
+Report includes: Errors, Warnings, Exclusions
+
+***** Sheet /
+
+***** Sheet /Power/
+
+***** Sheet /MCU_Core/
+
+***** Sheet /Flux_Interface/
+
+***** Sheet /FDD_Connectors/
+
+***** Sheet /IEC_Bus/
+
+***** Sheet /Apple_Port/
+
+***** Sheet /LAN/
+
+ ** ERC messages: 0  Errors 0  Warnings 0
+
+ ** Ignored checks:
+    - Global label only appears once in the schematic
+    - Four connection points are joined together
+    - SPICE model issue
+    - Assigned footprint doesn't match footprint filters
