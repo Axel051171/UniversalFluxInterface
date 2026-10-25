@@ -36,6 +36,14 @@ SELFTEST_EXPECT = {
     "last_reset": ((0,), "a fault record means the last run crashed (CRASH.LOG)"),
     "stack_free": ((0, 3), "fail below 512 bytes"),
     "log": ((0, 1, 2), "SELFTEST.LOG written when the SD NAND works; fail = no SD NAND (tolerated)"),
+    # board v1.0, firmware stage A10
+    "rtc": ((0, 2), "v1.0: the calendar must run (Y3 LSE, BT1); skip on v0.x"),
+    "sht40": ((0, 2), "v1.0: U25 must answer; skip on v0.x"),
+    "sync": ((0, 2), "skip without a spinning Apple drive with sensor"),
+    "v_fdd5": ((0, 2), "skip while the drive supply is off or without dividers"),
+    "v_fdd12": ((0, 2), "skip while the drive supply is off or without dividers"),
+    "wgate_lock": ((0, 2), "v1.0: WGATE must stay off with the lock set (A11f); skip on v0.x"),
+    "fdd_pins": ((0, 2, 3), "v1.0 read-backs; warn = WGATE bus or eFuse fault seen at idle"),
 }
 
 
@@ -129,6 +137,17 @@ def run(dev: P2.Device2, rep: Report, index_sim: bool = False) -> int:
         present, status, card_type, width, cap = sd
         rep.add("sd_info", "ok" if present and cap else "warn",
                 f"present {present}, status {status}, type {card_type}, bus {width}, {cap} MB")
+    # 4b board v1.0 sensing (firmware stage A10; older firmware answers 'unknown command' -> skipped)
+    v10 = bool(info) and info.board_rev >= 10
+    clk = rep.guarded("rtc", dev.rtc)
+    if clk:
+        rep.add("rtc", "ok" if clk.ready or not v10 else "fail", str(clk))
+    sens = rep.guarded("sensor", dev.sensor)
+    if sens:
+        rep.add("sensor", "ok" if sens.ok else ("fail" if v10 else "skip"), str(sens))
+    rl = rep.guarded("rails", dev.rails)
+    if rl:
+        rep.add("rails", "fail" if rl.low else "ok", str(rl))
     # 5 firmware self-test with bare-board expectations
     items = rep.guarded("selftest", dev.selftest)
     if items:

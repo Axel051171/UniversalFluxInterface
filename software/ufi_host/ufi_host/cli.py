@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from datetime import datetime
 from pathlib import PurePosixPath
 
 from . import protocol as P
@@ -292,8 +293,11 @@ def cmd_selftest(dev: P2.Device2) -> int:
     for id_, name, st, val in dev.selftest():
         text = P2.SELFTEST_ITEMS.get(id_, (name, ""))[1]
         v = f"{val - (1 << 32) if id_ == 2 and val >= 1 << 31 else val}"
-        if id_ in (9, 10):
+        if id_ in (9, 10, 21):
             v = f"0x{val:02X}"
+        elif id_ == 16 and st == 0:         # temp 0.01 C (high half, signed) | rh 0.01 % (low half)
+            t = val >> 16
+            v = f"{(t - (1 << 16 if t >= 1 << 15 else 0)) / 100:.2f}C/{(val & 0xFFFF) / 100:.2f}%"
         print(f"{id_:2d} {name:<11} {P2.SELFTEST_STATUS.get(st, str(st)):<4} {v:>10}  {text}")
         fails += st == 1
     print("self-test: " + (f"{fails} FAILED" if fails else "no failures"))
@@ -500,6 +504,19 @@ def run_v2(dev: P2.Device2, a) -> bool:
         print(f"writing {a.name.upper() or 'UFI.CFG write_file'} from the SD NAND; follow with ufi dump-status")
     elif a.cmd == "power":
         print(dev.power(a.mask))
+    elif a.cmd == "rtc":                  # board v1.0, firmware stage A10
+        if a.time:
+            print(dev.rtc_set(None if a.time == "now" else datetime.fromisoformat(a.time)))
+        else:
+            print(dev.rtc())
+    elif a.cmd == "sensor":
+        print(dev.sensor())
+    elif a.cmd == "rails":
+        print(dev.rails())
+    elif a.cmd == "sync":
+        print(dev.sync_sensor(None if a.state is None else a.state == "on"))
+    elif a.cmd == "pins":
+        print(dev.fdd_pins(a.pin4, a.pin33))
     else:
         return False
     return True
@@ -507,7 +524,8 @@ def run_v2(dev: P2.Device2, a) -> bool:
 
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
-           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check"}
+           "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check",
+           "rtc", "sensor", "rails", "sync", "pins"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -787,6 +805,15 @@ def main(argv: list[str] | None = None) -> int:
         "name", nargs="?", default="", help="8.3 file name; omit for UFI.CFG write_file")
     sub.add_parser("power", help="board status; MASK bit0 FDD_5V, bit1 FDD_12V").add_argument(
         "mask", nargs="?", type=lambda s: int(s, 0))
+    sub.add_parser("rtc", help="board v1.0 clock (firmware stage A10): no argument reads; 'now' or an ISO time "
+                               "(2026-10-25T14:03:11) sets it").add_argument("time", nargs="?")
+    sub.add_parser("sensor", help="SHT40 temperature / humidity on the v1.0 board (stage A10)")
+    sub.add_parser("rails", help="FDD_5V / FDD_12V at the drive connector with the 4.5 V / 10.8 V limits (v1.0, stage A10)")
+    sub.add_parser("sync", help="SYNC sensor capture on TIM8 (v1.0): status; 'on' / 'off' starts / stops counting").add_argument(
+        "state", nargs="?", choices=("on", "off"))
+    p = sub.add_parser("pins", help="v1.0 J6 read-backs (pin 2/4, CSTOUT, WGATE bus, lock, eFuse, SYNC); --pin4 / --pin33 drive the outputs")
+    p.add_argument("--pin4", type=int, choices=(0, 1))
+    p.add_argument("--pin33", type=int, choices=(0, 1))
     a = ap.parse_args(argv)
 
     if a.cmd == "amiga-quality":

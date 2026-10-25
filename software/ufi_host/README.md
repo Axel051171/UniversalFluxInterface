@@ -31,6 +31,11 @@ ufi events                                # alle Ereignisse einschalten und ausg
 ufi mode flux|sd|floppy|gw|composite                # USB-Betriebsart (Gerät meldet sich neu an)
 ufi dump [--drive a --tracks 80 --sides 2 -r 3] | dump-status | dump-abort | copy
 ufi power [MASKE]                         # Board-Status; Maske Bit0 FDD_5V, Bit1 FDD_12V
+ufi rtc [now|2026-10-25T14:03:11]          # Platine v1.0, Firmware-Stufe A10: Uhr lesen / stellen (Op 0x43; ohne laufende Uhr: Hinweis statt Zeit)
+ufi sensor                                # v1.0: SHT40 Temperatur/Feuchte (Op 0x44; Status statt Ausnahme, wenn kein Sensor antwortet)
+ufi rails                                 # v1.0: FDD_5V/FDD_12V am Laufwerksstecker mit den Grenzen 4,5 V / 10,8 V (Op 0x45)
+ufi sync [on|off]                         # v1.0: Sync-Sensor-Erfassung auf TIM8 (Op 0x46): Zustand, Impulse, Periode/Drehzahl; on/off = Zählung
+ufi pins [--pin4 0|1] [--pin33 0|1]        # v1.0: Rücklesungen J6 Pin 2/4, CSTOUT, WGATE-Bus, Sperre, eFuse, SYNC; Ausgänge Pin 4 / Pin 33 (Op 0x47)
 ufi erase SPUR SEITE                      # eine Umdrehung löschen (ERASE 0x23), z. B. vor einem Schreibtest
 ```
 

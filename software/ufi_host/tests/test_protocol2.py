@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import struct
 import zlib
+from datetime import datetime
 
 import pytest
 from test_protocol import FakeDevice, encode_stream
@@ -85,7 +86,7 @@ class FakeV2:
     VERIFY_MIN_INTERVALS = 1000     # 0x21 path: shorter sources end with 16 before WGATE, longer ones verify (level 3)
 
     def __init__(self, revolutions=None, files=None, read_status=0, data_chunk=1000,
-                 firmware=(1, 18), caps=None):
+                 firmware=(1, 18), caps=None, board_rev=7):
         self.rx = P2.FrameParser()
         self.out = bytearray()
         self.revs = revolutions or []
@@ -94,6 +95,14 @@ class FakeV2:
         self.data_chunk = data_chunk
         self.firmware = firmware
         self.caps = self.CAPS_1_18 if caps is None else caps
+        self.board_rev = board_rev      # INFO byte 3; the A10 board ops (0x43-0x47) answer 'not available' below 10
+        self.rtc_time = (2026, 10, 25, 14, 3, 11)   # RTC 0x43: the calendar while ready (board_rev >= 10)
+        self.sensor = (0, 2345, 4567)   # SENSOR 0x44: status, 23.45 C, 45.67 %RH
+        self.rails = (4980, 11900, 0x1C)  # RAILS 0x45 on v1.0: both rails on, dividers fitted, nothing low
+        self.sync_active = False        # SYNC 0x46 counting
+        self.sync_source = False        # ... SYNC as the index source (Apple drive + apple_sync=1)
+        self.pins = 0x10                # FDD_PINS 0x47 read-backs on v1.0: lock switch open (WLOCK_HW)
+        self.pins_out = 0
         self.dos_errors: dict[tuple[int, int], int] = {}
         self.soft_locked = False        # session write lock (op 37): engage-only, status 22 on disk/drive writes
         self.drive = 1                  # selected drive id (op 22 byte 20); SELECT replaces it
@@ -286,7 +295,7 @@ class FakeV2:
             r(0, a)
         elif cmd == P2.INFO:
             text = f"UFI Flux Engine {self.firmware[0]}.{self.firmware[1]}-dev (abc1234, 2026-10-17)"
-            r(0, P2.INFO_HDR.pack(2, *self.firmware, 7, self.caps, 275_000_000, 8 << 20, 4096)
+            r(0, P2.INFO_HDR.pack(2, *self.firmware, self.board_rev, self.caps, 275_000_000, 8 << 20, 4096)
               + text.encode() + b"\0PSRAM ok\0")
         elif cmd == P2.STATUS:
             r(0, bytes([1, 1, 0, 1, 0, 1, 5, 0]) + P2.BOARD.pack(3, 8 | (0x80 if self.soft_locked else 0), 120, 0, 2200))
@@ -616,6 +625,68 @@ class FakeV2:
             r(0, b"\x42\x01")
         elif cmd == P2.POWER:
             r(0, P2.BOARD.pack(a[0] if a else 3, 8, 100, 50, 2200))
+        elif cmd == P2.RTC:                                  # A10a: calendar read / set (board v1.0)
+            ready = self.board_rev >= 10
+            if len(a) == 7:
+                y, mo, d, h, mi, s = P2.RTC_SET_FMT.unpack(a)
+                if not ready:
+                    r(P2.UNSUPPORTED)
+                    return
+                try:
+                    datetime(y, mo, d, h, mi, s)
+                    ok = 2000 <= y <= 2099
+                except ValueError:
+                    ok = False
+                if not ok:
+                    r(P2.BAD_ARGS)
+                    return
+                self.rtc_time = (y, mo, d, h, mi, s)
+            elif a:
+                r(P2.BAD_ARGS)
+                return
+            r(0, P2.RTC_FMT.pack(int(ready), *(self.rtc_time if ready else (0, 0, 0, 0, 0, 0))))
+        elif cmd == P2.SENSOR:                               # A10b: SHT40
+            if a:
+                r(P2.BAD_ARGS)
+            else:
+                st = self.sensor if self.board_rev >= 10 else (1, 0, 0)
+                r(0, P2.SENSOR_FMT.pack(*st))
+        elif cmd == P2.RAILS:                                # A10d: rail voltages
+            if a:
+                r(P2.BAD_ARGS)
+            else:
+                r(0, P2.RAILS_FMT.pack(*(self.rails if self.board_rev >= 10 else (0, 0, 0x0C))))
+        elif cmd == P2.SYNC_SENSOR:                          # A10c: SYNC capture
+            if len(a) > 1 or (a and a[0] > 1):
+                r(P2.BAD_ARGS)
+                return
+            if a and self.board_rev < 10:
+                r(P2.UNSUPPORTED)
+                return
+            if a:
+                if not a[0] and self.sync_source:
+                    r(P2.BUSY)
+                    return
+                self.sync_active = bool(a[0])
+            on = self.sync_active or self.sync_source
+            r(0, P2.SYNC_FMT.pack(int(on), int(self.sync_source), 0, 7 if on else 0, 123_456_789 if on else 0,
+                                  0x0102_0304 if on else 0, 55_000_000 if on else 0))
+        elif cmd == P2.FDD_PINS:                             # A10e: J6 read-backs / outputs
+            if len(a) not in (0, 2):
+                r(P2.BAD_ARGS)
+                return
+            if a:
+                if self.board_rev < 10:
+                    r(P2.UNSUPPORTED)
+                    return
+                if any(v not in (0, 1, 0xFF) for v in a):
+                    r(P2.BAD_ARGS)
+                    return
+                if a[0] != 0xFF:
+                    self.pins_out = (self.pins_out & ~1) | a[0]
+                if a[1] != 0xFF:
+                    self.pins_out = (self.pins_out & ~2) | (a[1] << 1)
+            r(0, P2.FDD_PINS_FMT.pack(self.pins if self.board_rev >= 10 else 0, self.pins_out))
         elif cmd == P2.EVENTS:
             self.events_mask = struct.unpack("<I", a)[0]
             r()
@@ -2068,3 +2139,104 @@ def test_read_progress_events():
     with pytest.raises(P2.DeviceError):
         dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x20, 0))
     assert dev.last_refusal()["detail"] == 0x20 and P2.EVENT_NAMES[P2.EV_READ_PROGRESS] == "read progress"
+
+
+# -- board v1.0, firmware stage A10 (ops 0x43-0x47, protocol doc 1.5) ---------------------------
+
+def test_rtc_read_set_and_not_available():
+    v10 = FakeV2(board_rev=10)
+    dev = P2.Device2(v10)
+    t = dev.rtc()
+    assert t.ready and t.datetime == datetime(2026, 10, 25, 14, 3, 11) and str(t) == "2026-10-25T14:03:11"
+    assert v10.requests[-1].cmd == P2.RTC and v10.requests[-1].payload == b""
+    t = dev.rtc_set(datetime(2027, 2, 28, 23, 59, 58))
+    assert v10.requests[-1].payload == P2.RTC_SET_FMT.pack(2027, 2, 28, 23, 59, 58)
+    assert t.ready and t.datetime == datetime(2027, 2, 28, 23, 59, 58)
+    with pytest.raises(P2.DeviceError, match="invalid arguments"):       # 2027-02-29 does not exist
+        dev.request(P2.RTC, P2.RTC_SET_FMT.pack(2027, 2, 29, 0, 0, 0))
+    with pytest.raises(ValueError):
+        dev.rtc_set(datetime(1999, 12, 31))
+    v07 = P2.Device2(FakeV2())                                             # board rev 7: no RTC
+    t = v07.rtc()
+    assert not t.ready and t.datetime is None and "no running RTC" in str(t)
+    with pytest.raises(P2.DeviceError, match="not supported"):
+        v07.rtc_set(datetime(2026, 1, 1))
+
+
+def test_sensor_reading_sign_and_status():
+    fake = FakeV2(board_rev=10)
+    dev = P2.Device2(fake)
+    s = dev.sensor()
+    assert s.ok and s.temp_c == 23.45 and s.rh == 45.67 and str(s) == "SHT40: 23.45 C, 45.67 %RH"
+    fake.sensor = (0, -320, 1500)                                          # negative temperature is i16
+    s = dev.sensor()
+    assert s.temp_c == -3.2 and s.rh == 15.0
+    fake.sensor = (2, 0, 0)
+    assert not dev.sensor().ok and "CRC" in str(dev.sensor())
+    assert "no sensor" in str(P2.Device2(FakeV2()).sensor())              # v0.x: clean status, no exception
+
+
+def test_rails_flags_and_limits():
+    fake = FakeV2(board_rev=10)
+    dev = P2.Device2(fake)
+    r = dev.rails()
+    assert r.fitted and r.v5_mv == 4980 and r.v12_mv == 11900 and not r.low
+    assert "FDD_5V 4.980 V" in str(r) and "12 V" in str(r)
+    fake.rails = (4400, 10500, 0x1F)
+    r = dev.rails()
+    assert r.low == ["5 V", "12 V"] and "BELOW LIMIT" in str(r)
+    r = P2.Device2(FakeV2()).rails()
+    assert not r.fitted and r.v5_mv == 0 and "not fitted" in str(r)
+
+
+def test_sync_sensor_status_and_counting():
+    fake = FakeV2(board_rev=10)
+    dev = P2.Device2(fake)
+    s = dev.sync_sensor()
+    assert not s.active and not s.source and s.count == 0 and s.rpm == 0.0
+    s = dev.sync_sensor(True)
+    assert fake.requests[-1].payload == b"\x01"
+    assert s.active and s.count == 7 and s.period == 55_000_000 and round(s.rpm) == 300 and s.last_t32 == 0x01020304
+    assert "300.00 rpm" in str(s) and "SYNC capture on" in str(s)
+    fake.sync_source = True                                                # Apple drive + apple_sync=1: cannot stop
+    with pytest.raises(P2.DeviceError, match="busy"):
+        dev.sync_sensor(False)
+    fake.sync_source = False
+    assert not dev.sync_sensor(False).active
+    with pytest.raises(P2.DeviceError, match="not supported"):
+        P2.Device2(FakeV2()).sync_sensor(True)
+    assert not P2.Device2(FakeV2()).sync_sensor().active                  # the query itself works on v0.x
+
+
+def test_fdd_pins_readback_and_outputs():
+    fake = FakeV2(board_rev=10)
+    dev = P2.Device2(fake)
+    p = dev.fdd_pins()
+    assert fake.requests[-1].payload == b"" and p.names() == ["wlock_hw"] and p.outputs == 0
+    p = dev.fdd_pins(pin4=True)
+    assert fake.requests[-1].payload == b"\x01\xff" and p.outputs == 1 and "pin4 on" in str(p)
+    p = dev.fdd_pins(pin33=1)
+    assert fake.requests[-1].payload == b"\xff\x01" and p.outputs == 3
+    p = dev.fdd_pins(pin4=False, pin33=False)
+    assert p.outputs == 0 and "pin33 low" in str(p)
+    fake.pins = 0xFF
+    assert P2.Device2(fake).fdd_pins().names() == list(P2.FDD_PIN_NAMES)
+    with pytest.raises(P2.DeviceError, match="not supported"):
+        P2.Device2(FakeV2()).fdd_pins(pin4=True)
+    assert P2.Device2(FakeV2()).fdd_pins().pins == 0
+
+
+def test_selftest_item_names_a10_and_feature_names():
+    assert [P2.SELFTEST_ITEMS[i][0] for i in range(15, 22)] == ["rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock", "fdd_pins"]
+    assert P2.FEATURE_NAMES[11].startswith("RTC") and P2.FEATURE_NAMES[14] == "drive supply voltages"
+
+
+def test_cli_rtc_sensor_rails_sync_pins(monkeypatch, capsys):
+    fake = FakeV2(board_rev=10)
+    monkeypatch.setattr(P2, "connect", lambda port=None, timeout=5.0: P2.Device2(fake))
+    for argv in (["rtc"], ["rtc", "2026-12-24T18:00:00"], ["sensor"], ["rails"], ["sync", "on"], ["sync"], ["pins", "--pin4", "1"]):
+        assert cli.main(["--port", "COM9", *argv]) in (0, None), argv
+    out = capsys.readouterr().out
+    assert "2026-10-25T14:03:11" in out and "2026-12-24T18:00:00" in out and "23.45 C" in out
+    assert "FDD_5V 4.980 V" in out and "300.00 rpm" in out and "pin4 on" in out
+    assert fake.rtc_time == (2026, 12, 24, 18, 0, 0)

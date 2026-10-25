@@ -25,6 +25,7 @@ import zlib
 from collections import deque
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from . import protocol as P
 from .protocol import (
@@ -80,6 +81,14 @@ SELFTEST_ITEMS = {
     12: ("last_reset", "fault record at start-up (1 HardFault 2 MemManage 3 BusFault 4 UsageFault)"),
     13: ("stack_free", "stack bytes never used since start-up (warn < 2 KB, fail < 512)"),
     14: ("log", "SELFTEST.LOG written (bytes)"),
+    # board v1.0, firmware stage A10 (reported before 'log')
+    15: ("rtc", "calendar running, value yyyymmdd (skip = v0.x without LSE, fail = v1.0 LSE not oscillating)"),
+    16: ("sht40", "SHT40: temp 0.01 C (high half) | rh 0.01 % (low half); fail = no answer on v1.0"),
+    17: ("sync", "SYNC sensor pulses in 250 ms (skip = none seen / v0.x)"),
+    18: ("v_fdd5", "FDD_5V at the connector mV (fail < 4500 while on, skip = off / v0.x)"),
+    19: ("v_fdd12", "FDD_12V at the connector mV (fail < 10800 while on, skip = off / v0.x)"),
+    20: ("wgate_lock", "A11f lock: 0 ok, 1 = WGATE reached the bus despite the lock, 2 = bus active at idle"),
+    21: ("fdd_pins", "v1.0 read-backs: bit0 pin2 bit1 pin4 bit2 CSTOUT bit3 WGATE bus bit4 WLOCK_HW bit5/6 FLT bit7 SYNC"),
 }
 SELFTEST_STATUS = {0: "ok", 1: "FAIL", 2: "skip", 3: "warn"}
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
@@ -101,6 +110,21 @@ IEC_BLOCK = 0x35                        # firmware 1.16: U1/U2 block read/write 
 IEC_TARGET, IEC_READ_STATUS = 0x36, 0x37 # firmware 1.18, capability bit 15
 NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
+RTC, SENSOR, RAILS, SYNC_SENSOR, FDD_PINS = 0x43, 0x44, 0x45, 0x46, 0x47   # board v1.0, firmware stage A10 (doc 1.5)
+RTC_FMT = struct.Struct("<BHBBBBB")        # ready, year, mon, day, hour, min, sec
+RTC_SET_FMT = struct.Struct("<HBBBBB")
+SENSOR_FMT = struct.Struct("<BhH")         # status, temp 0.01 degC, rh 0.01 %RH
+SENSOR_STATUS = {0: "ok", 1: "no sensor (NACK / timeout)", 2: "CRC error", 3: "I2C bus not initialised"}
+RAILS_FMT = struct.Struct("<HHB")          # v5_mv, v12_mv, flags
+RAIL_5V_LOW, RAIL_12V_LOW, RAIL_5V_ON, RAIL_12V_ON, RAIL_FITTED = 0x01, 0x02, 0x04, 0x08, 0x10
+RAIL_5V_MIN_MV, RAIL_12V_MIN_MV = 4500, 10800
+SYNC_FMT = struct.Struct("<BBBIIII")       # active, source, level, count, last_t2, last_t32, period
+FDD_PINS_FMT = struct.Struct("<BB")        # pins, outputs
+FDD_PIN_NAMES = ("pin2_low", "pin4_low", "cstout", "wgate_bus", "wlock_hw", "flt5", "flt12", "sync")
+FEATURE_NAMES = {1: "flux read", 2: "extended flux write", 3: "IEC", 4: "Apple port", 5: "Amiga port",
+                 6: "SD storage", 7: "PSRAM", 8: "composite bulk", 9: "integrity jobs", 10: "64-bit time base",
+                 11: "RTC (board v1.0)", 12: "SHT40 temperature/humidity", 13: "SYNC sensor input (TIM8)",
+                 14: "drive supply voltages"}
 DIR, READ_FILE, WRITE_FILE, DELETE, CFG_RELOAD = 0x50, 0x51, 0x52, 0x53, 0x54
 DUMP_START, DUMP_STATUS, DUMP_ABORT, COPY_START = 0x60, 0x61, 0x62, 0x63
 WRITE_START = 0x64                      # firmware 1.16: write an image from the SD NAND onto the disk
@@ -387,6 +411,130 @@ class BoardStatus:
     @classmethod
     def unpack(cls, b: bytes) -> BoardStatus:
         return cls(*BOARD.unpack(b[:BOARD.size]))
+
+
+@dataclass
+class RtcTime:
+    """RTC 0x43 (board v1.0, stage A10): ready = the calendar runs from the LSE crystal / CR2032."""
+    ready: bool
+    year: int
+    mon: int
+    day: int
+    hour: int
+    min: int
+    sec: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> RtcTime:
+        ready, *rest = RTC_FMT.unpack_from(b)
+        return cls(bool(ready), *rest)
+
+    @property
+    def datetime(self) -> datetime | None:
+        return datetime(self.year, self.mon, self.day, self.hour, self.min, self.sec) if self.ready else None
+
+    def __str__(self) -> str:
+        return self.datetime.isoformat() if self.ready else "no running RTC (board before v1.0, or LSE not oscillating)"
+
+
+@dataclass
+class SensorReading:
+    """SENSOR 0x44: SHT40 on the v1.0 board; status 0 = valid reading."""
+    status: int
+    temp_x100: int
+    rh_x100: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> SensorReading:
+        return cls(*SENSOR_FMT.unpack_from(b))
+
+    @property
+    def ok(self) -> bool:
+        return self.status == 0
+
+    @property
+    def temp_c(self) -> float:
+        return self.temp_x100 / 100
+
+    @property
+    def rh(self) -> float:
+        return self.rh_x100 / 100
+
+    def __str__(self) -> str:
+        if not self.ok:
+            return f"SHT40: {SENSOR_STATUS.get(self.status, self.status)}"
+        return f"SHT40: {self.temp_c:.2f} C, {self.rh:.2f} %RH"
+
+
+@dataclass
+class RailVoltages:
+    """RAILS 0x45: FDD_5V / FDD_12V at the drive connector (v1.0 dividers), limits 4.5 V / 10.8 V."""
+    v5_mv: int
+    v12_mv: int
+    flags: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> RailVoltages:
+        return cls(*RAILS_FMT.unpack_from(b))
+
+    @property
+    def fitted(self) -> bool:
+        return bool(self.flags & RAIL_FITTED)
+
+    @property
+    def low(self) -> list[str]:
+        return [n for bit, n in ((RAIL_5V_LOW, "5 V"), (RAIL_12V_LOW, "12 V")) if self.flags & bit]
+
+    def __str__(self) -> str:
+        if not self.fitted:
+            return "rail voltage dividers not fitted (board before v1.0)"
+        on = [n for bit, n in ((RAIL_5V_ON, "5 V"), (RAIL_12V_ON, "12 V")) if self.flags & bit]
+        return (f"FDD_5V {self.v5_mv / 1000:.3f} V, FDD_12V {self.v12_mv / 1000:.3f} V, rails on: {', '.join(on) or 'none'}"
+                + (f", BELOW LIMIT: {', '.join(self.low)}" if self.low else ""))
+
+
+@dataclass
+class SyncStatus:
+    """SYNC 0x46: Disk II sync sensor capture on TIM8 (v1.0); times in 275 MHz ticks."""
+    active: bool
+    source: bool                        # SYNC replaces the INDEX line right now
+    level: bool
+    count: int
+    last_t2: int
+    last_t32: int
+    period: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> SyncStatus:
+        active, source, level, *rest = SYNC_FMT.unpack_from(b)
+        return cls(bool(active), bool(source), bool(level), *rest)
+
+    @property
+    def rpm(self) -> float:
+        return 60 * 275_000_000 / self.period if self.period else 0.0
+
+    def __str__(self) -> str:
+        return (f"SYNC capture {'on' if self.active else 'off'}, index source {'SYNC' if self.source else 'INDEX line'}, "
+                f"level {int(self.level)}, {self.count} pulses, period {self.period} ticks"
+                + (f" ({self.rpm:.2f} rpm)" if self.period else "") + f", last pulse t2 {self.last_t2} t32 {self.last_t32}")
+
+
+@dataclass
+class FddPins:
+    """FDD_PINS 0x47: v1.0 read-backs (FDD_PIN_NAMES bits) and the two J6 outputs (bit0 pin 4, bit1 pin 33)."""
+    pins: int
+    outputs: int
+
+    @classmethod
+    def unpack(cls, b: bytes) -> FddPins:
+        return cls(*FDD_PINS_FMT.unpack_from(b))
+
+    def names(self) -> list[str]:
+        return [n for i, n in enumerate(FDD_PIN_NAMES) if self.pins & (1 << i)]
+
+    def __str__(self) -> str:
+        return (f"pins 0x{self.pins:02x} [{', '.join(self.names()) or '-'}], outputs: pin4 {'on' if self.outputs & 1 else 'off'}, "
+                f"pin33 {'high' if self.outputs & 2 else 'low'}")
 
 
 @dataclass
@@ -926,7 +1074,8 @@ class Device2:
         result = []
         for pos in range(2, len(data), 8):
             ident, flags, owner, limit = struct.unpack_from("<HBBI", data, pos)
-            result.append(dict(id=ident, supported=bool(flags&1), configured=bool(flags&2),
+            result.append(dict(id=ident, name=FEATURE_NAMES.get(ident, f"feature {ident}"),
+                               supported=bool(flags&1), configured=bool(flags&2),
                                available=bool(flags&4), hardware_qualified=bool(flags&8),
                                owner=owner, limit=limit))
         return result
@@ -1937,6 +2086,39 @@ class Device2:
     def sd_info(self) -> tuple[int, int, int, int, int]:
         """-> (present, status, card_type, bus_width, capacity_mb)."""
         return SD.unpack_from(self.request(SD_INFO))
+
+    # -- board v1.0, firmware stage A10 (protocol doc 1.5) --------------------
+    def rtc(self) -> RtcTime:
+        """RTC 0x43: read the calendar; ready is False on boards without a running RTC."""
+        return RtcTime.unpack(self.request(RTC))
+
+    def rtc_set(self, when: datetime | None = None) -> RtcTime:
+        """Set the calendar (default: the PC's local time now) and read it back; status 11
+        (UNSUPPORTED) without a running RTC, 16 for an invalid calendar (2000-2099)."""
+        when = when or datetime.now()
+        if not 2000 <= when.year <= 2099:
+            raise ValueError("RTC calendar covers 2000-2099")
+        return RtcTime.unpack(self.request(RTC, RTC_SET_FMT.pack(when.year, when.month, when.day,
+                                                              when.hour, when.minute, when.second)))
+
+    def sensor(self) -> SensorReading:
+        """SENSOR 0x44: one SHT40 measurement (about 20 ms in the firmware)."""
+        return SensorReading.unpack(self.request(SENSOR, timeout=2.0))
+
+    def rails(self) -> RailVoltages:
+        """RAILS 0x45: drive supply voltages at the connector with the 4.5 V / 10.8 V flags."""
+        return RailVoltages.unpack(self.request(RAILS))
+
+    def sync_sensor(self, enable: bool | None = None) -> SyncStatus:
+        """SYNC 0x46: status, or start / stop counting the sync sensor pulses (v1.0)."""
+        return SyncStatus.unpack(self.request(SYNC_SENSOR, b"" if enable is None else bytes([int(enable)])))
+
+    def fdd_pins(self, pin4: bool | int | None = None, pin33: bool | int | None = None) -> FddPins:
+        """FDD_PINS 0x47: v1.0 read-backs; pin4 / pin33 drive the two J6 outputs first (None = keep)."""
+        if pin4 is None and pin33 is None:
+            return FddPins.unpack(self.request(FDD_PINS))
+        payload = bytes([0xFF if pin4 is None else int(bool(pin4)), 0xFF if pin33 is None else int(bool(pin33))])
+        return FddPins.unpack(self.request(FDD_PINS, payload))
 
     # -- files --------------------------------------------------------------
     def list_dir(self, path: str = "") -> list[DirEntry]:
