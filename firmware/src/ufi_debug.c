@@ -54,7 +54,9 @@ gpio_status_t ufi_debug_gpio_read(void)
         if (bus_in(iec_in_pins[i])) status.iec_signals |= (uint16_t)(1u << i);
     }
     for (unsigned i = 0; i < COUNT(led_pins); i++) {
-        if (HAL_GPIO_ReadPin(led_pins[i]->port, led_pins[i]->pin) == GPIO_PIN_SET) {
+        gpio_pin_t v10;                         /* LED_FDD sits on PC7 on board v1.0 (B3a) */
+        const gpio_pin_t* p = board_pin(led_pins[i], &v10);
+        if (HAL_GPIO_ReadPin(p->port, p->pin) == GPIO_PIN_SET) {
             status.leds |= (uint16_t)(1u << i);
         }
     }
