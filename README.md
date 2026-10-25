@@ -15,8 +15,8 @@ dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-
 | Puffer | 8 MB QSPI-PSRAM (Ringpuffer beim Streamen, bis 200 Umdrehungen) |
 | USB | USB-C, Full Speed, Datenstrom ~2 Byte je Flusswechsel, sendet während die Diskette dreht |
 | Laufwerke | 34-pol PC/Shugart (DENSITY, DRATE, bis 4 Laufwerke), Amiga DB23 (Header, 2 Laufwerke), Apple Disk II (20-pol, 2 Laufwerke), Commodore IEC (1541) |
-| Schreiben | Timer + DMA, Precompensation, Verify, WRITE-LOCK-Jumper |
-| Platine v0.7 | 110 × 97 mm, 4 Lagen, geschaltete und gemessene Laufwerksversorgung, 4 GB SD-NAND fest verbaut, Erweiterungsheader, Apple-Disk-II-Port, zweites Amiga-Laufwerk (JP3) |
+| Schreiben | Timer + DMA, Precompensation, Verify; Schreibsperre in Hardware (Frontschalter SCHREIBEN + Firmware-Freigabe) |
+| Platine v1.0 | 110 × 97 mm, 6 Lagen, für ein geschlossenes Gehäuse (von außen nur USB-C und LAN): eFuses für 5 V/12 V der Laufwerke mit Strommessung, MOSFET-Bustreiber, 4 GB SD-NAND, TCXO, RTC mit CR2032, SHT40, W5500-LAN, Apple-Disk-II- und Mac-3,5"-Port, Sync-Sensor-Eingang, Front-Header J12 |
 | Ohne PC | Taster: ganze Diskette als SCP auf den internen Speicher (mit Qualitätsbericht) oder Disk-zu-Disk-Kopie, danach als USB-Laufwerk am PC abholen |
 | Greaseweazle-kompatibel | `UFI.CFG protocol=gw`: die Greaseweazle-Werkzeuge (`gw read`, `gw write`, …) erkennen das Board direkt |
 | USB-Floppy | Betriebsart-Schalter: PC-Disketten (360K–2,88 MB, DMF) erscheinen am PC als normales USB-Diskettenlaufwerk, ohne Treiber; Atari ST, Commodore 1581 und Amiga 880K als Block-Laufwerk (Sektorabbild wie ST/D81/ADF) |
@@ -63,7 +63,7 @@ gebauten Firmware-Module die Tests erreichen (`firmware/tests/build/coverage.txt
 
 ## Status
 
-Platine v0.7 ist fertig für die Bestellung (ERC/DRC sauber, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md).
+Platine v1.0 ist zur Fertigung freigegeben (Tag `hw-v1.0`: ERC 0/0, DRC 0/0/0 mit Schaltplan-Parität, Lastpfade geprüft, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Freigabebericht](kicad/UFI_Headless/docs/Freigabe_v1.0.md), [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md). Die LAN-Firmware fehlt noch; bis dahin bleibt der W5500 im Reset.
 Firmware 1.18-dev: Umfang und Nachweise in [docs/Implementation_Status.md](docs/Implementation_Status.md) und
 [docs/Firmware_Erweiterungen_2026-10-16.md](docs/Firmware_Erweiterungen_2026-10-16.md), Schnittstelle in [docs/USB_Protokoll.md](docs/USB_Protokoll.md).
 Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md),
