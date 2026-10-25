@@ -60,8 +60,12 @@ def compiler():
 def llvm_tool(name):
     """llvm-nm / llvm-profdata / llvm-cov from the same installation as the compiler."""
     cc = pathlib.Path(shutil.which(compiler()))
-    beside = cc.with_name(name + cc.suffix)
-    found = str(beside) if beside.exists() else shutil.which(name)
+    # /usr/bin/clang on Ubuntu is a link into /usr/lib/llvm-<N>/bin, where llvm-nm lives; on the
+    # PATH it only exists as llvm-nm-<N>
+    found = next((str(p) for p in (cc.with_name(name + cc.suffix), cc.resolve().with_name(name + cc.suffix))
+                  if p.exists()), None) or shutil.which(name)
+    if not found:
+        found = next((shutil.which(f"{name}-{v}") for v in range(30, 9, -1) if shutil.which(f"{name}-{v}")), None)
     if not found:
         sys.exit(f"{name} not found next to {cc}")
     return found

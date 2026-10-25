@@ -366,7 +366,9 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
 
 void ufi_v2_event(uint8_t code, const void* payload, uint16_t len)
 {
-    if (!on || code < UFI_V2_EVT_DISK || !(ev_mask & (1u << (code - UFI_V2_EVT_DISK))) ||
+    /* codes beyond the 32-bit mask are dropped explicitly (a shift by >= 32 is undefined in C) */
+    if (!on || code < UFI_V2_EVT_DISK || (unsigned)(code - UFI_V2_EVT_DISK) >= 32u ||
+        !(ev_mask & (1u << (code - UFI_V2_EVT_DISK))) ||
         len > EVQ_PAYLOAD) {
         return;
     }
