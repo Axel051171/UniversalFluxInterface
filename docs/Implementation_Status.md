@@ -1421,3 +1421,32 @@ raw-check [--tolerance] [--profile] [--require] [--off], FakeV2 with op 31/32 an
 deviating track 7, test. Protocol doc 4.17, rows 0x22 / op 38 / op 39, 6.3 note, TOC;
 acceptance plan row; host README. Open from the list: 8 hard-sector write window (after the
 bench run), 1 parked (needs a v2 encoder for stored revolutions).
+
+## Board v1.0 firmware stage A10: clock, sensor, SYNC, rails, lock self-test — 2026-10-25
+
+Six commits on hw/v0.7-frontpanel: A10a df63a9d (RTC 0x43, FEATURES 11, metadata), A10b 9b0fb9b
+(SENSOR 0x44, SELFTEST 15/16), A10c d09f8ce (SYNC on TIM8, op 0x46, index source switch),
+A10d 317f4df (RAILS 0x45, SELFTEST 18-20 incl. wgate_lock, bring-up section 6), A10e 0398148
+(FDD_PINS 0x47, SELFTEST 21, owner-list status), A10f edcb733 (host). Protocol doc section 1.5
+holds every byte layout; the INFO caps word is full, so FEATURES ids 11-14 announce the features.
+
+- Modules: `ufi_sense.c` (I2C1 100 kHz SHT40 with 10 ms timeouts and CRC-8, rail dividers x2 /
+  x4.3 on ADC1 INP4/INP8, calendar wrappers, J6 read-backs, metadata text; state in DTCM so the
+  AXI budget stays at 36688 B), `ufi_sense_calc.c` (HAL-free helpers, native test
+  `tests/test_sense.c`: CRC datasheet example 0xBEEF -> 0x92, conversion end points, divider
+  scaling, calendar edge cases, TIM8 -> TIM2 mapping with both wraps), `ufi_sync.c` (TIM8_CH1
+  capture, overflow counter, TIM2-domain time stamp by back-to-back counter reads).
+- Index source on v1.0 with `apple_sync=1`: `ufi_flux_index_source_sync()` switches TIM2 CC2E
+  off, the TIM8 ISR feeds `ufi_flux_index_event()`; READ/WRITE/DIAG_RPM/provenance unchanged.
+- Metadata: DUMPnnnn.JSN `rtc`, `time`, `v_fdd5_mv`, `v_fdd12_mv`, `temp_c`, `rh`; LOG header
+  line; FatFs `get_fattime()` from the RTC (ffconf `_FS_NORTC 0`).
+- Self-test items 15-21 (reply buffer 24 items); `wgate_lock` drives WGATE_n low with WLOCK_FW
+  high and expects WGATE_SENSE inactive (A8 finding F1).
+- Evidence: ARM build 0 warnings in project sources (FLASH 241276 B, AXI free 36688 B, stack
+  space 20896 B, largest frame ufi_selftest 1064 B), offline gate 28 checks passed per commit
+  (the final pytest step has no interpreter with pytest here), host suite 207 passed in a scratch
+  venv. Not verifiable without the board: LSE start-up, SHT40 presence, divider accuracy, the
+  lock self-test on real U31/Q9/U10F, SYNC pulse repeatability, pin 2/4/34 behaviour of real
+  drives - all listed as measurements in docs/Bringup_2026-10-24.md section 6.
+- Open from the owner's A10 list: ring buffer before the index (DMA capture rebuild in
+  `ufi_flux.c`).
