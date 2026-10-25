@@ -33,7 +33,7 @@ static void refuse(uint8_t f,uint8_t d){note_f=f;note_d=d;}
 static uint32_t get32(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
 static uint32_t config_gen=5,media_gen=9,media_after_start;
 static unsigned aborts;
-static uint32_t ufi_config_generation(void){return config_gen;}
+uint32_t ufi_config_generation(void){return config_gen;}   /* declared in ufi_capabilities.h; static would clash on non-MSVC compilers */
 static bool ufi_drive_media_matches(uint32_t t){return t==media_gen;}
 static int ufi_capture_abort(void){aborts++;return 0;}
 enum {CAPTURE_IDLE,CAPTURE_RUNNING};
@@ -154,7 +154,7 @@ int main(void){
     code = BASE + ERRORS + r'''
 #define UFI_V2_GEN_BLOCK 17u
 static uint32_t config_gen=0x01020304u,media_now=0x0a0b0c0du;
-static uint32_t ufi_config_generation(void){return config_gen;}
+uint32_t ufi_config_generation(void){return config_gen;}   /* declared in ufi_capabilities.h; static would clash on non-MSVC compilers */
 static uint32_t ufi_drive_media_token(void){return media_now;}
 '''
     # put16 is a one-line helper: the extractor runs on to the next line-start brace and

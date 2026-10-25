@@ -46,8 +46,15 @@ def main():
         newlib=Path(gcc).resolve().parent.parent/'arm-none-eabi/include'
         if not (newlib/'stdlib.h').is_file():
             search=subprocess.run([gcc,'-E','-x','c','-','-v'],input='',capture_output=True,text=True,check=True,timeout=30)
+            # only the indented lines of the "#include <...> search starts here" list are paths;
+            # the "Configured with: ..." line is longer than a file name may be (ENAMETOOLONG on Linux)
+            def has_stdlib(line):
+                try:
+                    return (Path(line.strip())/'stdlib.h').is_file()
+                except OSError:
+                    return False
             newlib=next((Path(line.strip()) for line in search.stderr.splitlines()
-                         if (Path(line.strip())/'stdlib.h').is_file()),newlib)
+                         if line.startswith(' ') and len(line)<1024 and has_stdlib(line)),newlib)
         if not (newlib/'stdlib.h').is_file():raise SystemExit(f'Newlib headers missing: {newlib}')
         entries=json.loads(args.compile_commands.read_text(encoding='utf-8'))
         checked=0

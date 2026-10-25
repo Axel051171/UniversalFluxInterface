@@ -179,7 +179,7 @@ int main(void){
     assert(pack_deltas()==0 && g_write.flux_count==3 && write_buffer[0]+write_buffer[1]+write_buffer[2]==1870 && write_buffer[0]>=220 && write_buffer[1]>=220 && weak_applied<=2 && !(write_buffer[0]&~WAVE_WEAK_VALUE));
     { unsigned seen=0;for(unsigned seed=1;seed<64;seed++){
           weak_seed=seed;g_write.flux_count=3;write_buffer[0]=220u|WAVE_WEAK_DROP;write_buffer[1]=1100u|WAVE_WEAK_DROP;write_buffer[2]=550;
-          const int r=pack_deltas();uint32_t sum=0;for(unsigned i=0;i<g_write.flux_count;i++)sum+=write_buffer[i];
+          const int r=pack_deltas();uint32_t sum=0;for(unsigned i=0;i<g_write.flux_count && i<3u;i++)sum+=write_buffer[i];
           assert(sum==1870 && r==(g_write.flux_count<3?UFI_ERR_RANGE:0) && weak_applied==3-g_write.flux_count);
           seen|=1u<<(3-g_write.flux_count);
       } assert(seen==7); }                                            /* 0, 1 and 2 drops all occur over the seeds */
