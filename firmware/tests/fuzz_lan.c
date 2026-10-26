@@ -9,9 +9,11 @@
  *      the length), 1 let len * 100 ms pass, 2 toggle
  *      ARP answers for the address being probed, 3 raise IR.CONFLICT; bit3 = a session is
  *      connected during this step.
+ *   3  the TCP v2 session (ufi_lan_session.c, L4), see fuzz_session().
  * Checks: ASan/UBSan and the asserts below. */
 #include "ufi_lan_cfg.h"
 #include "ufi_net.h"
+#include "ufi_lan_session.h"
 #include "w5500_fake.h"
 #include <assert.h>
 #include <stddef.h>
@@ -109,15 +111,71 @@ static void fuzz_net(const uint8_t* data, size_t size)
     }
 }
 
+/* 3: the TCP session (ufi_lan_session.c, L4): byte 0 = key on/off and reply room pattern,
+ * then the TCP stream in pieces of 1 + (byte & 63) bytes.  Every dispatched frame has a
+ * valid length, nothing passes before authentication, every reply is a well-formed frame. */
+static lan_session_t sess;
+static uint8_t sess_frame[LAN_V2_FRAME_MAX];
+static uint8_t room_bits;
+static unsigned room_i;
+static bool keyed;
+static bool fz_can(void* ctx) { (void)ctx; return (room_bits >> (room_i++ & 7u)) & 1u; }
+static void fz_frame(void* ctx, uint8_t type, uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
+{
+    (void)ctx; (void)cmd; (void)seq;
+    assert(len <= LAN_V2_MAX_PAYLOAD && p == sess_frame + LAN_V2_HDR && sess.authed);
+    assert(type != 0u);
+}
+static void fz_nonce(void* ctx, uint8_t out[LAN_NONCE_SIZE]) { (void)ctx; memset(out, 0x11, LAN_NONCE_SIZE); }
+static const lan_session_cb_t fz_cb = {NULL, fz_can, fz_frame, fz_nonce, NULL, NULL};
+
+static void fuzz_session(const uint8_t* data, size_t size)
+{
+    if (!size) {
+        return;
+    }
+    fake_init(&fake);
+    const w5500_t d = fake_dev(&fake);
+    (void)w5500_reset(&d);
+    (void)w5500_setup(&d, FMAC);
+    keyed = data[0] & 1u;
+    room_bits = (uint8_t)(data[0] | 1u);
+    room_i = 0;
+    lan_session_init(&sess, 55100, keyed ? "key" : "", keyed ? 3u : 0u, sess_frame);
+    static const uint8_t peer[4] = {10, 0, 0, 2};
+    lan_session_service(&sess, &d, 1, &fz_cb);
+    (void)fake_tcp_accept(&fake, 0, peer, 4000);
+    lan_session_service(&sess, &d, 1, &fz_cb);
+    for (size_t i = 1; i < size && lan_session_connected(&sess); ) {
+        const size_t take = 1u + (data[i] & 63u);
+        const size_t n = (take <= size - i - 1u) ? take : size - i - 1u;
+        fake_tcp_rx(&fake, 0, data + i + 1, (unsigned)n);
+        i += 1u + n;
+        for (unsigned k = 0; k < 3u; k++) {
+            lan_session_service(&sess, &d, 2, &fz_cb);
+        }
+    }
+    /* every byte the session sent is a sequence of valid frames */
+    for (uint32_t o = 0; o < fake.tcp_out_n; ) {
+        assert(fake.tcp_out_n - o >= 10u && fake.tcp_out[o] == 0x55u && fake.tcp_out[o + 1] == 0xAAu);
+        const uint16_t len = (uint16_t)(fake.tcp_out[o + 6] | fake.tcp_out[o + 7] << 8);
+        assert(len <= 34u && fake.tcp_out_n - o >= 10u + len);
+        const uint16_t crc = (uint16_t)(fake.tcp_out[o + 8 + len] | fake.tcp_out[o + 9 + len] << 8);
+        assert(crc == lan_crc16(&fake.tcp_out[o + 2], 6u + len));
+        o += 10u + len;
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     if (!size || size > 4096u) {
         return 0;
     }
-    switch (data[0] % 3u) {
+    switch (data[0] % 4u) {
         case 0: fuzz_cfg(data + 1, size - 1u); break;
         case 1: fuzz_dhcp(data + 1, size - 1u); break;
-        default: fuzz_net(data + 1, size - 1u); break;
+        case 2: fuzz_net(data + 1, size - 1u); break;
+        default: fuzz_session(data + 1, size - 1u); break;
     }
     return 0;
 }

@@ -48,6 +48,8 @@ static bool ufi_job_live(void){return false;}
 static void ufi_job_finish(unsigned status){(void)status;}
 static void ufi_capture_abort(void){g_capture.state=CAPTURE_IDLE;}
 static void ufi_write_abort(void){}
+static bool lan_owned(void){return false;}                  /* L4: USB owns (or nobody) */
+static void usb_session_end(void){ev_mask=0;ev_head=ev_tail=0;}
 '''
     code += function('ufi_v2.c','abort_ops') + function('ufi_v2.c','ufi_v2_reset') + r'''
 int main(void){

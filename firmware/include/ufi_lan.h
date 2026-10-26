@@ -29,3 +29,20 @@ const lan_cfg_t* ufi_lan_cfg(void);
 uint8_t ufi_lan_cfg_source(void);
 const char* ufi_lan_hostname(void);
 const net_t* ufi_lan_net(void);
+
+/* LAN session as a transport of native frames (L4) */
+bool ufi_lan_tx_idle(void);
+bool ufi_lan_tx_room(void);
+int ufi_lan_tx_start(const uint8_t* p, uint32_t n);
+int ufi_lan_tx_blocking(const uint8_t* p, uint32_t n);
+bool ufi_lan_connected(void);
+bool ufi_lan_write_allowed(void);     /* lan_write=1 and the hardware write lock open */
+
+/* Transports of UFI v2 frames and drive ownership (ufi_v2.c, L4) */
+enum { UFI_ROUTE_NONE = 0, UFI_ROUTE_USB = 1, UFI_ROUTE_LAN = 2 };
+void ufi_v2_init(void);
+uint8_t ufi_v2_route(void);           /* where the next native frame goes */
+uint8_t ufi_v2_owner(void);           /* UFI_ROUTE_* that owns the drive, NONE = free */
+bool ufi_v2_claim(uint8_t origin);    /* take the drive for a transport; false = the other owns it */
+void ufi_v2_lan_frame(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len);
+void ufi_v2_lan_closed(void);         /* LAN session ended: safe state if LAN owned the drive */

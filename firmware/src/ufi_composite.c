@@ -4,6 +4,7 @@
 #include "usbd_ctlreq.h"
 #include "ufi_resources.h"
 #include "ufi_cancel.h"
+#include "ufi_lan.h"
 #include <string.h>
 extern USBD_HandleTypeDef hUsbDevice;
 #define BULK_IN 0x83u
@@ -71,7 +72,8 @@ static uint8_t init(USBD_HandleTypeDef *d,uint8_t cfg)
     USBD_LL_PrepareReceive(d,BULK_OUT,rx_packet,64);
     return USBD_OK;
 }
-void ufi_composite_disconnect(void) { disconnected=true; tx_busy=false; ufi_cancel_request(); }
+void ufi_composite_disconnect(void)
+{ disconnected=true; tx_busy=false; if(ufi_v2_owner()!=UFI_ROUTE_LAN) ufi_cancel_request(); }
 static uint8_t deinit(USBD_HandleTypeDef *d,uint8_t cfg)
 {
     USBD_LL_CloseEP(d,BULK_IN); USBD_LL_CloseEP(d,BULK_OUT);
@@ -130,8 +132,12 @@ USBD_ClassTypeDef UFI_Composite={.Init=init,.DeInit=deinit,.Setup=setup,
     .EP0_RxReady=ep0_rx,.DataIn=data_in,.DataOut=data_out,
     .GetHSConfigDescriptor=get_config,.GetFSConfigDescriptor=get_config,
     .GetOtherSpeedConfigDescriptor=get_config,.GetUsrStrDescriptor=get_string};
+/* L4: native frames go where ufi_v2_route() says - USB here, or the LAN session */
 bool ufi_native_tx_idle(void)
-{return ufi_usb_get_mode()==UFI_USB_COMPOSITE?(!tx_busy && !reply_count):ufi_usb_tx_idle();}
+{
+    if(ufi_v2_route()==UFI_ROUTE_LAN)return ufi_lan_tx_idle();
+    return ufi_usb_get_mode()==UFI_USB_COMPOSITE?(!tx_busy && !reply_count):ufi_usb_tx_idle();
+}
 static int tx_raw(const uint8_t *p,uint32_t n)
 {
     if(tx_fault)return UFI_ERR_USB;
@@ -145,12 +151,14 @@ static int tx_raw(const uint8_t *p,uint32_t n)
 }
 int ufi_native_tx_start(const uint8_t *p,uint32_t n)
 {
+    if(ufi_v2_route()==UFI_ROUTE_LAN)return ufi_lan_tx_start(p,n);
     if(ufi_usb_get_mode()!=UFI_USB_COMPOSITE)return ufi_usb_tx_start(p,n);
     if(reply_count)return UFI_ERR_BUSY;
     return tx_raw(p,n);
 }
 int ufi_native_tx_blocking(const uint8_t *p,uint32_t n)
 {
+    if(ufi_v2_route()==UFI_ROUTE_LAN)return ufi_lan_tx_blocking(p,n);
     if(ufi_usb_get_mode()!=UFI_USB_COMPOSITE)return ufi_usb_tx_blocking(p,n);
     if(__get_IPSR() || __get_PRIMASK())return UFI_ERR_USB;
     if(tx_fault)return UFI_ERR_USB;
@@ -166,21 +174,24 @@ int ufi_native_tx_blocking(const uint8_t *p,uint32_t n)
     return UFI_OK; /* Composite replies are queued; legacy CDC keeps its old API. */
 }
 bool ufi_native_tx_room(void)
-{return ufi_usb_get_mode()!=UFI_USB_COMPOSITE || (!tx_fault && reply_count==0);}
+{
+    if(ufi_v2_route()==UFI_ROUTE_LAN)return ufi_lan_tx_room();
+    return ufi_usb_get_mode()!=UFI_USB_COMPOSITE || (!tx_fault && reply_count==0);
+}
 uint32_t ufi_native_tx_timeouts(void) {return tx_timeouts;}
 void ufi_native_tx_service(void)
 {
     if(ufi_usb_get_mode()!=UFI_USB_COMPOSITE)return;
     if(tx_busy && HAL_GetTick()-tx_since>=1000u) {
         tx_timeouts++;tx_fault=true;tx_reset();ufi_v2_clear_comms();
-        if(ufi_resources_owner()==UFI_OWNER_NATIVE)ufi_cancel_request();
+        if(ufi_resources_owner()==UFI_OWNER_NATIVE && ufi_v2_owner()!=UFI_ROUTE_LAN)ufi_cancel_request();
         return;
     }
     if(!tx_busy && reply_count) {
         reply_active=true;
         if(tx_raw(replies[reply_head],reply_len[reply_head])!=UFI_OK) {
             tx_fault=true;tx_reset();ufi_v2_clear_comms();
-            if(ufi_resources_owner()==UFI_OWNER_NATIVE)ufi_cancel_request();
+            if(ufi_resources_owner()==UFI_OWNER_NATIVE && ufi_v2_owner()!=UFI_ROUTE_LAN)ufi_cancel_request();
         }
     }
 }
@@ -202,9 +213,11 @@ void ufi_native_rx_resume(void)
 void ufi_composite_service(void)
 {
     if(disconnected) {
-        disconnected=false; ufi_capture_abort(); ufi_write_abort();
-        ufi_gw_end(); ufi_v2_reset(); ufi_resources_reset();
-        ufi_cancel_clear();
+        disconnected=false;
+        const bool lan=ufi_v2_owner()==UFI_ROUTE_LAN;  /* L4: USB gone, the LAN session keeps its work */
+        if(!lan) {ufi_capture_abort(); ufi_write_abort();}
+        ufi_gw_end(); ufi_v2_reset();
+        if(!lan) {ufi_resources_reset(); ufi_cancel_clear();}
     }
     ufi_native_tx_service();
 }

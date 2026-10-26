@@ -31,6 +31,13 @@ static int ufi_usb_get_mode(void) {return mode;}
 static int ufi_resources_owner(void) {return owner;}
 static void ufi_cancel_request(void) {cancelled++;}
 static void ufi_v2_clear_comms(void) {}
+/* L4 routing: USB unless the test sends the native frames to the LAN session */
+#define UFI_ROUTE_LAN 2
+static uint8_t route=1,lan_owner,lan_frames;
+static uint8_t ufi_v2_route(void) {return route;}
+static uint8_t ufi_v2_owner(void) {return lan_owner;}
+static int ufi_lan_tx_start(const uint8_t*p,uint32_t n) {(void)p;(void)n;lan_frames++;return 0;}
+static int ufi_lan_tx_blocking(const uint8_t*p,uint32_t n) {(void)p;(void)n;lan_frames++;return 0;}
 static int ufi_usb_tx_start(const uint8_t*p,uint32_t n) {(void)p;(void)n;return -99;}
 static int ufi_usb_tx_blocking(const uint8_t*p,uint32_t n) {(void)p;(void)n;return -99;}
 static int USBD_LL_Transmit(void*d,unsigned ep,uint8_t*p,uint32_t n) {
@@ -70,6 +77,12 @@ assert(cancelled==2 && !tx_busy && !reply_count);fail_tx=0;
 tx_fault=false;
 assert(ufi_native_tx_blocking(source,1)==0);ufi_native_tx_service();tx_reset();
 assert(!reply_count && !tx_busy && mask==0);
+/* L4: LAN route bypasses the USB queue; a USB timeout does not cancel LAN-owned work */
+route=2;assert(ufi_native_tx_blocking(source,8)==0 && ufi_native_tx_start(source,8)==0 && lan_frames==2 && !reply_count && !tx_busy);
+route=1;lan_owner=2;const int before=cancelled;
+assert(ufi_native_tx_start(source,3)==0 && tx_busy);now+=1000;ufi_native_tx_service();
+assert(cancelled==before && tx_timeouts==2);
+sent=NULL;                 /* the queue keeps no pointer to this stack buffer */
 return 0;
 }
 '''

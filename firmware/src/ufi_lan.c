@@ -1,5 +1,5 @@
 /**
- * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L3)
+ * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L4)
  *
  * W5500 U23 on SPI3: PC10 SCK, PC11 MISO, PC12 MOSI (AF6), PA15 SCSn (GPIO, 10k pull-up
  * R119), PD10 RSTn (GPIO, R121), PD5 INTn (input, R120).  Kernel clock PLL1Q 100 MHz,
@@ -20,6 +20,16 @@
  * Address (L3, ufi_net.c): started when the PHY reports a link, stopped when it goes away
  * (DHCP again on the next link); serviced every 10 ms or at once when INTn is low.
  *
+ * Session (L4, ufi_lan_session.c): listens on `port` once an address is bound, serviced
+ * every main-loop pass while INTn is low and at least every 2 ms while connected.  Frames go
+ * to ufi_v2.c (ufi_v2_lan_frame); its replies come back through ufi_native_tx_* ->
+ * ufi_lan_tx_*.  A blocking reply waits at most 2 s for TX room, then the session is
+ * dropped (the peer stopped reading).  An address change, link loss or chip restart closes
+ * the session; ufi_v2_lan_closed() then puts the drive into the safe state if LAN owned it.
+ * The AUTH challenge is SHA-256 over a pool mixed with the STM32 RNG (HSI48), the cycle
+ * counter, the tick, a counter and the peer address: never repeated within a boot even
+ * if the RNG does not deliver.
+ *
  * State lives in SRAM2 (.sram2 is NOLOAD, so ufi_lan_init() clears it first): the AXI SRAM
  * .bss/.data budget is frozen at the gate value and DTCM keeps its stack reserve.
  */
@@ -28,12 +38,17 @@
 #include "ufi_lan.h"
 #include "ufi_lan_cfg.h"
 #include "ufi_net.h"
+#include "ufi_lan_session.h"
+#include "ufi_sha256.h"
 #include "ufi_w5500.h"
 #include <string.h>
 
 #define LAN_SPI_TIMEOUT_MS  10u
 #define LAN_PHY_POLL_MS     500u
 #define LAN_NET_POLL_MS     10u         /* DHCP / probe timers are seconds; INTn shortens it */
+#define LAN_SESSION_POLL_MS 2u          /* connected session without INTn */
+#define LAN_TX_TIMEOUT_MS   2000u       /* blocking reply: peer not reading -> drop */
+_Static_assert(LAN_V2_FRAME_MAX == UFI_V2_FRAME_MAX, "LAN and USB frames differ");
 
 typedef struct {
     SPI_HandleTypeDef spi;
@@ -47,6 +62,11 @@ typedef struct {
     uint32_t phy_ms, net_ms;
     uint32_t spi_errors;
     net_t net;                          /* address: DHCP / link-local / fixed (L3) */
+    lan_session_t sess;                 /* TCP v2 session (L4) */
+    uint16_t sess_changes;              /* net.changes the session was opened with */
+    uint32_t sess_ms;
+    uint8_t pool[SHA256_SIZE];          /* AUTH challenge entropy */
+    uint32_t nonces;
     uint8_t pkt[NET_PKT_MAX];           /* DHCP messages */
     uint8_t buf[UFI_V2_FRAME_MAX];      /* LAN.CFG text, later the session frame */
 } lan_t;
@@ -162,6 +182,75 @@ static void load_cfg(void)
     }
 }
 
+/* ============================================================================
+ * SESSION (L4)
+ * ============================================================================ */
+
+static uint32_t hw_random(void)
+{
+    if (!(RCC->AHB2ENR & RCC_AHB2ENR_RNGEN)) {
+        __HAL_RCC_RNG_CLK_ENABLE();     /* kernel clock HSI48 (RNGSEL reset value), on for USB */
+        RNG->CR |= RNG_CR_RNGEN;
+    }
+    for (unsigned i = 0; i < 2000u; i++) {
+        const uint32_t sr = RNG->SR;
+        if (sr & (RNG_SR_SECS | RNG_SR_CECS)) {
+            break;                      /* seed or clock error: the pool goes on without it */
+        }
+        if (sr & RNG_SR_DRDY) {
+            return RNG->DR;
+        }
+    }
+    return 0;
+}
+
+static void mix(const void* extra, size_t n)
+{
+    const uint32_t v[4] = {DWT->CYCCNT, HAL_GetTick(), ++lan.nonces, hw_random()};
+    sha256_t c;
+    sha256_init(&c);
+    sha256_update(&c, lan.pool, sizeof(lan.pool));
+    sha256_update(&c, v, sizeof(v));
+    sha256_update(&c, extra, n);
+    sha256_final(&c, lan.pool);
+}
+
+static bool cb_can(void* ctx)
+{
+    (void)ctx;
+    return lan_session_ready(&lan.sess, &dev, UFI_V2_FRAME_MAX);
+}
+
+static void cb_frame(void* ctx, uint8_t type, uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
+{
+    (void)ctx;
+    ufi_v2_lan_frame(type, cmd, seq, p, len);
+}
+
+static void cb_nonce(void* ctx, uint8_t out[LAN_NONCE_SIZE])
+{
+    (void)ctx;
+    mix(lan.sess.peer, sizeof(lan.sess.peer));
+    uint8_t tagged[SHA256_SIZE + 1];
+    memcpy(tagged, lan.pool, SHA256_SIZE);
+    tagged[SHA256_SIZE] = 'N';          /* the pool itself never leaves the device */
+    sha256(tagged, sizeof(tagged), out);
+}
+
+static void cb_connected(void* ctx)
+{
+    (void)ctx;
+    mix(&lan.sess.peer_port, sizeof(lan.sess.peer_port));
+}
+
+static void cb_closed(void* ctx)
+{
+    (void)ctx;
+    ufi_v2_lan_closed();
+}
+
+static const lan_session_cb_t scb = {NULL, cb_can, cb_frame, cb_nonce, cb_connected, cb_closed};
+
 /* Chip out of reset with the configured MAC, or held in reset (lan=off, no chip). */
 static void lan_start(void)
 {
@@ -172,6 +261,10 @@ static void lan_start(void)
     }
     lan.net.mode = NET_MODE_NONE;
     lan.net.state = NET_IDLE;
+    if (lan_session_connected(&lan.sess)) {
+        ufi_v2_lan_closed();            /* the chip restarts under the session */
+    }
+    lan_session_init(&lan.sess, lan.cfg.port, lan.cfg.key, lan.cfg.key_len, lan.buf);
     chip_reset_hold();
     if (!lan.cfg.enabled) {
         lan.state = LAN_STATE_OFF;
@@ -210,6 +303,8 @@ void ufi_lan_init(void)
         }
     }
     w5500_mac_from_id(uid, sizeof(uid), lan.uid_mac);
+    sha256(uid, sizeof(uid), lan.pool);
+    mix(NULL, 0);
     load_cfg();
     lan_start();
 }
@@ -244,6 +339,7 @@ void ufi_lan_service(void)
         if (up && lan.net.state == NET_IDLE) {
             net_start(&lan.net, &dev, &lan.cfg, lan.mac, lan.host, lan.pkt, now);
         } else if (!up && lan.net.state != NET_IDLE) {
+            lan_session_close(&lan.sess, &dev, &scb);
             net_stop(&lan.net, &dev);   /* cable out: address gone, DHCP again on the next link */
         }
         lan.state = up ? LAN_STATE_LINK_UP : LAN_STATE_LINK_DOWN;
@@ -254,11 +350,80 @@ void ufi_lan_service(void)
     const bool irq = HAL_GPIO_ReadPin(PIN_LAN_INT.port, PIN_LAN_INT.pin) == GPIO_PIN_RESET;
     if (irq || now - lan.net_ms >= LAN_NET_POLL_MS) {
         lan.net_ms = now;
-        net_service(&lan.net, &dev, now, false);
+        net_service(&lan.net, &dev, now, lan_session_connected(&lan.sess));
     }
-    if (net_has_address(&lan.net)) {
-        lan.state = LAN_STATE_BOUND;
+    if (!net_has_address(&lan.net)) {
+        if (lan.sess.state != LAN_SESS_DOWN) {
+            lan_session_close(&lan.sess, &dev, &scb);
+        }
+        return;
     }
+    lan.state = LAN_STATE_BOUND;
+    if (lan.sess_changes != lan.net.changes) {
+        lan.sess_changes = lan.net.changes;     /* new address: connections to the old one are dead */
+        lan_session_close(&lan.sess, &dev, &scb);
+    }
+    const bool poll = lan_session_connected(&lan.sess) ? now - lan.sess_ms >= LAN_SESSION_POLL_MS
+                                                       : now - lan.sess_ms >= LAN_NET_POLL_MS;
+    if (irq || poll) {
+        lan.sess_ms = now;
+        lan_session_service(&lan.sess, &dev, now, &scb);
+    }
+}
+
+/* ============================================================================
+ * NATIVE TRANSMIT (ufi_native_tx_* while ufi_v2_route() is LAN)
+ * ============================================================================ */
+
+bool ufi_lan_tx_room(void)
+{
+    return lan_session_ready(&lan.sess, &dev, UFI_V2_FRAME_MAX);
+}
+
+bool ufi_lan_tx_idle(void)
+{
+    return ufi_lan_tx_room();
+}
+
+int ufi_lan_tx_start(const uint8_t* p, uint32_t n)
+{
+    if (n > UFI_V2_FRAME_MAX) {
+        return UFI_ERR_USB;
+    }
+    const int r = lan_session_send(&lan.sess, &dev, p, (uint16_t)n);
+    return r == LAN_TX_OK ? UFI_OK : r == LAN_TX_BUSY ? UFI_ERR_BUSY : UFI_ERR_USB;
+}
+
+int ufi_lan_tx_blocking(const uint8_t* p, uint32_t n)
+{
+    if (n > UFI_V2_FRAME_MAX) {
+        return UFI_ERR_USB;
+    }
+    const uint32_t t0 = HAL_GetTick();
+    for (;;) {
+        const int r = lan_session_send(&lan.sess, &dev, p, (uint16_t)n);
+        if (r == LAN_TX_OK) {
+            return UFI_OK;
+        }
+        if (r == LAN_TX_CLOSED) {
+            return UFI_ERR_USB;
+        }
+        if (HAL_GetTick() - t0 >= LAN_TX_TIMEOUT_MS) {
+            lan.sess.drop = true;       /* closed by the next service, outside this request */
+            return UFI_ERR_USB;
+        }
+        UFI_WATCHDOG_FEED();
+    }
+}
+
+bool ufi_lan_connected(void)
+{
+    return lan_session_connected(&lan.sess);
+}
+
+bool ufi_lan_write_allowed(void)
+{
+    return lan.cfg.write && !ufi_board_jumper_locked();    /* lan_write=1 and the switch open */
 }
 
 const net_t* ufi_lan_net(void) { return &lan.net; }

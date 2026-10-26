@@ -10,7 +10,7 @@ Targets:
   sd       the stand-alone SD module: image loaders, dump writers, UFI.CFG and the file
            API over an in-memory FatFs fed by the input (fuzz_sd.c)
   lan      the HAL-free LAN parsers: LAN.CFG text, DHCP replies, the address state
-           machine against the W5500 fake (fuzz_lan.c)
+           machine against the W5500 fake, the TCP v2 session (fuzz_lan.c)
 Stubs: fuzz_stubs.py from the header prototypes, HAL/FatFs declarations from hal_stub/.
 
 usage: python run_fuzz.py [--target parsers|v2|gw|sd|all] [--seconds N] [--replay]
@@ -79,6 +79,9 @@ V2_SEEDS = (
     b'\x00' + record(4, 0x10, 9, b'\x01') + record(4, 0x27, 1, bytes([1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0]))
     + record(4, 0x35, 2, bytes([1, 18, 0, 8]) + bytes(256)) + record(0x40, 0, 0) + record(4, 0x00, 3),
     b'\x02' + record(4, 0x10, 1, b'\x01') + record(4, 0x20, 2, bytes([0, 0, 1, 0, 0, 0])) + record(4, 0x0A, 3, b'\x01'),
+    # L4: LAN (odd seq) selects and reads, USB (even seq) is busy, then the LAN session ends
+    b'\x04' + record(4, 0x10, 1, b'\x01') + record(4, 0x20, 3, bytes([0, 0, 1, 0, 0, 0])) + record(4, 0x12, 2, b'\x05')
+    + record(4, 0x51, 5, b'\x00\x00\x00\x00\x10\x00LAN.CFG') + record(4, 0x04, 7) + record(0x44, 0, 9) + record(4, 0x12, 4, b'\x05'),
 )
 
 # Greaseweazle: GET_INFO 0, SEEK 2, HEAD 3, SET_PARAMS 4, GET_PARAMS 5, MOTOR 6, READ_FLUX 7,
@@ -154,6 +157,30 @@ def dhcp_seeds():
 LAN_SEEDS += dhcp_seeds() + (b'\x02' + bytes([1, 255]) * 3 + bytes([2, 0, 1, 255, 3, 0, 1, 100]),)
 
 
+def v2_frame(ftype, cmd, seq, payload=b''):
+    """55 AA type cmd seq status len16 payload crc16 (CRC-16/CCITT-FALSE over type..payload)."""
+    body = bytes([ftype, cmd, seq, 0, len(payload) & 255, len(payload) >> 8]) + payload
+    crc = 0xFFFF
+    for b in body:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return b'\x55\xaa' + body + bytes([crc & 255, crc >> 8])
+
+
+def session_seed(flags, stream):
+    """selector 3, flags, then the stream in chunks of up to 64 bytes"""
+    out = bytes([3, flags])
+    for i in range(0, len(stream), 64):
+        chunk = stream[i:i + 64]
+        out += bytes([len(chunk) - 1]) + chunk
+    return out
+
+
+LAN_SEEDS += (session_seed(0xFE, v2_frame(1, 0, 1, b'UFI2') + b'\x01\x55' + v2_frame(4, 0x22, 2, b'\xf2\x48')),
+              session_seed(0xFF, v2_frame(1, 0x49, 1) + v2_frame(1, 0x49, 2, bytes(32)) + v2_frame(1, 0, 3)))
+
+
 def scp_seed():
     """SCP with one track of eight 2 us cells; flags bit 4 = mutable image without checksum."""
     hdr = b'SCP' + bytes([0x19, 0x80, 1, 0, 1, 0x10, 0, 0, 0]) + bytes(4)
@@ -214,7 +241,7 @@ def build_protection():
     return exe
 
 
-LAN_SOURCES = ('ufi_lan_cfg.c', 'ufi_net.c', 'ufi_w5500.c', 'ufi_sha256.c')
+LAN_SOURCES = ('ufi_lan_cfg.c', 'ufi_net.c', 'ufi_w5500.c', 'ufi_sha256.c', 'ufi_lan_session.c')
 
 
 def build_lan():

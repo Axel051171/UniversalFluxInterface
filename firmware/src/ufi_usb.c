@@ -8,6 +8,7 @@
 #include "ufi_firmware.h"
 #include "ufi_composite.h"
 #include "ufi_resources.h"
+#include "ufi_lan.h"
 #include "usbd_core.h"
 #include "usbd_desc.h"
 #include "usbd_cdc_if.h"
@@ -470,6 +471,15 @@ int ufi_usb_process_command(void) {
     const uint8_t cmd = cmd_buffer[0];
     if (cmd_len < command_min_len(cmd)) {
         reply(cmd, st(UFI_ERR_BAD_ARGS), NULL, 0);
+        cmd_ready = 0;
+        return 1;
+    }
+    /* L4: v1 requests (other than pure queries) take the drive for USB, or are busy while
+     * the LAN session owns it */
+    const bool query = cmd == UFI_CMD_NOP || cmd == UFI_CMD_GET_INFO || cmd == UFI_CMD_GET_STATUS ||
+                       cmd == UFI_CMD_DUMP_STATUS || (cmd == UFI_CMD_BOARD_STATUS && cmd_len == 1);
+    if (!query && !ufi_v2_claim(UFI_ROUTE_USB)) {
+        reply(cmd, st(UFI_ERR_BUSY), NULL, 0);
         cmd_ready = 0;
         return 1;
     }

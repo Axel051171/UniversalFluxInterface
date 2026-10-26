@@ -55,6 +55,8 @@ static int ufi_native_tx_blocking(const uint8_t* p,uint32_t n){
     assert(n<=sizeof last);memcpy(last,p,n);sent=n;return UFI_OK;
 }
 static void put16(uint8_t* out,uint32_t value){out[0]=(uint8_t)value;out[1]=(uint8_t)(value>>8);}
+static struct {uint8_t owner;} link;                       /* L4 transport state: no owner */
+static uint8_t ufi_v2_route(void){return 1;}
 '''
     for name in ('st','crc16','ufi_v2_frame','send'):code+=function('ufi_v2.c',name)
     code+=r'''

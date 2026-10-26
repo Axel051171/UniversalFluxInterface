@@ -485,6 +485,56 @@ Link-Local-Probe mit RTR 1,5 s und RCR 2 (drei Anfragen im Abstand 1,5 s), DHCP-
 dafür weder Ethernet-Rahmen gebaut noch ein weiterer Puffer belegt werden muss; dass der Chip die
 Anfrage wirklich mit Absender 0.0.0.0 sendet, ist nur mit einem Mitschnitt am Gerät zu bestätigen.
 
+**TCP-Sitzung (Stufe L4):** Sobald eine Adresse gebunden ist, wartet Socket 0 auf TCP-Port
+`port` (Vorgabe 55100). Es gibt genau eine Verbindung zur Zeit: solange sie besteht, lauscht kein
+Socket, ein zweiter Client bekommt ein RST. Über die Verbindung laufen **unveränderte UFI-v2-Rahmen**
+(2.1) in beide Richtungen, auch DATA- und Ende-Rahmen von READ/WRITE und Ereignisse. Ein Rahmen
+darf in beliebigen TCP-Stücken ankommen; Bytes vor `55 AA` werden übergangen, falsche Länge oder
+CRC ergeben wie über USB `cmd 0xFF, seq 0, status 14`. Eine Anfrage wird erst angenommen, wenn
+im Sendepuffer Platz für ihre Antwort ist (sonst staut TCP). Keep-Alive alle 10 s (Sn_KPALVTR = 2),
+dazu die Wiederholungsgrenze des Chips: eine verschwundene Gegenstelle beendet die Verbindung.
+Kann eine Antwort 2 s lang nicht gesendet werden (Gegenstelle liest nicht), wird die Verbindung
+getrennt. Adresswechsel, Linkverlust, `lan=off` und Neustart des Chips beenden sie ebenfalls.
+
+**Ende der LAN-Sitzung:** Besaß die LAN-Sitzung das Laufwerk, läuft derselbe Abbruchpfad wie bei
+einem USB-Abbruch (2.5): laufende READ/WRITE/Jobs werden abgebrochen (ihr Ende-Rahmen geht ins
+Leere), IEC in Ruhe, Laufwerk in den sicheren Zustand, im Composite-Modus wird die native Lease
+freigegeben. Ereignisse, die per LAN abonniert waren, werden abbestellt.
+
+**Laufwerksbesitz zwischen USB und LAN:** Der Transport, dessen erste nicht nur lesende Anfrage
+ankommt, besitzt das Laufwerk. Nur lesend sind PING, INFO, STATUS, DESCRIBE, FEATURES,
+DIAGNOSTICS, WRITE_LIMITS, EVENTS, DUMP_STATUS, RESOURCE ohne Argument, QUALITY, JOB-Status, die
+lesenden ANALYSIS_JOB-Ops (wie bisher für die Composite-Lease, 1.4) sowie NET 0x48 und AUTH 0x49;
+alles andere – Laufwerk, IEC, Dateien, Strom, ABORT, Dumps – beansprucht den Besitz. Der andere
+Transport erhält für diese Befehle Status 1, bis die Sitzung des Besitzers endet: bei LAN das Ende
+der TCP-Verbindung; bei USB Kanalrücksetzen (10000 Baud), Trennen/Neuanmeldung, RESOURCE 0 oder
+30 s ohne USB-Anfrage, während nichts läuft (USB hat kein Sitzungsende, das das Gerät sieht).
+v1-Befehle über USB beanspruchen den Besitz ebenso (außer NOP, GET_INFO, GET_STATUS, DUMP_STATUS,
+BOARD_STATUS ohne Argument). LAN kann den Besitz nur bekommen, solange USB im Flux- oder
+Composite-Modus ist und Greaseweazle die Ressourcen nicht hält. Antworten gehen immer an den
+Transport der Anfrage, spätere Rahmen (Ende-Rahmen, READ-Daten, IEC-Reset) an den Besitzer,
+Ereignisse an den Transport, der EVENTS zuletzt gesendet hat. Im Composite-Modus gilt zusätzlich
+die 30-s-Lease aus 1.4 für beide Transporte.
+
+**Was über LAN nicht geht:** BOOTLOADER 0x04 (Firmware-Update nur über USB) und USB_MODE 0x05 →
+Status 24. READ_FILE von `LAN.CFG` (enthält `lan_key`; jede Schreibweise mit Pfad, Laufwerk,
+Groß-/Kleinschreibung, angehängten Punkten/Leerzeichen) → Status 24; DIR zeigt die Datei weiter
+an. Schreibende Befehle – alles, was die Sitzungs-Schreibsperre (4.6) abweist, dazu WRITE_FILE,
+DELETE und IEC_SEND (rohe Busbytes können DOS-Befehle sein) – nur mit `lan_write=1` **und**
+offenem Schreibschutzschalter (WLOCK_HW), sonst Status 12 wie schreibgeschützt.
+
+**AUTH 0x49 (`lan_key`):** Ist `lan_key` gesetzt, beantwortet die Sitzung vor der Anmeldung jede
+andere Anfrage mit Status 25 und verwirft DATA-Rahmen. Anfrage leer → Antwort 34 Byte: `schema`
+u8 = 1, `flags` u8 (Bit0 Schlüssel gesetzt, Bit1 schon angemeldet), `challenge` 32 Byte. Anfrage
+32 Byte = HMAC-SHA256(`lan_key` als ASCII-Bytes, `challenge`) → Status 0 und angemeldet, sonst
+Status 26. Jede Challenge gilt für genau eine Antwort; nach drei falschen Antworten trennt das Gerät
+die Verbindung. Andere Längen → Status 16. Ohne Schlüssel ist die Sitzung von Anfang an angemeldet
+(Antwort `flags` = 2, eine 32-Byte-Antwort ergibt Status 0). Über USB antwortet 0x49 mit Status 11.
+Die Challenge ist SHA-256 über einen Pool aus STM32-RNG, Zykluszähler, Tick, Zähler und
+Gegenstelle; sie wiederholt sich innerhalb eines Laufs nicht. Der Schlüssel selbst geht nie über
+die Leitung; die Rahmen danach sind nicht verschlüsselt (Schutz gegen fremde Bedienung im LAN,
+nicht gegen Mitlesen).
+
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
 ### 2.1 Rahmen (beide Richtungen)
@@ -724,6 +774,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x46 | SYNC (A10c, Platine v1.0) | – (Abfrage) oder `on` u8 (1 = Zählung starten, 0 = anhalten; 11 vor v1.0, 1 = busy solange SYNC die Indexquelle ist) | `active` u8, `source` u8 (1 = SYNC ersetzt INDEX), `level` u8, `count` u32, `last_t2` u32 (TIM2-Zeitbasis), `last_t32` u32 (TIM8 mit Überlaufzähler), `period` u32 (19 Byte); Abschnitt 1.5 |
 | 0x45 | RAILS (A10d, Platine v1.0) | – | `v5_mv` u16, `v12_mv` u16 (FDD_5V/FDD_12V am Laufwerksstecker über die Teiler 10 k/10 k und 33 k/10 k), `flags` u8 (Bit0 5 V unter 4,5 V, Bit1 12 V unter 10,8 V – jeweils nur bei eingeschalteter Schiene, Bit2/3 Schiene 5 V/12 V ein, Bit4 Teiler vorhanden; ohne Bit4 (v0.x) sind die Spannungen 0) (5 Byte); Abschnitt 1.5 |
 | 0x47 | FDD_PINS (A10e, Platine v1.0) | – (lesen) oder `pin4` u8, `pin33` u8 (je 0 = aus, 1 = an, 0xFF = unverändert; setzt zuerst die Ausgänge J6 Pin 4 (Q12) und Pin 33 (Flippy-Signal), 11 vor v1.0) | `pins` u8 (Bit0 J6 Pin 2 low, Bit1 Pin 4 low, Bit2 J23 !CSTOUT aktiv, Bit3 WGATE-Bus aktiv, Bit4 WLOCK_HW gesperrt, Bit5 FLT5, Bit6 FLT12, Bit7 SYNC high), `outputs` u8 (Bit0 Pin 4 angezogen, Bit1 Pin 33 high) (2 Byte); Abschnitt 1.5 |
+| 0x49 | AUTH (L4, nur LAN) | leer (Challenge holen) oder 32 Byte HMAC-SHA256(`lan_key`, Challenge) | leer: `schema` u8 = 1, `flags` u8 (Bit0 Schlüssel gesetzt, Bit1 angemeldet), `challenge` 32 Byte; Antwort: – (Status 0 angemeldet, 26 falsch); über USB Status 11; Abschnitt 1.6 |
 | **Dateien (SD-NAND, FAT32)** | | | |
 | 0x50 | DIR | `start` u16, Pfad (ASCII, leer = Wurzel) | `count` u8, `more` u8, dann je Eintrag `size` u32, `attr` u8 (0x10 = Ordner), `nlen` u8, Name |
 | 0x51 | READ_FILE | `offset` u32, `len` u16 (≤ 4096), Name | Dateiinhalt (kürzer am Dateiende) |
@@ -798,6 +849,9 @@ fehl, endet WRITE mit Status 3.
 | 21 | Mediengeneration oder angewähltes Laufwerk hat sich während einer geschützten nativen Operation geändert, `MEDIA_CHANGED` (INFO Bit27, Abschnitt 4.2) |
 | 22 | Sitzungs-Schreibsperre aktiv, `SOFT_WRITE_LOCK` (Op 37, Abschnitt 4.6): das Schreiben wurde von der Sperre dieser Sitzung abgewiesen, nicht vom Schreibschutz der Diskette oder dem Jumper (1.18) |
 | 23 | Drehzahl außerhalb der Toleranz um die Quell-Indexdauer, `SPEED_MISMATCH` (Op 41, Abschnitt 4.10): vor Kopfbewegung und Schreibtor abgewiesen, nichts geschrieben (1.18) |
+| 24 | über LAN nicht erlaubt, `LAN_DENIED`: BOOTLOADER, USB_MODE, Lesen von LAN.CFG (L4, Abschnitt 1.6) |
+| 25 | LAN: Anmeldung nötig, `AUTH_REQUIRED`: `lan_key` gesetzt und AUTH 0x49 noch nicht bestanden (L4) |
+| 26 | LAN: Antwort auf die AUTH-Challenge falsch, `AUTH_FAILED` (L4; nach drei Fehlversuchen wird getrennt) |
 
 ### 3.3 Festlegungen im Detail
 

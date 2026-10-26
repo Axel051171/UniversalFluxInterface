@@ -8,6 +8,9 @@
  *   loop after this record, bit3 report an operation end (bit4: WRITE instead of READ),
  *   bit5 queue an event with code = cmd (bit7: blocking event), bit6 clear comms.
  * Mode bit1: Greaseweazle owns the drive resources for this input.
+ * Mode bit2 (L4): records with an odd seq arrive from the LAN session (ufi_v2_lan_frame,
+ * already CRC-checked there), the rest over USB; flags bit6 then ends the LAN session
+ * (ufi_v2_lan_closed) instead of clearing the USB comms.
  * The tail of the input feeds the stub oracle (fuzz_oracle.h), so driver results are
  * fuzzed too.  Checks: ASan/UBSan, every emitted frame is well formed, and the dispatcher
  * never hangs (libFuzzer -timeout). */
@@ -15,6 +18,7 @@
 #include "ufi_cancel.h"
 #include "ufi_job.h"
 #include "ufi_resources.h"
+#include "ufi_lan.h"
 #include "fuzz_oracle.h"
 #include <assert.h>
 #include <stddef.h>
@@ -140,11 +144,12 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
     if (n < 2) return 0;
     tail = d; tail_n = n; prng = 0x9E3779B9u ^ (uint32_t)n; ticks = 0; flux_now = 0;
     memset(zero_buf, 0, sizeof zero_buf);
+    ufi_v2_init();
     ufi_v2_reset();
     ufi_job_reset();
     ufi_resources_reset();
     ufi_cancel_clear();
-    assert(!ufi_v2_active() && !ufi_v2_write_pending());
+    assert(!ufi_v2_active() && !ufi_v2_write_pending() && !ufi_v2_owner() && ufi_v2_route() == UFI_ROUTE_USB);
     if (d[0] & 2u) ufi_resources_acquire(UFI_OWNER_GW);    /* Greaseweazle holds the drive */
 
     size_t i = 1;
@@ -158,6 +163,7 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
         uint32_t len = (d[i + 3] | (uint32_t)d[i + 4] << 8) & 0x1FFFu;
         i += 5;
         const uint32_t avail = (uint32_t)(n - i);
+        const bool lan = (d[0] & 4u) && (seq & 1u);
         if (flags & 0x08u) {
             /* internal API: the firmware's end payloads are a few bytes (verify level, clamp count) */
             uint32_t l = len > avail ? avail : len;
@@ -167,8 +173,14 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
             if (flags & 0x80u) ufi_v2_event_now(cmd, d + i, (uint16_t)(l > 8u ? 8u : l));
             else ufi_v2_event(cmd, d + i, (uint16_t)(l > 64u ? 64u : l));
         } else if (flags & 0x40u) {
-            ufi_v2_clear_comms();                       /* host set 10000 baud: drop the session */
+            if (lan) ufi_v2_lan_closed();               /* TCP connection gone */
+            else ufi_v2_clear_comms();                  /* host set 10000 baud: drop the session */
             len = 0;
+        } else if (lan) {
+            if (len > avail) len = avail;
+            if (len > UFI_V2_MAX_PAYLOAD) len = UFI_V2_MAX_PAYLOAD;
+            memcpy(frame + UFI_V2_HDR, d + i, len);     /* request() may write the payload */
+            ufi_v2_lan_frame((flags & 1u) ? UFI_V2_DATA : UFI_V2_REQUEST, cmd, seq, frame + UFI_V2_HDR, (uint16_t)len);
         } else if (len > UFI_V2_MAX_PAYLOAD) {
             /* oversize length field: header only, the parser must reject and resync */
             uint8_t hdr[UFI_V2_HDR + 2];
@@ -189,5 +201,6 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
         if (flags & 4u) ufi_v2_service();
     }
     for (int k = 0; k < 4; k++) ufi_v2_service();
+    assert(ufi_v2_owner() <= UFI_ROUTE_LAN && ufi_v2_route() != UFI_ROUTE_NONE);
     return 0;
 }

@@ -47,6 +47,9 @@ typedef enum {
     UFI_ERR_MEDIA_CHANGED = -21,
     UFI_ERR_SOFT_LOCK   = -22,  /* session write lock engaged (ANALYSIS_JOB op 37), until MCU reset */
     UFI_ERR_SPEED_MISMATCH = -23, /* write: drive speed outside the tolerance around the source index period (op 41) */
+    UFI_ERR_LAN_DENIED  = -24,  /* not over LAN: firmware update, USB mode, reading LAN.CFG (L4) */
+    UFI_ERR_AUTH_REQUIRED = -25, /* LAN: lan_key set, AUTH 0x49 not passed yet (ufi_lan_session.c) */
+    UFI_ERR_AUTH_FAILED = -26,  /* LAN: wrong answer to the AUTH challenge */
 } ufi_error_t;
 
 /* Fix #2: IEC Timeout Helpers */

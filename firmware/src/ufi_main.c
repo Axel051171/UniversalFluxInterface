@@ -113,6 +113,7 @@ void ufi_init(void)
     if (ufi_board_rev() >= 10u) {
         ufi_clock_rtc_init();   /* v1.0 (A9c): LSE 32.768 kHz + RTC on the CR2032; v0.x has no LSE crystal */
     }
+    ufi_v2_init();              /* L4: transport routing state (DTCM) before USB can deliver */
     ufi_usb_init();
     ufi_sd_init();              /* v0.6 SD NAND; failure shows in SD_INFO / dump error 1 */
     ufi_config_load();          /* UFI.CFG: stand-alone drive (a/b/amiga/ds0-ds3), dump settings */

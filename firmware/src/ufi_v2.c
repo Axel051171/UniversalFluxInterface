@@ -16,6 +16,15 @@
  * The USB IRQ fills a ring buffer and pauses the OUT endpoint when it is nearly full (same
  * flow control as ufi_gw.c); the main loop parses frames, so they may span USB packets.
  * Events (0x80-0x84) are queued and only sent while USB is idle, so never inside a frame.
+ *
+ * LAN (L4): the TCP session (ufi_lan_session.c) delivers complete frames through
+ * ufi_v2_lan_frame(); `link.route` says which transport the request came from, and
+ * ufi_native_tx_* (ufi_composite.c) send there.  Outside a request, replies that come later
+ * (END frames, READ data, IEC reset) go to the drive owner: the transport whose first
+ * non-read-only request claimed the drive.  The other transport gets status 1 (busy) for
+ * everything but the read-only queries until the owner's session ends - LAN: the TCP
+ * connection; USB: reset / clear comms / disconnect / RESOURCE release, or 30 s without a
+ * USB request while nothing runs (USB has no session end the device could see).
  */
 
 #include "ufi_firmware.h"
@@ -30,6 +39,7 @@
 #include "ufi_capabilities.h"
 #include "ufi_evidence.h"
 #include "ufi_lan.h"
+#include "ufi_lan_session.h"
 _Static_assert(QUALITY_MAX_WIRE+40u<=UFI_V2_MAX_PAYLOAD,"analysis report exceeds native packet");
 #include "ufi_metrics.h"
 #include "usbd_cdc_if.h"
@@ -96,6 +106,8 @@ enum {
     V2_SYNC = 0x46,                     /* A10c: SYNC sensor capture (TIM8) status / counting */
     V2_RAILS = 0x45,                    /* A10d: FDD_5V / FDD_12V at the drive connector */
     V2_FDD_PINS = 0x47,                 /* A10e: J6 pin read-backs, pin 4 / pin 33 outputs (v1.0) */
+    V2_NET = LAN_V2_NET,                /* L5: LAN status */
+    V2_AUTH = LAN_V2_AUTH,              /* L4: lan_key challenge, answered by the LAN session itself */
     V2_DIR = 0x50, V2_READ_FILE = 0x51, V2_WRITE_FILE = 0x52, V2_DELETE = 0x53,
     V2_CFG_RELOAD = 0x54,
     V2_DUMP_START = 0x60, V2_DUMP_STATUS = 0x61, V2_DUMP_ABORT = 0x62, V2_COPY_START = 0x63,
@@ -125,6 +137,17 @@ static uint8_t read_seq, write_seq;
 static bool iec_reset_pending;
 static uint8_t iec_reset_seq;
 static uint32_t native_activity;
+
+/* Transports (L4).  DTCM like the RX ring: NOLOAD, so ufi_v2_init() clears it at start-up;
+ * the AXI .bss budget stays as it is. */
+#define OWNER_IDLE_MS   30000u          /* USB owner without requests: session considered over */
+typedef struct {
+    uint8_t route;                      /* origin of the request being processed, NONE outside */
+    volatile uint8_t owner;             /* drive owner (UFI_ROUTE_*); read by the EP0 cancel path */
+    uint8_t ev_route;                   /* events go where EVENTS came from last */
+    uint32_t owner_ms;                  /* last request of the owner */
+} v2_link_t;
+__attribute__((section(".dtcm"), aligned(4))) static v2_link_t link;
 
 typedef struct {
     uint8_t code, len;
@@ -191,8 +214,9 @@ static void send(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
     if (len && payload != &tx[UFI_V2_HDR]) {
         memmove(&tx[UFI_V2_HDR], payload, len);
     }
+    /* a failed reply cancels only work of the transport that failed (L4) */
     if(ufi_native_tx_blocking(tx, ufi_v2_frame(tx, type, cmd, seq, status, len))!=UFI_OK &&
-       ufi_resources_owner()!=UFI_OWNER_GW) ufi_cancel_request();
+       ufi_resources_owner()!=UFI_OWNER_GW && (!link.owner || link.owner==ufi_v2_route())) ufi_cancel_request();
 }
 
 uint8_t ufi_board_rev(void)
@@ -299,7 +323,7 @@ bool ufi_v2_rx(const uint8_t* buf, uint32_t len)
 /* Back to v1; the main loop drops what arrived so far and aborts a read / write */
 void ufi_v2_clear_comms(void)
 {
-    if (ufi_resources_owner()!=UFI_OWNER_GW) ufi_cancel_request();
+    if (ufi_resources_owner()!=UFI_OWNER_GW && link.owner!=UFI_ROUTE_LAN) ufi_cancel_request();
     rx_discard = rx_head;
     on = false;
     clear_req = true;
@@ -370,7 +394,8 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
 void ufi_v2_event(uint8_t code, const void* payload, uint16_t len)
 {
     /* codes beyond the 32-bit mask are dropped explicitly (a shift by >= 32 is undefined in C) */
-    if (!on || code < UFI_V2_EVT_DISK || (unsigned)(code - UFI_V2_EVT_DISK) >= 32u ||
+    const bool live = (link.ev_route == UFI_ROUTE_LAN) ? ufi_lan_connected() : on;
+    if (!live || code < UFI_V2_EVT_DISK || (unsigned)(code - UFI_V2_EVT_DISK) >= 32u ||
         !(ev_mask & (1u << (code - UFI_V2_EVT_DISK))) ||
         len > EVQ_PAYLOAD) {
         return;
@@ -388,16 +413,21 @@ void ufi_v2_event(uint8_t code, const void* payload, uint16_t len)
 /* One queued event while USB is idle (between frames) */
 static void flush_event(void)
 {
-    if (ev_tail == ev_head || !ufi_native_tx_idle()) {
+    if (ev_tail == ev_head) {
         return;
     }
-    const v2_event_t* e = &evq[ev_tail];
-    memcpy(&ev_buf[UFI_V2_HDR], e->data, e->len);
-    const uint32_t n = ufi_v2_frame(ev_buf, UFI_V2_EVENT, e->code, ev_seq, 0, e->len);
-    if (ufi_native_tx_start(ev_buf, n) != UFI_ERR_BUSY) {
-        ev_seq++;
-        ev_tail = (uint8_t)((ev_tail + 1u) % EVQ_SIZE);
+    const uint8_t route = link.route;
+    link.route = link.ev_route ? link.ev_route : UFI_ROUTE_USB;
+    if (ufi_native_tx_idle()) {
+        const v2_event_t* e = &evq[ev_tail];
+        memcpy(&ev_buf[UFI_V2_HDR], e->data, e->len);
+        const uint32_t n = ufi_v2_frame(ev_buf, UFI_V2_EVENT, e->code, ev_seq, 0, e->len);
+        if (ufi_native_tx_start(ev_buf, n) != UFI_ERR_BUSY) {
+            ev_seq++;
+            ev_tail = (uint8_t)((ev_tail + 1u) % EVQ_SIZE);
+        }
     }
+    link.route = route;
 }
 
 /* Mode switch: the event must be out before the device re-enumerates */
@@ -452,6 +482,7 @@ static bool allowed_during_dump(uint8_t cmd)
         case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_RTC: case V2_SYNC:
         case V2_RAILS:
         case V2_INDEX_SIM: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
+        case V2_NET: case V2_AUTH:
             return true;
         default:
             return false;
@@ -465,6 +496,7 @@ static bool uses_drive(uint8_t cmd)
         case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
         case V2_ABORT: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_QUALITY: case V2_ANALYSIS_JOB:
         case V2_RTC: case V2_SYNC: case V2_RAILS:   /* A10: board sensing, no drive involved */
+        case V2_NET: case V2_AUTH:                  /* L4/L5: LAN status and challenge */
             return false;
         default: return true; /* includes IEC, file I/O and mode/power changes */
     }
@@ -761,6 +793,9 @@ static int cmd_guarded_write(uint8_t seq,const uint8_t* p,uint16_t len)
 /* DATA frame of a WRITE: compact stream code for ufi_write.c */
 static void write_data(uint8_t* p, uint16_t len)
 {
+    if (link.owner && link.owner != (link.route ? link.route : UFI_ROUTE_USB)) {
+        return;                         /* DATA from the other transport: not this WRITE's */
+    }
     native_activity=HAL_GetTick();ufi_resources_touch(native_activity);
     if (ufi_job_live()) {
         if (len <= UFI_JOB_HEADER || !ufi_job_accept(p,p+UFI_JOB_HEADER,len-UFI_JOB_HEADER,HAL_GetTick())) {
@@ -794,6 +829,92 @@ static bool locked_write(uint8_t cmd, const uint8_t* p, uint16_t len)
         default:
             return false;
     }
+}
+
+/* LAN.CFG holds lan_key: never readable over LAN.  Last path component, trailing dots and
+ * blanks dropped (FatFs ignores them), case-insensitive. */
+static bool is_lan_cfg(const uint8_t* name, uint16_t n)
+{
+    while (n && (name[n - 1u] == '.' || name[n - 1u] == ' ')) {
+        n--;
+    }
+    uint16_t s = n;
+    while (s && name[s - 1u] != '/' && name[s - 1u] != '\\' && name[s - 1u] != ':') {
+        s--;
+    }
+    static const char want[] = LAN_CFG_NAME;
+    if (n - s != sizeof(want) - 1u) {
+        return false;
+    }
+    for (uint16_t i = 0; i < sizeof(want) - 1u; i++) {
+        const uint8_t ch = name[s + i];
+        if ((ch >= 'a' && ch <= 'z' ? ch - 'a' + 'A' : ch) != (uint8_t)want[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Requests the LAN may not make (L4): firmware update and USB re-enumeration only over USB,
+ * LAN.CFG not readable, and everything that writes - the session write lock set, SD file
+ * writes and deletes, raw IEC bus bytes (they can carry DOS commands) - only with
+ * lan_write=1 and the write lock switch open.  0 = allowed. */
+static int lan_refusal(uint8_t cmd, const uint8_t* p, uint16_t len)
+{
+    if (cmd == V2_BOOTLOADER || cmd == V2_USB_MODE) {
+        return UFI_ERR_LAN_DENIED;
+    }
+    if (cmd == V2_READ_FILE && len > 6u && is_lan_cfg(&p[6], (uint16_t)(len - 6u))) {
+        return UFI_ERR_LAN_DENIED;
+    }
+    if ((locked_write(cmd, p, len) || cmd == V2_WRITE_FILE || cmd == V2_DELETE || cmd == V2_IEC_SEND) &&
+        !ufi_lan_write_allowed()) {
+        return UFI_ERR_WRITE_PROT;
+    }
+    return 0;
+}
+
+static bool owner_busy(void)
+{
+    return op_read || op_write || iec_reset_pending || ufi_operation_busy() || ufi_job_live() ||
+           ufi_dump_active();
+}
+
+/* Drive ownership (L4): the first transport to make a non-read-only request owns the drive
+ * until its session ends; LAN only while USB runs the UFI protocol (flux or composite, and
+ * not while Greaseweazle holds the resources). */
+bool ufi_v2_claim(uint8_t origin)
+{
+    const uint32_t now = HAL_GetTick();
+    if (origin == UFI_ROUTE_LAN) {
+        const uint8_t mode = ufi_usb_get_mode();
+        if ((mode != UFI_USB_FLUX && mode != UFI_USB_COMPOSITE) || ufi_resources_owner() == UFI_OWNER_GW) {
+            return false;
+        }
+    }
+    if (link.owner && link.owner != origin &&
+        (link.owner != UFI_ROUTE_USB || owner_busy() || now - link.owner_ms < OWNER_IDLE_MS)) {
+        return false;
+    }
+    link.owner = origin;
+    link.owner_ms = now;
+    return true;
+}
+
+uint8_t ufi_v2_owner(void)
+{
+    return link.owner;
+}
+
+uint8_t ufi_v2_route(void)
+{
+    return link.route ? link.route : link.owner ? link.owner : UFI_ROUTE_USB;
+}
+
+void ufi_v2_init(void)
+{
+    memset(&link, 0, sizeof(link));
+    link.ev_route = UFI_ROUTE_USB;
 }
 
 static int cmd_diagnostics(const uint8_t* p,uint16_t len,uint8_t* out,uint16_t* size)
@@ -834,11 +955,27 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_SOFT_LOCK), NULL, 0);
         return;
     }
+    const uint8_t origin = link.route ? link.route : UFI_ROUTE_USB;
+    if (origin == UFI_ROUTE_LAN) {
+        const int refused = lan_refusal(cmd, p, len);
+        if (refused) {
+            send(UFI_V2_REPLY, cmd, seq, st(refused), NULL, 0);
+            return;
+        }
+    }
 
     const bool readonly = cmd == V2_PING || cmd == V2_INFO || cmd == V2_STATUS ||
         cmd == V2_DESCRIBE || cmd == V2_FEATURES || cmd == V2_DIAGNOSTICS || cmd == V2_WRITE_LIMITS || cmd == V2_EVENTS ||
         cmd == V2_DUMP_STATUS || cmd == V2_RESOURCE || cmd == V2_QUALITY || (cmd == V2_JOB && !len) ||
-        (cmd == V2_ANALYSIS_JOB && len && p[0]!=1 && !(p[0]==46 && len>1) && p[0]!=24 && p[0]!=26 && p[0]!=27 && p[0]!=29 && !((p[0]==30 || p[0]==31) && len>1) && p[0]!=4 && p[0]!=5 && p[0]!=16 && !((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18 || p[0]==33 || p[0]==34 || p[0]==36) && len>1));
+        (cmd == V2_ANALYSIS_JOB && len && p[0]!=1 && !(p[0]==46 && len>1) && p[0]!=24 && p[0]!=26 && p[0]!=27 && p[0]!=29 && !((p[0]==30 || p[0]==31) && len>1) && p[0]!=4 && p[0]!=5 && p[0]!=16 && !((p[0]==7 || p[0]==10 || p[0]==11 || p[0]==14 || p[0]==15 || p[0]==18 || p[0]==33 || p[0]==34 || p[0]==36) && len>1)) ||
+        cmd == V2_NET || cmd == V2_AUTH;
+    if (!readonly && !ufi_v2_claim(origin)) {
+        send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_BUSY), NULL, 0);    /* the other transport owns the drive */
+        return;
+    }
+    if (link.owner == origin) {
+        link.owner_ms = HAL_GetTick();
+    }
     if (ufi_usb_get_mode() == UFI_USB_COMPOSITE && !readonly &&
         !ufi_resources_acquire(UFI_OWNER_NATIVE)) {
         send(UFI_V2_REPLY, cmd, seq, st(UFI_ERR_BUSY), NULL, 0);
@@ -920,11 +1057,14 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         case V2_RESOURCE:
             if (len > 1 || (len && p[0] > 1)) { ret = UFI_ERR_BAD_ARGS; break; }
             if (len && p[0] == 1) {
-                if (!ufi_resources_acquire(UFI_OWNER_NATIVE)) ret = UFI_ERR_BUSY;
+                if (!ufi_v2_claim(origin) || !ufi_resources_acquire(UFI_OWNER_NATIVE)) ret = UFI_ERR_BUSY;
             } else if (len) {
-                if (ufi_operation_busy() || ufi_dump_active()) ret = UFI_ERR_BUSY;
-                else if (ufi_resources_owner() == UFI_OWNER_NATIVE) {
-                    ufi_drive_safe_state(); ufi_resources_release(UFI_OWNER_NATIVE);
+                if (ufi_operation_busy() || ufi_dump_active() || (link.owner && link.owner != origin)) ret = UFI_ERR_BUSY;
+                else {
+                    if (ufi_resources_owner() == UFI_OWNER_NATIVE) {
+                        ufi_drive_safe_state(); ufi_resources_release(UFI_OWNER_NATIVE);
+                    }
+                    link.owner = UFI_ROUTE_NONE;  /* L4: the owner gives the drive back */
                 }
             }
             out[0] = ufi_resources_owner(); n = 1; break;
@@ -1016,6 +1156,10 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
                 break;
             }
             ev_mask = get32(p);
+            if (link.ev_route != origin) {
+                ev_head = ev_tail = 0;      /* L4: queued events belonged to the other transport */
+            }
+            link.ev_route = origin;
             last_dump = ufi_dump_status();
             last_dc = false;
             break;
@@ -1447,6 +1591,9 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = name ? ufi_file_delete(name) : UFI_ERR_BAD_ARGS;
             break;
         }
+        case V2_AUTH:                       /* lan_key challenge: LAN only (ufi_lan_session.c) */
+            ret = UFI_ERR_NOT_IMPL;
+            break;
         case V2_CFG_RELOAD:
             ufi_config_load();
             ufi_lan_reload();               /* L2: LAN.CFG too, applied after this reply */
@@ -1575,16 +1722,81 @@ static void parse_byte(uint8_t b)
  * MAIN LOOP
  * ============================================================================ */
 
+static bool lan_owned(void)
+{
+    return link.owner == UFI_ROUTE_LAN;
+}
+
+/* the USB side of the session is over: its events and its drive ownership go */
+static void usb_session_end(void)
+{
+    if (link.ev_route != UFI_ROUTE_LAN) {
+        ev_mask = 0;
+        ev_head = ev_tail = 0;
+    }
+    if (link.owner == UFI_ROUTE_USB) {
+        link.owner = UFI_ROUTE_NONE;
+    }
+}
+
 void ufi_v2_reset(void)
 {
     on = false;
     clear_req = false;
-    abort_ops();
+    if (!lan_owned()) {
+        abort_ops();                    /* L4: a LAN-owned operation is not USB's to abort */
+    }
     have = 0;
     rx_tail = rx_head;
     rx_paused = false;
-    ev_mask = 0;
-    ev_head = ev_tail = 0;
+    usb_session_end();
+}
+
+/* Cancel path (2.5): abort what runs, IEC idle, drive into the safe state.  Called for a
+ * cancel request and for the end of the LAN session that owned the drive. */
+static void cancel_ops(void)
+{
+    ufi_analysis_job_abort();
+    if(iec_reset_pending) {
+        iec_reset_pending=false;
+        send(UFI_V2_REPLY,V2_IEC_RESET,iec_reset_seq,st(UFI_ERR_CANCELLED),NULL,0);
+    }
+    if(op_read) {ufi_capture_abort();ufi_v2_end(UFI_V2_READ,UFI_ERR_CANCELLED,NULL,0);}
+    if(op_write) {ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_CANCELLED,NULL,0);}
+    if(ufi_job_live()) ufi_job_finish(20);
+    ufi_iec_init();ufi_drive_safe_state();ufi_cancel_clear();
+}
+
+void ufi_v2_lan_frame(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
+{
+    link.route = UFI_ROUTE_LAN;
+    if (type == UFI_V2_DATA) {
+        if (cmd == UFI_V2_WRITE && op_write && seq == write_seq) {
+            write_data(p, len);
+        }
+    } else if (type == UFI_V2_REQUEST) {
+        ufi_board_activity();           /* motor idle timer */
+        request(cmd, seq, p, len);
+    }
+    link.route = UFI_ROUTE_NONE;
+}
+
+/* The TCP connection ended (closed, lost, dropped): same safe-state path as a USB cancel */
+void ufi_v2_lan_closed(void)
+{
+    if (link.ev_route == UFI_ROUTE_LAN) {
+        ev_mask = 0;
+        ev_head = ev_tail = 0;
+        link.ev_route = UFI_ROUTE_USB;
+    }
+    if (!lan_owned()) {
+        return;
+    }
+    cancel_ops();                       /* the END frames go nowhere: the session is gone */
+    link.owner = UFI_ROUTE_NONE;
+    if (ufi_resources_owner() == UFI_OWNER_NATIVE) {
+        ufi_resources_release(UFI_OWNER_NATIVE);
+    }
 }
 
 void ufi_v2_service(void)
@@ -1604,15 +1816,7 @@ void ufi_v2_service(void)
         (op_write && (writing==WRITE_ACTIVE || writing==WRITE_WAITING_INDEX || writing==WRITE_VERIFYING))))
         ufi_job.last_ms=HAL_GetTick(); /* a running operation is not an idle upload */
     if (ufi_cancel_requested() && ufi_resources_owner()!=UFI_OWNER_GW) {
-        ufi_analysis_job_abort();
-        if(iec_reset_pending) {
-            iec_reset_pending=false;
-            send(UFI_V2_REPLY,V2_IEC_RESET,iec_reset_seq,st(UFI_ERR_CANCELLED),NULL,0);
-        }
-        if(op_read) {ufi_capture_abort();ufi_v2_end(UFI_V2_READ,UFI_ERR_CANCELLED,NULL,0);}
-        if(op_write) {ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_CANCELLED,NULL,0);}
-        if(ufi_job_live()) ufi_job_finish(20);
-        ufi_iec_init();ufi_drive_safe_state();ufi_cancel_clear();
+        cancel_ops();
     }
     if (ufi_job_live() && HAL_GetTick()-ufi_job.last_ms>10000u) {
         if(op_write) {ufi_write_abort();ufi_v2_end(UFI_V2_WRITE,UFI_ERR_TIMEOUT,NULL,0);}
@@ -1621,10 +1825,11 @@ void ufi_v2_service(void)
     }
     if (clear_req) {                    /* host: SET_LINE_CODING 10000 baud */
         clear_req = false;
-        abort_ops();
+        if (!lan_owned()) {
+            abort_ops();
+        }
         have = 0;
-        ev_mask = 0;
-        ev_head = ev_tail = 0;
+        usb_session_end();
         rx_tail = rx_discard;           /* a new session may already follow */
         if (rx_paused) {
             rx_paused = false;
@@ -1636,14 +1841,24 @@ void ufi_v2_service(void)
                                   !ufi_native_tx_idle() || rx_tail!=rx_head)) {
         ufi_drive_safe_state();ufi_iec_init();ufi_v2_reset();
         ufi_resources_release(UFI_OWNER_NATIVE);ufi_metrics.lease_releases++;
+        link.owner = UFI_ROUTE_NONE;    /* the native lease (1.4) ended for either transport */
     }
     if (!on) {
+        if (link.ev_route == UFI_ROUTE_LAN) {
+            poll_events();
+            flush_event();
+        }
         return;
     }
+    link.route = UFI_ROUTE_USB;
     while (rx_tail != rx_head && !clear_req && ufi_native_tx_room()) {
         const uint8_t b = rx[rx_tail];
         rx_tail = (rx_tail + 1u) & (RX_SIZE - 1u);
         parse_byte(b);
+    }
+    link.route = UFI_ROUTE_NONE;
+    if (link.owner == UFI_ROUTE_USB && !owner_busy() && HAL_GetTick() - link.owner_ms >= OWNER_IDLE_MS) {
+        link.owner = UFI_ROUTE_NONE;    /* 30 s without a USB request: that session is over */
     }
     rx_resume_if_room();
     poll_events();

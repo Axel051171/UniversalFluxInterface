@@ -52,6 +52,7 @@ TESTS = {
     "test_w5500": ["src/ufi_w5500.c", "src/ufi_sha256.c"],
     "test_lan_cfg": ["src/ufi_lan_cfg.c"],
     "test_net": ["src/ufi_net.c", "src/ufi_w5500.c", "src/ufi_sha256.c", "src/ufi_lan_cfg.c"],
+    "test_lan_session": ["src/ufi_lan_session.c", "src/ufi_w5500.c", "src/ufi_sha256.c"],
 }
 
 
