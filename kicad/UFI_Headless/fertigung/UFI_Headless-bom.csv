@@ -94,7 +94,7 @@
 "U25","SHT40-AD1B","Sensor_Humidity:Sensirion_DFN-4_1.5x1.5mm_P0.8mm_SHT4x_NoCentralPad","Sensirion SHT40-AD1B-R2 (I2C 0x44; alt. SHT40-AD1B-R3 C2848306)","C2909890","1"
 "U28,U29","TPS25921A","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","TI TPS25921ADR (eFuse 12 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 100k/(10k+1k) = 14.0 V, C_SS 1 nF),TI TPS25921ADR (eFuse 5 V rail: R_ILIM 150k = 1.43-1.7 A, OVP 33k/10k = 6.0 V, C_SS 2.2 nF)","C189199","2"
 "U30","74LVC2G32","Package_SO:TSSOP-8_3x3mm_P0.65mm","Nexperia 74LVC2G32DP,125 - gate 1 retired in A11f (inputs on GND, 1Y open), gate 2 gates APL_WRREQ with LOCK","C548635","1"
-"U31","74LVC1G02","Package_TO_SOT_SMD:SOT-353_SC-70-5","MDD 74LVC1G02GW (NOR: Q9 gate = NOR(WGATE_n, LOCK); alt. TECH PUBLIC 74LVC1G02GW C41407550; A11f fix of review finding F1)","C52953351","1"
+"U31","74LVC1G02","Package_TO_SOT_SMD:SOT-353_SC-70-5","MDD 74LVC1G02GW (NOR: Q9 gate = NOR(WGATE_n, LOCK); alt. TECH PUBLIC 74LVC1G02GW C41407550; A11f fix of review finding F1)","C113520","1"
 "X1","25MHz TCXO HCMOS","Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm","HCI TC32H4-25.000-33GNDTNL (25MHz TCXO, HCMOS, +-2.5ppm, 3.3V; alt. ECS-TXO-3225-250-TR C2451321)","C5119013","1"
 "Y2","25MHz CL=12pF","Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm","","C9006","1"
 "Y3","32.768kHz CL=7pF","Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm","Epson FC-135 Q13FC13500002 (32.768kHz, CL 7pF, ESR 70k; alt. Abracon ABS07-32.768KHZ-7-T C276424)","C48615","1"

@@ -86,7 +86,7 @@
 "SHT40-AD1B","U25","Sensor_Humidity:Sensirion_DFN-4_1.5x1.5mm_P0.8mm_SHT4x_NoCentralPad","C2909890"
 "TPS25921A","U28,U29","Package_SO:SOIC-8_3.9x4.9mm_P1.27mm","C189199"
 "74LVC2G32","U30","Package_SO:TSSOP-8_3x3mm_P0.65mm","C548635"
-"74LVC1G02","U31","Package_TO_SOT_SMD:SOT-353_SC-70-5","C52953351"
+"74LVC1G02","U31","Package_TO_SOT_SMD:SOT-353_SC-70-5","C113520"
 "25MHz TCXO HCMOS","X1","Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm","C5119013"
 "25MHz CL=12pF","Y2","Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm","C9006"
 "32.768kHz CL=7pF","Y3","Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm","C48615"

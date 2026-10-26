@@ -12599,7 +12599,7 @@
 				)
 			)
 		)
-    (property "LCSC" "C52953351" (at 119.38 378.46 0)
+    (property "LCSC" "C113520" (at 119.38 378.46 0)
       (effects (font (size 1.27 1.27)) (hide yes))
     )
     (property "MPN" "MDD 74LVC1G02GW (NOR: Q9 gate = NOR(WGATE_n, LOCK); alt. TECH PUBLIC 74LVC1G02GW C41407550; A11f fix of review finding F1)" (at 119.38 378.46 0)
