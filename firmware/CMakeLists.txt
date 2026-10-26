@@ -218,6 +218,7 @@ set(PROJECT_SOURCES
     src/ufi_clock.c
     src/ufi_sense.c
     src/ufi_sense_calc.c
+    src/ufi_read_info.c
     src/ufi_sync.c
     src/system_stm32h7xx.c
     src/stm32h7xx_it.c

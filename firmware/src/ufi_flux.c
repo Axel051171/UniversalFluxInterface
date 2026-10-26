@@ -17,6 +17,7 @@
 #include "ufi_firmware.h"
 #include "ufi_metrics.h"
 #include "ufi_evidence.h"
+#include "ufi_read_info.h"
 #include "ufi_media.h"
 static uint32_t capture_media_token;
 #include <string.h>
@@ -62,6 +63,10 @@ static volatile uint8_t capture_loss_flags; /* bit0 RDATA, bit1 INDEX */
 static bool loss_ready,loss_hashed;
 static uint32_t loss_first,loss_count,loss_hash;
 static uint8_t loss_position[4];
+/* READ info (READ flag bit5, 4.24): the loss checks note the last moment they saw the capture
+ * intact (flux-timer stamp and stored samples), the halt notes the detection stamp.  DTCM: the
+ * AXI SRAM budget stays unchanged; set at every capture start, never read before. */
+__attribute__((section(".dtcm"))) static volatile uint32_t loss_clean_time,loss_clean_pos,loss_seen_time;
 void ufi_flux_archive_info(uint8_t out[8]) {
     memcpy(out,archive_info,8);
 }
@@ -177,6 +182,7 @@ void ufi_flux_select_apple(bool apple)
 static void dma_stop(void);
 static void dma_freeze(void);
 static void capture_halt(void);
+static uint32_t dma_pos(void);
 
 /* TIMx_SR is write-zero-to-clear; never use a read/modify/write to acknowledge it. */
 static void capture_clear_status(uint32_t bits){
@@ -205,9 +211,13 @@ static bool capture_check_loss(void){
     if(g_capture.state!=CAPTURE_RUNNING && g_capture.state!=CAPTURE_WAITING_INDEX)return false;
     const uint32_t mask=__get_PRIMASK();__disable_irq();
     bool active=g_capture.state==CAPTURE_RUNNING || g_capture.state==CAPTURE_WAITING_INDEX;
+    /* READ info (4.24): position and stamp before the status read, so a clear flag covers both */
+    const uint32_t pos=g_capture.state==CAPTURE_RUNNING?dma_pos():0u,now=TIM2->CNT;
     bool lost=active && capture_loss_status(TIM2->SR,g_capture.state==CAPTURE_RUNNING);
     if(lost){
         capture_halt();g_capture.error_code=2;g_capture.state=CAPTURE_ERROR;
+    }else if(active){
+        loss_clean_time=now;loss_clean_pos=pos;
     }
     __set_PRIMASK(mask);return lost;
 }
@@ -429,6 +439,7 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
     TIM2->CCER&=~(TIM_CCER_CC1E|TIM_CCER_CC3E);
     capture_clear_status(TIM_SR_CC1IF|TIM_SR_CC1OF|TIM_SR_CC2IF|TIM_SR_CC2OF|TIM_SR_CC3IF|TIM_SR_CC3OF);
     dma_arm();
+    loss_clean_time=TIM2->CNT;loss_clean_pos=0;loss_seen_time=loss_clean_time;   /* flags cleared: intact */
 
     if (period) {                           /* index-less: revolution 0 starts now */
         const uint32_t mask=__get_PRIMASK();
@@ -465,6 +476,7 @@ static void capture_halt(void)
                                                           DMA1_Stream0->M0AR==(uint32_t)dma_scratch;
     dma_stop();
     if(active && capture_loss_flags){
+        loss_seen_time=TIM2->CNT;           /* READ info (4.24): detection stamp */
         g_capture.error_code=2;g_capture.state=CAPTURE_ERROR;
         uint32_t valid=scratch?(end_pos/chunk_words)*chunk_words:end_pos;
         loss_count=valid>store_words?store_words:valid;
@@ -894,6 +906,36 @@ uint32_t ufi_flux_index_time(uint8_t k)
 void ufi_flux_stream_consumed(uint32_t samples)
 {
     stream_consumed = samples;
+}
+
+/* READ info (4.24, thread context): the loss window of the capture that just ended, 0 without
+ * one.  Every loss ends the capture, so there is at most one window per capture.  The index
+ * stamps let the packer convert flux-timer stamps into stream time. */
+uint8_t ufi_flux_loss_window(ufi_loss_raw_t* out,const volatile uint32_t** times,uint8_t* count,uint32_t* period_ticks)
+{
+    *times=idx_time;*count=idx_count;*period_ticks=period;
+    memset(out,0,sizeof(*out));
+    const uint32_t code=g_capture.error_code;
+    if(gw_capture || (code!=1u && code!=2u))return 0;
+    const uint32_t mask=__get_PRIMASK();__disable_irq();
+    const uint8_t flags=capture_loss_flags;
+    out->start=loss_clean_time;out->samples=loss_clean_pos;out->end=loss_seen_time;
+    __set_PRIMASK(mask);
+    if(code==2u){
+        /* overcapture: lost between the last clean check and the halt; DMA error: no stamp */
+        out->kind=flags?(uint8_t)(flags&3u):(uint8_t)(READ_LOSS_DMA|READ_LOSS_OPEN_END);
+    }else{
+        /* store full / host too slow: nothing after the last stored sample */
+        out->kind=READ_LOSS_FULL|READ_LOSS_OPEN_END;
+        out->samples=end_pos;
+        if(end_pos && !finalised){          /* finalised samples are index-relative */
+            const uint32_t at=(end_pos-1u)%store_words;
+            SCB_InvalidateDCache_by_Addr(&flux_store[at&~7u],32);
+            out->start=flux_store[at];
+        }
+    }
+    if(!idx_count)out->kind|=READ_LOSS_BEFORE_INDEX;
+    return 1;
 }
 
 /* ============================================================================

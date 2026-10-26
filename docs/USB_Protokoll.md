@@ -1,6 +1,6 @@
 # USB-Protokoll der UFI Flux Engine (UFI Headless)
 
-Stand: Firmware 1.18-dev, Board v0.7; ergänzt am 22.10.2026 (4.18–4.23).
+Stand: Firmware 1.18-dev, Board v0.7; ergänzt am 22.10.2026 (4.18–4.23) und am 26.10.2026 (2.2 Zählregel der Indexmarken, 4.12 Offset 90–95, 4.24).
 Alle Mehrbyte-Werte **little endian**. Die Kapitel 1–9 beschreiben den implementierten
 Softwarestand des UFI-v2-Protokolls, Kapitel 10 den Greaseweazle-Modus. Hardware-,
 Betriebssystem- und Laufwerksqualifikation stehen aus. Die Abschnitte sind inhaltlich
@@ -52,6 +52,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.21 Zeitabweichungen über mehrere Umdrehungen (Op51)
   - 4.22 Präzises Roh-Prüflesen mit U11-Referenz (Op50/54)
   - 4.23 Flaggesteuerte Kopierschutz-Hinweisanalyse (Op55/56)
+  - 4.24 Lesekontext im READ-Ende (READ-Flag Bit5, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -439,6 +440,26 @@ Gleich dem v1-Stream (`ufi_stream.c`): Zeit 0 = erster Indeximpuls (bzw. Start o
 
 Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen meldet die Zahl der gesendeten vollen Umdrehungen. Ohne Index (Apple ohne Sync-Sensor, `flags` Bit0) markieren `FD`-Einträge die Abschnittsgrenzen (`period_ms`, 0 = 200 ms).
 
+**Zählregel der Indexmarken (im Code geprüft, `ufi_stream.c`/`ufi_flux.c`, 1.18-dev):**
+
+- Zeit 0 ist der **erste** Indeximpuls (ohne Index: der Aufnahmestart). Erst dieser Impuls schaltet
+  die RDATA-Aufnahme ein; Flusswechsel davor gibt es im Strom nicht.
+- Der Strom beginnt **ohne** `FD`: der erste Impuls selbst wird nicht als Marke gesendet, der erste
+  Abstand zählt ab ihm.
+- Jede Umdrehung wird von genau **einem** `FD` abgeschlossen: Umdrehung k (k = 1 … N) umfasst die
+  Flusswechsel nach dem (k−1)-ten und vor dem k-ten `FD`. Ein Wechsel genau auf dem Indexzeitpunkt
+  gehört zur folgenden Umdrehung.
+- Für **N gesendete Umdrehungen stehen genau N `FD`-Marken** im Strom, die letzte ist das letzte
+  Element; danach folgen keine Flusswechsel mehr. N ist der Wert `revs` im Ende-Rahmen, bei
+  Status 0 gleich dem angeforderten (geklemmten) Wert, bei Status 10 (Speicher voll / Host zu
+  langsam) kleiner – die gesendeten N Umdrehungen sind vollständig.
+- Abweichung im Fehlerfall: Bei Status 6 (DMA/Überlauf), 3 (kein Index) oder 21 (Medium gewechselt)
+  meldet der Ende-Rahmen `revs` = 0, obwohl bereits gesendete Daten-Rahmen schon einzelne `FD`-Marken
+  und Flusswechsel enthalten können; die Firmware verwirft dann nur den noch nicht gesendeten Rest.
+  Diese Teildaten sind keine gültige Aufnahme; wo sie noch intakt waren, sagt der Lesekontext (4.24).
+- Die Ereignisse 0x85 (Bit4) zählen dieselben Marken: `revolution` = k nach dem k-ten `FD`.
+- Greaseweazle-Modus (10.3) zählt anders: dort wird auch der erste Impuls als Index gesendet.
+
 **Apple mit Sync-Sensor** (J19, Hall-Sensor nach Applesauce-Art, `UFI.CFG apple_sync=1`, caps Bit7): Der Sensor liegt bis Platine v0.7 auf der INDEX-Leitung, ab v1.0 (A11d/A10c) auf dem eigenen Eingang SYNC (PC6, TIM8_CH1, Op 0x46 in Abschnitt 1.5) – für READ/WRITE ändert sich dadurch nichts; READ liefert dann echte Umdrehungen ab dem Sensorimpuls (`FD` = Sensorimpuls), WRITE beginnt am Sensorimpuls – Spuren bleiben zueinander ausgerichtet. Ohne `apple_sync=1` arbeitet das Apple-Laufwerk mit Zeitabschnitten, auch wenn ein Sensor steckt.
 
 ### 2.3 Ereignisse (type 3, nach EVENTS)
@@ -598,7 +619,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5) und mit Bit3 vom Provenienzblock (96 Byte, 4.12) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -1430,7 +1451,8 @@ bisherigen Ende-Nutzdaten von READ 0x20 (`revs` u8) und WRITE 0x22 (`verify_leve
 | 13 | u32 | Capture-ID der Aufnahme (dieselbe wie Op 8 / Qualitätsbericht); 0 bei WRITE |
 
 Die Ende-Nutzdaten sind damit 18 Byte (READ; 114 mit READ-Flag Bit3, dann folgt der
-Provenienzblock aus 4.12 hinter dem Generationsblock) beziehungsweise 22 Byte (WRITE; 30 mit den
+Provenienzblock aus 4.12 hinter dem Generationsblock; mit Bit5 folgt zuletzt der 132-Byte-Lesekontext
+aus 4.24: 150 Byte, mit Bit3 und Bit5 246 Byte) beziehungsweise 22 Byte (WRITE; 30 mit den
 anschließenden `erased_ticks` u32 und `start_offset_applied` u32, 3.3) lang; die alten
 Felder stehen unverändert vorn, alte Parser lesen weiter nur sie. Der Block steht
 auch in Ende-Rahmen mit Fehlerstatus, soweit diese bisher Nutzdaten trugen (READ-Ende nach
@@ -1495,7 +1517,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | Offset | Typ | Inhalt | Stand 1.18-dev |
 |---:|---|---|---|
 | 0 | u8 | Schema | 1 |
-| 1 | u8 | READ-Flags (0x20, 0x28) | 0x1F (0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0x3F (0x1F vor dem Lesekontextbit 5, 0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
 | 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker, Bit4 Rohprüfung) | 0x1F (0x0F vor 4.17, 0x07 vor 4.16, 0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
@@ -1672,13 +1694,24 @@ Op-Byte → BAD_ARGS):
 | 86 | u16 | Strom der 12-V-Laufwerksversorgung in mA |
 | 88 | u8 | `power` wie STATUS: Bit0 FDD_5V an, Bit1 FDD_12V an |
 | 89 | u8 | board_status-Flags wie STATUS (Jumper, Überstrom, SD, Taster, Sicherheitsmodus, Sitzungssperre) |
-| 90 | 6 Bytes | reserviert, 0 (keine MCU-Temperatur: der interne Sensor ist nicht beschaltet) |
+| 90 | u8 | Taktflags (1.18-dev, vorher reserviert 0): Bit0 Taktquelle TCXO (HSE-Bypass, Platine v1.0), 0 = Quarzoszillator; Bit1 Offset 91/93 gültig; Bit2 Offset 94/95 gültig |
+| 91 | i16 | Letzte Taktabweichung in ppm aus dem SELFTEST-Punkt `usb_sof` (TIM2 gegen 128 USB-Rahmen des Hosts, also relativ zum Host-Takt, nicht absolut), auf ±32767 begrenzt; 0 ohne Bit1 |
+| 93 | u8 | Alter dieser Messung in Minuten (255 = 255 oder mehr); 0 ohne Bit1 |
+| 94 | i8 | Platinentemperatur in ganzen °C, letzter **zwischengespeicherter** SHT40-Wert (Start-Probe, SENSOR 0x44, Log-Kopf); 0 ohne Bit2 |
+| 95 | u8 | Relative Feuchte in ganzen % aus demselben Wert; 0 ohne Bit2 |
+
+Offset 90–95 (1.18-dev): die Firmware misst dafür nie neu – SENSOR braucht rund 20 ms, die
+`usb_sof`-Messung bis 400 ms –, sie meldet nur den letzten Wert seit dem Reset; ohne Messung
+bleiben Bit1/Bit2 und die Felder 0, wie bei älterer Firmware. Wer einen frischen Wert braucht,
+ruft vor dem Lesen SELFTEST (Punkt 2) beziehungsweise SENSOR auf. Das Schema bleibt 1; ältere
+Hosts lasen die Bytes als reserviert und ignorieren sie. Host: `tcxo`, `clock_ppm`,
+`clock_ppm_age_min`, `temp_c`, `rh_percent` (`None` ohne Gültigkeitsbit).
 
 Der Block ersetzt keine Prüfsumme der Firmware: die SHA-256 des geflashten Abbilds
 berechnet der Host aus der Datei, die er geflasht hat, und legt sie neben den Block.
 
 **Per Flag an die Aufnahme gebunden:** READ und GUARDED_READ mit Flags Bit3 (`0x08`;
-Op 38 READ-Maske `0x0F`) hängen denselben 96-Byte-Block an den Ende-Rahmen hinter den
+Op 38 READ-Maske ab 1.18-dev `0x3F`) hängen denselben 96-Byte-Block an den Ende-Rahmen hinter den
 Generationsblock (Ende-Nutzdaten 114 Byte, auch bei Fehlerstatus und nach ABORT, soweit
 der Ende-Rahmen Nutzdaten trägt). Rohdaten und Herkunft kommen so in einer Transaktion;
 die Capture-ID im Block ist die der gerade beendeten Aufnahme. Ohne Bit3 bleibt der
@@ -2491,6 +2524,81 @@ in SRAM4, ohne Heap und ohne zusätzliches großes AXI-Array. `SF_PROTECTION`
 im bisherigen Op47 bleibt reserviert; Op56 liefert die regelgebundene Aussage.
 Softwaretests mit synthetischen Merkmalen und Referenzformaten ersetzen keine
 spätere Laufwerks-/U11-/Signalqualifikation auf der Platine.
+
+### 4.24 Lesekontext im READ-Ende (READ-Flag Bit5, 1.18-dev)
+
+Wünsche F1–F5 der UFT-Abstimmung vom 26.10.2026: wo Daten verloren gingen, wo der Kopf wirklich
+stand, welche DENSITY/DRATE-Pegel anlagen, welcher Takt lief und ob `revs` geklemmt wurde – als
+**zusätzliche Metadaten**. Der Flussstrom bleibt Byte für Byte unverändert, es gibt keine neuen
+Strom-Token. READ und GUARDED_READ mit Flags Bit5 (`0x20`; Op 38 READ-Maske `0x3F`) hängen den Block
+als **letzten** an den Ende-Rahmen: hinter den Generationsblock (4.5) und, falls Bit3 gesetzt ist,
+hinter den Provenienzblock (4.12). Ende-Nutzdaten: 150 Byte (Bit5), 246 Byte (Bit3 + Bit5); auch bei
+Fehlerstatus (6, 3, 21) und Status 10, soweit der Ende-Rahmen Nutzdaten trägt.
+
+**Erkennung durch den Host:** Ältere Firmware weist Bit5 mit Status 14 ab (Op 39: Feld 2, Detail
+0x20) – vorher Op 38 lesen (Bit5 in der READ-Maske). Der Block beginnt bei Offset 18 (114 mit Bit3),
+Schema-Byte 1, Längenbyte 132. Die vorderen Blöcke und ihre Offsets bleiben unverändert; ohne Bit5
+bleibt das Ende 18/114 Byte. Im Integritätsjob (JOB 0B) steht der Block hinter dem 20-Byte-Anhang;
+der Job-Ende-Puffer fasst seit 1.18-dev alle Blöcke (vorher wurden Ende-Nutzdaten über 44 Byte –
+also auch der Provenienzblock – dort abgeschnitten).
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Schema 1 |
+| 1 | u8 | Länge 132 |
+| 2 | u8 | Flags: Bit0 `revs` geklemmt (F5), Bit1 DENSITY/DRATE am Ende anders als am Start, Bit2 Spur/Seite/Status am Ende anders als am Start, Bit3 Offset 16/20 gültig, Bit4 Offset 24–31 gültig, Bit5 Taktquelle TCXO (HSE-Bypass), Bit6 mehr Verlustfenster als Plätze |
+| 3 | u8 | `revs` wie angefragt (Rohbyte) |
+| 4 | u8 | `revs` wie gelesen: 0 → 1, über 200 → 200 (F5) |
+| 5, 6 | je u8 | DENSITY, DRATE am Start (1 = asserted, wie Op-8-Kontext Offset 42/43; F3) |
+| 7 | u8 | Am Ende: Bit0 DENSITY, Bit1 DRATE |
+| 8, 9 | je u8 | Kopfposition am Start (nach Seek und Seitenwahl): mechanischer Spurzähler, Seite (wie Op 13 Offset 8/9; F2) |
+| 10 | u8 | Positionsbyte der Anfrage: 0 ganze Spur, sonst `0x80 | Viertel << 4` (Apple-Viertelspur, Shugart-Halbspur = 2) |
+| 11 | u8 | Op-13-Statusbits (niederwertiges Byte) am Start: Bit0 POSITION_VALID, Bit4 POSITION_ESTIMATED, … |
+| 12, 13, 14 | je u8 | Spurzähler, Seite, Statusbits am Ende (der Ablaufplan STEP_SCHEDULE 0x1F kann den Kopf während des Lesens bewegen) |
+| 15 | u8 | Verlustfenster dieser Aufnahme insgesamt (F1) |
+| 16 | i32 | Letzte Taktabweichung in ppm aus SELFTEST `usb_sof` (relativ zum USB-Takt des Hosts; F4) |
+| 20 | u32 | Alter dieser Messung in ms |
+| 24 | i16 | Letzte zwischengespeicherte Platinentemperatur (SHT40) in 0,01 °C |
+| 26 | u16 | Relative Feuchte in 0,01 % |
+| 28 | u32 | Alter dieses Werts in ms |
+| 32 | u8 | Belegte Verlustplätze (0–4) |
+| 33 | 3 Bytes | 0 |
+| 36 | 4 × 24 Bytes | Verlustfenster, unbelegte Plätze 0 |
+
+Ein Verlustfenster:
+
+| Offset | Typ | Inhalt |
+|---:|---|---|
+| 0 | u8 | Art: Bit0 RDATA-Überlauf (mindestens ein Flusswechsel fehlt), Bit1 INDEX-Überlauf, Bit2 DMA-Übertragungsfehler, Bit3 Speicher voll/Host zu langsam (danach nichts aufgezeichnet), Bit4 offenes Ende (kein Erkennungszeitpunkt), Bit5 vor dem ersten Index (keine Stromzeit, Offset 1–19 dann 0) |
+| 1 | u8 | `FD`-Marken im Strom vor dem Fensterbeginn (Umdrehung des Beginns, 0 = vor dem ersten `FD`) |
+| 2 | u8 | dasselbe für das Fensterende |
+| 3 | u8 | 0 |
+| 4 | u64 | Fensterbeginn in Ticks seit dem ersten Index (Zeitbasis des Stroms, über TIM2-Überläufe exakt aus den Indexabständen summiert): letzter Zeitpunkt, an dem die Firmware die Aufnahme als intakt geprüft hat |
+| 12 | u64 | Fensterende in Ticks seit dem ersten Index: Erkennung und Abbruch; 0 bei offenem Ende |
+| 20 | u32 | Flusswechsel, die vor dem Fensterbeginn sicher gespeichert waren (Untergrenze, Stromreihenfolge ab dem ersten Index) |
+
+Bedeutung und Grenzen:
+
+- **Jeder Verlust beendet die Aufnahme** (der Strom setzt nach einer Lücke nicht fort), deshalb
+  meldet 1.18-dev höchstens **ein** Fenster; die vier Plätze lassen Raum für spätere Erweiterungen.
+  RDATA-/INDEX-Überlauf: das Überlaufbit des Timers bleibt bis zum Löschen stehen, darum lag der
+  Verlust sicher zwischen der letzten Prüfung ohne Bit (Beginn) und der Prüfung mit Bit (Ende). Die
+  Firmware prüft bei jedem TIM2- und DMA-Interrupt und in jedem Hauptschleifendurchlauf; die
+  Fensterbreite ist damit typischerweise unter einer Millisekunde, auf der Platine noch nicht gemessen.
+  Stromdaten ab dem Fensterbeginn sind nicht vertrauenswürdig; davor sind sie es. Speicher voll /
+  Host zu langsam (Status 10): Beginn = Zeitstempel des letzten gespeicherten Flusswechsels, offenes
+  Ende; liegt der Beginn hinter dem letzten gesendeten `FD`, sind alle gesendeten Umdrehungen
+  vollständig. DMA-Fehler: Beginn = letzte intakte Prüfung, offenes Ende.
+- Damit unterscheidet ein Werkzeug eine echte flussfreie Zone (kein Fenster, Status 0) von
+  verlorenen Daten (Fenster mit Lage).
+- Takt und Klima sind **zwischengespeicherte** Werte (wie Provenienz Offset 90–95): die READ-
+  Annahme misst nie, damit sie nicht blockiert. Die ppm stammen aus dem letzten SELFTEST-Punkt
+  `usb_sof` gegen den Host-Takt (USB erlaubt dem Host ±500 ppm), also keine absolute Messung.
+- Kopfposition: Spurzähler und Gültigkeit sind Firmware-Buchführung wie in Op 13, keine
+  unabhängige Messung der Spur.
+- Host: `read_track(..., read_context=True)` → `Capture.read_info` (`ReadInfo`, Verlustfenster als
+  `LossWindow`; `None` bei älterer Firmware); bei Fehlerstatus trägt die `DeviceError` das Feld
+  `read_info`. `ufi read --read-info` druckt die Zusammenfassung.
 
 ## 5 Lesen, Schreiben und Prüflesen
 

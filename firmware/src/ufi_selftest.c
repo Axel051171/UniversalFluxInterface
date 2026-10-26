@@ -78,6 +78,7 @@ static void t_usb_sof(st_item_t* it)
     const int32_t ppm = (int32_t)(((int64_t)ticks - nominal) * 1000000 / nominal);
     it->value = (uint32_t)ppm;
     it->status = (ppm > -500 && ppm < 500) ? ST_OK : ST_WARN;
+    ufi_sense_note_clock_ppm(ppm);          /* cached for READ END (4.24) and provenance (4.12) */
 }
 
 /* PSRAM: boot result plus a fresh pattern over the top 64 KB of the flux store */

@@ -39,6 +39,11 @@ typedef struct {
     bool sht_present;           /* probe at start-up answered with a valid CRC */
     bool v10;                   /* board_rev >= 10: dividers, read-backs, outputs fitted */
     uint8_t pins_out;           /* bit0 J6 pin 4 asserted, bit1 pin 33 high */
+    bool climate_ok, ppm_ok;    /* cached values below exist (4.24) */
+    int16_t temp_x100;
+    uint16_t rh_x100;
+    int32_t ppm;
+    uint32_t climate_ms, ppm_ms;    /* HAL tick of the measurement */
 } sense_state_t;
 
 __attribute__((section(".dtcm"), aligned(4))) static sense_state_t st;
@@ -121,12 +126,40 @@ int ufi_sense_sht40(ufi_sht40_t* r)
         return UFI_OK;
     }
     r->status = ufi_sht40_convert(raw, &r->temp_x100, &r->rh_x100) ? SHT40_OK : SHT40_CRC;
+    if (r->status == SHT40_OK) {
+        st.temp_x100 = r->temp_x100;
+        st.rh_x100 = r->rh_x100;
+        st.climate_ms = HAL_GetTick();
+        st.climate_ok = true;
+    }
     return UFI_OK;
 }
 
 bool ufi_sense_sht40_present(void)
 {
     return st.sht_present;
+}
+
+bool ufi_sense_climate(int16_t* temp_x100, uint16_t* rh_x100, uint32_t* age_ms)
+{
+    *temp_x100 = st.climate_ok ? st.temp_x100 : 0;
+    *rh_x100 = st.climate_ok ? st.rh_x100 : 0u;
+    *age_ms = st.climate_ok ? HAL_GetTick() - st.climate_ms : 0u;
+    return st.climate_ok;
+}
+
+void ufi_sense_note_clock_ppm(int32_t ppm)
+{
+    st.ppm = ppm;
+    st.ppm_ms = HAL_GetTick();
+    st.ppm_ok = true;
+}
+
+bool ufi_sense_clock_ppm(int32_t* ppm, uint32_t* age_ms)
+{
+    *ppm = st.ppm_ok ? st.ppm : 0;
+    *age_ms = st.ppm_ok ? HAL_GetTick() - st.ppm_ms : 0u;
+    return st.ppm_ok;
 }
 
 /* ============================================================================

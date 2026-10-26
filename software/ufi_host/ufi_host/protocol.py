@@ -95,6 +95,7 @@ class Capture:
     generations: dict | None = None  # v2 END generation block (firmware 1.18): config_generation,
                                      # media_generation_start/_end, capture_id; None on older firmware
     provenance: dict | None = None   # v2 END provenance block when read_track(provenance=True) (4.12)
+    read_info: object | None = None  # v2 END read context (protocol2.ReadInfo) with read_track(read_context=True) (4.24)
 
 
 def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01) -> list[Revolution]:

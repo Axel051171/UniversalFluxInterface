@@ -47,6 +47,7 @@ TESTS = {
     "test_write_stream": ["src/ufi_write_stream.c"],
     "test_image": ["src/ufi_image.c"],
     "test_sense": ["src/ufi_sense_calc.c"],
+    "test_read_info": ["src/ufi_read_info.c"],
 }
 
 

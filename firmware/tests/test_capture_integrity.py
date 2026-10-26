@@ -30,6 +30,7 @@ static bool streaming,stream_scratch,index_internal,gw_capture,gw_linger,finalis
 static bool loss_ready,loss_hashed;
 static uint8_t capture_loss_flags,loss_position[4];
 static uint32_t loss_first,loss_count,loss_hash,store_generation,capture_media_token;
+static volatile uint32_t loss_clean_time,loss_clean_pos,loss_seen_time;   /* READ info (4.24) */
 static uint32_t index_mask_ticks,index_previous;
 static uint64_t gw_limit,gw_origin64,gw_end,gw_linger_ticks;
 static uint16_t gw_indexes;
@@ -85,11 +86,13 @@ static void prepare(bool apple){
 }
 int main(void){
     uint32_t info[4],old_hash,value;uint8_t position[4],out[65];
-    prepare(false);timer.SR=TIM_SR_CC3OF;assert(!capture_check_loss());
+    prepare(false);timer.CNT=500;timer.SR=TIM_SR_CC3OF;assert(!capture_check_loss() && loss_clean_time==500);
+    timer.CNT=900;
     timer.SR=TIM_SR_CC1OF;irq_mask=1;assert(capture_check_loss());
     assert(irq_mask==1 && g_capture.state==CAPTURE_ERROR && g_capture.error_code==2 && dma_stops==1);
     assert(!(timer.DIER&(rd_de|TIM_DIER_CC2IE)) && !(timer.CCER&TIM_CCER_CC1E));
     assert(capture_loss_flags==1 && ufi_metrics.capture_rdata_loss==1 && !ufi_metrics.capture_index_loss);
+    assert(loss_clean_time==500 && loss_seen_time==900);   /* READ info (4.24): window from the last clean check to the halt */
     assert(!capture_check_loss() && ufi_metrics.capture_rdata_loss==1);
     assert(!ufi_flux_archive_id() && ufi_flux_loss_snapshot(info,position));
     assert(info[0]==7 && info[1]==3 && !info[3] && position[0]==7 && position[1]==1 && position[3]==1);

@@ -100,6 +100,31 @@ def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None
               + (f", cells scaled {pm / 1000:.3f}" if pm != 1000 else ""), flush=True)
 
 
+def _read_info_lines(ri) -> list[str]:
+    """ufi read --read-info: the READ END read context block (4.24), None on older firmware."""
+    if ri is None:
+        return ["read info: not in END (older firmware)"]
+    q = f".{(ri.quarter >> 4) & 3}" if ri.quarter & 0x80 else ""
+    lines = [f"read info: revolutions {ri.revs_requested} requested, {ri.revs_effective} read"
+             + (" (clamped)" if ri.revs_clamped else "")
+             + f"; head track {ri.track_end}{q} side {ri.side_end}, position {'valid' if ri.position_valid else 'NOT valid'}"
+             + (" (moved during the read)" if ri.head_moved else "")
+             + f"; DENSITY {ri.density_start} DRATE {ri.drate_start}" + (" (changed)" if ri.lines_changed else ""),
+             "clock: " + ("TCXO" if ri.tcxo else "crystal")
+             + (f", {ri.clock_ppm:+d} ppm vs. host USB frames (self-test {ri.clock_ppm_age_ms / 1000:.0f} s ago)"
+                if ri.clock_ppm is not None else ", no self-test measurement since reset")
+             + (f"; board {ri.temp_c:.2f} degC {ri.rh_percent:.2f} %RH (cached, {ri.climate_age_ms / 1000:.0f} s ago)"
+                if ri.temp_c is not None else "; no cached SHT40 value")]
+    for w in ri.losses:
+        at = "before the first index" if w.start_ticks is None else \
+            f"intact until {w.start_ticks} ticks (revolution {w.revolution_start}), " + \
+            ("open end" if w.end_ticks is None else f"detected at {w.end_ticks} ticks")
+        lines.append(f"loss: {w.kind_text}: {at}, {w.samples} transitions intact before it")
+    if not ri.losses:
+        lines.append("loss: none")
+    return lines
+
+
 def _summary(cap: P.Capture) -> str:
     lines = []
     for r in cap.revolutions:
@@ -698,6 +723,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("read")
     p.add_argument("--provenance", action="store_true",
                    help="READ flag bit 3 (firmware 1.18): the END carries the provenance block of op 43; printed after the summary")
+    p.add_argument("--read-info", action="store_true",
+                   help="READ flag bit 5 (firmware 1.18-dev): the END carries the read context (revolution clamp, head position, "
+                        "DENSITY/DRATE, cached clock and climate, loss windows); printed after the summary")
     p.add_argument("--amiga-quality", metavar="JSON", help="save adaptive Amiga quality report; keep raw flux with -o capture.scp")
     p.add_argument("--amiga-spt", type=int, choices=(11, 22), default=11)
     p.add_argument("track", type=int)
@@ -1179,8 +1207,11 @@ def main(argv: list[str] | None = None) -> int:
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))
             cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter,
-                                 provenance=getattr(a, "provenance", False))
+                                 provenance=getattr(a, "provenance", False), read_context=getattr(a, "read_info", False))
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
+            if getattr(a, "read_info", False):
+                for line in _read_info_lines(cap.read_info):
+                    print(line)
             if getattr(a, "provenance", False):
                 pv = cap.provenance
                 print("provenance: " + ("not in END (older firmware)" if pv is None else

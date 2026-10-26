@@ -37,6 +37,12 @@ typedef struct {
 
 int ufi_sense_sht40(ufi_sht40_t* r);                /* always returns UFI_OK, r->status tells; <= 30 ms */
 bool ufi_sense_sht40_present(void);                 /* result of the probe at start-up */
+/* Cached values for the READ END (4.24) and the provenance block (4.12): never measure, never
+ * block.  Climate = the last valid SHT40 reading (probe, SENSOR op, log header); clock = the last
+ * self-test usb_sof result (TIM2 against the host's USB frames).  false = none since reset. */
+bool ufi_sense_climate(int16_t* temp_x100, uint16_t* rh_x100, uint32_t* age_ms);
+void ufi_sense_note_clock_ppm(int32_t ppm);
+bool ufi_sense_clock_ppm(int32_t* ppm, uint32_t* age_ms);
 uint8_t ufi_sht40_crc8(const uint8_t* p, uint32_t n);
 bool ufi_sht40_convert(const uint8_t raw[6], int16_t* temp_x100, uint16_t* rh_x100);   /* false = CRC */
 void ufi_sht40_text(char temp[8], char rh[8], int16_t temp_x100, uint16_t rh_x100);     /* "-12.34", "45.67" */

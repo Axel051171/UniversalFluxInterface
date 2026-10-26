@@ -11,6 +11,7 @@
 #include "ufi_fixes.h"  /* MUSS zuerst! */
 #include "ufi_write_codec.h"
 #include "board.h"
+#include "ufi_read_info.h"  /* READ END read context block (4.24), HAL-free */
 #include "ufi_sense.h"  /* A10: calendar access, SHT40, rail voltages, SYNC capture, metadata */
 #include <stdint.h>
 #include <stdbool.h>
@@ -345,6 +346,11 @@ uint16_t ufi_analyze_weak_positions(uint8_t threshold, uint8_t* out);   // op 44
 uint16_t ufi_provenance_block(uint8_t* out);    // ufi_v2.c: board, firmware, drive setting, generations, last capture
 bool ufi_v2_read_provenance(void);              // ufi_v2.c: the open READ asked for the block in its END (flag bit3)
 bool ufi_v2_read_progress(void);                // ufi_v2.c: the open READ asked for one event per revolution (flag bit4)
+bool ufi_v2_read_context(void);                 // ufi_v2.c: the open READ asked for the read context block in its END (flag bit5, 4.24)
+void ufi_read_info_begin(uint8_t revs_requested); // ufi_main.c: sample the read context after an accepted READ start
+uint16_t ufi_read_info_block(uint8_t* out);     // ufi_main.c: UFI_READ_INFO_SIZE bytes for the READ END (4.24)
+uint8_t ufi_flux_loss_window(ufi_loss_raw_t* out, const volatile uint32_t** times, uint8_t* count,
+                             uint32_t* period_ticks);   // ufi_flux.c: loss window of the last capture (4.24), 0 = none
 uint16_t ufi_quality_report(uint8_t* out, uint16_t capacity);
 void ufi_quality_clear(void);
 int ufi_quality_analyze(uint8_t format, uint32_t rate, bool adaptive);

@@ -14,7 +14,7 @@
 #define UFI_CAP_BUSY 16u
 #define UFI_CAP_LINE_CONFLICT 32u
 /* Request flag masks the v2 parsers accept; ANALYSIS_JOB op 38 reports them (4.7, 1.18). */
-#define UFI_V2_READ_FLAG_MASK    0x1Fu   /* READ: no index, hard sectors, quarter tracks, provenance in END (4.12), progress events (2.3) */
+#define UFI_V2_READ_FLAG_MASK    0x3Fu   /* READ: no index, hard sectors, quarter tracks, provenance in END (4.12), progress events (2.3), read context in END (4.24) */
 #define UFI_V2_WRITE_FLAG_MASK   0xFFu   /* WRITE: every bit assigned (bit 7 = EXPECT_SET) */
 #define UFI_V2_WRITE_FLAGS2_MASK 0x1Fu   /* WRITE flags2: erase remainder, start offset u32 follows, precomp_ns u16 follows, weak markers (jitter u16 + seed u32 follow), raw fingerprint read-back */
 #define UFI_V2_ANALYZE_FLAG_MASK 0xFFu   /* analysis flags; bits 1..7 need DETAIL (bit 0) */

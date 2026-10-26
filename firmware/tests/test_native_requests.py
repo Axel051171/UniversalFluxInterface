@@ -9,7 +9,9 @@ def main():
 #define FLUX_TIMER_FREQ 275000000u
 enum {JOB_OPEN};
 static struct {unsigned kind,state;} ufi_job;
-static bool op_read,read_provenance,read_progress;
+static bool op_read,read_provenance,read_progress,read_context;
+static uint8_t info_revs=0xEE;
+static void ufi_read_info_begin(uint8_t revs){info_revs=revs;}   /* READ info (4.24): raw revs byte */
 static uint8_t read_seq,hard_sectors=9;
 static unsigned starts,line_calls;
 static int start_error;
@@ -54,7 +56,7 @@ static void guarded_checks(void){
     q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
     q[4]=9;note_f=0;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==11); /* prefix only */
     assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
-    op_read=false;q[11]=33;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==32); /* READ flags still checked */
+    op_read=false;q[11]=65;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==64); /* READ flags still checked */
     q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
     media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
     assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
@@ -65,7 +67,9 @@ int main(void){
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;
-    p[3]=32;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==32);
+    p[3]=64;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==64);
+    p[3]=32;p[2]=0;assert(!cmd_read(8,p,4) && read_context && info_revs==0 && starts==before+1);   /* bit5: read context in END (4.24), raw revs 0 */
+    p[3]=0;p[2]=2;assert(!cmd_read(8,p,4) && !read_context && info_revs==2);before=starts;
     p[3]=16;assert(!cmd_read(8,p,4) && read_progress && !read_provenance && starts==before+1);   /* bit4: progress events (2.3) */
     p[3]=0;assert(!cmd_read(8,p,4) && !read_progress);before=starts;
     p[3]=8;assert(!cmd_read(8,p,4) && read_provenance && starts==before+1);              /* bit3: provenance block in END (4.12) */

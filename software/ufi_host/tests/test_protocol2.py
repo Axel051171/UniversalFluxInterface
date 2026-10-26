@@ -90,6 +90,7 @@ class FakeV2:
         self.rx = P2.FrameParser()
         self.out = bytearray()
         self.revs = revolutions or []
+        self.read_info_block = b""       # READ flag bit5 (4.24): appended to the END when requested
         self.files = dict(files or {})
         self.read_status = read_status
         self.data_chunk = data_chunk
@@ -364,7 +365,7 @@ class FakeV2:
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else bytes([1, *self.refusal]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 38:          # flag masks the parsers accept (4.7)
             r(P2.BAD_ARGS if len(a) != 1 else 0, b"" if len(a) != 1 else
-              bytes([1, 0x1F, 0xFF, 0x1F, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
+              bytes([1, 0x3F, 0xFF, 0x1F, 0xFF, 7]) + struct.pack("<HHHH", 0x3F, 0x1F, 0x07, 0x18) + bytes([0xB1, 0]))
         elif cmd == P2.ANALYSIS_JOB and a[0] == 31:          # raw fingerprint options (6.3): [31] reads, [31, 1, flags, tol u16] sets
             opts = getattr(self, "raw_options", (0, 30))
             if len(a) == 5 and a[1] == 1:
@@ -694,8 +695,8 @@ class FakeV2:
                 self.emit_event(code, payload)
         elif cmd == P2.READ:
             _track, _side, revs, flags, _period = P2.READ_REQ.unpack_from(a)
-            if flags & ~0x1F:                                 # op 38 READ mask: bit3 provenance in END (4.12), bit4 progress events (2.3)
-                self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x1F)
+            if flags & ~0x3F:                                 # op 38 READ mask: bit3 provenance in END (4.12), bit4 progress events (2.3), bit5 read context (4.24)
+                self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x3F)
                 r(P2.BAD_ARGS)
                 return
             r()
@@ -709,7 +710,7 @@ class FakeV2:
                 for n, rev in enumerate(self.revs[:revs], 1):
                     self.emit_event(0x85, struct.pack("<BII", n, rev[0] if isinstance(rev, tuple) else rev.index_ticks, 200 * n))
             self._frame(P2.T_END, cmd, seq, self.read_status, bytes([min(revs, len(self.revs))]) + self._gen_block(self.capture_id)
-                        + (self._provenance_block() if flags & 0x08 else b""))
+                        + (self._provenance_block() if flags & 0x08 else b"") + (self.read_info_block if flags & 0x20 else b""))
         elif cmd == P2.WRITE:
             flags = a[2]                    # optional fields in flag order, then an optional flags2 byte (1.18)
             if flags & 0x40 and not flags & 0x20:                 # bit6 needs extended timing (0x60; 0x61 before 1.18-dev)
@@ -1624,7 +1625,7 @@ def test_flag_masks(monkeypatch, capsys):
     """Op 38: one 16-byte answer with every request mask the parsers accept."""
     fake = FakeV2()
     dev = P2.Device2(fake)
-    assert dev.flag_masks() == {"read_flags": 0x1F, "write_flags": 0xFF, "write_flags2": 0x1F, "analyze_flags": 0xFF,
+    assert dev.flag_masks() == {"read_flags": 0x3F, "write_flags": 0xFF, "write_flags2": 0x1F, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
                                 "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
     assert fake.requests[-1].payload == bytes([38])
@@ -1984,13 +1985,67 @@ def test_read_provenance_flag(monkeypatch, capsys):
     g = dev.read_track(0, 0, 2, expected_config=7, expected_media=42, provenance=True)
     assert g.provenance["capture_id"] == 0x1234 and fake.requests[-1].cmd == P2.GUARDED_READ
     with pytest.raises(P2.DeviceError) as e:
-        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x20, 0))
-    assert e.value.status == P2.BAD_ARGS and dev.last_refusal()["field"] == 2 and dev.last_refusal()["detail"] == 0x20
-    assert dev.flag_masks()["read_flags"] == 0x1F
+        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x40, 0))
+    assert e.value.status == P2.BAD_ARGS and dev.last_refusal()["field"] == 2 and dev.last_refusal()["detail"] == 0x40
+    assert dev.flag_masks()["read_flags"] == 0x3F
     monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
     assert cli.main(["read", "0", "0", "-r", "2", "--provenance"]) == 0
     out = capsys.readouterr().out
     assert "provenance: board v0.7, MCU 203236333135511700310028, firmware 1.18 rev abc1234+" in out and "capture id 4660" in out
+
+
+def _read_info_block(flags=0x3F, losses=(), total=None) -> bytes:
+    """132-byte read context block (4.24) as the firmware packs it."""
+    head = bytes([1, P2.READ_INFO_SIZE, flags, 0, 1, 1, 0, 3, 40, 1, 0xA0, 1, 41, 1, 1,
+                  len(losses) if total is None else total])
+    head += struct.pack("<iIhHI", -12, 90000, 2345, 4567, 5000) + bytes([len(losses), 0, 0, 0])
+    body = b"".join(struct.pack("<BBBBQQI", *w) for w in losses)
+    return (head + body).ljust(P2.READ_INFO_SIZE, b"\0")
+
+
+def test_read_context_flag(monkeypatch, capsys):
+    """READ flag bit 5 (4.24): the request carries 0x20, the read context block follows the generation
+    block (and the provenance block when both are requested), Capture.read_info decodes clamp, head
+    position, DENSITY/DRATE, cached clock/climate and the loss window; an error END hands the block to
+    the DeviceError; older firmware (no block) gives None; ufi read --read-info prints it."""
+    fake = GuardedDevice(revolutions=REVS)
+    dev = P2.Device2(fake)
+    fake.read_info_block = _read_info_block(losses=[(0x08 | 0x10, 2, 2, 0, 110_000_005, 0, 777)])
+    cap = dev.read_track(0, 0, 2, read_context=True)
+    assert [q for q in fake.requests if q.cmd == P2.READ][-1].payload[3] & P2.READ_CONTEXT
+    ri = cap.read_info
+    assert ri.revs_requested == 0 and ri.revs_effective == 1 and ri.revs_clamped and ri.lines_changed and ri.head_moved
+    assert (ri.density_start, ri.drate_start, ri.density_end, ri.drate_end) == (1, 0, 1, 1)
+    assert (ri.track_start, ri.track_end, ri.side_end, ri.quarter, ri.position_valid) == (40, 41, 1, 0xA0, True)
+    assert ri.tcxo and ri.clock_ppm == -12 and ri.clock_ppm_age_ms == 90000
+    assert ri.temp_c == 23.45 and ri.rh_percent == 45.67 and ri.climate_age_ms == 5000
+    w = ri.losses[0]
+    assert len(ri.losses) == 1 and ri.loss_total == 1 and not ri.loss_truncated
+    assert w.start_ticks == 110_000_005 and w.end_ticks is None and w.revolution_start == 2 and w.samples == 777
+    assert w.kind_text == "store full / host too slow, open end"
+    both = dev.read_track(0, 0, 2, provenance=True, read_context=True)       # provenance first, then the context
+    assert both.provenance["capture_id"] == 0x1234 and both.read_info.losses[0].samples == 777
+    assert both.provenance["tcxo"] is False and both.provenance["clock_ppm"] is None
+    fake.read_info_block = b""                                              # firmware without bit 5 support
+    assert dev.read_track(0, 0, 2, read_context=True).read_info is None
+    assert dev.read_track(0, 0, 2).read_info is None
+    fake.read_info_block = _read_info_block(flags=0, losses=[(0x01, 1, 1, 0, 60_000, 61_000, 500), (0x02, 0, 0, 0, 0, 0, 0)],
+                                            total=5)
+    fake.read_status = 6                                                    # DMA: RDATA overcapture
+    with pytest.raises(P2.DeviceError) as e:
+        dev.read_track(0, 0, 2, read_context=True)
+    ri = e.value.read_info
+    assert e.value.status == 6 and ri.loss_total == 5 and len(ri.losses) == 2 and ri.loss_truncated is False
+    assert ri.losses[0].kind_text == "RDATA overcapture" and ri.losses[0].end_ticks == 61_000
+    assert ri.clock_ppm is None and ri.temp_c is None and not ri.revs_clamped
+    fake.read_status = 0
+    fake.read_info_block = _read_info_block(losses=[(0x02 | 0x20, 0, 0, 0, 0, 0, 0)])
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["read", "0", "0", "-r", "2", "--read-info"]) == 0
+    out = capsys.readouterr().out
+    assert "read info: revolutions 0 requested, 1 read (clamped); head track 41.2 side 1, position valid" in out
+    assert "clock: TCXO, -12 ppm vs. host USB frames" in out and "23.45 degC" in out
+    assert "loss: INDEX overcapture, before first index: before the first index" in out
 
 
 def test_analysis_job_reseek_flag(monkeypatch, capsys):
@@ -2124,7 +2179,7 @@ def test_precomp_per_write_and_profile(monkeypatch, capsys):
 def test_read_progress_events():
     """READ flag bit 4 (2.3): with the event mask enabled the fake sends event 0x85 per revolution, read_track
     hands revolution, index period and elapsed time to the callback and drains the events; without the
-    callback the flag stays clear; bit 5 is refused; the mask reports 0x1F."""
+    callback the flag stays clear; bit 6 is refused (bit 5 is the read context since 1.18-dev)."""
     fake = FakeV2(revolutions=REVS)
     dev = P2.Device2(fake)
     dev.enable_events()
@@ -2137,8 +2192,8 @@ def test_read_progress_events():
     dev.read_track(0, 0, 2)
     assert not [q for q in fake.requests if q.cmd == P2.READ][-1].payload[3] & 0x10
     with pytest.raises(P2.DeviceError):
-        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x20, 0))
-    assert dev.last_refusal()["detail"] == 0x20 and P2.EVENT_NAMES[P2.EV_READ_PROGRESS] == "read progress"
+        dev.request(P2.READ, P2.READ_REQ.pack(0, 0, 2, 0x40, 0))
+    assert dev.last_refusal()["detail"] == 0x40 and P2.EVENT_NAMES[P2.EV_READ_PROGRESS] == "read progress"
 
 
 # -- board v1.0, firmware stage A10 (ops 0x43-0x47, protocol doc 1.5) ---------------------------

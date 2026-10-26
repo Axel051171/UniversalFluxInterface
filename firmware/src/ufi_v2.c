@@ -353,7 +353,9 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
         result = UFI_ERR_DMA;           /* verify capture timed out: verify failed (6) */
     }
     if (ufi_job_live()) {
-        uint8_t end[64];                /* 20-byte job trailer + END payload (WRITE: up to 26) */
+        /* 20-byte job trailer + END payload (WRITE: up to 26; READ: up to 246 with provenance
+         * and read context, which a 64-byte buffer cut before 1.18-dev) */
+        uint8_t end[20u + 1u + UFI_V2_GEN_BLOCK + UFI_PROVENANCE_SIZE + UFI_READ_INFO_SIZE];
         put32(end,(uint32_t)ufi_job.id); put32(end+4,(uint32_t)(ufi_job.id>>32));
         put32(end+8,ufi_job.packets); put32(end+12,ufi_job.bytes); put32(end+16,ufi_job.crc);
         if (len>sizeof(end)-20u) len=sizeof(end)-20u;
@@ -494,6 +496,8 @@ static bool read_provenance;                /* READ flag bit3 (1.18): END carrie
 bool ufi_v2_read_provenance(void) { return read_provenance; }
 static bool read_progress;                  /* READ flag bit4 (1.18): event 0x85 per completed revolution (2.3) */
 bool ufi_v2_read_progress(void) { return read_progress; }
+static bool read_context;                   /* READ flag bit5 (1.18): END carries the read context block (4.24) */
+bool ufi_v2_read_context(void) { return read_context; }
 
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
@@ -533,6 +537,8 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
         read_seq = seq;
         read_provenance = (flags & 0x08u) != 0;   /* bit3: END = revs, generation block, provenance block */
         read_progress = (flags & 0x10u) != 0;     /* bit4: event 0x85 after every revolution */
+        read_context = (flags & 0x20u) != 0;      /* bit5: END also carries the read context block */
+        ufi_read_info_begin(p[2]);          /* raw revs byte: the block reports a clamp */
         ufi_stream_begin_v2(seq);           /* DATA frames follow the reply */
     } else ufi_flux_hard_sectors(previous[4]);
     return ret;
@@ -719,6 +725,20 @@ uint16_t ufi_provenance_block(uint8_t* out)
     put16(&out[86], bs.i12_ma);
     out[88] = bs.power;                     /* bit0 FDD 5 V on, bit1 FDD 12 V on */
     out[89] = bs.flags;                     /* board_status flags: jumper, overcurrent, SD, buttons, safe mode, session lock */
+    /* 1.18-dev: clock source and cached clock/climate values, never a fresh measurement */
+    int32_t ppm; uint32_t ppm_age, climate_age; int16_t temp; uint16_t rh;
+    const bool have_ppm = ufi_sense_clock_ppm(&ppm, &ppm_age);
+    const bool have_climate = ufi_sense_climate(&temp, &rh, &climate_age);
+    out[90] = (uint8_t)((ufi_clock_hse_bypass() ? 1u : 0u) | (have_ppm ? 2u : 0u) | (have_climate ? 4u : 0u));
+    if (have_ppm) {
+        put16(&out[91], (uint16_t)(int16_t)(ppm > 32767 ? 32767 : ppm < -32768 ? -32768 : ppm));
+        out[93] = (uint8_t)(ppm_age / 60000u > 255u ? 255u : ppm_age / 60000u);
+    }
+    if (have_climate) {
+        const int32_t c = (temp >= 0 ? temp + 50 : temp - 50) / 100;   /* whole degC, rounded */
+        out[94] = (uint8_t)(int8_t)(c > 127 ? 127 : c < -128 ? -128 : c);
+        out[95] = (uint8_t)((rh + 50u) / 100u);                          /* whole %RH, rh <= 10000 */
+    }
     return UFI_PROVENANCE_SIZE;
 }
 

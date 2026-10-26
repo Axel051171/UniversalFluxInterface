@@ -12,6 +12,8 @@
 #include "ufi_media.h"
 #include "ufi_metrics.h"
 #include "ufi_profile.h"
+#include "ufi_read_info.h"
+#include <string.h>
 
 /* ============================================================================
  * GLOBALE VARIABLEN (extern referenziert in ufi_flux.c, ufi_write.c)
@@ -180,6 +182,43 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
         led_set(&PIN_LED_FDD, true);
     }
     return ret;
+}
+
+/* READ flag bit5 (1.18-dev, 4.24): read context for the END frame.  DTCM keeps the AXI SRAM
+ * budget; ufi_read_info_begin initialises it for every accepted READ before any use. */
+__attribute__((section(".dtcm"))) static ufi_read_info_t read_info;
+
+static void read_sample(ufi_read_sample_t* s)
+{
+    uint8_t m[40];
+    ufi_drive_media_status(m);              /* op 13: track counter, side, status bits */
+    s->density = bus_in(&PIN_FDD_DENSITY) ? 1u : 0u;   /* as op 8 context offset 42/43 */
+    s->drate = bus_in(&PIN_FDD_DRATE) ? 1u : 0u;
+    s->track = m[8];
+    s->side = m[9];
+    s->status = m[2];
+}
+
+void ufi_read_info_begin(uint8_t revs_requested)
+{
+    memset(&read_info, 0, sizeof(read_info));
+    read_info.revs_requested = revs_requested;
+    read_info.revs_effective = g_capture.revolutions_requested;
+    read_info.quarter = g_capture.current_quarter;
+    read_sample(&read_info.start);
+}
+
+uint16_t ufi_read_info_block(uint8_t* out)
+{
+    read_sample(&read_info.end);
+    read_info.tcxo = ufi_clock_hse_bypass();
+    read_info.ppm_valid = ufi_sense_clock_ppm(&read_info.ppm, &read_info.ppm_age_ms);
+    read_info.climate_valid = ufi_sense_climate(&read_info.temp_x100, &read_info.rh_x100, &read_info.climate_age_ms);
+    const volatile uint32_t* times;
+    uint8_t count;
+    uint32_t period;
+    read_info.loss_n = read_info.loss_total = ufi_flux_loss_window(&read_info.loss[0], &times, &count, &period);
+    return ufi_read_info_pack(&read_info, times, count, period, out);
 }
 
 int ufi_capture_abort(void)

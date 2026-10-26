@@ -174,6 +174,7 @@ USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3, "composite": 4}
 READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 READ_PROVENANCE = 0x08                  # READ flag (1.18, 4.12): END carries the 96-byte provenance block
 READ_PROGRESS = 0x10                    # READ flag (1.18, 2.3): event 0x85 after every completed revolution
+READ_CONTEXT = 0x20                     # READ flag (1.18-dev, 4.24): END carries the 132-byte read context block
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
@@ -883,7 +884,12 @@ def decode_provenance(d: bytes) -> dict:
     (flux_hz, config_gen, media_gen, capture_id, capture_media, index_ticks, speed_ticks) = struct.unpack_from("<7I", d, 48)
     rpm_set, uptime = struct.unpack_from("<H", d, 78)[0], struct.unpack_from("<I", d, 80)[0]
     i5_ma, i12_ma = struct.unpack_from("<HH", d, 84)
+    # bytes 90-95 (1.18-dev, formerly reserved 0): clock source and cached clock/climate values
+    clock_ppm = struct.unpack_from("<h", d, 91)[0] if d[90] & 2 else None
     return dict(i5_ma=i5_ma, i12_ma=i12_ma, power=d[88], board_flags=d[89],
+                tcxo=bool(d[90] & 1), clock_ppm=clock_ppm, clock_ppm_age_min=d[93] if d[90] & 2 else None,
+                temp_c=struct.unpack_from("<b", d, 94)[0] if d[90] & 4 else None,
+                rh_percent=d[95] if d[90] & 4 else None,
                 board_rev=d[2], git_dirty=bool(d[3] & 1), jumper_locked=bool(d[3] & 2),
                 session_locked=bool(d[3] & 4), apple_sync=bool(d[3] & 8), capture_present=bool(d[3] & 16),
                 mcu_uid=f"{uid[2]:08x}{uid[1]:08x}{uid[0]:08x}", mcu_device_id=dev_id, mcu_revision=silicon,
@@ -894,6 +900,84 @@ def decode_provenance(d: bytes) -> dict:
                 capture_id=capture_id, capture_media_generation=capture_media,
                 index_ticks=index_ticks, speed_measured_ticks=speed_ticks,
                 drive=d[76], profile_stored=bool(d[77]), rpm_set=rpm_set, uptime_ms=uptime)
+
+
+READ_INFO_SIZE = 132                    # READ END read context block with READ_CONTEXT (4.24)
+READ_INFO_SLOTS, READ_LOSS_SIZE = 4, 24
+LOSS_KINDS = {0x01: "RDATA overcapture", 0x02: "INDEX overcapture", 0x04: "DMA error",
+              0x08: "store full / host too slow", 0x10: "open end", 0x20: "before first index"}
+
+
+@dataclass
+class LossWindow:
+    """Where a READ lost data (4.24): the flux stream is intact before start_ticks (ticks since the
+    first index, the stream's time base); at or after it, it is not.  end_ticks is None when the
+    window lasts to the end of the capture.  samples: transitions intact before the window (at least)."""
+    kind: int
+    revolution_start: int           # FD marks in the stream before start_ticks
+    revolution_end: int
+    start_ticks: int | None         # None before the first index (no stream time)
+    end_ticks: int | None
+    samples: int
+
+    @property
+    def kind_text(self) -> str:
+        return ", ".join(v for b, v in LOSS_KINDS.items() if self.kind & b) or "none"
+
+
+@dataclass
+class ReadInfo:
+    """READ END read context block (firmware 1.18-dev, READ flag bit 5, USB_Protokoll 4.24)."""
+    revs_requested: int
+    revs_effective: int
+    revs_clamped: bool
+    density_start: int              # 1 = asserted, as op 8 context offset 42/43
+    drate_start: int
+    density_end: int
+    drate_end: int
+    lines_changed: bool
+    track_start: int                # op 13 mechanical track counter, side, status bits
+    side_start: int
+    quarter: int                    # position byte: 0 whole track, 0x80 | quarter << 4
+    status_start: int
+    track_end: int
+    side_end: int
+    status_end: int
+    head_moved: bool
+    tcxo: bool                      # HSE bypass (board v1.0 TCXO), else crystal oscillator
+    clock_ppm: int | None           # last self-test usb_sof result (against the host's USB frames)
+    clock_ppm_age_ms: int | None
+    temp_c: float | None            # last cached SHT40 reading, never measured for the read
+    rh_percent: float | None
+    climate_age_ms: int | None
+    loss_total: int
+    loss_truncated: bool
+    losses: list[LossWindow]
+
+    @property
+    def position_valid(self) -> bool:
+        return bool(self.status_end & 1)
+
+
+def decode_read_info(d: bytes) -> ReadInfo:
+    """The 132-byte read context block of the READ END (READ_CONTEXT, 4.24)."""
+    if len(d) < READ_INFO_SIZE or d[0] != 1 or d[1] < READ_INFO_SIZE:
+        raise ValueError("unsupported read context block")
+    f = d[2]
+    ppm, ppm_age = struct.unpack_from("<iI", d, 16)
+    temp, rh, climate_age = struct.unpack_from("<hHI", d, 24)
+    losses = []
+    for i in range(min(d[32], READ_INFO_SLOTS)):
+        e = d[36 + i * READ_LOSS_SIZE:36 + (i + 1) * READ_LOSS_SIZE]
+        start, end = struct.unpack_from("<QQ", e, 4)
+        before = bool(e[0] & 0x20)
+        losses.append(LossWindow(e[0], e[1], e[2], None if before else start,
+                                 None if before or e[0] & 0x10 else end, struct.unpack_from("<I", e, 20)[0]))
+    return ReadInfo(d[3], d[4], bool(f & 1), d[5], d[6], d[7] & 1, (d[7] >> 1) & 1, bool(f & 2),
+                    d[8], d[9], d[10], d[11], d[12], d[13], d[14], bool(f & 4), bool(f & 0x20),
+                    ppm if f & 8 else None, ppm_age if f & 8 else None,
+                    temp / 100 if f & 0x10 else None, rh / 100 if f & 0x10 else None,
+                    climate_age if f & 0x10 else None, d[15], bool(f & 0x40), losses)
 
 
 JOB_RETRY_MISSING, JOB_RETRY_ERRORS, JOB_EXPECT_SET, JOB_RAW_INDEX, JOB_TRANSFER_TRACE, JOB_CHECK_PROFILE = 1, 2, 4, 8, 16, 32
@@ -1777,7 +1861,7 @@ class Device2:
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
                    quarter: int = 0, frame_sink=None, integrity: bool | None = None,
                    expected_config: int | None = None, expected_media: int | None = None,
-                   provenance: bool = False, progress=None) -> Capture:
+                   provenance: bool = False, progress=None, read_context: bool = False) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
         progress (firmware 1.18, READ flag bit 4): callable(revolution, index_ticks, elapsed_ms)
         invoked for every event 0x85 the board sends after a completed revolution; needs the
@@ -1785,6 +1869,10 @@ class Device2:
         provenance (firmware 1.18, READ flag bit 3): the END also carries the 96-byte provenance
         block of op 43, decoded into Capture.provenance, so the raw data and the device state it
         came from arrive in one transaction.
+        read_context (firmware 1.18-dev, READ flag bit 5, 4.24): the END also carries the read
+        context block (revolution clamp, head position and DENSITY/DRATE at start and end, cached
+        clock/climate, loss windows), decoded into Capture.read_info; with an error status the
+        DeviceError carries it as .read_info (where the stream stopped being intact).
         hard_sectors: sector holes of a hard-sectored disk (10/16/32); only the index hole counts.
         quarter: Apple Disk II quarter-track offset 0-3 (track 17 + 2 = track 17.5); Shugart drives
         accept only 2 (the half track at physical 2n+1) and only with the double-step profile (1.18).
@@ -1792,7 +1880,8 @@ class Device2:
         refuses a stale configuration (16) or another medium (21) before any DATA frame."""
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0) | \
-                (READ_PROVENANCE if provenance else 0) | (READ_PROGRESS if progress is not None else 0)
+                (READ_PROVENANCE if provenance else 0) | (READ_PROGRESS if progress is not None else 0) | \
+                (READ_CONTEXT if read_context else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
@@ -1826,8 +1915,18 @@ class Device2:
             if f.type == T_DATA:
                 data += job.decode(f.payload) if job else f.payload
                 continue
+            def info_of(end: bytes) -> ReadInfo | None:
+                at = 1 + GEN_BLOCK.size + (PROVENANCE_SIZE if provenance else 0)
+                block = end[at:at + READ_INFO_SIZE] if read_context else b""
+                return decode_read_info(block) if len(block) == READ_INFO_SIZE else None
             if f.status and f.status != OVERFLOW:
-                raise DeviceError(READ, f.status)
+                err = DeviceError(READ, f.status)
+                if read_context:                                       # where the data stopped being intact
+                    try:
+                        err.read_info = info_of(job.finish(f.payload) if job else f.payload)
+                    except ValueError:
+                        err.read_info = None
+                raise err
             if self.parser.crc_errors != crc_errors:
                 raise ValueError("CRC error during flux capture; refusing a potentially incomplete stream")
             rflags = 0x01 | (0x02 if f.status == OVERFLOW else 0)
@@ -1840,7 +1939,7 @@ class Device2:
             revs = revs[:end[0]]
             block = end[1 + GEN_BLOCK.size:1 + GEN_BLOCK.size + PROVENANCE_SIZE] if provenance else b""
             return Capture(revs, f.status, generation_block(end, 1),
-                           decode_provenance(block) if len(block) == PROVENANCE_SIZE else None)
+                           decode_provenance(block) if len(block) == PROVENANCE_SIZE else None, info_of(end))
 
     def write_limits(self) -> WriteLimits:
         """Effective limits of the write backend (firmware 1.15, caps bit 14)."""
