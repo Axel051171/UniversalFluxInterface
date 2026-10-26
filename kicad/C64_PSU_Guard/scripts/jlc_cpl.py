@@ -72,5 +72,5 @@ with open(md_path, "w", encoding="utf-8") as f:
             "| Ref | Wert | Gehäuse | KiCad ° | Offset ° | JLC ° | Pin 1 auf der Platine |\n|---|---|---|---|---|---|---|\n")
     for c in sorted(checks, key=key):
         f.write(f"| {c[0]} | {c[1]} | {c[2]} | {c[3]:g} | {c[4]:+d} | {c[5]:g} | {c[6]} |\n")
-    f.write("\nDioden/LEDs: Pin 1 = Kathode. SOT-23: Pin 1 = Gate. SOIC-8 U1/U2: Pin 1 = GND (Markierung). Stiftleisten J1/J3: Pin 1 = eckiges Pad.\n")
+    f.write("\nDioden/LEDs: Pin 1 = Kathode. SOT-23: Pin 1 = Gate. SOIC-8 U1/U2: Pin 1 = GND (Markierung). JST XH J1/J3 (v0.2, B4B-XH-A C144395) und Stiftleiste J4: Pin 1 = eckiges Pad; beim XH zusätzlich die Lage der Gehäuse-Kodierung im Viewer gegen den Bestückungsdruck prüfen.\n")
 print(f"cpl rows {len(rows)}, checklist {len(checks)}")

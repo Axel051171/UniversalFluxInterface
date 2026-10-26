@@ -1,0 +1,47 @@
+Netz                 Breiten (mm)            Länge mm  Vias
++12V_IN              [1.0]                        21.8  0
++12V_OUT             [1.0]                        45.9  2
++5V_IN               [1.0]                        35.9  0
++5V_OUT              [1.0]                        39.3  3
+/EN12                [0.25]                       11.2  0
+/EN5                 [0.25]                       11.2  0
+/ERR12               [0.25]                       14.5  0
+/ERR5                [0.25]                       13.0  0
+/G12                 [0.25]                       16.5  2
+/G5                  [0.25]                       12.3  0
+/IL12                [0.25]                        3.5  0
+/IL5                 [0.25]                        3.5  0
+/LG12                [0.25]                        1.4  0
+/LG5                 [0.25]                        1.4  0
+/LR12                [0.25]                        1.4  0
+/LR5                 [0.25]                        1.4  0
+/OV12                [0.25]                        4.5  0
+/OV5                 [0.25]                       16.2  2
+/REV                 [0.25]                        8.5  0
+/REVA                [0.25]                        1.4  0
+/SS12                [0.25]                        9.4  2
+/SS5                 [0.25]                        8.7  2
+/V12_P               [1.0]                        71.4  0
+/V5_P                [1.0]                        62.6  0
+/XA                  [0.25]                        9.8  1
+/XK                  [0.25]                       11.2  0
+FLT12                [0.25]                       66.4  6
+FLT5                 [0.25]                       93.1  4
+GND                  [0.3, 0.5]                  372.5  16
+OFF                  [0.25]                       52.3  3
+OK     Pfad J1:1->Q1:3 (+5V_IN): 12.2 mm, schmalstes 1.0 mm, ≈ 6 mΩ
+OK     Pfad Q1:2->D2:1 (/V5_P): 3.4 mm, schmalstes 1.0 mm, ≈ 2 mΩ
+OK     Pfad D2:1->C1:1 (/V5_P): 8.7 mm, schmalstes 1.0 mm, ≈ 4 mΩ
+OK     Pfad C1:1->C2:1 (/V5_P): 2.8 mm, schmalstes 1.0 mm, ≈ 1 mΩ
+OK     Pfad C2:1->U1:4 (/V5_P): 3.5 mm, schmalstes 1.0 mm, ≈ 2 mΩ
+OK     Pfad Q1:2->U1:4 (/V5_P): 19.0 mm, schmalstes 1.0 mm, ≈ 9 mΩ
+OK     Pfad U1:5->C4:1 (+5V_OUT): 3.4 mm, schmalstes 1.0 mm, ≈ 2 mΩ
+OK     Pfad C4:1->J2:1 (+5V_OUT): 23.4 mm, schmalstes 1.0 mm, ≈ 11 mΩ
+OK     Pfad J1:4->Q3:3 (+12V_IN): 12.2 mm, schmalstes 1.0 mm, ≈ 6 mΩ
+OK     Pfad Q3:2->D6:1 (/V12_P): 2.8 mm, schmalstes 1.0 mm, ≈ 1 mΩ
+OK     Pfad D6:1->C5:1 (/V12_P): 9.3 mm, schmalstes 1.0 mm, ≈ 5 mΩ
+OK     Pfad C5:1->C6:1 (/V12_P): 2.8 mm, schmalstes 1.0 mm, ≈ 1 mΩ
+OK     Pfad C6:1->U2:4 (/V12_P): 3.5 mm, schmalstes 1.0 mm, ≈ 2 mΩ
+OK     Pfad Q3:2->U2:4 (/V12_P): 19.0 mm, schmalstes 1.0 mm, ≈ 9 mΩ
+OK     Pfad U2:5->C8:1 (+12V_OUT): 3.4 mm, schmalstes 1.0 mm, ≈ 2 mΩ
+OK     Pfad C8:1->J2:3 (+12V_OUT): 28.3 mm, schmalstes 1.0 mm, ≈ 14 mΩ

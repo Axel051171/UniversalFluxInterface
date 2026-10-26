@@ -9,7 +9,7 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | D3 | green | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D4 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D5 | BZT52C10 | D_SOD-123 | 0 | +0 | 0 | links |
-| D6 | SMAJ15CA | D_SMA | 0 | +0 | 0 | links |
+| D6 | SMAJ13A | D_SMA | 0 | +0 | 0 | links |
 | D7 | green | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D8 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
 | D9 | red | LED_0603_1608Metric | 180 | +0 | 180 | rechts |
@@ -17,9 +17,9 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | D11 | 1N4148W | D_SOD-123 | 0 | +0 | 0 | links |
 | D12 | 1N4148W | D_SOD-123 | 0 | +0 | 0 | links |
 | D13 | 1N4148W | D_SOD-123 | 0 | +0 | 0 | links |
-| J1 | PSU_IN | PinHeader_1x04_P2.54mm_Vertical | 0 | +0 | 0 | oben |
+| J1 | PSU_IN | JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical | -90 | +0 | 270 | oben rechts |
 | J2 | DRIVE | TerminalBlock_MaiXu_MX126-5.0-03P_1x03_P5.00mm | 90 | +0 | 90 | unten |
-| J3 | UFI_LINK | PinHeader_1x04_P2.54mm_Vertical | 90 | +0 | 90 | links |
+| J3 | UFI_LINK | JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical | 0 | +0 | 0 | oben links |
 | J4 | EXT_ERR | PinHeader_1x02_P2.54mm_Vertical | 90 | +0 | 90 | links |
 | Q1 | AO3401A | SOT-23 | 180 | +180 | 0 | unten rechts |
 | Q2 | 2N7002 | SOT-23 | 0 | +180 | 180 | oben links |
@@ -30,4 +30,4 @@ Im JLC-Viewer (Schritt *Component Placement*) muss Pin 1 des Bauteilmodells dort
 | U1 | TPS25921ADR | SOIC-8_3.9x4.9mm_P1.27mm | 0 | +270 | 270 | oben links |
 | U2 | TPS25921ADR | SOIC-8_3.9x4.9mm_P1.27mm | 0 | +270 | 270 | oben links |
 
-Dioden/LEDs: Pin 1 = Kathode. SOT-23: Pin 1 = Gate. SOIC-8 U1/U2: Pin 1 = GND (Markierung). Stiftleisten J1/J3: Pin 1 = eckiges Pad.
+Dioden/LEDs: Pin 1 = Kathode. SOT-23: Pin 1 = Gate. SOIC-8 U1/U2: Pin 1 = GND (Markierung). JST XH J1/J3 (v0.2, B4B-XH-A C144395) und Stiftleiste J4: Pin 1 = eckiges Pad; beim XH zusätzlich die Lage der Gehäuse-Kodierung im Viewer gegen den Bestückungsdruck prüfen.
