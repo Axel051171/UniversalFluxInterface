@@ -1,0 +1,27 @@
+{
+  "_comment": "check_routing.py rules (pcb-routing skill). Load nets: 5 V 1.2 A limit / 2.0 A fast trip, 12 V 1.5 A / 2.4 A. Paths cover every hop J1 -> Q -> TVS -> 10uF -> 100nF -> U IN and U OUT -> 1uF -> J2. Only +5V_OUT changes layer (via pair next to C4).",
+  "min_width": {
+    "+5V_IN": 1.0, "+12V_IN": 1.0,
+    "/V5_P": 1.0, "/V12_P": 1.0,
+    "+5V_OUT": 1.0, "+12V_OUT": 1.0
+  },
+  "min_vias": {"+5V_OUT": 2},
+  "paths": [
+    ["+5V_IN", "J1:1", "Q1:3", 1.0],
+    ["/V5_P", "Q1:2", "D2:1", 1.0],
+    ["/V5_P", "D2:1", "C1:1", 1.0],
+    ["/V5_P", "C1:1", "C2:1", 1.0],
+    ["/V5_P", "C2:1", "U1:4", 1.0],
+    ["/V5_P", "Q1:2", "U1:4", 1.0],
+    ["+5V_OUT", "U1:5", "C4:1", 1.0],
+    ["+5V_OUT", "C4:1", "J2:1", 1.0],
+    ["+12V_IN", "J1:4", "Q3:3", 1.0],
+    ["/V12_P", "Q3:2", "D6:1", 1.0],
+    ["/V12_P", "D6:1", "C5:1", 1.0],
+    ["/V12_P", "C5:1", "C6:1", 1.0],
+    ["/V12_P", "C6:1", "U2:4", 1.0],
+    ["/V12_P", "Q3:2", "U2:4", 1.0],
+    ["+12V_OUT", "U2:5", "C8:1", 1.0],
+    ["+12V_OUT", "C8:1", "J2:3", 1.0]
+  ]
+}

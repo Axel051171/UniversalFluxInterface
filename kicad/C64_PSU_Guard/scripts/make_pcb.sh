@@ -37,7 +37,7 @@ for round in 1 2 3; do
   freeroute 10
 done
 # Freerouting sometimes drops the last segment of a net on SES import: route the rest again
-for round in 1 2; do
+for round in 1 2 3 4; do
   "$CLI" pcb drc --format json -o "$WORK/drc_u.json" "$B" >/dev/null 2>&1 || true
   n="$("$PY" -c "import json,sys;print(len(json.load(open(sys.argv[1])).get('unconnected_items',[])))" "$(W "$WORK/drc_u.json")")"
   echo "unconnected $n"

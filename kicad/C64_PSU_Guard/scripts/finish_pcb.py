@@ -14,6 +14,26 @@ gnd = board.FindNet("GND")
 bb = board.GetBoardEdgesBoundingBox()
 L, T, Rr, B = (pcbnew.ToMM(v) for v in (bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom()))
 
+# v0.2: Freerouting sometimes necks a Load-class track down (e.g. 0.90 mm next to a pad);
+# restore the class width 1.0 mm (DRC afterwards shows whether the clearance still holds)
+LOAD = {"+5V_IN", "+12V_IN", "/V5_P", "/V12_P", "+5V_OUT", "+12V_OUT"}
+widened = kept = 0
+copper = [p for p in board.GetPads()] + [t for t in board.GetTracks()]
+for t in board.GetTracks():
+    if t.GetClass() == "PCB_TRACK" and t.GetNetname() in LOAD and t.GetWidth() < MM(1.0):
+        old = t.GetWidth()
+        t.SetWidth(MM(1.0))
+        mine = t.GetEffectiveShape(t.GetLayer())
+        hit = any(o.GetNetname() != t.GetNetname() and o.IsOnLayer(t.GetLayer())
+                  and mine.Collide(o.GetEffectiveShape(t.GetLayer()), MM(0.2))
+                  for o in copper if o is not t)
+        if hit:
+            t.SetWidth(old)
+            kept += 1
+        else:
+            widened += 1
+print("load tracks widened", widened, "left narrow", kept)
+
 for z in list(board.Zones()):
     board.Remove(z)
 for layer in (pcbnew.F_Cu, pcbnew.B_Cu):

@@ -99,7 +99,7 @@ def channel(sh, v: str, y0: float, tvs: str, r_uv: str, r_ov: str, r_ilim: str, 
         # SMAJ15CA of v0.1 clamped at 24.4 V, above the TPS25921A IN rating (20 V, 22 V <= 10 ms)
         sh.part("Device", "D_Zener", ref("D"), tvs, 105, y0 + 15, {"1": vp, "2": "GND"}, "Diode_SMD:D_SMA",
                 {"MPN": "Diodes SMAJ13A-13-F (unidirectional TVS, VRWM 13 V, VC 21.5 V @ 18.6 A)",
-                 "Description": "Unidirectional TVS, cathode (pin 1) to the 12 V rail"})
+                 "Note": "unidirectional TVS, cathode (pin 1) to the 12 V rail"})
     else:
         sh.part("Device", "D_TVS", ref("D"), tvs, 105, y0 + 15, {"1": vp, "2": "GND"}, "Diode_SMD:D_SMF")
     C(sh, "10uF/35V", 120, y0 + 15, vp, "GND", C1206)

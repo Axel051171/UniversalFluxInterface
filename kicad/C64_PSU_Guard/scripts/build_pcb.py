@@ -35,11 +35,14 @@ ds.m_ViasMinSize = MM(0.5)
 ds.m_MinThroughDrill = MM(0.3)
 ds.m_CopperEdgeClearance = MM(0.3)
 
-# supply nets carry up to 1.5 A: 1.0 mm tracks (Freerouting reads the classes from the DSN)
+# Load nets carry up to 1.5 A (fast trip 2.0 / 2.4 A): 1.0 mm tracks.  Freerouting reads the
+# classes from the DSN.  The local nets of the intermediate nodes (FET -> eFuse) are named with
+# the sheet prefix ("/V5_P"); v0.1 used "V5_P" here, which matched nothing and left them at 0.25 mm.
 NET_CLASSES = {
-    "Power": (1.0, 0.2, ["+5V_IN", "+12V_IN", "V5_P", "V12_P", "+5V_OUT", "+12V_OUT"]),
+    "Load": (1.0, 0.2, ["+5V_IN", "+12V_IN", "/V5_P", "/V12_P", "+5V_OUT", "+12V_OUT"]),
     "Supply": (0.5, 0.2, ["GND"]),
 }
+REV_DATE = "v0.2 2026-10-26"
 ns = ds.m_NetSettings
 for cls, (width, clearance, members) in NET_CLASSES.items():
     c = pcbnew.NETCLASS(cls)
@@ -134,9 +137,10 @@ def pad_pos(ref, num):
 # placement (x right, y down, origin top-left): 5 V channel in the upper half,
 # 12 V channel in the lower half, signal flow left (PSU) -> right (drive)
 # ---------------------------------------------------------------------------
-put_edge("J1", 0, "left", 21.0)          # PSU in, pin 1 (+5V) at the top
-put_edge("J3", 90, "bottom", 20.0)       # UFI link, pin 1 (GND) at the left
-fps["J3"].Move(pcbnew.VECTOR2I(0, MM(-1.0)))       # 1 mm off the edge: room for tracks and pour around the pads
+J1_ROT = 270                              # XH pads run along +x at 0 deg: 270 puts pin 1 at the top
+put_edge("J1", J1_ROT, "left", 21.0)     # PSU in (JST XH, keyed), pin 1 (+5V) at the top
+put_edge("J3", 0, "bottom", 19.0)        # UFI link (JST XH, 1:1 cable to UFI J20), pin 1 (GND) at the left
+fps["J3"].Move(pcbnew.VECTOR2I(0, MM(-0.5)))       # off the edge: room for the pour around the pads
 # terminal block on the right edge, wire entry outwards: rotation 90 (checked with the Phoenix
 # MKDS 3D model of the same footprint generator; 270 puts the openings towards the board centre).
 # Pin 1 (+5 V) is then the lowest terminal, the silkscreen labels follow the pads.
@@ -171,10 +175,10 @@ for v, c in CH.items():
     put(c["rr_led"], 46.0, c["led_y"], 0)
     put(c["dr"], 49.0, c["led_y"], 180)
 # reverse-polarity indicator between the two channels, next to J1
-put("R17", 7.5, 21.0, 0)
-put("D9", 10.5, 21.0, 180)
-put("D10", 14.5, 19.0, 0)
-put("D11", 14.5, 23.0, 0)
+put("R17", 10.0, 21.0, 0)                              # v0.2: clear of the wider XH housing of J1
+put("D9", 13.0, 21.0, 180)
+put("D10", 17.0, 19.0, 0)
+put("D11", 17.0, 23.0, 0)
 put("R18", 27.5, 41.5, 0)                              # OFF pull-down next to J3
 put("Q5", 31.0, 41.5, 0)                               # ERR5 / ERR12 open-drain inverters
 put("Q6", 35.5, 41.5, 0)
@@ -184,6 +188,76 @@ fps["J4"].Move(pcbnew.VECTOR2I(0, MM(0.5)))         # 0.5 mm off the edge: room 
 put("D12", 10.0, 7.5, 0)
 put("D13", 15.2, 7.5, 0)
 put("R19", 19.8, 7.5, 0)
+# v0.2: FLT pull-ups (100k to the protected rail), next to the rail's divider resistors
+put("R20", 23.5, CH["5"]["y0"] - 4.5, 0)
+put("R21", 23.5, CH["12"]["y0"] - 4.5, 0)
+
+
+# ---------------------------------------------------------------------------
+# v0.2: load paths pre-routed at 1.0 mm and locked (Freerouting keeps them, routes the rest):
+# J1 -> Q (drain) | Q (source) -> TVS -> C 10 uF -> C 100 nF -> U IN | U OUT -> C 1 uF -> J2.
+# All on F.Cu; the 5 V output crosses the 12 V output, so it changes to B.Cu through a via pair.
+# ---------------------------------------------------------------------------
+LOAD_W = 1.0
+
+
+def track(netname, pts, layer=pcbnew.F_Cu, width=LOAD_W):
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
+        t = pcbnew.PCB_TRACK(board)
+        t.SetStart(pcbnew.VECTOR2I(MM(x1), MM(y1)))
+        t.SetEnd(pcbnew.VECTOR2I(MM(x2), MM(y2)))
+        t.SetWidth(MM(width))
+        t.SetLayer(layer)
+        t.SetNet(net(netname))
+        t.SetLocked(True)
+        board.Add(t)
+
+
+def via(netname, x, y, d=0.8, drill=0.4):
+    v = pcbnew.PCB_VIA(board)
+    v.SetPosition(pcbnew.VECTOR2I(MM(x), MM(y)))
+    v.SetWidth(MM(d))
+    v.SetDrill(MM(drill))
+    v.SetNet(net(netname))
+    v.SetLocked(True)
+    board.Add(v)
+
+
+P = pad_pos
+for v, c in CH.items():
+    vin, vp, vout = f"+{v}V_IN", f"/V{v}_P", f"+{v}V_OUT"
+    j1 = P("J1", "1" if v == "5" else "4")
+    qd, qs = P(c["q"], "3"), P(c["q"], "2")
+    tv, cb, cs, uin, uout, co = (P(c["tvs"], "1"), P(c["cb"], "1"), P(c["cs"], "1"),
+                                 P(c["u"], "4"), P(c["u"], "5"), P(c["co"], "1"))
+    xs = 6.5                                     # vertical run between J1 and the gate parts
+    track(vin, [j1, (xs, j1[1]), (xs, qd[1] + (2.0 if v == "5" else -2.0)), (xs + 2.0, qd[1]), qd])
+    track(vp, [qs, (tv[0] - 1.6, qs[1]), (tv[0] - 0.6, tv[1]), tv])           # FET source -> TVS
+    yb = cb[1] + 0.6                             # below the TVS GND pad
+    track(vp, [tv, (tv[0], yb), (cb[0] - 0.7, yb), cb])                       # TVS -> 10 uF
+    track(vp, [cb, (cs[0] - 0.7, cb[1]), cs])                                 # 10 uF -> 100 nF
+    track(vp, [cs, (cs[0] + (uin[1] - cs[1]), uin[1]), uin])                  # 100 nF -> eFuse IN
+    track(vout, [uout, (uout[0] + (co[1] - uout[1]), co[1]), co])             # eFuse OUT -> 1 uF
+    j2 = P("J2", "1" if v == "5" else "3")
+    if v == "5":                                 # via pair, then B.Cu to the lowest terminal
+        vx, va, vb = co[0] + 2.0, co[1] + 1.25, co[1] + 2.65
+        track(vout, [co, (vx, co[1]), (vx, vb)])
+        via(vout, vx, va)
+        via(vout, vx, vb)
+        track(vout, [(vx, va), (vx, vb), (vx + (j2[1] - vb), j2[1]), j2], pcbnew.B_Cu)
+    else:                                        # F.Cu up to the top terminal
+        track(vout, [co, (co[0] + 3.0, co[1]), (45.0, co[1] - (45.0 - co[0] - 3.0)),
+                     (45.0, j2[1] + 3.25), (48.25, j2[1]), j2])
+
+if "--dump" in sys.argv:
+    for r in sorted(fps):
+        for p in fps[r].Pads():
+            x, y = pad_pos(r, p.GetNumber())
+            print(f"PAD {r}:{p.GetNumber()} {x:.3f} {y:.3f} {p.GetNetname()} "
+                  f"{pcbnew.ToMM(p.GetBoundingBox().GetWidth()):.2f}x{pcbnew.ToMM(p.GetBoundingBox().GetHeight()):.2f}")
+        bb = courtyard(fps[r])
+        print(f"CY {r} {pcbnew.ToMM(bb.GetLeft()):.2f} {pcbnew.ToMM(bb.GetTop()):.2f} "
+              f"{pcbnew.ToMM(bb.GetRight()):.2f} {pcbnew.ToMM(bb.GetBottom()):.2f}")
 
 # silkscreen references: only ICs, connectors and LEDs, placed clear of the pads
 for ref, fp in fps.items():
@@ -246,11 +320,12 @@ def text(s, x, y, size=0.8, layer=pcbnew.F_SilkS, rot=0):
     board.Add(t)
 
 
-text("C64 PSU Guard v0.1", W / 2, H / 2, 1.2, pcbnew.B_SilkS)
-text("PSU IN  1=5V  2,3=GND  4=12V", 17.5, 17.3, 0.8)
+text(f"C64 PSU Guard {REV_DATE}", W / 2, H / 2, 1.2, pcbnew.B_SilkS)
+text("PSU IN", 13.5, 17.3, 0.8)
 for num, lbl in (("1", "5V"), ("2", "GND"), ("3", "GND"), ("4", "12V")):
-    text(lbl, pad_pos("J1", num)[0] + 3.2, pad_pos("J1", num)[1], 0.8)
-text("UFI 1=GND 2=OFF 3=ERR5 4=ERR12", 17.0, 37.2, 0.8)
+    text(lbl, pad_pos("J1", num)[0] + 4.3, pad_pos("J1", num)[1], 0.8)
+text("UFI J20", 11.0, 34.9, 0.8)
+text("J3 = UFI J20: 1 GND  2 OFF  3 ERR5  4 ERR12", W / 2, H / 2 + 2.5, 0.8, pcbnew.B_SilkS)
 text("EXT ERR LED  1=+ 2=-", 29.5, 2.2, 0.8)
 for num, lbl in (("1", "5V  DIN1"), ("2", "GND DIN2"), ("3", "12V DIN4")):
     text(lbl, pad_pos("J2", num)[0] - 9.5, pad_pos("J2", num)[1], 0.8)
@@ -258,7 +333,7 @@ text("5V OK", 42.5, 6.6, 0.8)
 text("5V ERR", 49.0, 6.6, 0.8)
 text("12V OK", 42.5, 37.4, 0.8)
 text("12V ERR", 49.0, 37.4, 0.8)
-text("REV POL", 10.5, 25.0, 0.8)
+text("REV POL", 12.0, 23.9, 0.8)
 
 board.Save(OUT)
 print("saved", OUT, "footprints", len(fps), "nets", board.GetNetCount())

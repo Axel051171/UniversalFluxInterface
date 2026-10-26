@@ -297,7 +297,7 @@
         "line_style": 0,
         "microvia_diameter": 0.3,
         "microvia_drill": 0.1,
-        "name": "Power",
+        "name": "Load",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "priority": -1,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
@@ -334,27 +334,27 @@
     "netclass_assignments": null,
     "netclass_patterns": [
       {
-        "netclass": "Power",
+        "netclass": "Load",
         "pattern": "+5V_IN"
       },
       {
-        "netclass": "Power",
+        "netclass": "Load",
         "pattern": "+12V_IN"
       },
       {
-        "netclass": "Power",
-        "pattern": "V5_P"
+        "netclass": "Load",
+        "pattern": "/V5_P"
       },
       {
-        "netclass": "Power",
-        "pattern": "V12_P"
+        "netclass": "Load",
+        "pattern": "/V12_P"
       },
       {
-        "netclass": "Power",
+        "netclass": "Load",
         "pattern": "+5V_OUT"
       },
       {
-        "netclass": "Power",
+        "netclass": "Load",
         "pattern": "+12V_OUT"
       },
       {
@@ -378,7 +378,13 @@
     "bus_aliases": {},
     "legacy_lib_dir": "",
     "legacy_lib_list": [],
-    "top_level_sheets": []
+    "top_level_sheets": [
+      {
+        "filename": "C64_PSU_Guard.kicad_sch",
+        "name": "C64_PSU_Guard",
+        "uuid": "00000000-0000-0000-0000-000000000000"
+      }
+    ]
   },
   "sheets": [],
   "text_variables": {},

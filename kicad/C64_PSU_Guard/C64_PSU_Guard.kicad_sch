@@ -3454,7 +3454,7 @@
 (property "Datasheet" "" (at 104.14 185.42 0) (effects (font (size 1.27 1.27)) (hide yes)))
 (property "LCSC" "C110519" (at 104.14 185.42 0) (effects (font (size 1.27 1.27)) (hide yes)))
 (property "MPN" "Diodes SMAJ13A-13-F (unidirectional TVS, VRWM 13 V, VC 21.5 V @ 18.6 A)" (at 104.14 185.42 0) (effects (font (size 1.27 1.27)) (hide yes)))
-(property "Description" "Unidirectional TVS, cathode (pin 1) to the 12 V rail" (at 104.14 185.42 0) (effects (font (size 1.27 1.27)) (hide yes)))
+(property "Note" "unidirectional TVS, cathode (pin 1) to the 12 V rail" (at 104.14 185.42 0) (effects (font (size 1.27 1.27)) (hide yes)))
 (pin "1" (uuid "e9e865ac-5177-5779-969d-be0d6c23a853"))
 (pin "2" (uuid "7b5869fc-7d39-5eaf-968b-165bc4e80f5d"))
 (instances (project "C64_PSU_Guard" (path "/3ed69f04-5f84-5edd-b6b0-3de17a9fa68c" (reference "D6") (unit 1)))))
