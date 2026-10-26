@@ -29,6 +29,7 @@
 #include "ufi_media.h"
 #include "ufi_capabilities.h"
 #include "ufi_evidence.h"
+#include "ufi_lan.h"
 _Static_assert(QUALITY_MAX_WIRE+40u<=UFI_V2_MAX_PAYLOAD,"analysis report exceeds native packet");
 #include "ufi_metrics.h"
 #include "usbd_cdc_if.h"
@@ -1448,6 +1449,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
         }
         case V2_CFG_RELOAD:
             ufi_config_load();
+            ufi_lan_reload();               /* L2: LAN.CFG too, applied after this reply */
             ret = ufi_sd_present() ? UFI_OK : UFI_ERR_STORAGE;
             break;
 

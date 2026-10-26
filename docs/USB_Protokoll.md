@@ -429,6 +429,28 @@ Socket 1 DHCP (UDP 68) 2/2 KB, Socket 2 Discovery 2/2 KB, Socket 3 ARP-Prüfung 
 übrigen 0. Interrupts der Sockets 0–3 und der IP-Konflikt (IR Bit7) gehen auf INTn. Der
 PHY-Zustand (PHYCFGR: Link, 10/100 Mbit, Halb-/Vollduplex) wird alle 500 ms gelesen.
 
+**LAN.CFG (Stufe L2):** Datei auf dem SD-NAND U15 neben UFI.CFG, gleicher Aufbau: eine Zeile
+`key=value`, führende Leerzeichen erlaubt, `#` beginnt einen Kommentar (ganze Zeile oder hinter
+dem Wert), der Wert endet am Leerzeichen, `#`, CR oder LF. Schlüssel klein geschrieben
+(Großschreibung wird ebenfalls angenommen), unbekannte Schlüssel werden übergangen. Gelesen
+werden höchstens 1023 Byte beim Start (nach UFI.CFG) und bei CFG_RELOAD (0x54); fehlt die Datei,
+schreibt die Firmware sie mit den Vorgaben (CRLF). Ohne Dateisystem gelten die Vorgaben, ohne
+dass etwas geschrieben wird. Ein Wert, der sich nicht lesen lässt, lässt die Vorgabe stehen.
+
+| Schlüssel | Vorgabe | Bedeutung |
+|---|---|---|
+| `lan` | `on` | `off` (oder `0`) hält den W5500 im Reset |
+| `ip` | `dhcp` | `dhcp` (mit Link-Local-Rückfall 169.254.x.y) oder feste Adresse `a.b.c.d` (nicht 0.x, 127.x, ab 224.x) |
+| `mask`, `gw`, `dns` | `255.255.255.0`, leer, leer | nur für eine feste Adresse; leer = 0.0.0.0, leere Maske = /24 |
+| `hostname` | leer | leer = `ufi-` + letzte drei MAC-Bytes hexadezimal klein (z. B. `ufi-02cab3`); sonst Buchstaben, Ziffern und `-` (nicht am Anfang/Ende), höchstens 32 Zeichen, wird klein geschrieben |
+| `mac` | leer | leer = aus der UID; sonst `xx:xx:xx:xx:xx:xx` oder mit `-`, keine Multicast-/Null-Adresse |
+| `port` | `55100` | TCP-Port der v2-Sitzung, 1–65535 |
+| `lan_write` | `0` | `1` erlaubt schreibende Befehle über LAN, und nur bei offenem Schreibschutzschalter (ab L4) |
+| `lan_key` | leer | leer = keine Anmeldung; sonst bis 64 Zeichen ohne Leerzeichen und `#` für die HMAC-Abfrage (ab L4). Längere Schlüssel werden nach 64 Zeichen abgeschnitten (die Anmeldung schlägt dann fehl, statt still abgeschaltet zu werden) |
+
+CFG_RELOAD liest LAN.CFG erst, nachdem seine Antwort hinaus ist; hat sich etwas geändert, startet
+der W5500 mit den neuen Einstellungen neu (eine bestehende LAN-Sitzung endet dabei).
+
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
 ### 2.1 Rahmen (beide Richtungen)
@@ -673,7 +695,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x51 | READ_FILE | `offset` u32, `len` u16 (≤ 4096), Name | Dateiinhalt (kürzer am Dateiende) |
 | 0x52 | WRITE_FILE | `offset` u32, `flags` u8 (Bit0 neu anlegen/kürzen), `nlen` u8, Name, Daten | geschriebene Bytes u16 |
 | 0x53 | DELETE | Name | – |
-| 0x54 | CFG_RELOAD | – | – (UFI.CFG neu einlesen) |
+| 0x54 | CFG_RELOAD | – | – (UFI.CFG neu einlesen; ab L2 auch LAN.CFG, angewandt nach der Antwort, Abschnitt 1.6) |
 | **Ohne PC** | | | |
 | 0x60 | DUMP_START | – oder `drive, tracks, sides, revs` u8 [, `format` u8 (1.16: 0 SCP, 1 IMG, 2 ADF; 1.17: 3 HFE; 4 HFEv3)] | – |
 | 0x61 | DUMP_STATUS | – | `state, error, track, side` u8, `file_no` u16, `fs_result` u8, `storage_ready` u8 (`state` 10–12 = Schreiben von SD; `error` 1 Speicher, 2 Laufwerk, 3 voll/Schreibfehler, 4 abgebrochen, 5 Format/Abbild nicht erkannt, 6 schreibgeschützt, 7 Datei fehlt) |

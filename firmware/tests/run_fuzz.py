@@ -9,6 +9,7 @@ Targets:
   gw       the whole Greaseweazle-compatible protocol behind generated stubs (fuzz_gw.c)
   sd       the stand-alone SD module: image loaders, dump writers, UFI.CFG and the file
            API over an in-memory FatFs fed by the input (fuzz_sd.c)
+  lan      the HAL-free LAN parsers: LAN.CFG text (fuzz_lan.c)
 Stubs: fuzz_stubs.py from the header prototypes, HAL/FatFs declarations from hal_stub/.
 
 usage: python run_fuzz.py [--target parsers|v2|gw|sd|all] [--seconds N] [--replay]
@@ -114,6 +115,12 @@ DRIVE_SEEDS = (bytes([1, 4, 2, 2, 3, 3, 2, 4, 5, 1]), bytes([6, 1, 2, 2, 2, 6, 2
                bytes([2, 8, 9, 15, 10, 11, 0, 11]), bytes([3, 20, 21, 4, 2, 16]),
                bytes([7, 12, 19, 13, 14, 22, 23, 17, 18]))
 
+# LAN parsers: selector byte, then the input (fuzz_lan.c)
+LAN_SEEDS = (b'\x00lan=on\r\nip=dhcp\r\nmask=255.255.255.0\r\ngw=\r\ndns=\r\nhostname=\r\nmac=\r\nport=55100\r\n'
+             b'lan_write=0\r\nlan_key=\r\n',
+             b'\x00ip=192.168.1.50\nmask=255.255.0.0 # x\nGW=192.168.1.1\nmac=02:ab:cd:01:02:03\nlan_key=k#c\n',
+             b'\x00hostname=Lab-1\nport=65535\nlan_write=1\nlan=off\n=5\n# c\n')
+
 
 def scp_seed():
     """SCP with one track of eight 2 us cells; flags bit 4 = mutable image without checksum."""
@@ -175,6 +182,16 @@ def build_protection():
     return exe
 
 
+LAN_SOURCES = ('ufi_lan_cfg.c',)
+
+
+def build_lan():
+    exe = BUILD / ('fuzz_lan' + EXE)
+    subprocess.run([compiler(), *COMMON, *sanitizer_flags(), str(FW / 'tests/fuzz_lan.c'),
+                    *[str(FW / 'src' / f) for f in LAN_SOURCES], '-o', str(exe)], check=True)
+    return exe
+
+
 def build_stubbed(name):
     """Whole production units + real HAL-free modules + generated stubs for the rest."""
     spec = STUBBED[name]
@@ -207,7 +224,8 @@ TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
            'v2': (lambda: build_stubbed('v2'), V2_SEEDS, 'fuzz_v2_corpus', 8192),
            'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
            'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192),
-           'drive': (lambda: build_stubbed('drive'), DRIVE_SEEDS, 'fuzz_drive_corpus', 1024)}
+           'drive': (lambda: build_stubbed('drive'), DRIVE_SEEDS, 'fuzz_drive_corpus', 1024),
+           'lan': (build_lan, LAN_SEEDS, 'fuzz_lan_corpus', 4096)}
 
 
 def run_target(name, seconds, replay):
@@ -229,7 +247,7 @@ def run_target(name, seconds, replay):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=('parsers','protection', 'v2', 'gw', 'sd', 'drive', 'all'), default='all')
+    parser.add_argument('--target', choices=('parsers','protection', 'v2', 'gw', 'sd', 'drive', 'lan', 'all'), default='all')
     parser.add_argument('--seconds', type=int, default=30)
     parser.add_argument('--replay', action='store_true', help='execute the stored corpus once, no mutation')
     args = parser.parse_args()

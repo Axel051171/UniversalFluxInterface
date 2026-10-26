@@ -1,5 +1,5 @@
 /**
- * UFI Flux Engine - LAN board glue (board v1.0, stage L1)
+ * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L2)
  *
  * W5500 U23 on SPI3: PC10 SCK, PC11 MISO, PC12 MOSI (AF6), PA15 SCSn (GPIO, 10k pull-up
  * R119), PD10 RSTn (GPIO, R121), PD5 INTn (input, R120).  Kernel clock PLL1Q 100 MHz,
@@ -12,12 +12,18 @@
  * 00:00:00:00:00:00, so it must be written after every reset) and is read back.  Without a
  * chip the line goes back into reset and the state says why.
  *
+ * LAN.CFG (L2) is read from U15 before the chip starts: lan=off keeps it in reset, mac=
+ * replaces the UID MAC.  A missing file is written with the defaults; without a file
+ * system the defaults apply without writing.  CFG_RELOAD (0x54) reads it again after its
+ * reply went out and restarts the chip when anything changed.
+ *
  * State lives in SRAM2 (.sram2 is NOLOAD, so ufi_lan_init() clears it first): the AXI SRAM
  * .bss/.data budget is frozen at the gate value and DTCM keeps its stack reserve.
  */
 
 #include "ufi_firmware.h"
 #include "ufi_lan.h"
+#include "ufi_lan_cfg.h"
 #include "ufi_w5500.h"
 #include <string.h>
 
@@ -28,9 +34,14 @@ typedef struct {
     SPI_HandleTypeDef spi;
     uint8_t state;
     uint8_t version, phy;
-    uint8_t mac[6];
+    uint8_t mac[6], uid_mac[6];
+    uint8_t cfg_source;
+    bool reload;                        /* CFG_RELOAD: read LAN.CFG again at the next service */
+    lan_cfg_t cfg;
+    char host[LAN_HOST_MAX + 1];
     uint32_t phy_ms;
     uint32_t spi_errors;
+    uint8_t buf[UFI_V2_FRAME_MAX];      /* LAN.CFG text, later the session frame */
 } lan_t;
 
 __attribute__((section(".sram2"), aligned(4))) static lan_t lan;
@@ -123,29 +134,40 @@ static void chip_reset_hold(void)
     HAL_GPIO_WritePin(PIN_LAN_RST.port, PIN_LAN_RST.pin, GPIO_PIN_RESET);
 }
 
-void ufi_lan_init(void)
+/* LAN.CFG from U15; missing -> written with the defaults; no file system -> defaults */
+static void load_cfg(void)
 {
-    memset(&lan, 0, sizeof(lan));
-    if (ufi_board_rev() < 10u) {
-        lan.state = LAN_STATE_NO_HW;    /* v0.x: pins unconnected, nothing to drive */
+    uint16_t got = 0;
+    const int ret = ufi_file_read(LAN_CFG_NAME, 0, lan.buf, LAN_CFG_MAX_TEXT, &got);
+    if (ret == UFI_OK) {
+        lan_cfg_parse(&lan.cfg, (const char*)lan.buf, got);
+        lan.cfg_source = LAN_CFG_FILE;
         return;
     }
-    spi_init();
-    lan_select(NULL, false);
+    lan_cfg_defaults(&lan.cfg);
+    lan.cfg_source = LAN_CFG_DEFAULTS;
+    if (ret == UFI_ERR_NOT_FOUND) {
+        uint16_t written = 0;
+        if (ufi_file_write(LAN_CFG_NAME, 0, true, (const uint8_t*)lan_cfg_default_text,
+                           (uint16_t)lan_cfg_default_len(), &written) == UFI_OK) {
+            lan.cfg_source = LAN_CFG_WRITTEN;
+        }
+    }
+}
+
+/* Chip out of reset with the configured MAC, or held in reset (lan=off, no chip). */
+static void lan_start(void)
+{
+    memcpy(lan.mac, lan.cfg.mac_set ? lan.cfg.mac : lan.uid_mac, 6u);
+    lan_cfg_hostname(&lan.cfg, lan.mac, lan.host);
     chip_reset_hold();
+    if (!lan.cfg.enabled) {
+        lan.state = LAN_STATE_OFF;
+        return;
+    }
     HAL_Delay(1);                       /* >= 500 us low */
     HAL_GPIO_WritePin(PIN_LAN_RST.port, PIN_LAN_RST.pin, GPIO_PIN_SET);
     HAL_Delay(2);                       /* internal PLL lock, 1 ms max */
-
-    uint8_t uid[12];
-    for (unsigned i = 0; i < 3u; i++) {
-        const uint32_t w = *(volatile uint32_t*)(UID_BASE + 4u * i);
-        for (unsigned k = 0; k < 4u; k++) {
-            uid[4u * i + k] = (uint8_t)(w >> (8u * k));
-        }
-    }
-    w5500_mac_from_id(uid, sizeof(uid), lan.mac);
-
     const bool reset_ok = w5500_reset(&dev);
     lan.version = w5500_version(&dev);
     if (!reset_ok || !w5500_setup(&dev, lan.mac)) {
@@ -158,12 +180,47 @@ void ufi_lan_init(void)
     lan.state = (lan.phy & W5500_PHY_LNK) ? LAN_STATE_LINK_UP : LAN_STATE_LINK_DOWN;
 }
 
+void ufi_lan_init(void)
+{
+    memset(&lan, 0, sizeof(lan));
+    if (ufi_board_rev() < 10u) {
+        lan.state = LAN_STATE_NO_HW;    /* v0.x: pins unconnected, nothing to drive */
+        lan_cfg_defaults(&lan.cfg);
+        return;
+    }
+    spi_init();
+    lan_select(NULL, false);
+    uint8_t uid[12];
+    for (unsigned i = 0; i < 3u; i++) {
+        const uint32_t w = *(volatile uint32_t*)(UID_BASE + 4u * i);
+        for (unsigned k = 0; k < 4u; k++) {
+            uid[4u * i + k] = (uint8_t)(w >> (8u * k));
+        }
+    }
+    w5500_mac_from_id(uid, sizeof(uid), lan.uid_mac);
+    load_cfg();
+    lan_start();
+}
+
+void ufi_lan_reload(void)
+{
+    lan.reload = lan.state != LAN_STATE_NO_HW;  /* applied by the next service, after the reply */
+}
+
 /* ============================================================================
  * MAIN LOOP
  * ============================================================================ */
 
 void ufi_lan_service(void)
 {
+    if (lan.reload) {
+        lan.reload = false;
+        const lan_cfg_t old = lan.cfg;
+        load_cfg();
+        if (memcmp(&old, &lan.cfg, sizeof(old)) != 0) {
+            lan_start();                /* any change: chip restarted with the new settings */
+        }
+    }
     if (lan.state < LAN_STATE_LINK_DOWN) {
         return;
     }
@@ -179,3 +236,6 @@ uint8_t ufi_lan_state(void) { return lan.state; }
 uint8_t ufi_lan_version(void) { return lan.version; }
 uint8_t ufi_lan_phy(void) { return lan.phy; }
 void ufi_lan_mac(uint8_t mac[6]) { memcpy(mac, lan.mac, 6u); }
+const lan_cfg_t* ufi_lan_cfg(void) { return &lan.cfg; }
+uint8_t ufi_lan_cfg_source(void) { return lan.cfg_source; }
+const char* ufi_lan_hostname(void) { return lan.host; }
