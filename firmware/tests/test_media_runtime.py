@@ -23,6 +23,13 @@ static const int PIN_FDD_DIR=1,PIN_FDD_STEP=2,PIN_FDD_SIDE_SEL=3;
 #define STEP_RATE_US 3000
 #define SETTLE_TIME_US 15000
 static bool is_apple(drive_type_t t){return t==DRIVE_APPLE_II || t==DRIVE_APPLE2;}
+static bool board_v10;                  /* v1.0: drive id 11 is the Mac drive on J23 */
+static bool is_mac(drive_type_t t){return t==DRIVE_APPLE2 && board_v10;}
+#define MAC_TRACKS 80u
+#define MAC_KIND_400K 1u
+static struct {uint8_t kind;} mac;
+static uint8_t mac_head_side=0xFF;
+static void mac_side_set(uint8_t s){mac_head_side=s;}
 static bool is_shugart(drive_type_t t){return t>=DRIVE_SHUGART_DS0 && t<=DRIVE_SHUGART_DS3;}
 static bool ufi_drive_motor_is_on(void){return motor;}
 static bool ufi_drive_disk_changed(void){return change_line;}
@@ -90,8 +97,16 @@ int main(void){
         ufi_drive_media_status(report);assert(rd(report+28)==rates[i] && report[25]==1);
         mp[5]=1;
     }
+    /* v1.0: id 11 is the Mac drive - 80 tracks, two heads, CSTIN as change line, head by register */
+    board_v10=true;g_current_drive=DRIVE_APPLE2;media_init(&media[DRIVE_APPLE2],79,2,true);
+    uint8_t mprof[8]={1,79,2,1,0,0,0,0};assert(!ufi_drive_profile_set(mprof));
+    mprof[1]=80;assert(ufi_drive_profile_set(mprof)==UFI_ERR_BAD_ARGS);mprof[1]=79;
+    assert(!ufi_drive_select_side(1) && mac_head_side==1 && g_drive_status[DRIVE_APPLE2].current_side==1);
+    mac.kind=MAC_KIND_400K;assert(ufi_drive_select_side(1)==UFI_ERR_BAD_ARGS);mac.kind=0;
+    board_v10=false;assert(ufi_drive_profile_set(mprof)==UFI_ERR_BAD_ARGS);   /* v0.7 J15 Disk II: 40 tracks, one head */
+    assert(ufi_drive_select_side(1)==UFI_ERR_BAD_ARGS || ufi_drive_select_side(1)==UFI_ERR_NOT_IMPL);
     g_current_drive=DRIVE_NONE;ufi_drive_media_status(report);assert(!rd(report+4) && !report[2]);
-    puts("media: position validity, early/stuck/missing TRK0, limits, side checks, change latch, profile invalidation and drive identity passed");
+    puts("media: position validity, early/stuck/missing TRK0, limits, side checks, change latch, profile invalidation, Mac drive profile and drive identity passed");
 }
 '''
     run('regression_media_runtime',code,('src/ufi_media.c','src/ufi_capabilities.c'))

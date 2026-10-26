@@ -33,6 +33,7 @@ TESTS = {
     "test_recognition": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
     "test_local": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
     "test_mac": ["src/ufi_mfm.c", "src/ufi_verify.c", "src/ufi_quality.c"],
+    "test_mac_drive": ["src/ufi_mac.c"],
     "test_media_check": ["src/ufi_media.c"],
     "test_compare": ["src/ufi_compare.c"],
     "test_evidence": ["src/ufi_evidence.c", "src/ufi_drive_extra.c"],

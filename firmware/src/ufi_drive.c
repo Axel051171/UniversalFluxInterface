@@ -8,9 +8,13 @@
  * Amiga J7 wiring: MTRXD = MOTOR_B, SEL1B = DRV_SEL_B, SEL2B = DRV_SEL_A (v0.7, only
  * with JP3 bridged).  Amiga drives latch MTRXD on the falling edge of their select line,
  * so the motor is switched via a select pulse and each drive keeps its own motor state.
+ *
+ * Board v1.0: drive id 11 (DRIVE_APPLE2) is the Macintosh 3.5" drive on J23 (Sony
+ * registers, ufi_mac.c); see the MACINTOSH section below.
  */
 
 #include "ufi_firmware.h"
+#include "ufi_mac.h"
 #include "ufi_drive_extra.h"
 #include "ufi_verify.h"             /* ufi_crc32 for the stored profile file */
 #include "ufi_media.h"
@@ -95,8 +99,11 @@ static void apl_phase(int p, bool on)
     HAL_GPIO_WritePin(apl_ph[p & 3]->port, apl_ph[p & 3]->pin, on ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+static void mac_release(void);
+
 static void apl_release(void)
 {
+    mac_release();                          /* v1.0: Mac motor off before /ENBL goes high */
     for (int p = 0; p < 4; p++) {
         apl_phase(p, false);
     }
@@ -142,8 +149,180 @@ static void apl_move_qt(int qt, int target)
     media[g_current_drive].position_valid=true;
 }
 
+/* ============================================================================
+ * MACINTOSH 3.5" (board v1.0, J23): Sony register interface, logic in ufi_mac.c.
+ * On v1.0 AP_EN2 is J23 pin 14 (/ENBL) - J15 is gone - so DRIVE_APPLE2 addresses the Mac
+ * drive there.  Flux paths treat it as an Apple port drive (RD on TIM2_CH3, WR toggling
+ * on TIM3_CH2, /WRREQ, no index); positioning, motor, head and status use the registers:
+ * CA0-CA2 = PH0-PH2, LSTRB = PH3, SEL = PB0, status on RD.  /ENBL stays low while the
+ * drive is selected (it addresses the drive; the motor is a register command).
+ * ============================================================================ */
+
+_Static_assert(MAC_ERR_SEEK == UFI_ERR_SEEK_FAIL && MAC_ERR_NO_TACH == UFI_ERR_NO_INDEX &&
+               MAC_ERR_TIMEOUT == UFI_ERR_TIMEOUT && MAC_ERR_BAD_ARGS == UFI_ERR_BAD_ARGS,
+               "ufi_mac.h result codes must equal ufi_error_t");
+
+__attribute__((section(".dtcm"))) static mac_drive_t mac;   /* DTCM: AXI budget unchanged */
+
+static bool is_mac(drive_type_t t)
+{
+    return t == DRIVE_APPLE2 && board_fdd_mosfet;   /* board_fdd_mosfet = board v1.0 */
+}
+
+static void mac_io_lines(void* ctx, uint8_t reg)
+{
+    (void)ctx;
+    apl_phase(0, (reg & 2u) != 0);          /* CA0 */
+    apl_phase(1, (reg & 4u) != 0);          /* CA1 */
+    apl_phase(2, (reg & 8u) != 0);          /* CA2 */
+    HAL_GPIO_WritePin(PIN_MAC_SEL.port, PIN_MAC_SEL.pin, (reg & 1u) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void mac_io_strobe(void* ctx, bool high)
+{
+    (void)ctx;
+    apl_phase(3, high);                     /* LSTRB */
+}
+
+static bool mac_io_rd(void* ctx)
+{
+    (void)ctx;                              /* RD through U17 (non-inverting, 10k to FDD_5V) */
+    return HAL_GPIO_ReadPin(PIN_APL_RDDATA.port, PIN_APL_RDDATA.pin) == GPIO_PIN_SET;
+}
+
+static void mac_io_wait(void* ctx, uint32_t us)
+{
+    (void)ctx;
+    while (us > 1000u) {
+        delay_us(1000u);
+        UFI_WATCHDOG_FEED();
+        us -= 1000u;
+    }
+    delay_us(us);
+}
+
+static uint32_t mac_io_ticks(void* ctx)
+{
+    (void)ctx;
+    return DWT->CYCCNT;
+}
+
+static mac_io_t mac_io_get(void)
+{
+    return (mac_io_t){mac_io_lines, mac_io_strobe, mac_io_rd, mac_io_wait, mac_io_ticks,
+                      SystemCoreClock / 1000000u, NULL};
+}
+
+/* Status bits may only be read while no capture or write runs: addressing a status register
+ * replaces the read data on RD.  Otherwise the last complete read answers.  Each fresh read
+ * classifies the drive again (rails switched on after SELECT, drive plugged in). */
+static uint8_t mac_status_flags(void)
+{
+    if (!ufi_operation_busy()) {
+        const mac_io_t io = mac_io_get();
+        (void)mac_probe(&io, &mac);
+    }
+    return mac_flags(mac.sense);
+}
+
+static int mac_seek_track(uint8_t track)
+{
+    if (track > media[DRIVE_APPLE2].drive[1]) {
+        return UFI_ERR_SEEK_FAIL;
+    }
+    const mac_io_t io = mac_io_get();
+    if (!media[DRIVE_APPLE2].position_valid) {
+        mac.track = -1;
+    }
+    const int before = mac.track;
+    motor_step_wait();
+    const int ret = mac_seek(&io, &mac, track);
+    media[DRIVE_APPLE2].position_valid = ret == MAC_OK;
+    if (ret) {
+        return ret == MAC_ERR_BAD_ARGS ? UFI_ERR_SEEK_FAIL : ret;
+    }
+    g_drive_status[DRIVE_APPLE2].current_track = track;
+    if (before != (int)track) {
+        delay_us(SETTLE_TIME_US);           /* head settle after the last step */
+    }
+    return UFI_OK;
+}
+
+static int mac_recal(void)
+{
+    const mac_io_t io = mac_io_get();
+    motor_step_wait();
+    const int ret = mac_recalibrate(&io, &mac);
+    media[DRIVE_APPLE2].position_valid = ret == MAC_OK;
+    if (ret) {
+        return ret;
+    }
+    g_drive_status[DRIVE_APPLE2].current_track = 0;
+    g_drive_status[DRIVE_APPLE2].track0 = true;
+    delay_us(SETTLE_TIME_US);
+    return UFI_OK;
+}
+
+static int mac_step1(int direction)
+{
+    const mac_io_t io = mac_io_get();
+    if (!media[DRIVE_APPLE2].position_valid) {
+        mac.track = -1;
+    }
+    motor_step_wait();
+    const int ret = mac_step(&io, &mac, direction);
+    media[DRIVE_APPLE2].position_valid = mac.track >= 0;     /* a refused step keeps the position */
+    if (mac.track >= 0) {
+        g_drive_status[DRIVE_APPLE2].current_track = (uint8_t)mac.track;
+    }
+    delay_us(SETTLE_TIME_US);
+    return ret;
+}
+
+/* Select: /ENBL low addresses the drive; probe what answers (no drive, no power -> NONE). */
+static void mac_enable(void)
+{
+    HAL_GPIO_WritePin(PIN_APL_EN2.port, PIN_APL_EN2.pin, GPIO_PIN_RESET);
+    delay_us(10u);
+    const mac_io_t io = mac_io_get();
+    mac_head(&io, &mac, mac.side);
+    (void)mac_probe(&io, &mac);
+}
+
+static void mac_motor_set(bool on)
+{
+    const mac_io_t io = mac_io_get();
+    mac_motor(&io, &mac, on);
+}
+
+/* Head select; refreshes the cached status first, so the write protect test of a write
+ * that follows (WRITE prepares with seek + side) sees the current tab. */
+static void mac_side_set(uint8_t side)
+{
+    const mac_io_t io = mac_io_get();
+    (void)mac_sense_all(&io, &mac);
+    mac_head(&io, &mac, side);
+}
+
+/* Motor off by command while the drive still listens, then /ENBL high (deselect) */
+static void mac_release(void)
+{
+    if (!board_fdd_mosfet) {
+        return;
+    }
+    if (is_mac(g_current_drive) && mac.motor) {   /* still selected: /ENBL low, commands latch */
+        const mac_io_t io = mac_io_get();
+        mac_motor(&io, &mac, false);
+    }
+    mac.motor = false;
+    HAL_GPIO_WritePin(PIN_MAC_SEL.port, PIN_MAC_SEL.pin, GPIO_PIN_RESET);
+}
+
 static int apl_recalibrate(void)
 {
+    if (is_mac(g_current_drive)) {
+        return mac_recal();
+    }
     apl_move_qt(4 * (APL_MAX_TRACK + 1), 0);    /* assume the far end: hits the stop on the way */
     g_drive_status[g_current_drive].track0 = true;
     return UFI_OK;
@@ -151,6 +330,9 @@ static int apl_recalibrate(void)
 
 static int apl_seek_qt(int target)
 {
+    if (is_mac(g_current_drive)) {          /* whole tracks only (ufi_drive_quarter_ok) */
+        return (target < 0 || (target & 3)) ? UFI_ERR_BAD_ARGS : mac_seek_track((uint8_t)(target / 4));
+    }
     if (target < 0 || target > APL_MAX_QT) {
         return UFI_ERR_SEEK_FAIL;
     }
@@ -168,7 +350,7 @@ static int apl_seek_qt(int target)
 
 static int apl_seek(uint8_t track)
 {
-    return apl_seek_qt(4 * track);
+    return is_mac(g_current_drive) ? mac_seek_track(track) : apl_seek_qt(4 * track);
 }
 
 int ufi_drive_apple_step(int direction)
@@ -177,6 +359,7 @@ int ufi_drive_apple_step(int direction)
      * recalibration below would mark that drive's position valid (found by fuzz_drive). */
     if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
     if(!is_apple(g_current_drive))return UFI_ERR_NOT_IMPL;
+    if(is_mac(g_current_drive))return media[DRIVE_APPLE2].position_valid?mac_step1(direction):mac_recal();
     if(!media[g_current_drive].position_valid)return apl_recalibrate();
     const int qt = apl_qt[g_current_drive == DRIVE_APPLE2];
     if (qt < 0) {
@@ -198,7 +381,7 @@ bool ufi_drive_quarter_ok(uint8_t quarter)
 {
     if (quarter == 0) return true;
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) return false;
-    if (is_apple(g_current_drive)) return quarter <= 3u;
+    if (is_apple(g_current_drive)) return quarter <= 3u && !is_mac(g_current_drive);   /* Mac: whole tracks */
     return quarter == 2u && g_timing.double_step != 0;
 }
 
@@ -232,10 +415,12 @@ void ufi_drive_init(void)
     for (int i = 0; i < DRIVE_TYPE_COUNT; i++) {
         g_drive_status[i] = (drive_status_t){0};
         g_drive_status[i].type = DRIVE_NONE;
-        bool apple=i==DRIVE_APPLE_II || i==DRIVE_APPLE2;
-        media_init(&media[i],apple?39:83,apple?1:2,
-                   i==DRIVE_SHUGART_A || i==DRIVE_SHUGART_B || i==DRIVE_AMIGA || i==DRIVE_AMIGA2);
+        const bool macintosh=is_mac((drive_type_t)i);   /* v1.0: 80 tracks, two heads, CSTIN as change line */
+        bool apple=(i==DRIVE_APPLE_II || i==DRIVE_APPLE2) && !macintosh;
+        media_init(&media[i],apple?39:macintosh?79:83,apple?1:2,
+                   i==DRIVE_SHUGART_A || i==DRIVE_SHUGART_B || i==DRIVE_AMIGA || i==DRIVE_AMIGA2 || macintosh);
     }
+    mac_reset(&mac);
     g_current_drive = DRIVE_NONE;
 }
 
@@ -311,7 +496,11 @@ int ufi_drive_select(drive_type_t type)
                 g_current_drive = DRIVE_NONE;   /* no Apple port on this board */
                 return UFI_ERR_NOT_IMPL;
             }
-            /* /ENABLE starts the spindle and powers the stepper: on with the motor */
+            /* Disk II: /ENABLE starts the spindle and powers the stepper: on with the motor.
+             * Mac (v1.0 J23): /ENBL addresses the drive, low for as long as it is selected. */
+            if (is_mac(type)) {
+                mac_enable();
+            }
             break;
         case DRIVE_NONE:
         default:
@@ -342,13 +531,15 @@ bool ufi_drive_media_matches(uint32_t token){
 void ufi_drive_media_status(uint8_t out[40]){
     (void)ufi_drive_media_token();
     media_pack(&media[g_current_drive],(uint8_t)g_current_drive,g_drive_status[g_current_drive].current_track,
-               g_drive_status[g_current_drive].current_side,is_apple(g_current_drive),out);
+               g_drive_status[g_current_drive].current_side,is_apple(g_current_drive) && !is_mac(g_current_drive),out);
     if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC){out[2]=0;memset(out+4,0,4);}
 }
 int ufi_drive_profile_set(const uint8_t p[8]){
     if(g_current_drive==DRIVE_NONE || g_current_drive==DRIVE_IEC)return UFI_ERR_NO_DRIVE;
-    if(!media_drive_valid(p) || (is_apple(g_current_drive) && (p[1]>39 || p[2]!=1)) ||
-       ((is_apple(g_current_drive) || is_shugart(g_current_drive)) && p[3]))return UFI_ERR_BAD_ARGS;
+    const bool macintosh=is_mac(g_current_drive);   /* v1.0 J23: up to 80 tracks, two heads, CSTIN change line */
+    if(!media_drive_valid(p) || (is_apple(g_current_drive) && !macintosh && (p[1]>39 || p[2]!=1)) ||
+       (macintosh && p[1]>MAC_TRACKS-1u) ||
+       (((is_apple(g_current_drive) && !macintosh) || is_shugart(g_current_drive)) && p[3]))return UFI_ERR_BAD_ARGS;
     ufi_config_changed();
     media_state_t* s=&media[g_current_drive];memcpy(s->drive,p,8);s->position_valid=false;
     s->change_asserted=false;media_invalidate(s,3);(void)ufi_drive_media_token();return UFI_OK;
@@ -413,6 +604,10 @@ int ufi_drive_motor(bool on)
             break;
         case DRIVE_APPLE_II:                /* Apple: motor follows /ENABLE (active low) */
         case DRIVE_APPLE2:
+            if (is_mac(g_current_drive)) {  /* Mac: register command, /ENBL stays low */
+                mac_motor_set(on);
+                break;
+            }
             HAL_GPIO_WritePin(apl_en(g_current_drive)->port, apl_en(g_current_drive)->pin,
                               on ? GPIO_PIN_RESET : GPIO_PIN_SET);
             break;
@@ -586,6 +781,12 @@ int ufi_drive_select_side(uint8_t side)
         return UFI_ERR_NO_DRIVE;
     }
     if(side>=media[g_current_drive].drive[2])return UFI_ERR_BAD_ARGS;
+    if (is_mac(g_current_drive)) {          /* head = RDDATA register address (read and write) */
+        if (side && mac.kind == MAC_KIND_400K) return UFI_ERR_BAD_ARGS;
+        mac_side_set(side);
+        g_drive_status[g_current_drive].current_side = side;
+        return UFI_OK;
+    }
     if (is_apple(g_current_drive)) {
         return side ? UFI_ERR_NOT_IMPL : UFI_OK;   /* Disk II: one head */
     }
@@ -832,6 +1033,9 @@ static void tg43_apply(uint32_t phys)
 
 bool ufi_drive_at_track0(void)
 {
+    if (is_mac(g_current_drive)) {
+        return (mac_status_flags() & MAC_F_TRACK0) != 0;
+    }
     if (is_apple(g_current_drive)) {
         return apl_qt[g_current_drive == DRIVE_APPLE2] == 0;   /* no sensor: position count */
     }
@@ -840,6 +1044,10 @@ bool ufi_drive_at_track0(void)
 
 bool ufi_drive_write_protected(void)
 {
+    if (is_mac(g_current_drive)) {          /* WRTPRT low = protected; nothing answering = protected */
+        const uint8_t f = mac_status_flags();
+        return mac.kind == MAC_KIND_NONE || !(f & MAC_F_DISK) || (f & MAC_F_WPROT);
+    }
     if (is_apple(g_current_drive)) {        /* WRPROT high = protected (also: no drive) */
         return HAL_GPIO_ReadPin(PIN_APL_WRPROT.port, PIN_APL_WRPROT.pin) == GPIO_PIN_SET;
     }
@@ -851,11 +1059,17 @@ bool ufi_drive_write_protected(void)
  * The Disk II has neither line. */
 bool ufi_drive_disk_changed(void)
 {
+    if (is_mac(g_current_drive)) {          /* Mac: CSTIN high = no disk, like an asserted DSKCHG */
+        return !(mac_status_flags() & MAC_F_DISK);
+    }
     return (is_shugart(g_current_drive) || is_apple(g_current_drive)) ? false : bus_in(&PIN_FDD_DKCHG);
 }
 
 bool ufi_drive_ready(void)
 {
+    if (is_mac(g_current_drive)) {
+        return (mac_status_flags() & MAC_F_READY) != 0;
+    }
     if (is_apple(g_current_drive)) {
         return true;
     }
@@ -865,6 +1079,71 @@ bool ufi_drive_ready(void)
 bool ufi_drive_is_apple(void)
 {
     return is_apple(g_current_drive);
+}
+
+bool ufi_drive_is_mac(void)
+{
+    return is_mac(g_current_drive);
+}
+
+bool ufi_drive_sync_index(void)
+{
+    return is_apple(g_current_drive) && !is_mac(g_current_drive) && ufi_config_apple_sync();
+}
+
+/* UFI v2 MAC 0x29 (docs/USB_Protokoll.md 1.7): sub-op 0 status, 1 raw register command,
+ * 2 eject.  Every sub-op answers with the status block. */
+#define MAC_STATUS_SIZE 8u
+
+static uint16_t mac_status_pack(uint8_t* out)
+{
+    const uint8_t f = mac_status_flags();
+    out[0] = 1u;                            /* schema */
+    out[1] = mac.kind;
+    out[2] = f;
+    out[3] = (uint8_t)((HAL_GPIO_ReadPin(PIN_MAC_CSTOUT.port, PIN_MAC_CSTOUT.pin) == GPIO_PIN_SET ? 1u : 0u) |
+                       (media[DRIVE_APPLE2].position_valid ? 2u : 0u) | (mac.motor ? 4u : 0u));
+    out[4] = (uint8_t)mac.sense;
+    out[5] = (uint8_t)(mac.sense >> 8);
+    out[6] = media[DRIVE_APPLE2].position_valid && mac.track >= 0 ? (uint8_t)mac.track : 0xFFu;
+    out[7] = mac.side;
+    return MAC_STATUS_SIZE;
+}
+
+int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n)
+{
+    *n = 0;
+    if (!board_fdd_mosfet) {
+        return UFI_ERR_NOT_IMPL;            /* J23 exists from board v1.0 */
+    }
+    if (!is_mac(g_current_drive)) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    const uint8_t op = len ? p[0] : 0u;
+    if (len > 2u || (op != 1u && len > 1u) || (op == 1u && (len != 2u || p[1] > 15u)) || op > 2u) {
+        return UFI_ERR_BAD_ARGS;
+    }
+    const mac_io_t io = mac_io_get();
+    if (op == 1u) {
+        const uint8_t reg = p[1];
+        mac_command(&io, &mac, reg, MAC_STROBE_US);
+        if (reg == MAC_CMD_MOTOR_ON || reg == MAC_CMD_MOTOR_OFF) {
+            mac.motor = reg == MAC_CMD_MOTOR_ON;
+            g_drive_status[DRIVE_APPLE2].motor_on = mac.motor;
+        } else if ((reg & 7u) == (MAC_CMD_STEP & 7u) || (reg & 7u) == (MAC_CMD_DIR_IN & 7u) ||
+                   (reg & 7u) == (MAC_CMD_EJECT & 7u)) {
+            mac.dir = 0;                    /* raw direction / step / eject: position unknown */
+            mac.track = -1;
+            media[DRIVE_APPLE2].position_valid = false;
+        }
+    } else if (op == 2u) {
+        mac_eject(&io, &mac);
+        g_drive_status[DRIVE_APPLE2].motor_on = false;
+        media[DRIVE_APPLE2].position_valid = false;
+        media_invalidate(&media[DRIVE_APPLE2], 2);
+    }
+    *n = mac_status_pack(out);
+    return UFI_OK;
 }
 
 bool ufi_drive_is_shugart_bus(void)
@@ -955,6 +1234,9 @@ int ufi_drive_probe_tracks(uint8_t* highest)
         g_current_drive == DRIVE_APPLE_II) {
         return UFI_ERR_NO_DRIVE;
     }
+    if (is_mac(g_current_drive)) {
+        return UFI_ERR_NOT_IMPL;            /* Mac: 80 tracks by design, the drive stops at its end */
+    }
     if (ufi_drive_recalibrate() != UFI_OK) {
         return UFI_ERR_SEEK_FAIL;
     }
@@ -996,6 +1278,11 @@ int ufi_drive_check_disk(bool* changed, bool* present)
 {
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
+    }
+    if (is_mac(g_current_drive)) {          /* Mac: CSTIN directly, no latch to re-arm */
+        *present = (mac_status_flags() & MAC_F_DISK) != 0;
+        *changed = !*present;
+        return UFI_OK;
     }
     *changed = ufi_drive_disk_changed();
     if (*changed) {

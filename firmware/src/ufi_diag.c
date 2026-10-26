@@ -46,7 +46,7 @@ int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r)
     if (d == DRIVE_NONE || d == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
-    if (ufi_drive_is_apple() && !ufi_config_apple_sync()) {
+    if (ufi_drive_is_apple() && !ufi_drive_sync_index()) {
         return UFI_ERR_NO_INDEX;                /* Disk II: no index without sync sensor */
     }
     if (revs == 0) revs = 5;

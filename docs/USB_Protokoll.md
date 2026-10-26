@@ -16,6 +16,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 1.4 Ressourcen und Feature-Abfrage
   - 1.5 Platine v1.0: Uhr, Sensor, Versorgungsspannungen, Sync-Sensor (Stufe A10)
   - 1.6 LAN-Transport (Platine v1.0, W5500 U23)
+  - 1.7 Macintosh-3,5-Zoll-Laufwerk an J23 (Platine v1.0)
 - 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
   - 2.1 Rahmen (beide Richtungen)
   - 2.2 Flusscode (READ-Daten, WRITE-Daten), 275 MHz
@@ -591,6 +592,85 @@ und Port des Fragenden – oder an 255.255.255.255, wenn der Fragende nicht im e
 Je Durchlauf wird eine Antwort gesendet, die nächste erst nach SEND_OK/Zeitüberschreitung der
 vorigen.
 
+### 1.7 Macintosh-3,5-Zoll-Laufwerk an J23 (Platine v1.0)
+
+**Laufwerksnummer.** Auf Platine v1.0 liegt AP_EN2 auf J23 Pin 14 (/ENBL); J15 gibt es nicht
+mehr. Laufwerk 11 (`apple2` bis v0.7) ist deshalb ab v1.0 das Mac-Laufwerk an J23 (Host:
+`mac`). Auf v0.7 bleibt 11 das zweite Disk-II-Laufwerk an J15. Die Firmware unterscheidet am
+Platinenteiler (BOARD_ID).
+
+**Signale an J23.** CA0/CA1/CA2/LSTRB = AP_PH0–AP_PH3 (Pins 2/4/6/8, gemeinsam mit J14), /ENBL =
+AP_EN2 (Pin 14), RD = AP_RDDATA (Pin 16, TIM2_CH3, 10 k nach FDD_5V), WR = AP_WRDATA (Pin 18,
+TIM3_CH2), /WRREQ = AP_WRREQ (Pin 10), SEL = PB0 über U27 (Pin 12), Pin 20 = !CSTOUT-Rücklesung
+an PB1 (immer verbunden) bzw. PWM über JP5 (ab Werk offen), Pin 9 = −12 V nur über JP6 (ab Werk
+offen). Das Laufwerk antwortet mit /ENBL low; die Firmware hält /ENBL low, solange Laufwerk 11
+gewählt ist (der Motor ist ein Registerbefehl, nicht /ENBL).
+
+**Register.** Adresse `reg` = CA2·8 + CA1·4 + CA0·2 + SEL. Lesen: Adresse anlegen, Status auf RD
+(10 µs Einschwingzeit). Befehl: CA0/CA1/SEL adressieren, CA2 ist der Wert, LSTRB-Hochimpuls
+(2 µs) übernimmt. Belegung nach Apples Laufwerksdokumentation:
+
+| `reg` | Status (RD) | Befehl (LSTRB) |
+|---|---|---|
+| 0 | DIRTN Schrittrichtung (0 = Richtung Spur 79) | Richtung nach innen (Spur 79) |
+| 1 | CSTIN, 0 = Diskette eingelegt | – |
+| 2 | STEP, 0 = Schritt läuft | ein Schritt in der gesetzten Richtung |
+| 3 | WRTPRT, 0 = schreibgeschützt | – |
+| 4 | MOTORON, 0 = Motor an | Motor an |
+| 5 | TK0, 0 = Kopf auf Spur 0 | – |
+| 6 | Diskettenwechsel-/Auswurfmerker (roh gemeldet) | – |
+| 7 | TACH, 60 Impulse je Umdrehung | – |
+| 8 / 9 | Lesedaten unterer / oberer Kopf (wählt auch den Schreibkopf) | – |
+| 8 | – | Richtung nach außen (Spur 0) |
+| 10 | SUPERDR, 1 = SuperDrive (FDHD) | – |
+| 12 | SIDES, 0 = einseitig (400K) | Motor aus |
+| 13 | READY, 0 = bereit | – |
+| 14 | DRVIN, 0 = Laufwerk angeschlossen | Auswurf (LSTRB 750 ms hoch) |
+| 15 | HD-Medium (FDHD, roh gemeldet) | – |
+
+Nach jedem Zugriff stehen die Adressleitungen wieder auf dem Lesedatenregister des gewählten
+Kopfes (8 + Seite), damit RD für READ und /WRREQ für WRITE den richtigen Kopf führen.
+
+**Typerkennung** (bei SELECT und bei jedem Statuslesen ohne laufenden Auftrag): zwei vollständige
+Lesungen aller 16 Register. Abgesehen von TACH und den Lesedaten müssen beide gleich sein, nicht
+alle Bits gleich (RD hängt sonst fest: 10 k nach FDD_5V ohne Laufwerk, 0 bei ausgeschalteter
+Schiene) und DRVIN = 0. Dann SIDES = 0 → 400K, SUPERDR = 1 → FDHD, sonst 800K; anderenfalls
+„kein Laufwerk“ (0).
+
+**Kopfbewegung.** Richtung nur bei Wechsel neu setzen, STEP-Befehl, nach 100 µs STEP-Bit pollen
+(höchstens 30 ms, sonst Position ungültig und Status 3), danach `settle_us` der Laufwerkszeiten.
+Rekalibrieren: höchstens 90 Schritte nach außen bis TK0 = 0, ein Schritt nach innen (TK0 muss
+loslassen), zurück auf TK0. Nach jeder Positionierung wird TK0 gegen die gezählte Spur geprüft
+(Spur 0 ⇔ TK0 = 0). Viertelspuren gibt es nicht (Status 16), PROBE_TRACKS antwortet mit 11.
+SIDE wählt den Kopf über das Lesedatenregister (400K: nur Seite 0, sonst Status 16).
+
+**Status ohne Leitungswechsel während Aufträgen.** Ein Statusregister ersetzt die Lesedaten auf
+RD. Während READ/WRITE/Dump/Analysejob (`ufi_operation_busy`) beantworten STATUS, Schreibschutz-,
+TK0-, READY- und Wechselabfragen deshalb die letzte vollständige Lesung; SIDE frischt sie vor
+jedem Auftrag auf. Schreibschutz gilt auch ohne erkanntes Laufwerk und ohne Diskette.
+Diskettenwechsel: CSTIN = 1 (keine Diskette) wirkt wie ein gesetztes DSKCHG (Mediengeneration
+4.2); CHECK_DISK meldet `present` direkt aus CSTIN. Der SYNC-Sensor (`apple_sync=1`) gilt nur für
+Disk II, nie für das Mac-Laufwerk. DUMP_START weist Laufwerk 11 auf v1.0 ab.
+
+**MAC 0x29.** Anfrage `op` u8 (leer = 0): 0 Status, 1 `reg` u8 0–15 Rohbefehl (gewöhnlicher
+LSTRB-Impuls; Richtung/Schritt/Auswurf machen die Position ungültig, 4/12 setzen den
+Motorzustand), 2 Auswurf (LSTRB 750 ms, Position und Mediengeneration ungültig, Motor aus).
+Andere Längen/Werte Status 16, vor v1.0 Status 11, anderes Laufwerk gewählt Status 2. Antwort
+(8 Byte, Schema 1):
+
+| Offset | Typ | Bedeutung |
+|---|---|---|
+| 0 | u8 | Schema = 1 |
+| 1 | u8 | Typ: 0 keines, 1 400K, 2 800K, 3 FDHD |
+| 2 | u8 | Bit0 Diskette, Bit1 schreibgeschützt, Bit2 Motor an, Bit3 bereit, Bit4 Spur 0, Bit5 Schritt läuft |
+| 3 | u8 | Bit0 !CSTOUT (J23 Pin 20 über PB1), Bit1 Position gültig, Bit2 Motorbefehl „an“ gesendet |
+| 4 | u16 | Rohstatus, Bit `r` = RD-Pegel von Register `r` |
+| 6 | u8 | Spur, 0xFF unbekannt |
+| 7 | u8 | Kopf |
+
+Zeitwerte (Einschwingen, LSTRB-Dauer, Auswurfdauer, Schrittzeit) sind vorsichtige Annahmen der
+Firmware und am echten Laufwerk zu bestätigen.
+
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
 ### 2.1 Rahmen (beide Richtungen)
@@ -764,7 +844,7 @@ Schreibbeweis. Ergebnisqualität bleibt `verify_level` aus Abschnitt 3.3.
 
 ### 3.1 Befehlstabelle
 
-Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14), 4 amiga (J7 DF1), 5 iec, 6–9 ds0–ds3 (Shugart), 10 amiga2 (J7 DF2, JP3), 11 apple2 (J15). Spuren immer physisch.
+Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14), 4 amiga (J7 DF1), 5 iec, 6–9 ds0–ds3 (Shugart), 10 amiga2 (J7 DF2, JP3), 11 apple2 (J15, Platine v0.7) bzw. ab Platine v1.0 mac (Macintosh-3,5-Zoll-Laufwerk an J23, Abschnitt 1.7). Spuren immer physisch.
 
 | Code | Name | Anfrage | Antwort-Nutzdaten |
 |---|---|---|---|
@@ -804,6 +884,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x26 | FORMAT (1.14) | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 Amiga, Bit2 1581-Seitentausch), `rate_kbps` u16 (250/300/500/1000), `spt` u8 (Amiga 11, HD 22 ab 1.16), `gap3` u8 (0 = nach Layout), `fill` u8 | `flux_count` u32, `good` u8 (Sektoren mit gültiger CRC beim Prüflesen, 0xFF ohne) |
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
+| 0x29 | MAC (Platine v1.0) | – oder `op` u8: 0 Status, 1 `reg` u8 Rohbefehl, 2 Auswurf | Statusblock 8 Byte (Typ, Statusbits, Rohstatus, Spur, Kopf); nur mit Laufwerk 11 auf v1.0 (sonst 2 bzw. 11); Abschnitt 1.7 |
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |

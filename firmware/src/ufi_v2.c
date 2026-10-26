@@ -97,6 +97,7 @@ enum {
     V2_ABORT = 0x21, V2_ERASE = 0x23, V2_PATTERN = 0x24, V2_ANALYZE = 0x25, V2_FORMAT = 0x26,
     V2_GUARDED_WRITE = 0x27,
     V2_GUARDED_READ = 0x28,             /* 1.18: media-bound READ start (4.5), DATA/END on 0x20 */
+    V2_MAC = 0x29,                      /* board v1.0: Macintosh drive on J23, Sony registers (1.7) */
     V2_IEC_RESET = 0x30, V2_IEC_SEND = 0x31, V2_IEC_RECV = 0x32, V2_IEC_MEM = 0x33,
     V2_IEC_NIB = 0x34, V2_IEC_BLOCK = 0x35,
     V2_IEC_TARGET = 0x36, V2_IEC_READ_STATUS = 0x37,
@@ -663,7 +664,7 @@ static int cmd_write(uint8_t seq, const uint8_t* p, uint16_t len)
             if (len < at + 4u) { refuse(REFUSE_START_OFFSET, 1); return UFI_ERR_BAD_ARGS; }
             start_offset = get32(p + at); at += 4u;
             if (!start_offset || start_offset > FLUX_TIMER_FREQ) { refuse(REFUSE_START_OFFSET, 2); return UFI_ERR_BAD_ARGS; }
-            if (ufi_drive_is_apple() && !ufi_config_apple_sync()) return UFI_ERR_NOT_IMPL;   /* no reference pulse */
+            if (ufi_drive_is_apple() && !ufi_drive_sync_index()) return UFI_ERR_NOT_IMPL;   /* no reference pulse */
         }
         if (flags2 & 0x04u) {               /* bit2: precomp_ns u16 for this write (1.18), 0 = off, no track rule */
             if (len < at + 2u) { refuse(REFUSE_PRECOMP, 1); return UFI_ERR_BAD_ARGS; }
@@ -1268,6 +1269,9 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             put16(out, ufi_drive_get_rpm());
             out[2] = ufi_drive_rpm_line();
             n = 3u;
+            break;
+        case V2_MAC:                        /* Mac drive J23 (board v1.0): status, raw command, eject */
+            ret = ufi_drive_mac_op(p, len, out, &n);
             break;
 
         /* ---- flux ---- */

@@ -99,9 +99,10 @@ void HAL_GPIO_WritePin(GPIO_TypeDef* port, uint16_t pin, GPIO_PinState state)
     if (!port) return;                                  /* generated zero pin */
     if (state == GPIO_PIN_SET) port->ODR |= pin; else port->ODR &= (uint32_t)~pin;
     if (port == GPIOE && pin == PIN_FDD_STEP.pin) {
-        const bool assert_now = state == BUS_OUT_ASSERT;
+        /* v1.0 (board_fdd_mosfet): MOSFET outputs, MCU high = bus line asserted */
+        const bool assert_now = board_fdd_mosfet ? state == GPIO_PIN_SET : state == BUS_OUT_ASSERT;
         if (assert_now && !step_asserted) {             /* falling edge on the cable = one step */
-            const bool inwards = (GPIOE->ODR & PIN_FDD_DIR.pin) == 0;   /* DIR asserted = in */
+            const bool inwards = ((GPIOE->ODR & PIN_FDD_DIR.pin) != 0) == board_fdd_mosfet;   /* DIR asserted = in */
             int* p = pos();
             if (inwards) { if (*p < 90) (*p)++; }
             else if (*p > 0) (*p)--;
@@ -179,6 +180,9 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
      * every input starts with unknown positions and a freshly randomised head model */
     ufi_drive_position_invalidate();
     for (unsigned t = 0; t <= DRIVE_TYPE_COUNT; t++) head_pos[t] = (int)(fuzz_byte() % 84u);
+    /* board v0.7 or v1.0: on v1.0 drive id 11 is the Mac drive on J23, whose register
+     * status (RD) comes from the generic input double */
+    board_fdd_mosfet = fuzz_bit();
     step_asserted = false;
     memset(tainted, 0, sizeof tainted);
     file_len = 0;

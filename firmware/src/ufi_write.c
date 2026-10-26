@@ -617,7 +617,7 @@ int ufi_write_start(void) {
         return UFI_ERR_WRITE_PROT;
     }
     if (speed_tolerance_permille && source_index_ticks && !g_write.gw_mode &&
-        !(g_write.apple && !ufi_config_apple_sync())) {
+        !(g_write.apple && !ufi_drive_sync_index())) {
         /* op 41: the drive's own index period against the source revolution, before any seek */
         diag_rpm_t r;
         speed_measured=0;speed_source=source_index_ticks;
@@ -721,7 +721,7 @@ int ufi_write_start(void) {
 
     led_set(&PIN_LED_FDD, true);
     g_write.wait_since = HAL_GetTick();
-    if (g_write.apple && !ufi_config_apple_sync()) {
+    if (g_write.apple && !ufi_drive_sync_index()) {
         /* no index pulse: start right away, /WRREQ low; ends after the last interval */
         start_now(TIM2->CNT);
         return write_start_error;

@@ -177,7 +177,7 @@ void ufi_sync_service(void)
     if (!ss.v10) {
         return;
     }
-    set_source(ufi_config_apple_sync() && ufi_drive_is_apple());
+    set_source(ufi_drive_sync_index());
 }
 
 void ufi_sync_select(bool apple)
@@ -185,7 +185,7 @@ void ufi_sync_select(bool apple)
     if (!ss.v10) {
         return;
     }
-    set_source(apple && ufi_config_apple_sync());
+    set_source(apple && ufi_drive_sync_index());
 }
 
 int ufi_sync_enable(bool on)

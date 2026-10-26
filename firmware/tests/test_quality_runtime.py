@@ -280,7 +280,7 @@ static uint8_t report_track=0xff,report_side=0xff;
 static void ufi_quality_verify_begin(uint8_t t,uint8_t s){report_track=t;report_side=s;}
 static uint32_t start_offset_set;static bool apple_sync;
 static void ufi_write_set_start_offset(uint32_t t){start_offset_set=t;}
-static bool ufi_config_apple_sync(void){return apple_sync;}
+static bool ufi_drive_sync_index(void){return apple_drive && apple_sync;}   /* no Mac drive in this test */
 #define FLUX_TIMER_FREQ 275000000u
 static bool ufi_drive_is_apple(void) {return apple_drive;}
 static bool half_track_ok;                                   /* Shugart double-step profile active */

@@ -21,6 +21,10 @@ static bool ufi_delay_ms(unsigned ms){waits++;now+=cancelled?1:ms;return !cancel
 static void bus_out(const int* p,bool value){(void)p;(void)value;outputs++;}
 static void amiga_motor(bool on){(void)on;outputs++;}
 static void HAL_GPIO_WritePin(int port,int p,int value){(void)port;(void)p;(void)value;outputs++;}
+static bool board_v10;                      /* v1.0: drive id 11 is the Mac drive (register command) */
+static unsigned mac_commands;
+static bool is_mac(drive_type_t t){return t==DRIVE_APPLE2 && board_v10;}
+static void mac_motor_set(bool on){(void)on;mac_commands++;outputs++;}
 int ufi_drive_motor(bool on);
 '''
     code=code.replace('static const void* apl_en(drive_type_t t);',
@@ -29,8 +33,10 @@ int ufi_drive_motor(bool on);
 int main(void){
     const drive_type_t drives[]={DRIVE_SHUGART_A,DRIVE_SHUGART_B,DRIVE_AMIGA,DRIVE_AMIGA2,
         DRIVE_APPLE_II,DRIVE_APPLE2,DRIVE_SHUGART_DS0,DRIVE_SHUGART_DS3};
-    for(unsigned i=0;i<sizeof drives/sizeof drives[0];i++){
-        memset(g_drive_status,0,sizeof g_drive_status);g_current_drive=drives[i];
+    for(unsigned i=0;i<sizeof drives/sizeof drives[0]+1u;i++){
+        board_v10=i==sizeof drives/sizeof drives[0];     /* last pass: the Mac drive on J23 */
+        memset(g_drive_status,0,sizeof g_drive_status);g_current_drive=board_v10?DRIVE_APPLE2:drives[i];
+        mac_commands=0;
         now=waits=outputs=0;cancelled=false;
         assert(!ufi_drive_motor(true) && waits==1 && now==500 && ufi_drive_motor_is_on() && motor_step_pending);
         assert(motor_started_ms==0);
@@ -39,8 +45,10 @@ int main(void){
         assert(!ufi_drive_motor(false) && !ufi_drive_motor_is_on() && !motor_step_pending);
         cancelled=true;
         assert(ufi_drive_motor(true)==UFI_ERR_CANCELLED && !ufi_drive_motor_is_on() && !motor_step_pending);
+        /* Mac: the motor is a register command (on, off, on, cancel -> off), never /ENBL */
+        assert(board_v10 ? mac_commands==4 : mac_commands==0);
     }
-    puts("motor: first spin-up, idempotent warm start, all port families and cancellation passed");
+    puts("motor: first spin-up, idempotent warm start, all port families (Mac register command) and cancellation passed");
     return 0;
 }
 '''

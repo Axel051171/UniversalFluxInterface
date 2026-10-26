@@ -33,6 +33,11 @@ static void bus_out(const int* p,bool v){writes++;if(*p==1)density_level=v;else 
 static void delay_us(uint32_t n){(void)n;}
 static void HAL_Delay(uint32_t n){(void)n;}
 static void apl_release(void){}
+static bool board_v10;                  /* v1.0: drive id 11 is the Mac drive on J23 */
+static bool is_mac(drive_type_t d){return d==DRIVE_APPLE2 && board_v10;}
+static int mac,mac_enables;
+static void mac_reset(int* d){*d=0;}
+static void mac_enable(void){mac_enables++;}
 static bool ufi_board_has_apple(void){return true;}
 static const gpio_pin_t* amiga_sel(drive_type_t d){return d==DRIVE_AMIGA2?&PIN_FDD_DRV_SEL_A:&PIN_FDD_DRV_SEL_B;}
 void ufi_drive_set_timing(const drive_timing_t* t);
@@ -81,7 +86,14 @@ int main(void){
     assert(ufi_drive_select((drive_type_t)-1)==UFI_ERR_BAD_ARGS && writes==before);
     assert(token==ufi_config_generation());
     ufi_drive_init();assert(token!=ufi_config_generation() && g_current_drive==DRIVE_NONE);
-    puts("drive profiles: atomic rejection, shared lines, native switching and port report passed");
+    assert(media[DRIVE_APPLE2].drive[1]==39 && media[DRIVE_APPLE2].drive[2]==1 && !media[DRIVE_APPLE2].drive[3]);
+    assert(!ufi_drive_select(DRIVE_APPLE2) && !mac_enables);              /* v0.7: J15 Disk II, no registers */
+    board_v10=true;ufi_drive_init();                                     /* v1.0: id 11 = Mac drive on J23 */
+    assert(media[DRIVE_APPLE2].drive[1]==79 && media[DRIVE_APPLE2].drive[2]==2 && media[DRIVE_APPLE2].drive[3]);
+    assert(media[DRIVE_APPLE_II].drive[1]==39 && media[DRIVE_APPLE_II].drive[2]==1);
+    assert(!ufi_drive_select(DRIVE_APPLE2) && mac_enables==1 && g_current_drive==DRIVE_APPLE2);
+    assert(!ufi_drive_select(DRIVE_APPLE_II) && mac_enables==1);
+    puts("drive profiles: atomic rejection, shared lines, native switching, port report and Mac drive identity passed");
 }
 '''
     run('regression_drive_profiles',code,('src/ufi_media.c','src/ufi_drive_extra.c','src/ufi_capabilities.c'))

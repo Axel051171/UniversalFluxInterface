@@ -173,7 +173,7 @@ int ufi_capture_start_q(uint8_t track, uint8_t side, uint8_t revolutions, uint32
     const bool apple = ufi_drive_is_apple();
     ufi_flux_select_apple(apple);
     ufi_sync_select(apple);                 /* A10c: v1.0 + apple_sync=1 -> SYNC on TIM8 instead of the INDEX line */
-    if (apple && period_ticks == 0 && !ufi_config_apple_sync()) {
+    if (apple && period_ticks == 0 && !ufi_drive_sync_index()) {
         period_ticks = FLUX_TIMER_FREQ / 5u;
     }
 

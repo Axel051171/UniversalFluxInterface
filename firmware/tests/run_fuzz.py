@@ -111,7 +111,7 @@ STUBBED = {
                      'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
                extra=dict(LINKER_SYMBOLS)),
     'drive': dict(harness='fuzz_drive.c', units=('ufi_drive',),
-                  real=('ufi_drive_extra', 'ufi_media', 'ufi_capabilities', 'ufi_verify'),
+                  real=('ufi_drive_extra', 'ufi_media', 'ufi_capabilities', 'ufi_verify', 'ufi_mac'),
                   extra=dict(LINKER_SYMBOLS)),
 }
 

@@ -924,7 +924,8 @@ static void fail(uint8_t code)
 static bool drive_ok(uint8_t d)
 {
     return d == DRIVE_SHUGART_A || d == DRIVE_SHUGART_B || d == DRIVE_AMIGA || d == DRIVE_AMIGA2 ||
-           ((d == DRIVE_APPLE_II || d == DRIVE_APPLE2) && ufi_board_has_apple()) ||
+           ((d == DRIVE_APPLE_II || d == DRIVE_APPLE2) && ufi_board_has_apple() &&
+            !(d == DRIVE_APPLE2 && board_fdd_mosfet)) ||      /* v1.0: id 11 is the Mac drive (J23), no dump */
            (d >= DRIVE_SHUGART_DS0 && d <= DRIVE_SHUGART_DS3) || d == DRIVE_IEC;
 }
 

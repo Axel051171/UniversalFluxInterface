@@ -96,7 +96,8 @@ typedef enum {
     DRIVE_SHUGART_DS2,
     DRIVE_SHUGART_DS3,
     DRIVE_AMIGA2,           // second Amiga drive DF2: J7 pin 9 SEL2B = DRV_SEL_A (board v0.7, JP3)
-    DRIVE_APPLE2,           // second Apple drive: /ENABLE on J15 (board v0.7); DRIVE_APPLE_II = J14
+    DRIVE_APPLE2,           // second Apple drive: /ENABLE on J15 (board v0.7); DRIVE_APPLE_II = J14.
+                            // Board v1.0: AP_EN2 is /ENBL of J23, so this id is the Macintosh 3.5" drive
     DRIVE_TYPE_COUNT
 } drive_type_t;
 
@@ -545,7 +546,10 @@ int ufi_drive_probe_tracks(uint8_t* highest);
 void ufi_drive_safe_state(void);    // motor off, deselect, all write lines released
 int ufi_drive_seek_test(uint8_t a, uint8_t b, uint8_t cycles);
 int ufi_drive_apple_step(int direction);    // one track in/out (two half steps)
-bool ufi_drive_is_apple(void);              // current drive is on the Apple port J14/J15
+bool ufi_drive_is_apple(void);              // current drive is on the Apple port J14/J15 (v1.0: also the Mac drive on J23)
+bool ufi_drive_is_mac(void);                // current drive is the Macintosh 3.5" drive on J23 (board v1.0, drive id 11)
+bool ufi_drive_sync_index(void);            // the SYNC sensor gives the index: Disk II with apple_sync=1 (never the Mac drive)
+int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n);   // UFI v2 MAC 0x29 (docs 1.7)
 bool ufi_drive_quarter_ok(uint8_t quarter); // quarter form allowed: Apple 0..3, Shugart half track (2) with double_step (1.18)
 void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead of RDATA
 

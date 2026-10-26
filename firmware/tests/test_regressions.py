@@ -270,7 +270,7 @@ static int pack_deltas(void) {
     static const uint32_t d[3]={1000,1000,1000}; wave_init(&wave_cursor,d,3); return 0;
 }
 static bool ufi_drive_is_apple(void) { return false; }
-static bool ufi_config_apple_sync(void) { return false; }
+static bool ufi_drive_sync_index(void) { return false; }
 static bool ufi_board_write_locked(void) { return locked; }
 static void ufi_board_write_enable(bool on) { (void)on; }
 static bool soft_locked;
