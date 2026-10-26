@@ -3,6 +3,7 @@
 Run:  python -m ufi_host.bringup [--port COMx] [--report bringup.json] [--expect-rev 10]
                                  [--index-sim] [--no-12v] [--keep-rtc]
                                  [--drive a [--read-revs 3] [--write-test --write-track 2]]
+                                 [--drive mac ...]   (Macintosh drive on J23, board v1.0)
 
 The sequence follows docs/Bringup_2026-10-24.md (section 3 for every board, section 7
 "v1.0 Schnellpruefung" for the v1.0 board): identification, protocol discovery, diagnostics,
@@ -10,7 +11,10 @@ supplies, SD NAND, the v1.0 sensing (RTC set and read, SHT40 range check), the f
 self-test, the clock source, the drive rails switched off and on with the eFuse fault bits,
 the discovery queries of the 1.18 analysis ops and, only with --drive, one READ with the read
 context block.  Without --drive nothing moves a head; without --write-test nothing opens WGATE
-(and --write-test needs --drive and a scratch disk).
+(and --write-test needs --drive and a scratch disk).  --drive mac selects the Macintosh drive on
+J23 (board v1.0): drive kind and status bits (MAC 0x29), the tachometer against the zone speed,
+then track 0 side 0 read without index and decoded as GCR on the host; the write test writes a
+GCR track and compares every sector of the read-back.
 
 Every step reports ok (PASS), warn, fail or skip.  A device that refuses a request is recorded
 as "skip", not as a failure, so older firmware and v0.x boards still yield a readable report:
@@ -81,6 +85,7 @@ RPM_WINDOWS = ((290, 310), (350, 370))
 WRITE_TEST_TICKS = 1100         # 4 us intervals at 275 MHz
 WRITE_TEST_COUNT = 47_000       # about 94 % of a 300 rpm revolution
 SHUGART_DRIVES = ("a", "b", "ds0", "ds1", "ds2", "ds3", "amiga", "amiga2")
+DRIVE_CHOICES = SHUGART_DRIVES + ("mac",)   # mac: Macintosh drive on J23 (board v1.0, drive id 11)
 
 
 @dataclass
@@ -592,6 +597,86 @@ def _write_test(dev: P2.Device2, rep: Report, track: int) -> None:
             dict(track=track, written=WRITE_TEST_COUNT, counts=counts, median_ticks=medians))
 
 
+def _mac_pattern(track: int) -> dict[int, bytes]:
+    """Write-test sectors: 12 tag + 512 data bytes, different in every sector."""
+    from . import mac
+    return {s: bytes((s * 37 + i + track) & 0xFF for i in range(524)) for s in range(mac.sectors_per_track(track))}
+
+
+def _mac_read(dev: P2.Device2, rep: Report, revs: int) -> bool:
+    """Mac drive: kind and status, tachometer, track 0 side 0 as GCR.  -> disk inserted."""
+    from . import mac
+    try:
+        st = dev.mac_status()
+    except P2.DeviceError as e:
+        rep.add("drive.mac", "fail", f"MAC 0x29: {e}")
+        return False
+    if st.kind == 0:
+        rep.add("drive.mac", "fail", f"no Macintosh drive answers on J23 (RD stuck, sense 0x{st.sense:04x}): "
+                                     "no drive, drive unpowered or the J14 cable on J23", dict(sense=st.sense))
+        return False
+    rep.add("drive.mac", "ok" if st.disk else "warn", str(st) + ("" if st.disk else "; insert a disk for the READ"),
+            dict(kind=st.kind_name, flags=st.flags, sense=st.sense))
+    dev.motor(True)
+    dev.recalibrate()
+    if not st.disk:
+        rep.add("drive.read", "skip", "no disk in the Mac drive")
+        return False
+    try:
+        t = dev.mac_tach(3)
+        rep.add("drive.speed", "ok" if t.verdict == 0 else "warn",
+                f"tachometer {t.tach_rpm:.1f} rpm, zone {t.zone} speed {t.target_rpm:.0f} rpm"
+                + ("" if t.verdict == 0 else ": outside 2 %"), dict(rpm=t.tach_rpm, zone=t.zone))
+    except P2.DeviceError as e:
+        rep.add("drive.speed", "fail", f"tachometer: {e}")
+    try:
+        cap = dev.read_track(0, 0, revs, no_index=True)
+    except (P2.DeviceError, ValueError, TimeoutError, OSError) as e:
+        rep.add("drive.read", "fail", f"READ track 0 side 0: {e}")
+        return True
+    dec = mac.decode_capture(cap)
+    best = dec.best()
+    good = sum(1 for r in range(12) if (0, 0, r) in best and best[(0, 0, r)].ok)
+    counts = [len(r.samples) for r in cap.revolutions]
+    rep.add("drive.read", "ok" if good == 12 else "warn",
+            f"track 0 side 0: {good}/12 GCR sectors in {len(cap.revolutions)} slices of 200 ms, transitions {counts}, "
+            f"{dec.header_errors} header / {dec.data_errors} data / {dec.code_errors} coding errors"
+            + ("" if good == 12 else "; unformatted, MFM or damaged disk"),
+            dict(sectors=good, transitions=counts))
+    return True
+
+
+def _mac_write_test(dev: P2.Device2, rep: Report, track: int) -> None:
+    from . import mac
+    secs = _mac_pattern(track)
+    deltas = mac.encode_track(track, 0, secs, mac.FORMAT_800K)
+    bs = rep.guarded("write.lock", dev.power)
+    if bs is None:
+        return
+    if bool(bs.flags & 1) or bs.session_locked:
+        try:
+            dev.write_track(track, 0, deltas, extended=False)
+        except P2.DeviceError as e:
+            refused = e.status in (P2.WRITE_PROTECTED, P2.SOFT_WRITE_LOCK)
+            rep.add("write.lock", "ok" if refused else "fail",
+                    f"lock set: WRITE refused with '{e}'" + ("" if refused else "; expected 'write protected'"))
+        else:
+            rep.add("write.lock", "fail", "lock set but the WRITE completed")
+        rep.add("write.test", "skip", "front switch SCHREIBEN open (lock set): close it and run --write-test again")
+        return
+    rep.add("write.lock", "ok", "lock open (front switch SCHREIBEN closed): write test runs")
+    try:
+        dev.write_track(track, 0, deltas, extended=False)
+        best = mac.decode_capture(dev.read_track(track, 0, 2, no_index=True)).best()
+    except (P.DeviceError, P2.DeviceError, ValueError, TimeoutError, OSError) as e:
+        rep.add("write.test", "fail", f"track {track} side 0: {e}")
+        return
+    good = [r for r, data in secs.items() if (track, 0, r) in best and best[(track, 0, r)].data == data]
+    rep.add("write.test", "ok" if len(good) == len(secs) else "fail",
+            f"track {track} side 0: wrote {len(secs)} GCR sectors, {len(good)} read back identical",
+            dict(track=track, sectors=len(secs), identical=len(good)))
+
+
 def _drive(dev: P2.Device2, rep: Report, ctx: Context, masks: dict | None, drive: str, revs: int,
            write_test: bool, write_track: int, has_12v: bool) -> None:
     p0 = ctx.power if ctx.power is not None else 0
@@ -618,6 +703,12 @@ def _drive(dev: P2.Device2, rep: Report, ctx: Context, masks: dict | None, drive
                     (str(rl) if rl else "no RAILS reply") + (f"; FDD_PINS {pins}" if pins else "")
                     + (f"; {'; '.join(problems)}" if problems else ""),
                     dict(v5_mv=rl.v5_mv, v12_mv=rl.v12_mv) if rl else None)
+        if drive == "mac":
+            if _mac_read(dev, rep, revs) and write_test:
+                _mac_write_test(dev, rep, write_track)
+            elif write_test:
+                rep.add("write.test", "skip", "no Mac drive or no disk")
+            return
         dev.motor(True)
         dev.recalibrate()
         SLEEP(1.0)
@@ -667,7 +758,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--index-sim", action="store_true", help="also measure rpm from the internal index simulation")
     ap.add_argument("--no-12v", action="store_true", help="no 12 V input (USB or 5 V only): do not switch or judge FDD_12V")
     ap.add_argument("--keep-rtc", action="store_true", help="only read the RTC and compare with the PC (CR2032 hold-over)")
-    ap.add_argument("--drive", choices=SHUGART_DRIVES, default=None, help="drive connected: one READ of track 0 side 0")
+    ap.add_argument("--drive", choices=DRIVE_CHOICES, default=None,
+                    help="drive connected: one READ of track 0 side 0 (mac: Macintosh drive on J23, GCR decoded)")
     ap.add_argument("--read-revs", type=int, default=3, metavar="N", help="revolutions of the drive READ (50 = 10 s for the J6 pin 24 check)")
     ap.add_argument("--write-test", action="store_true", help="WRITES a test track: scratch disk only, needs --drive")
     ap.add_argument("--write-track", type=int, default=2, metavar="T", help="track of the write test (side 0)")

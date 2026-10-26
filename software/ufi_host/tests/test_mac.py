@@ -5,9 +5,10 @@ import random
 import struct
 
 import pytest
-from test_bringup import FakeV10
+from test_bringup import FakeV10, clock  # noqa: F401  (pytest fixture)
 from test_protocol2 import decode_write
-from ufi_host import cli, mac
+
+from ufi_host import bringup, cli, mac
 from ufi_host import protocol2 as P2
 
 
@@ -218,7 +219,7 @@ class FakeMac(FakeV10):
         elif cmd == P2.READ:
             self.track, self.side = a[0], a[1]
             d = self.flux.get((a[0], a[1]))
-            self.revs = [(sum(d) + 5000, _samples(d))] * 2 if d else [(55_000_000, [1000, 2000])] * 2
+            self.revs = [(sum(d) + 5000, _samples(d)) if d else (55_000_000, [1000, 2000])] * 8
         elif cmd == P2.WRITE:
             self.track, self.side = a[0], a[1]
             if self.wprot:
@@ -330,3 +331,56 @@ def test_write_mac_verify_and_protection(monkeypatch, tmp_path, capsys):
     fake = FakeMac(kind=1)
     with pytest.raises(SystemExit):
         _run(monkeypatch, fake, ["write-mac", str(path), "--track", "0"])         # 800K image, 400K drive
+
+
+# ---- bring-up with --drive mac ---------------------------------------------------------------
+
+def _bringup(fake, clock, **kw):
+    clock["rtcs"].append(fake)
+    rep = bringup.Report()
+    failed = bringup.run(P2.Device2(fake), rep, drive="mac", **kw)
+    return failed, {s.name: s for s in rep.steps}
+
+
+def test_bringup_mac_drive_reads_track0(clock):
+    fake = FakeMac(kind=2)
+    _disk(fake, 2, tracks=(0,))
+    failed, st = _bringup(fake, clock, read_revs=2)
+    assert failed == 0
+    assert st["drive.select"].status == "ok" and st["drive.mac"].status == "ok"
+    assert st["drive.mac"].data["kind"] == "800K"
+    assert st["drive.speed"].status == "ok" and st["drive.speed"].data["rpm"] == 394
+    assert st["drive.read"].status == "ok" and st["drive.read"].data["sectors"] == 12
+    read = [q for q in fake.requests if q.cmd == P2.READ][-1]
+    assert read.payload[:3] == bytes([0, 0, 2]) and read.payload[3] & P2.READ_NO_INDEX
+    assert not any(q.cmd == P2.WRITE for q in fake.requests) and "write.test" not in st
+    assert fake.drive == 0 and not fake.mac_motor                       # deselected, motor off
+
+
+def test_bringup_mac_drive_faults(clock):
+    fake = FakeMac(kind=2)                                              # unformatted disk
+    failed, st = _bringup(fake, clock)
+    assert failed == 0 and st["drive.read"].status == "warn" and st["drive.read"].data["sectors"] == 0
+    fake = FakeMac(kind=2)
+    fake.disk = False
+    failed, st = _bringup(fake, clock, write_test=True)
+    assert st["drive.mac"].status == "warn" and st["drive.read"].status == "skip"
+    assert st["write.test"].status == "skip" and not any(q.cmd == P2.WRITE for q in fake.requests)
+    fake = FakeMac(kind=0)                                              # nothing answers on RD
+    failed, st = _bringup(fake, clock)
+    assert failed == 1 and st["drive.mac"].status == "fail" and "drive.read" not in st
+
+
+def test_bringup_mac_write_test(clock):
+    fake = FakeMac(kind=2)
+    _disk(fake, 2, tracks=(0,))
+    fake.lock = True                                                    # front switch open
+    failed, st = _bringup(fake, clock, write_test=True)
+    assert failed == 0 and st["write.lock"].status == "ok" and st["write.test"].status == "skip"
+    assert (3, 0) not in fake.flux
+    fake = FakeMac(kind=2)
+    _disk(fake, 2, tracks=(0,))
+    failed, st = _bringup(fake, clock, write_test=True, write_track=3)
+    assert failed == 0 and st["write.test"].status == "ok" and st["write.test"].data["identical"] == 12
+    w = [q for q in fake.requests if q.cmd == P2.WRITE]
+    assert len(w) == 1 and w[0].payload[0] == 3 and not w[0].payload[2] & 0x20
