@@ -577,6 +577,41 @@ def cmd_read_mac(dev: P2.Device2, a) -> int:
     return 1 if img.missing else 0
 
 
+def cmd_write_mac(dev: P2.Device2, a) -> int:
+    """400K/800K image (.img/.dsk raw or DiskCopy 4.2) -> GCR tracks on the Mac drive; host read-back."""
+    from . import mac
+    img = mac.GcrImage.load(a.image)
+    st = _mac_open(dev)
+    if st.kind == 1 and img.sides == 2:
+        raise SystemExit("800K image, but the drive is a single-sided 400K drive")
+    if not st.disk or st.write_protected:
+        raise SystemExit("no disk or disk write-protected")
+    fmt = mac.FORMAT_800K if img.sides == 2 else mac.FORMAT_400K
+    tracks = [a.track] if a.track is not None else list(range(a.tracks))
+    bad: list[tuple[int, int, int]] = []
+    dev.motor(True)
+    try:
+        dev.recalibrate()
+        for track in tracks:
+            for side in range(img.sides):
+                n = mac.sectors_per_track(track)
+                secs = {s: img.sector(track, side, s) for s in range(n)}
+                dev.write_track(track, side, mac.encode_track(track, side, secs, fmt), extended=False)
+                text = "written"
+                if a.verify:
+                    best = mac.decode_capture(dev.read_track(track, side, 2, no_index=True)).best()
+                    wrong = [s for s in range(n) if (track, side, s) not in best
+                             or not best[(track, side, s)].ok or best[(track, side, s)].data != secs[s]]
+                    bad += [(track, side, s) for s in wrong]
+                    text += ", verify " + ("ok" if not wrong else f"FAILED sectors {wrong}")
+                print(f"track {track:2d}.{side}: {n} sectors {text}", flush=True)
+    finally:
+        dev.motor(False)
+    if a.verify:
+        print(f"{a.image}: {len(tracks)} tracks written, {len(bad)} sectors failed the read-back")
+    return 1 if bad else 0
+
+
 def run_v2(dev: P2.Device2, a) -> bool:
     """v2-only commands; returns False when a.cmd is not one of them."""
     if a.cmd == "caps":
@@ -656,7 +691,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
            "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check",
-           "rtc", "sensor", "rails", "sync", "pins", "net", "mac", "read-mac"}
+           "rtc", "sensor", "rails", "sync", "pins", "net", "mac", "read-mac", "write-mac"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -970,6 +1005,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--mode-cmd", type=int, metavar="REG", help="raw register command sent before an --mfm read "
                    "(the SuperDrive's MFM mode command; not verified on hardware, no default)")
     p.add_argument("--name", default="UFI", help="DiskCopy 4.2 disk name")
+    p = sub.add_parser("write-mac", help="WRITES a 400K/800K image (.img/.dsk raw or DiskCopy 4.2) as GCR tracks onto "
+                       "the Mac drive on J23; front switch SCHREIBEN closed, scratch disk only")
+    p.add_argument("image")
+    p.add_argument("--tracks", type=int, default=80)
+    p.add_argument("--track", type=int, help="only this track (both sides of the image)")
+    p.add_argument("--verify", action="store_true", help="read each track back and compare on the host")
     p = sub.add_parser("discover", help="find UFI boards on the LAN by UDP broadcast (port 55100); no device connection")
     p.add_argument("--timeout", type=float, default=1.0, help="seconds to collect replies")
     p.add_argument("--address", default="255.255.255.255", help="broadcast or unicast address to ask")
@@ -1029,6 +1070,8 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(dev, P2.Device2):
             if a.cmd == "read-mac":
                 return cmd_read_mac(dev, a)
+            if a.cmd == "write-mac":
+                return cmd_write_mac(dev, a)
             if run_v2(dev, a):
                 return 0
         elif a.cmd in V2_ONLY:

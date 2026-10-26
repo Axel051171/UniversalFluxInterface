@@ -1,6 +1,6 @@
 """Macintosh 400K/800K GCR and FDHD helpers on the host (ufi_host.mac): symbol payload,
 interleave, track encoder/decoder round trip, raw and DiskCopy 4.2 images; MAC 0x29 and the
-read-mac command against a byte-level fake of a v1.0 board with a Mac drive."""
+read-mac / write-mac commands against a byte-level fake of a v1.0 board with a Mac drive."""
 import random
 import struct
 
@@ -303,3 +303,30 @@ def test_read_mac_400k_raw(monkeypatch, tmp_path):
         _run(monkeypatch, FakeMac(kind=0), ["read-mac", "-o", str(out)])
     with pytest.raises(SystemExit):
         _run(monkeypatch, FakeMac(kind=2), ["read-mac", "-o", str(out), "--mfm"])     # needs a SuperDrive
+
+
+def test_write_mac_verify_and_protection(monkeypatch, tmp_path, capsys):
+    src = mac.GcrImage(2)
+    for t in range(mac.TRACKS):
+        for s in range(2):
+            for r, data in _sectors(t, s, 9).items():
+                src.put(t, s, r, data)
+    path = tmp_path / "src.dc42"
+    src.write(str(path))
+    fake = FakeMac(kind=2)
+    assert _run(monkeypatch, fake, ["write-mac", str(path), "--tracks", "3", "--verify"]) == 0
+    text = capsys.readouterr().out
+    assert "track  2.1: 12 sectors written, verify ok" in text and "0 sectors failed" in text
+    writes = [q for q in fake.requests if q.cmd == P2.WRITE]
+    assert len(writes) == 6 and all(not q.payload[2] & 0x20 for q in writes)     # classic path, no extended timing
+    for (t, s), deltas in fake.flux.items():
+        best = mac.decode_nibbles(mac.nibbles(deltas)).best()
+        assert all(best[(t, s, r)].data == src.sector(t, s, r) for r in range(12))
+    fake = FakeMac(kind=2)
+    fake.wprot = True
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, fake, ["write-mac", str(path), "--track", "0"])
+    assert not any(q.cmd == P2.WRITE for q in fake.requests)
+    fake = FakeMac(kind=1)
+    with pytest.raises(SystemExit):
+        _run(monkeypatch, fake, ["write-mac", str(path), "--track", "0"])         # 800K image, 400K drive

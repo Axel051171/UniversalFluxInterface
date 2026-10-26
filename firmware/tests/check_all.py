@@ -69,7 +69,7 @@ if __name__ == "__main__":
         'test_quality_runtime','test_analysis_job','test_precision_runtime','test_capture_archive',
         'benchmark_quality','test_apple_gcr','test_tolerance','test_evidence_runtime','test_media_runtime',
         'test_drive_profiles','test_stream_runtime','test_motor_runtime','test_capture_integrity',
-        'test_lan_runtime')
+        'test_lan_runtime','test_mac_write_guard')
     started=time.monotonic()
     with ThreadPoolExecutor(max_workers=JOBS) as pool:
         pending=[pool.submit(execute,(f'firmware/tests/{name}.py',),True) for name in independent]

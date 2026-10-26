@@ -711,6 +711,23 @@ Host in ein `.img`; die Umschaltung der SuperDrive in den MFM-Betrieb ist ein Re
 dessen Adresse hier nicht belegt ist – `--mode-cmd REG` sendet ihn als Rohbefehl, ohne Vorgabe,
 am Gerät zu bestimmen.
 
+**Schreiben (WRITE, Host `ufi write-mac`).** Klassischer Schreibpfad wie bei Disk II: WR wechselt
+je Flusswechsel den Pegel (TIM3_CH2 im Toggle-Modus), /WRREQ low für die Dauer der Spur, Start
+sofort ohne Index, Ende nach dem letzten Intervall; der Kopf ist der des Lesedatenregisters
+(SIDE). Erweiterter Schreibpfad (Bit5), Spurrest löschen (`flags2` Bit0) und Startversatz
+(`flags2` Bit1) antworten mit Status 11. Sperren: /WRREQ läuft ab v1.0 über U30 an LOCK
+(Frontschalter SCHREIBEN offen oder WLOCK_FW ohne Schreibfreigabe sperren in Hardware); WRITE und
+GUARDED_WRITE sind Schreibbefehle für die Sitzungs-Schreibsperre (Op 37, Status 22) und für die
+LAN-Regeln (`lan_write=1` und Schalter, sonst Status 12). Schreibschutz kommt aus WRTPRT und
+wird von SIDE unmittelbar vor dem Schreiben frisch gelesen; ohne erkanntes Laufwerk oder ohne
+Diskette gilt die Diskette als geschützt (Status 12). MAC 0x29 schreibt nichts auf die Diskette
+und ist kein Schreibbefehl (auch der Auswurf nicht).
+`ufi write-mac` liest ein 400K/800K-Abbild (`.img`/`.dsk` roh, `.dc42`/`.image` DiskCopy 4.2 mit
+Tags), erzeugt jede Spur auf dem Host (2:1-Versatz, Formatbyte 0x22 bzw. 0x02, Sync-Gruppen aus
+FF und zwei Nullzellen, Spur auf 96 % einer Umdrehung bei Zonendrehzahl, Rest bleibt Lücke) und
+schreibt sie mit 2-µs-Zellen; `--verify` liest jede Spur zurück und vergleicht alle Sektoren auf
+dem Host.
+
 **DIAG_RPM** misst beim Mac-Laufwerk über den Tachometer (60 Impulse je Umdrehung) statt über
 einen Index; `pulse` ist 0.
 
