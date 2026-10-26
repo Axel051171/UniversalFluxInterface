@@ -16,6 +16,8 @@ when the device does not answer a v2 PING (firmware < 1.12).
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import secrets
 import struct
@@ -111,6 +113,10 @@ IEC_TARGET, IEC_READ_STATUS = 0x36, 0x37 # firmware 1.18, capability bit 15
 NIB_REUPLOAD, NIB_REVERSE = 0x01, 0x02  # IEC_NIB flags
 POWER, USB_POWER, SD_INFO = 0x40, 0x41, 0x42
 RTC, SENSOR, RAILS, SYNC_SENSOR, FDD_PINS = 0x43, 0x44, 0x45, 0x46, 0x47   # board v1.0, firmware stage A10 (doc 1.5)
+NET, AUTH = 0x48, 0x49                    # LAN (W5500, board v1.0): status L5, lan_key challenge L4 (doc 1.6)
+LAN_PORT = 55100                          # TCP session default (LAN.CFG port=)
+DISCOVER_PORT = 55100                     # UDP discovery, fixed
+LAN_DENIED, AUTH_REQUIRED, AUTH_FAILED = 24, 25, 26
 RTC_FMT = struct.Struct("<BHBBBBB")        # ready, year, mon, day, hour, min, sec
 RTC_SET_FMT = struct.Struct("<HBBBBB")
 SENSOR_FMT = struct.Struct("<BhH")         # status, temp 0.01 degC, rh 0.01 %RH
@@ -151,6 +157,9 @@ STATUS_TEXT = {
     21: "media changed; prepare the operation again",
     22: "session write lock engaged (op 37); only an MCU reset clears it",
     23: "drive speed outside the tolerance around the source index period (op 41); nothing written",
+    24: "not allowed over LAN (firmware update, USB mode, reading LAN.CFG)",
+    25: "LAN: authentication required (lan_key set; use --lan-key)",
+    26: "LAN: wrong answer to the authentication challenge (lan_key)",
 }
 
 # INFO caps bits
@@ -492,6 +501,94 @@ class RailVoltages:
         on = [n for bit, n in ((RAIL_5V_ON, "5 V"), (RAIL_12V_ON, "12 V")) if self.flags & bit]
         return (f"FDD_5V {self.v5_mv / 1000:.3f} V, FDD_12V {self.v12_mv / 1000:.3f} V, rails on: {', '.join(on) or 'none'}"
                 + (f", BELOW LIMIT: {', '.join(self.low)}" if self.low else ""))
+
+
+NET_STATES = {0: "no LAN hardware (board before v1.0)", 1: "W5500 not detected", 2: "off (LAN.CFG lan=off)",
+              3: "no link", 4: "link, no address yet", 5: "address in use"}
+NET_MODES = {0: "none", 1: "DHCP", 2: "link-local", 3: "static"}
+NET_FLAGS = ((0x01, "link"), (0x02, "100 Mbit"), (0x04, "full duplex"), (0x08, "session connected"),
+             (0x10, "authenticated"), (0x20, "lan_write=1"), (0x40, "lan_key set"), (0x80, "address conflict seen"))
+NET_OWNERS = {0: "nobody", 1: "USB", 2: "LAN"}
+
+
+def _ip(b: bytes) -> str:
+    return ".".join(str(x) for x in b)
+
+
+@dataclass
+class NetStatus:
+    """NET 0x48 (doc 1.6): LAN chip, link, address and session state."""
+    state: int
+    mode: int
+    flags: int
+    ip: str
+    mask: str
+    gw: str
+    dns: str
+    mac: str
+    port: int
+    discover_port: int
+    lease_s: int
+    peer: str
+    peer_port: int
+    owner: int
+    version: int
+    hostname: str
+
+    @classmethod
+    def unpack(cls, b: bytes) -> NetStatus:
+        if len(b) < 43 or b[0] != 1 or len(b) < 43 + b[42]:
+            raise ValueError("invalid NET reply")
+        port, dport, lease = struct.unpack_from("<HHI", b, 26)
+        peer_port, = struct.unpack_from("<H", b, 38)
+        return cls(b[1], b[2], b[3], _ip(b[4:8]), _ip(b[8:12]), _ip(b[12:16]), _ip(b[16:20]),
+                   ":".join(f"{x:02x}" for x in b[20:26]), port, dport, lease, _ip(b[34:38]), peer_port,
+                   b[40], b[41], b[43:43 + b[42]].decode("ascii", "replace"))
+
+    @property
+    def bound(self) -> bool:
+        return self.state == 5
+
+    def __str__(self) -> str:
+        flags = ", ".join(n for bit, n in NET_FLAGS if self.flags & bit) or "-"
+        lines = [f"LAN: {NET_STATES.get(self.state, f'state {self.state}')}; W5500 version 0x{self.version:02x}",
+                 f"  flags: {flags}", f"  MAC {self.mac}, hostname {self.hostname}"]
+        if self.bound:
+            lease = ("infinite" if self.lease_s == 0xFFFFFFFF else f"{self.lease_s} s") if self.mode == 1 else "-"
+            lines.append(f"  {NET_MODES.get(self.mode, self.mode)}: {self.ip}/{self.mask} gw {self.gw} dns {self.dns}, lease {lease}")
+            lines.append(f"  TCP port {self.port}, discovery UDP {self.discover_port}")
+        if self.flags & 0x08:
+            lines.append(f"  session from {self.peer}:{self.peer_port}")
+        lines.append(f"  drive owner: {NET_OWNERS.get(self.owner, self.owner)}")
+        return "\n".join(lines)
+
+
+@dataclass
+class DiscoverReply:
+    """UDP discovery reply (doc 1.6): one UFI on the LAN."""
+    ip: str
+    port: int
+    mac: str
+    flags: int
+    fw_major: int
+    fw_minor: int
+    board_rev: int
+    hostname: str
+    source: str = ""                    # address the reply came from
+
+    @classmethod
+    def unpack(cls, b: bytes, source: str = "") -> DiscoverReply:
+        if len(b) < 22 or b[:4] != b"UFI!" or b[4] != 1 or len(b) < 22 + b[21]:
+            raise ValueError("not a UFI discovery reply")
+        port, = struct.unpack_from("<H", b, 6)
+        return cls(_ip(b[8:12]), port, ":".join(f"{x:02x}" for x in b[12:18]), b[5], b[18], b[19], b[20],
+                   b[22:22 + b[21]].decode("ascii", "replace"), source)
+
+    def __str__(self) -> str:
+        mode = "DHCP" if self.flags & 8 else "link-local" if self.flags & 16 else "static" if self.flags & 32 else "?"
+        extra = [t for bit, t in ((1, "lan_write"), (2, "key"), (4, "busy")) if self.flags & bit]
+        return (f"{self.ip}:{self.port}  {self.hostname}  {self.mac}  fw {self.fw_major}.{self.fw_minor}  "
+                f"board {board_rev_text(self.board_rev)}  {mode}" + (f"  [{', '.join(extra)}]" if extra else ""))
 
 
 @dataclass
@@ -2219,6 +2316,21 @@ class Device2:
         payload = bytes([0xFF if pin4 is None else int(bool(pin4)), 0xFF if pin33 is None else int(bool(pin33))])
         return FddPins.unpack(self.request(FDD_PINS, payload))
 
+    # -- LAN (board v1.0, doc 1.6) ----------------------------------------------
+    def net(self) -> NetStatus:
+        """NET 0x48: W5500, link, address, session and drive owner (USB and LAN)."""
+        return NetStatus.unpack(self.request(NET))
+
+    def auth(self, key: str | bytes) -> None:
+        """AUTH 0x49 over LAN: challenge, then HMAC-SHA256(lan_key, challenge); DeviceError 26 if wrong."""
+        k = key.encode("ascii") if isinstance(key, str) else bytes(key)
+        challenge = self.request(AUTH)
+        if len(challenge) != 34 or challenge[0] != 1:
+            raise ValueError("invalid AUTH challenge")
+        if not challenge[1] & 1:
+            return                                  # open device: nothing to prove
+        self.request(AUTH, hmac.new(k, challenge[2:34], hashlib.sha256).digest())
+
     # -- files --------------------------------------------------------------
     def list_dir(self, path: str = "") -> list[DirEntry]:
         out: list[DirEntry] = []
@@ -2323,6 +2435,82 @@ def connect_stream(stream: Stream, timeout: float = 5.0, ping_timeout: float = 0
     notify("note: device does not speak UFI v2 (old firmware) - using v1, "
            "please update the firmware (ufi bootloader)")
     return P.Device(stream, timeout)
+
+
+class TcpStream:
+    """UFI v2 over TCP (LAN, doc 1.6): the byte-stream interface Device2 expects."""
+
+    def __init__(self, host: str, port: int = LAN_PORT, timeout: float = 5.0, sock=None):
+        import socket
+        self.sock = sock or socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(0.2)
+        try:
+            self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass
+
+    def read(self, n: int) -> bytes:
+        import socket
+        try:
+            data = self.sock.recv(n)
+        except socket.timeout:
+            return b""
+        if not data:
+            raise ConnectionError("LAN session closed by the device")
+        return data
+
+    def write(self, data: bytes) -> int:
+        self.sock.sendall(data)
+        return len(data)
+
+    def close(self) -> None:
+        self.sock.close()
+
+
+def connect_tcp(host: str, port: int = LAN_PORT, timeout: float = 5.0, key: str | None = None,
+                stream=None) -> Device2:
+    """Device2 over the LAN session: AUTH first when a key is given, then PING and INFO."""
+    s = stream or TcpStream(host, port, timeout)
+    dev = Device2(s, timeout)
+    try:
+        if key:
+            dev.auth(key)
+        if not dev.ping(secrets.token_bytes(8), timeout=timeout):
+            raise TimeoutError("LAN session did not answer UFI v2")
+        dev.device_info()
+    except Exception:
+        s.close()
+        raise
+    return dev
+
+
+DISCOVER_REQUEST = b"UFI?\x01\x00\x00\x00"
+
+
+def discover(timeout: float = 1.0, address: str = "255.255.255.255", port: int = DISCOVER_PORT,
+             sock=None) -> list[DiscoverReply]:
+    """UDP broadcast discovery (doc 1.6): every UFI that answers within `timeout`, by address."""
+    import socket
+    s = sock or socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    found: dict[str, DiscoverReply] = {}
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.settimeout(0.1)
+        s.sendto(DISCOVER_REQUEST, (address, port))
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                data, src = s.recvfrom(512)
+            except socket.timeout:
+                continue
+            try:
+                r = DiscoverReply.unpack(data, src[0])
+            except ValueError:
+                continue
+            found[r.ip] = r
+    finally:
+        s.close()
+    return sorted(found.values(), key=lambda r: tuple(int(x) for x in r.ip.split(".")))
 
 
 def open_serial(port: str | None = None):

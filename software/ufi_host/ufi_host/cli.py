@@ -17,6 +17,9 @@ Talks UFI v2 (docs/USB_Protokoll.md, section 3); falls back to v1 for old firmwa
   ufi monitor [--drive a --track 0 --seconds 60]   # Drehzahl live, eine Zeile je Umdrehung
   ufi power [MASK] | events | mode {flux,sd,floppy,gw}
   ufi reset | bootloader
+  ufi discover [--timeout 1]                      find UFI boards on the LAN (UDP 55100)
+  ufi net                                         LAN state, address, session (board v1.0)
+  ufi --host IP [--lan-port 55100] [--lan-key K] CMD ...   any v2 command over the LAN session
 """
 from __future__ import annotations
 
@@ -542,6 +545,8 @@ def run_v2(dev: P2.Device2, a) -> bool:
         print(dev.sync_sensor(None if a.state is None else a.state == "on"))
     elif a.cmd == "pins":
         print(dev.fdd_pins(a.pin4, a.pin33))
+    elif a.cmd == "net":                  # board v1.0, LAN stage L5
+        print(dev.net())
     else:
         return False
     return True
@@ -550,13 +555,16 @@ def run_v2(dev: P2.Device2, a) -> bool:
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
            "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check",
-           "rtc", "sensor", "rails", "sync", "pins"}
+           "rtc", "sensor", "rails", "sync", "pins", "net"}
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ufi", description="UFI Flux Engine host tool",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--port", help="serial port (default: auto-detect VID 1209 / PID 4F54)")
+    ap.add_argument("--host", help="talk UFI v2 over the LAN session to this address instead of USB (board v1.0)")
+    ap.add_argument("--lan-port", type=int, default=P2.LAN_PORT, help="TCP port of the LAN session (LAN.CFG port=)")
+    ap.add_argument("--lan-key", default=None, help="LAN.CFG lan_key for the AUTH challenge")
     ap.add_argument("--integrity", action="store_true", help="use job IDs, chunk offsets and checked write commit")
     ap.add_argument("--extended", action="store_true", help="use host-timed extended flux write intervals")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -842,6 +850,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("pins", help="v1.0 J6 read-backs (pin 2/4, CSTOUT, WGATE bus, lock, eFuse, SYNC); --pin4 / --pin33 drive the outputs")
     p.add_argument("--pin4", type=int, choices=(0, 1))
     p.add_argument("--pin33", type=int, choices=(0, 1))
+    sub.add_parser("net", help="LAN (W5500, board v1.0): link, address (DHCP / link-local / static), session, drive owner")
+    p = sub.add_parser("discover", help="find UFI boards on the LAN by UDP broadcast (port 55100); no device connection")
+    p.add_argument("--timeout", type=float, default=1.0, help="seconds to collect replies")
+    p.add_argument("--address", default="255.255.255.255", help="broadcast or unicast address to ask")
     a = ap.parse_args(argv)
 
     if a.cmd == "amiga-quality":
@@ -872,6 +884,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f'error: {exc}', file=sys.stderr)
             return 1
 
+    if a.cmd == "discover":
+        found = P2.discover(a.timeout, a.address)
+        for r in found:
+            print(r)
+        if not found:
+            print("no UFI answered (board v1.0 with LAN firmware, same network segment?)")
+        return 0 if found else 1
+
     if a.cmd == "archive-check":
         import json
         from .archive import verify_archive
@@ -879,7 +899,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 1 if report["unfinished"] or report["failed"] else 0
 
-    dev = P2.connect(a.port)
+    dev = P2.connect_tcp(a.host, a.lan_port, key=a.lan_key) if a.host else P2.connect(a.port)
     if isinstance(dev, P2.Device2):
         dev.integrity = a.integrity
         dev.extended = a.extended

@@ -36,6 +36,9 @@ ufi sensor                                # v1.0: SHT40 Temperatur/Feuchte (Op 0
 ufi rails                                 # v1.0: FDD_5V/FDD_12V am Laufwerksstecker mit den Grenzen 4,5 V / 10,8 V (Op 0x45)
 ufi sync [on|off]                         # v1.0: Sync-Sensor-Erfassung auf TIM8 (Op 0x46): Zustand, Impulse, Periode/Drehzahl; on/off = Zählung
 ufi pins [--pin4 0|1] [--pin33 0|1]        # v1.0: Rücklesungen J6 Pin 2/4, CSTOUT, WGATE-Bus, Sperre, eFuse, SYNC; Ausgänge Pin 4 / Pin 33 (Op 0x47)
+ufi net                                   # v1.0 LAN: W5500, Link, Adresse (DHCP/Link-Local/fest), Sitzung, Laufwerksbesitzer (Op 0x48)
+ufi discover [--timeout 1]                # UFI-Platinen im LAN per UDP-Broadcast auf Port 55100 finden (ohne Geräteverbindung)
+ufi --host 192.168.1.50 [--lan-key K] info   # jeder v2-Befehl über die LAN-Sitzung (TCP 55100, LAN.CFG port=/lan_key)
 ufi erase SPUR SEITE                      # eine Umdrehung löschen (ERASE 0x23), z. B. vor einem Schreibtest
 ```
 

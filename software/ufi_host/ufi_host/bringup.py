@@ -418,9 +418,34 @@ def _rails(dev: P2.Device2, rep: Report, ctx: Context, has_12v: bool, with_drive
         _quiet(lambda: dev.power(p0 & 0x03))
 
 
-def _lan(rep: Report, ctx: Context) -> None:
-    if ctx.v10:
-        rep.add("lan", "skip", "firmware has no LAN status op yet (W5500 U23 held in reset); not checkable over USB")
+def _lan(dev: P2.Device2, rep: Report, ctx: Context) -> None:
+    """NET 0x48 (LAN stage L5): W5500 detected, link and address.  No cable is a warning, not a
+    failure: the bench may have none.  Firmware without the op skips."""
+    if not ctx.v10:
+        return
+    try:
+        n = dev.net()
+    except P2.DeviceError as e:
+        if e.status == P2.UNKNOWN_COMMAND:
+            rep.add("lan", "skip", "firmware without the NET op (before LAN stage L5)")
+            return
+        rep.add("lan", "fail", f"NET refused: {e}")
+        return
+    except (ValueError, TimeoutError) as e:
+        rep.add("lan", "fail", f"NET reply unusable: {e}")
+        return
+    data = dict(state=n.state, mode=n.mode, flags=n.flags, ip=n.ip, mac=n.mac, version=n.version)
+    if n.state <= 1:
+        rep.add("lan", "fail", f"{P2.NET_STATES.get(n.state, n.state)} (VERSIONR 0x{n.version:02x}, expected 0x04)", data)
+    elif n.state == 2:
+        rep.add("lan", "skip", f"W5500 off by LAN.CFG (lan=off), MAC {n.mac}", data)
+    elif n.state < 5:
+        rep.add("lan", "warn", f"W5500 0x{n.version:02x}, MAC {n.mac}: {P2.NET_STATES.get(n.state, n.state)}"
+                + ("" if n.state == 4 else " (cable / switch?)"), data)
+    else:
+        speed = ("100" if n.flags & 2 else "10") + (" FD" if n.flags & 4 else " HD")
+        rep.add("lan", "ok", f"W5500 0x{n.version:02x}, {speed}, {P2.NET_MODES.get(n.mode, n.mode)} {n.ip}/{n.mask}, "
+                f"{n.hostname}, MAC {n.mac}", data)
 
 
 # ---- 9 1.18 analysis-op discovery (pure queries) ------------------------------------------
@@ -626,7 +651,7 @@ def run(dev: P2.Device2, rep: Report, index_sim: bool = False, *, expect_rev: in
     _selftest(dev, rep, ctx)
     _clocks(dev, rep, ctx)
     _rails(dev, rep, ctx, has_12v, with_drive=bool(drive))
-    _lan(rep, ctx)
+    _lan(dev, rep, ctx)
     masks = _queries(dev, rep)
     _index_sim(dev, rep, index_sim)
     if drive:
