@@ -9,6 +9,7 @@
 #include "ufi_firmware.h"
 #include "ufi_analysis_job.h"
 #include "ufi_evidence.h"
+#include "ufi_lan.h"
 #include "ufi_media.h"
 #include "ufi_metrics.h"
 #include "ufi_profile.h"
@@ -115,6 +116,7 @@ void ufi_init(void)
     ufi_usb_init();
     ufi_sd_init();              /* v0.6 SD NAND; failure shows in SD_INFO / dump error 1 */
     ufi_config_load();          /* UFI.CFG: stand-alone drive (a/b/amiga/ds0-ds3), dump settings */
+    ufi_lan_init();             /* v1.0: W5500 U23 on SPI3 (detect, reset, MAC); v0.x: nothing */
     ufi_crash_boot();           /* reset cause; fault record from DTCM -> CRASH.LOG (1.14) */
     ufi_mode_init();            /* mode switch on J13: flux / USB floppy / SD drive */
 
@@ -283,6 +285,7 @@ void ufi_main_loop(void)
         ufi_mode_service();             /* mode switch, mode blink code */
         ufi_usb_poll();                 /* USB floppy mode: USB stack runs here */
         ufi_floppy_service();           /* USB floppy mode: write back idle tracks */
+        ufi_lan_service();              /* v1.0: W5500 link */
 
         const capture_state_t cs = ufi_capture_get_state();   /* also runs the index timeout */
         if(ufi_write_get_state()==WRITE_VERIFYING){

@@ -142,8 +142,8 @@ extern const gpio_pin_t PIN_GUARD_ERR5;     /* PG8, J20 pin 3: Guard 5 V channel
 extern const gpio_pin_t PIN_GUARD_ERR12;    /* PC9 (B3a, was PG13), J20 pin 4: Guard 12 V channel tripped (10k pull-up R108) */
 #define INDEX_SIM_AF            GPIO_AF4_TIM15  /* TIM15_CH1 on PE5 */
 
-/* v1.0 LAN: WIZnet W5500 on SPI3 (schematic sheet LAN, stage A6).  No driver yet: the
- * board init only parks the chip (RST low, CS high, SPI pins as inputs).  On v0.7 boards
+/* v1.0 LAN: WIZnet W5500 on SPI3 (schematic sheet LAN, stage A6).  The board init parks
+ * the chip (RST low, CS high, SPI pins as inputs); ufi_lan.c takes it over.  On v0.7 boards
  * the pins are unconnected. */
 extern const gpio_pin_t PIN_LAN_SCK;        /* PC10, SPI3_SCK (AF6) */
 extern const gpio_pin_t PIN_LAN_MISO;       /* PC11, SPI3_MISO (AF6) */

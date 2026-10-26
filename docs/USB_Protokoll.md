@@ -14,6 +14,8 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 1.2 Composite-Transport und Geräteerkennung
   - 1.3 Fähigkeiten und Konfigurationsgeneration (GLaDISK-Anregungen)
   - 1.4 Ressourcen und Feature-Abfrage
+  - 1.5 Platine v1.0: Uhr, Sensor, Versorgungsspannungen, Sync-Sensor (Stufe A10)
+  - 1.6 LAN-Transport (Platine v1.0, W5500 U23)
 - 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
   - 2.1 Rahmen (beide Richtungen)
   - 2.2 Flusscode (READ-Daten, WRITE-Daten), 275 MHz
@@ -404,6 +406,28 @@ liefern die Messung, welche Laufwerke Pin 2/4/34 wie treiben – eine Zuordnungs
 nach diesen Messungen, nicht erfunden. **Offen, nicht Teil von A10:** Ringpuffer vor dem Index
 (die Aufnahme beginnt mit dem ersten Index nach dem Start, `CAPTURE_WAITING_INDEX`; ein
 Vorlauf verlangt den Umbau der DMA-Erfassung in `ufi_flux.c`, Owner-Datei mit offenen Änderungen).
+
+### 1.6 LAN-Transport (Platine v1.0, W5500 U23)
+
+**Hardware:** WIZnet W5500 (U23) an SPI3: PC10 SCK, PC11 MISO, PC12 MOSI (AF6), SCSn PA15,
+RSTn PD10, INTn PD5 (je 10 k Pull-up auf der Platine). SPI-Modus 0, 25 MHz (PLL1Q 100 MHz / 4),
+ein Chip-Select-Rahmen je Registerzugriff (Adresse, Steuerbyte, Daten). Auf Platinen vor v1.0
+(`board_rev` < 10) ist kein Chip bestückt; die Firmware fasst die Pins dort nicht an.
+
+**Start (Stufe L1):** `board_gpio_init()` hält den Chip im Reset, `ufi_lan_init()` übernimmt ihn
+nach dem Einlesen von UFI.CFG: RSTn ≥ 500 µs low, danach 2 ms für die PLL (Datenblatt,
+Reset-Timing), Software-Reset über MR.RST, dann muss VERSIONR 0x04 lesen. Liest er etwas
+anderes, bleibt der Chip im Reset (Zustand „kein Chip“). SHAR steht nach jedem Reset auf
+00:00:00:00:00:00 und wird deshalb jedes Mal geschrieben und zurückgelesen.
+
+**MAC-Adresse:** `02` (lokal verwaltet, Unicast) gefolgt von den ersten fünf Bytes von SHA-256
+über die ganze 96-Bit-UID des STM32 (12 Byte: die Wörter bei `UID_BASE` + 0/4/8, jedes little
+endian). Fest je Platine, ohne Herstellerkennung; `mac=` in LAN.CFG überschreibt sie (ab L2).
+
+**Socketaufteilung im W5500** (16 KB senden + 16 KB empfangen): Socket 0 TCP-Sitzung 8/8 KB,
+Socket 1 DHCP (UDP 68) 2/2 KB, Socket 2 Discovery 2/2 KB, Socket 3 ARP-Prüfung 1/1 KB, die
+übrigen 0. Interrupts der Sockets 0–3 und der IP-Konflikt (IR Bit7) gehen auf INTn. Der
+PHY-Zustand (PHYCFGR: Link, 10/100 Mbit, Halb-/Vollduplex) wird alle 500 ms gelesen.
 
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 

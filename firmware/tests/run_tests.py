@@ -48,6 +48,8 @@ TESTS = {
     "test_image": ["src/ufi_image.c"],
     "test_sense": ["src/ufi_sense_calc.c"],
     "test_read_info": ["src/ufi_read_info.c"],
+    "test_sha256": ["src/ufi_sha256.c"],
+    "test_w5500": ["src/ufi_w5500.c", "src/ufi_sha256.c"],
 }
 
 

@@ -29,6 +29,7 @@ extern "C" {
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_SD_MODULE_ENABLED           /* v0.5 microSD on SDMMC2 */
+#define HAL_SPI_MODULE_ENABLED          /* v1.0 (LAN): W5500 U23 on SPI3 */
 #define HAL_TIM_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
 
@@ -165,6 +166,10 @@ extern "C" {
 
 #ifdef HAL_SD_MODULE_ENABLED
 #include "stm32h7xx_hal_sd.h"
+#endif
+
+#ifdef HAL_SPI_MODULE_ENABLED
+#include "stm32h7xx_hal_spi.h"
 #endif
 
 #ifdef HAL_TIM_MODULE_ENABLED

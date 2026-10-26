@@ -18,10 +18,12 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'firmware/src'
 PURE = ('ufi_capabilities', 'ufi_media', 'ufi_write_codec', 'ufi_write_wave',
-        'ufi_compare', 'ufi_job', 'ufi_quality', 'ufi_protection', 'ufi_mfm', 'ufi_verify', 'ufi_image', 'ufi_hfe_v3', 'ufi_raw_verify')
+        'ufi_compare', 'ufi_job', 'ufi_quality', 'ufi_protection', 'ufi_mfm', 'ufi_verify', 'ufi_image', 'ufi_hfe_v3', 'ufi_raw_verify',
+        'ufi_sha256', 'ufi_w5500')
 NEEDS_REAL_HAL = {'ufi_board', 'ufi_clock', 'ufi_composite', 'ufi_crash', 'ufi_debug', 'ufi_diag',
                   'ufi_flux', 'ufi_main', 'ufi_msc', 'ufi_power', 'ufi_psram', 'ufi_sd', 'ufi_selftest',
-                  'ufi_sense', 'ufi_sync', 'ufi_usb', 'ufi_write'}   # sense/sync: HAL I2C, RCC, TIM8 (board v1.0, A10)
+                  'ufi_sense', 'ufi_sync', 'ufi_usb', 'ufi_write',
+                  'ufi_lan'}   # sense/sync: HAL I2C, RCC, TIM8 (board v1.0, A10); lan: HAL SPI3 (W5500 glue)
 STUB_FLAGS = ['-I', str(ROOT / 'firmware/tests/hal_stub'), '-D__packed=__attribute__((packed))',
               '-DUFI_FW_VERSION="analysis"', '-DUFI_GIT_REV="analysis"']
 

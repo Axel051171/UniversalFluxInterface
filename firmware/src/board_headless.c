@@ -219,8 +219,8 @@ void board_gpio_init(void)
                   GPIO_SPEED_FREQ_LOW, 0);
     }
 
-    /* v1.0 LAN: no driver yet, so the W5500 stays in reset (RST low) with CS released
-     * (high); SPI3 pins are plain inputs until a driver claims them (PA15 leaves its
+    /* v1.0 LAN: the W5500 stays in reset (RST low) with CS released (high) until
+     * ufi_lan_init() takes it over; SPI3 pins are plain inputs until then (PA15 leaves its
      * JTDI pull-up behind here, the board has R119 on CS anyway) */
     __HAL_RCC_GPIOC_CLK_ENABLE();
     HAL_GPIO_WritePin(PIN_LAN_RST.port, PIN_LAN_RST.pin, GPIO_PIN_RESET);
