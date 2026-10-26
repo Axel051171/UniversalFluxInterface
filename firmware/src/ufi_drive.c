@@ -207,20 +207,39 @@ static uint32_t mac_io_ticks(void* ctx)
     return DWT->CYCCNT;
 }
 
+static void mac_io_pwm(void* ctx, uint16_t permille)
+{
+    (void)ctx;
+    ufi_mac_pwm_set(permille);
+}
+
+/* The speed PWM exists for a detected 400K drive only: 800K/FDHD drives drive J23 pin 20
+ * themselves (!CSTOUT), a closed JP5 would put U27 against that output. */
 static mac_io_t mac_io_get(void)
 {
     return (mac_io_t){mac_io_lines, mac_io_strobe, mac_io_rd, mac_io_wait, mac_io_ticks,
-                      SystemCoreClock / 1000000u, NULL};
+                      mac.kind == MAC_KIND_400K ? mac_io_pwm : NULL, SystemCoreClock / 1000000u, NULL};
+}
+
+static void mac_pwm_off(void)
+{
+    if (mac.pwm_permille) {
+        ufi_mac_pwm_set(0);
+        mac.pwm_permille = 0;
+    }
 }
 
 /* Status bits may only be read while no capture or write runs: addressing a status register
  * replaces the read data on RD.  Otherwise the last complete read answers.  Each fresh read
- * classifies the drive again (rails switched on after SELECT, drive plugged in). */
+ * classifies the drive again (rails switched on after SELECT, drive plugged in); a drive that
+ * is no longer a 400K one loses the PWM at once. */
 static uint8_t mac_status_flags(void)
 {
     if (!ufi_operation_busy()) {
         const mac_io_t io = mac_io_get();
-        (void)mac_probe(&io, &mac);
+        if (mac_probe(&io, &mac) != MAC_KIND_400K) {
+            mac_pwm_off();
+        }
     }
     return mac_flags(mac.sense);
 }
@@ -244,6 +263,7 @@ static int mac_seek_track(uint8_t track)
     g_drive_status[DRIVE_APPLE2].current_track = track;
     if (before != (int)track) {
         delay_us(SETTLE_TIME_US);           /* head settle after the last step */
+        mac_pwm_zone(&io, &mac);            /* 400K: duty of the new zone (M2) */
     }
     return UFI_OK;
 }
@@ -315,6 +335,7 @@ static void mac_release(void)
         mac_motor(&io, &mac, false);
     }
     mac.motor = false;
+    mac_pwm_off();                          /* 400K speed PWM off with the drive */
     HAL_GPIO_WritePin(PIN_MAC_SEL.port, PIN_MAC_SEL.pin, GPIO_PIN_RESET);
 }
 
@@ -1092,12 +1113,16 @@ bool ufi_drive_sync_index(void)
 }
 
 /* UFI v2 MAC 0x29 (docs/USB_Protokoll.md 1.7): sub-op 0 status, 1 raw register command,
- * 2 eject.  Every sub-op answers with the status block. */
-#define MAC_STATUS_SIZE 8u
+ * 2 eject, 3 tachometer against the zone speed, 4 400K PWM search for a zone, 5 400K PWM duty.
+ * Every sub-op answers with the status block, 3 and 4 append their result. */
+#define MAC_STATUS_SIZE 15u
 
 static uint16_t mac_status_pack(uint8_t* out)
 {
     const uint8_t f = mac_status_flags();
+    const bool known = media[DRIVE_APPLE2].position_valid && mac.track >= 0;
+    const uint8_t zone = known ? mac_zone((uint8_t)mac.track) : 0xFFu;
+    const uint16_t target = known ? mac_zone_rpm_x100(zone) : 0u;
     out[0] = 1u;                            /* schema */
     out[1] = mac.kind;
     out[2] = f;
@@ -1105,9 +1130,52 @@ static uint16_t mac_status_pack(uint8_t* out)
                        (media[DRIVE_APPLE2].position_valid ? 2u : 0u) | (mac.motor ? 4u : 0u));
     out[4] = (uint8_t)mac.sense;
     out[5] = (uint8_t)(mac.sense >> 8);
-    out[6] = media[DRIVE_APPLE2].position_valid && mac.track >= 0 ? (uint8_t)mac.track : 0xFFu;
+    out[6] = known ? (uint8_t)mac.track : 0xFFu;
     out[7] = mac.side;
+    out[8] = zone;                          /* M2: speed zone of the head position */
+    memcpy(&out[9], &target, 2);
+    memcpy(&out[11], &mac.tach_rpm_x100, 2);
+    memcpy(&out[13], &mac.pwm_permille, 2);
     return MAC_STATUS_SIZE;
+}
+
+/* Revolution times from the tachometer in 275 MHz ticks (DIAG_RPM and MAC op 3). */
+int ufi_drive_mac_tach(uint8_t revs, uint32_t* min_ticks, uint32_t* avg_ticks, uint32_t* max_ticks)
+{
+    *min_ticks = *avg_ticks = *max_ticks = 0;
+    if (!is_mac(g_current_drive)) {
+        return UFI_ERR_NO_DRIVE;
+    }
+    if (!SystemCoreClock) {
+        return UFI_ERR_NOT_IMPL;
+    }
+    if (!mac.motor) {
+        const int ret = ufi_drive_motor(true);  /* waits the spin-up time */
+        if (ret) {
+            return ret;
+        }
+    }
+    const mac_io_t io = mac_io_get();
+    uint32_t mn, avg, mx;
+    const int ret = mac_tach_revs(&io, &mac, revs, &mn, &avg, &mx);
+    if (ret) {
+        return ret;
+    }
+    *min_ticks = (uint32_t)((uint64_t)mn * FLUX_TIMER_FREQ / SystemCoreClock);
+    *avg_ticks = (uint32_t)((uint64_t)avg * FLUX_TIMER_FREQ / SystemCoreClock);
+    *max_ticks = (uint32_t)((uint64_t)mx * FLUX_TIMER_FREQ / SystemCoreClock);
+    return UFI_OK;
+}
+
+static bool mac_op_length_ok(uint8_t op, uint16_t len)
+{
+    switch (op) {
+        case 0u: case 2u: return len <= 1u;
+        case 1u: return len == 2u;
+        case 3u: case 4u: return len == 1u || len == 2u;
+        case 5u: return len == 3u;
+        default: return false;
+    }
 }
 
 int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n)
@@ -1120,10 +1188,12 @@ int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n)
         return UFI_ERR_NO_DRIVE;
     }
     const uint8_t op = len ? p[0] : 0u;
-    if (len > 2u || (op != 1u && len > 1u) || (op == 1u && (len != 2u || p[1] > 15u)) || op > 2u) {
+    if (!mac_op_length_ok(op, len) || (op == 1u && p[1] > 15u) || (op == 3u && len == 2u && p[1] > 50u)) {
         return UFI_ERR_BAD_ARGS;
     }
     const mac_io_t io = mac_io_get();
+    uint8_t tail[13];
+    uint16_t extra = 0;
     if (op == 1u) {
         const uint8_t reg = p[1];
         mac_command(&io, &mac, reg, MAC_STROBE_US);
@@ -1141,8 +1211,56 @@ int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n)
         g_drive_status[DRIVE_APPLE2].motor_on = false;
         media[DRIVE_APPLE2].position_valid = false;
         media_invalidate(&media[DRIVE_APPLE2], 2);
+    } else if (op == 3u) {                  /* tachometer against the zone of the head position */
+        const uint8_t revs = (len == 2u && p[1]) ? p[1] : 3u;
+        uint32_t t[3];
+        const int ret = ufi_drive_mac_tach(revs, &t[0], &t[1], &t[2]);
+        if (ret) {
+            return ret;
+        }
+        const bool known = media[DRIVE_APPLE2].position_valid && mac.track >= 0;
+        tail[0] = known && mac_speed_ok(mac.tach_rpm_x100, mac_zone((uint8_t)mac.track), MAC_TACH_TOL_PERMILLE)
+                  ? 0u : 1u;
+        memcpy(&tail[1], t, 12);
+        extra = 13u;
+    } else if (op == 4u) {                  /* 400K: duty for a zone, JP5 must be closed */
+        if (mac.kind != MAC_KIND_400K) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        const bool known = media[DRIVE_APPLE2].position_valid && mac.track >= 0;
+        const uint8_t zone = (len == 2u && p[1] != 0xFFu) ? p[1] : known ? mac_zone((uint8_t)mac.track) : 0xFFu;
+        if (zone >= MAC_ZONES) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        if (!ufi_mac_pwm_loopback(mac.pwm_permille)) {
+            return UFI_ERR_NOT_IMPL;        /* JP5 open: the PWM does not reach J23 pin 20 */
+        }
+        if (!mac.motor) {
+            const int ret = ufi_drive_motor(true);
+            if (ret) {
+                return ret;
+            }
+        }
+        const int ret = mac_pwm_tune(&io, &mac, zone);
+        if (ret) {
+            return ret;
+        }
+        tail[0] = zone;
+        memcpy(&tail[1], &mac.zone_pwm[zone], 2);
+        extra = 3u;
+    } else if (op == 5u) {                  /* 400K: duty by hand, 0 = off */
+        uint16_t duty;
+        memcpy(&duty, &p[1], 2);
+        if (mac.kind != MAC_KIND_400K || duty > 1000u) {
+            return UFI_ERR_BAD_ARGS;
+        }
+        mac_pwm_apply(&io, &mac, duty);
     }
     *n = mac_status_pack(out);
+    if (extra) {
+        memcpy(&out[*n], tail, extra);
+        *n = (uint16_t)(*n + extra);
+    }
     return UFI_OK;
 }
 

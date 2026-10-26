@@ -273,7 +273,15 @@ int LLVMFuzzerTestOneInput(const uint8_t* d, size_t n)
             case 19: if (fuzz_bit()) (void)ufi_drive_lines_set(fuzz_bit(), fuzz_bit()); else (void)ufi_drive_density_line(fuzz_bit()); break;
             case 20: (void)ufi_drive_seek_q(fuzz_byte() % 40u, fuzz_byte() & 3u); break;
             case 21: (void)ufi_drive_apple_step(fuzz_bit() ? 1 : -1); break;
-            case 22: { bool c, p; (void)ufi_drive_check_disk(&c, &p); (void)ufi_drive_write_protected(); (void)ufi_drive_disk_changed(); (void)ufi_drive_ready(); break; }
+            case 22: {
+                bool c, p; (void)ufi_drive_check_disk(&c, &p); (void)ufi_drive_write_protected(); (void)ufi_drive_disk_changed(); (void)ufi_drive_ready();
+                /* MAC 0x29 (Mac drive on J23, board v1.0): every sub-op, any length */
+                const uint8_t req[3] = {(uint8_t)(fuzz_byte() % 7u), fuzz_byte(), fuzz_byte()};
+                uint8_t reply[64]; uint16_t got = 0xFFFFu;
+                const int ret = ufi_drive_mac_op(req, (uint16_t)(fuzz_byte() % 4u), reply, &got);
+                assert(got <= 28u && (ret == UFI_OK || got == 0u));
+                break;
+            }
             default: {
                 uint32_t id;
                 (void)ufi_drive_amiga_id(&id); (void)ufi_drive_motor_is_on(); (void)ufi_drive_get_rpm(); (void)ufi_drive_rpm_line();

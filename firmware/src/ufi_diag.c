@@ -46,11 +46,20 @@ int ufi_diag_rpm(uint8_t revs, diag_rpm_t* r)
     if (d == DRIVE_NONE || d == DRIVE_IEC) {
         return UFI_ERR_NO_DRIVE;
     }
+    if (revs == 0) revs = 5;
+    if (revs > 50) revs = 50;
+    if (ufi_drive_is_mac()) {                   /* Mac drive: tachometer instead of an index */
+        const int ret = ufi_drive_mac_tach(revs, &r->period_min, &r->period_avg, &r->period_max);
+        if (ret || !r->period_avg) {
+            return ret ? ret : UFI_ERR_TIMEOUT;
+        }
+        r->revs = revs;
+        r->rpm_x100 = (uint16_t)((6000ull * FLUX_TIMER_FREQ + r->period_avg / 2u) / r->period_avg);
+        return UFI_OK;                          /* pulse_avg stays 0: no index pulse */
+    }
     if (ufi_drive_is_apple() && !ufi_drive_sync_index()) {
         return UFI_ERR_NO_INDEX;                /* Disk II: no index without sync sensor */
     }
-    if (revs == 0) revs = 5;
-    if (revs > 50) revs = 50;
     if (!ufi_drive_get_status().motor_on) {
         ufi_drive_motor(true);                  /* waits the spin-up time */
     }

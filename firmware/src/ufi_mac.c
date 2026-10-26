@@ -276,3 +276,120 @@ int mac_tach_revs(const mac_io_t* io, mac_drive_t* d, uint8_t revs,
     d->tach_rpm_x100 = mac_rpm_x100(*avg_ticks, io->ticks_per_us);
     return MAC_OK;
 }
+
+/* ---- speed zones ------------------------------------------------------------------------- */
+
+uint8_t mac_zone(uint8_t track)
+{
+    return track >= 64u ? 4u : (uint8_t)(track / 16u);
+}
+
+uint16_t mac_zone_rpm_x100(uint8_t zone)
+{
+    static const uint16_t rpm[MAC_ZONES] = {39400u, 42900u, 47200u, 52500u, 59000u};
+    return zone < MAC_ZONES ? rpm[zone] : 0u;
+}
+
+bool mac_speed_ok(uint16_t rpm_x100, uint8_t zone, uint16_t tol_permille)
+{
+    const uint32_t target = mac_zone_rpm_x100(zone);
+    if (!target || !rpm_x100) {
+        return false;
+    }
+    const uint32_t diff = rpm_x100 > target ? rpm_x100 - target : target - rpm_x100;
+    return diff * 1000u <= target * tol_permille;
+}
+
+void mac_pwm_apply(const mac_io_t* io, mac_drive_t* d, uint16_t permille)
+{
+    if (!io->pwm) {
+        return;
+    }
+    if (permille > 1000u) {
+        permille = 1000u;
+    }
+    io->pwm(io->ctx, permille);
+    d->pwm_permille = permille;
+}
+
+static int pwm_measure(const mac_io_t* io, mac_drive_t* d, uint16_t permille, uint16_t* rpm_x100)
+{
+    mac_pwm_apply(io, d, permille);
+    io->wait_us(io->ctx, MAC_PWM_SETTLE_US);
+    uint32_t mn, avg, mx;
+    const int ret = mac_tach_revs(io, d, 2, &mn, &avg, &mx);
+    *rpm_x100 = ret ? 0u : mac_rpm_x100(avg, io->ticks_per_us);
+    return ret;
+}
+
+static uint32_t rpm_error(uint16_t rpm_x100, uint16_t target)
+{
+    return rpm_x100 > target ? (uint32_t)(rpm_x100 - target) : (uint32_t)(target - rpm_x100);
+}
+
+/* 400K: find the duty that turns the spindle at the zone speed.  Both ends of the range are
+ * measured first: that gives the direction of the duty-to-speed relation and shows whether
+ * the zone speed is reachable at all; then bisection.  The best duty found stays applied;
+ * it is stored for the zone only when it is within MAC_PWM_TOL_PERMILLE. */
+int mac_pwm_tune(const mac_io_t* io, mac_drive_t* d, uint8_t zone)
+{
+    if (!io->pwm || zone >= MAC_ZONES) {
+        return MAC_ERR_BAD_ARGS;
+    }
+    const uint16_t target = mac_zone_rpm_x100(zone);
+    uint16_t lo = MAC_PWM_MIN, hi = MAC_PWM_MAX, r_lo = 0, r_hi = 0;
+    int ret = pwm_measure(io, d, lo, &r_lo);
+    if (!ret) {
+        ret = pwm_measure(io, d, hi, &r_hi);
+    }
+    if (ret) {
+        mac_pwm_apply(io, d, 0);
+        return ret;
+    }
+    uint16_t best = rpm_error(r_lo, target) <= rpm_error(r_hi, target) ? lo : hi;
+    uint16_t best_rpm = best == lo ? r_lo : r_hi;
+    const bool rising = r_hi > r_lo;
+    const uint16_t slow = rising ? r_lo : r_hi, fast = rising ? r_hi : r_lo;
+    if (r_lo == r_hi || target < slow || target > fast) {
+        mac_pwm_apply(io, d, best);         /* no effect or out of reach: keep the closest end */
+        return MAC_ERR_SPEED;
+    }
+    for (unsigned k = 0; k < MAC_PWM_STEPS; k++) {
+        const uint16_t mid = (uint16_t)((lo + hi) / 2u);
+        uint16_t r = 0;
+        ret = pwm_measure(io, d, mid, &r);
+        if (ret) {
+            mac_pwm_apply(io, d, best);
+            return ret;
+        }
+        if (rpm_error(r, target) < rpm_error(best_rpm, target)) {
+            best = mid;
+            best_rpm = r;
+        }
+        if ((r < target) == rising) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    mac_pwm_apply(io, d, best);
+    d->tach_rpm_x100 = best_rpm;
+    if (!mac_speed_ok(best_rpm, zone, MAC_PWM_TOL_PERMILLE)) {
+        return MAC_ERR_SPEED;
+    }
+    d->zone_pwm[zone] = best;
+    return MAC_OK;
+}
+
+/* After a seek: the tuned duty of the new zone (400K with the PWM running only). */
+void mac_pwm_zone(const mac_io_t* io, mac_drive_t* d)
+{
+    if (d->kind != MAC_KIND_400K || !d->pwm_permille || d->track < 0) {
+        return;
+    }
+    const uint16_t duty = d->zone_pwm[mac_zone((uint8_t)d->track)];
+    if (duty && duty != d->pwm_permille) {
+        mac_pwm_apply(io, d, duty);
+        io->wait_us(io->ctx, MAC_PWM_SETTLE_US);
+    }
+}

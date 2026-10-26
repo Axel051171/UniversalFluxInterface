@@ -78,15 +78,31 @@
 #define MAC_RECAL_STEPS     90u     /* outward steps at most until TK0 */
 #define MAC_TACH_REV_TIMEOUT_US 400000u  /* one revolution at >= 150 rpm */
 
+/* ---- speed zones (M2) ----------------------------------------------------------------------
+ * Variable-speed GCR: tracks 0-15 / 16-31 / 32-47 / 48-63 / 64-79 turn at 394 / 429 / 472 /
+ * 525 / 590 rpm with 12..8 sectors.  800K and FDHD drives set the speed themselves from the
+ * head position (only verified here through the tachometer); the 400K drive takes it from
+ * the PWM line, whose duty the firmware finds per zone with the tachometer (closed loop,
+ * no assumed duty table: the duty-to-speed relation and its direction are measured). */
+#define MAC_PWM_MIN         50u     /* search range of the 400K duty, per mille */
+#define MAC_PWM_MAX         950u
+#define MAC_PWM_SETTLE_US   300000u /* spindle settles after a duty change */
+#define MAC_PWM_STEPS       8u      /* bisection steps after the two range ends */
+#define MAC_PWM_TOL_PERMILLE 15u    /* 400K: reached speed within 1.5 % of the zone speed */
+#define MAC_TACH_TOL_PERMILLE 20u   /* zone speed check: within 2 % */
+#define MAC_ERR_SPEED       (-23)   /* UFI_ERR_SPEED_MISMATCH: zone speed not reached */
+
 /* Hardware access.  `lines` sets CA2..CA0 from reg bits 3..1 and SEL from bit 0, `strobe`
  * drives LSTRB, `rd` returns the RD level (true = high), `ticks` is a free-running counter
- * with `ticks_per_us` counts per microsecond (unsigned differences are used, so it may wrap). */
+ * with `ticks_per_us` counts per microsecond (unsigned differences are used, so it may wrap),
+ * `pwm` sets the 400K speed PWM duty in per mille (0 = output off; NULL = no PWM). */
 typedef struct {
     void (*lines)(void* ctx, uint8_t reg);
     void (*strobe)(void* ctx, bool high);
     bool (*rd)(void* ctx);
     void (*wait_us)(void* ctx, uint32_t us);
     uint32_t (*ticks)(void* ctx);
+    void (*pwm)(void* ctx, uint16_t permille);
     uint32_t ticks_per_us;
     void* ctx;
 } mac_io_t;
@@ -99,6 +115,8 @@ typedef struct {
     bool motor;             /* MOTORON command state (what was sent) */
     uint16_t sense;         /* last complete status read, bit r = RD level of register r */
     uint16_t tach_rpm_x100; /* last tachometer measurement, 0 = none */
+    uint16_t pwm_permille;  /* 400K: duty applied now, 0 = off */
+    uint16_t zone_pwm[MAC_ZONES];   /* 400K: duty found by mac_pwm_tune() per zone, 0 = not tuned */
 } mac_drive_t;
 
 /* Status bits of mac_flags() */
@@ -125,5 +143,16 @@ void mac_eject(const mac_io_t* io, mac_drive_t* d);
 int mac_tach_revs(const mac_io_t* io, mac_drive_t* d, uint8_t revs,
                   uint32_t* min_ticks, uint32_t* avg_ticks, uint32_t* max_ticks);
 uint16_t mac_rpm_x100(uint32_t rev_ticks, uint32_t ticks_per_us);
+
+uint8_t mac_zone(uint8_t track);
+uint16_t mac_zone_rpm_x100(uint8_t zone);
+bool mac_speed_ok(uint16_t rpm_x100, uint8_t zone, uint16_t tol_permille);
+void mac_pwm_apply(const mac_io_t* io, mac_drive_t* d, uint16_t permille);
+int mac_pwm_tune(const mac_io_t* io, mac_drive_t* d, uint8_t zone);
+void mac_pwm_zone(const mac_io_t* io, mac_drive_t* d);
+
+/* Board glue (ufi_mac_pwm.c, HAL): TIM1_CH1 on PA8 -> U27 -> JP5 -> J23 pin 20 */
+void ufi_mac_pwm_set(uint16_t permille);
+bool ufi_mac_pwm_loopback(uint16_t restore_permille);   /* JP5 closed: PWM seen on PB1 */
 
 #endif /* UFI_MAC_H */

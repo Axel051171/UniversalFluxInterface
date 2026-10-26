@@ -652,11 +652,32 @@ Diskettenwechsel: CSTIN = 1 (keine Diskette) wirkt wie ein gesetztes DSKCHG (Med
 4.2); CHECK_DISK meldet `present` direkt aus CSTIN. Der SYNC-Sensor (`apple_sync=1`) gilt nur für
 Disk II, nie für das Mac-Laufwerk. DUMP_START weist Laufwerk 11 auf v1.0 ab.
 
+**Drehzahlzonen (variable Drehzahl, 400K/800K-GCR).** Spuren 0–15 / 16–31 / 32–47 / 48–63 /
+64–79 drehen mit 394 / 429 / 472 / 525 / 590 U/min und tragen 12 / 11 / 10 / 9 / 8 Sektoren; die
+Bitzelle bleibt 2 µs. 800K- und FDHD-Laufwerke stellen die Drehzahl selbst nach der Kopfposition
+ein – die Firmware prüft sie nur über den Tachometer (Op 3, DIAG_RPM). Nur das einseitige
+400K-Laufwerk nimmt die Drehzahl von der PWM-Leitung (J23 Pin 20 über JP5, TIM1_CH1 auf PA8,
+22,25 kHz, Tastgrad in Promille). Die Firmware setzt keine Tastgradtabelle voraus: Op 4 misst die
+Drehzahl an beiden Bereichsenden (5 % und 95 %), erkennt daraus die Wirkrichtung und ob die
+Zonendrehzahl erreichbar ist, und halbiert dann achtmal (je 300 ms Einschwingen, 2 Umdrehungen
+messen). Der gefundene Tastgrad gilt für die Zone, wenn er innerhalb 1,5 % trifft, und wird nach
+jedem Spurwechsel in eine andere Zone gesetzt. PWM gibt es nur bei erkanntem 400K-Laufwerk
+(800K/FDHD treiben Pin 20 selbst); sobald eine Statuslesung kein 400K mehr ergibt oder das
+Laufwerk abgewählt wird, ist PA8 wieder ein low gehaltener GPIO. **An J23 ab Werk:** JP5 und JP6
+offen, also weder PWM noch −12 V an Pin 9 – ein 400K-Laufwerk läuft so nicht; 800K/FDHD
+brauchen beides nicht. Op 4 prüft JP5 vorher über die Rücklesung PB1 (bei geschlossenem JP5
+erscheint die PWM dort) und antwortet sonst mit Status 11.
+
 **MAC 0x29.** Anfrage `op` u8 (leer = 0): 0 Status, 1 `reg` u8 0–15 Rohbefehl (gewöhnlicher
 LSTRB-Impuls; Richtung/Schritt/Auswurf machen die Position ungültig, 4/12 setzen den
-Motorzustand), 2 Auswurf (LSTRB 750 ms, Position und Mediengeneration ungültig, Motor aus).
-Andere Längen/Werte Status 16, vor v1.0 Status 11, anderes Laufwerk gewählt Status 2. Antwort
-(8 Byte, Schema 1):
+Motorzustand), 2 Auswurf (LSTRB 750 ms, Position und Mediengeneration ungültig, Motor aus),
+3 [`revs` u8, 0 = 3, ≤ 50] Tachometer gegen die Zone der Kopfposition (schaltet den Motor ein,
+Status 4 ohne Tachoimpulse, 5 bei Abriss), 4 [`zone` u8 0–4, 0xFF = Zone der Kopfposition]
+400K-PWM für die Zone suchen (Status 16 ohne 400K-Laufwerk oder ohne bekannte Zone, 11 bei
+offenem JP5, 23 Zonendrehzahl nicht erreicht – der nächstliegende Tastgrad bleibt gesetzt),
+5 `duty` u16 (0–1000 Promille, 0 = aus) 400K-PWM von Hand. Andere Längen/Werte Status 16, vor
+v1.0 Status 11, anderes Laufwerk gewählt Status 2. Antwort (Schema 1, 15 Byte; Op 3 und 4
+hängen ihr Ergebnis an):
 
 | Offset | Typ | Bedeutung |
 |---|---|---|
@@ -667,10 +688,20 @@ Andere Längen/Werte Status 16, vor v1.0 Status 11, anderes Laufwerk gewählt St
 | 4 | u16 | Rohstatus, Bit `r` = RD-Pegel von Register `r` |
 | 6 | u8 | Spur, 0xFF unbekannt |
 | 7 | u8 | Kopf |
+| 8 | u8 | Drehzahlzone der Kopfposition, 0xFF unbekannt |
+| 9 | u16 | Zonendrehzahl in 0,01 U/min, 0 unbekannt |
+| 11 | u16 | letzte Tachometermessung in 0,01 U/min, 0 keine |
+| 13 | u16 | 400K-PWM-Tastgrad jetzt in Promille, 0 aus |
+| 15 | u8 | nur Op 3: 0 innerhalb 2 % der Zonendrehzahl, 1 außerhalb (oder Zone unbekannt) |
+| 16 | 3 × u32 | nur Op 3: Umdrehungszeit min/Mittel/max in 275-MHz-Ticks |
+| 15 | u8 | nur Op 4: Zone |
+| 16 | u16 | nur Op 4: gefundener Tastgrad in Promille |
 
-Zeitwerte (Einschwingen, LSTRB-Dauer, Auswurfdauer, Schrittzeit) sind vorsichtige Annahmen der
-Firmware und am echten Laufwerk zu bestätigen.
+**DIAG_RPM** misst beim Mac-Laufwerk über den Tachometer (60 Impulse je Umdrehung) statt über
+einen Index; `pulse` ist 0.
 
+Zeitwerte (Einschwingen, LSTRB-Dauer, Auswurfdauer, Schrittzeit, PWM-Frequenz) sind vorsichtige
+Annahmen der Firmware und am echten Laufwerk zu bestätigen.
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
 ### 2.1 Rahmen (beide Richtungen)
@@ -877,14 +908,14 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x18 | PROBE_TRACKS | – | höchste erreichbare Spur u8 |
 | 0x19 | SEEK_TEST | `a` u8, `b` u8, `cycles` u8 | – |
 | 0x1A | AMIGA_ID | – | ID u32 |
-| 0x1B | DIAG_RPM (1.13) | `revs` u8 (0 = 5, max 50) | `revs` u8, `period_min` u32, `period_avg` u32, `period_max` u32, `pulse` u32 (Ticks 275 MHz), `rpm_x100` u16 |
+| 0x1B | DIAG_RPM (1.13) | `revs` u8 (0 = 5, max 50) | `revs` u8, `period_min` u32, `period_avg` u32, `period_max` u32, `pulse` u32 (Ticks 275 MHz), `rpm_x100` u16; Mac-Laufwerk (v1.0, Laufwerk 11): aus dem Tachometer, `pulse` = 0 (1.7) |
 | 0x1C | DRIVE_SCAN (1.13) | `flags` u8 (Bit0 = Shugart-Bus DS0–DS3 statt a/b/amiga/amiga2) | 4 × (`drive` u8, `found` u8: Bit0 TRK0 gefunden, Bit1 Indeximpulse, Bit2 schreibgeschützt) |
 | 0x1D | INDEX_SIM (1.13) | – (Abfrage) oder `rpm` u16 (0 = aus, 200–400), `pulse_us` u16 (0 = 2000), `mode` u8 (1.14: Bit0 Ausgang INDEX_SIM (bis v0.7 J9 Pin 6, ab v1.0 PE5 auf den INDEX-Bus), Bit1 intern; 0 = Bit0) | `rpm` u16, `mode` u8 (1.14) aktueller Zustand |
 | 0x1E | SET_RPM (1.14) | – (Abfrage) oder `rpm` u16 (300/360, 0 = Abfrage) | `rpm` u16 (0 = nicht gesetzt), `line` u8 (0 keine, 1 DENSITY, 2 DRATE) |
 | 0x26 | FORMAT (1.14) | `track, side` u8, `flags` u8 (Bit0 Prüflesen, Bit1 Amiga, Bit2 1581-Seitentausch), `rate_kbps` u16 (250/300/500/1000), `spt` u8 (Amiga 11, HD 22 ab 1.16), `gap3` u8 (0 = nach Layout), `fill` u8 | `flux_count` u32, `good` u8 (Sektoren mit gültiger CRC beim Prüflesen, 0xFF ohne) |
 | 0x25 | ANALYZE (1.14) | `track, side` u8 (`side` ab 1.18 mit Bit 7 = Viertelspurmodus und Viertel in Bits 4–5, Apple; 5.2), `revs` u8 (0 = 3, max 8) | `revs` u8, `encoding` u8 (0 ?, 1 FM, 2 MFM, 3 GCR), `bitcell_ns` u16, `rpm_x100` u16, `peak_ns` 4 × u16, `index_ticks` u32, `transitions` u32, `bitcells` u32, `sectors` u8, `weak_count` u8, `first_sector_us` u32, `weak_mask` u64 (40 Byte) |
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
-| 0x29 | MAC (Platine v1.0) | – oder `op` u8: 0 Status, 1 `reg` u8 Rohbefehl, 2 Auswurf | Statusblock 8 Byte (Typ, Statusbits, Rohstatus, Spur, Kopf); nur mit Laufwerk 11 auf v1.0 (sonst 2 bzw. 11); Abschnitt 1.7 |
+| 0x29 | MAC (Platine v1.0) | – oder `op` u8: 0 Status, 1 `reg` u8 Rohbefehl, 2 Auswurf, 3 [`revs`] Tachometer, 4 [`zone`] 400K-PWM suchen, 5 `duty` u16 400K-PWM | Statusblock 15 Byte (Typ, Statusbits, Rohstatus, Spur, Kopf, Zone, Zonen- und Tachodrehzahl, PWM), Op 3/4 mit Ergebnis; nur mit Laufwerk 11 auf v1.0 (sonst 2 bzw. 11); Abschnitt 1.7 |
 | **Fluss** | | | |
 | 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |

@@ -23,7 +23,7 @@ PURE = ('ufi_capabilities', 'ufi_media', 'ufi_write_codec', 'ufi_write_wave',
 NEEDS_REAL_HAL = {'ufi_board', 'ufi_clock', 'ufi_composite', 'ufi_crash', 'ufi_debug', 'ufi_diag',
                   'ufi_flux', 'ufi_main', 'ufi_msc', 'ufi_power', 'ufi_psram', 'ufi_sd', 'ufi_selftest',
                   'ufi_sense', 'ufi_sync', 'ufi_usb', 'ufi_write',
-                  'ufi_lan'}   # sense/sync: HAL I2C, RCC, TIM8 (board v1.0, A10); lan: HAL SPI3 (W5500 glue)
+                  'ufi_lan', 'ufi_mac_pwm'}   # sense/sync: HAL I2C, RCC, TIM8 (board v1.0, A10); lan: HAL SPI3 (W5500 glue); mac_pwm: TIM1
 STUB_FLAGS = ['-I', str(ROOT / 'firmware/tests/hal_stub'), '-D__packed=__attribute__((packed))',
               '-DUFI_FW_VERSION="analysis"', '-DUFI_GIT_REV="analysis"']
 

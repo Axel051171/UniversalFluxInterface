@@ -24,6 +24,11 @@ typedef struct {
     uint64_t step_busy_until;
     bool step_hangs, tk0_stuck, tk0_dead;
     unsigned rpm;               /* spindle speed with motor and disk */
+    /* 400K: speed from the PWM duty, rpm = base + gain * duty / 1000 (gain may be negative) */
+    bool pwm_speed;
+    int pwm_base, pwm_gain;
+    uint16_t duty;
+    unsigned pwm_calls;
     /* counters */
     unsigned steps, dir_cmds, strobes;
 } sim_t;
@@ -95,7 +100,20 @@ static bool s_rd(void* c)
 static void s_wait(void* c, uint32_t us) { (void)c; sim.now += us; }
 static uint32_t s_ticks(void* c) { (void)c; sim.now++; return sim.tick_base + (uint32_t)(sim.now * 3u); }
 
-static const mac_io_t io = {s_lines, s_strobe, s_rd, s_wait, s_ticks, 3u, NULL};
+static void s_pwm(void* c, uint16_t permille)
+{
+    (void)c;
+    assert(permille <= 1000u);
+    sim.duty = permille;
+    sim.pwm_calls++;
+    if (sim.pwm_speed) {
+        const int r = sim.pwm_base + sim.pwm_gain * (int)permille / 1000;
+        sim.rpm = permille && r > 0 ? (unsigned)r : 0u;     /* PWM off: the 400K motor stops */
+    }
+}
+
+static const mac_io_t io = {s_lines, s_strobe, s_rd, s_wait, s_ticks, s_pwm, 3u, NULL};
+static const mac_io_t io_nopwm = {s_lines, s_strobe, s_rd, s_wait, s_ticks, NULL, 3u, NULL};
 
 static void fresh(uint8_t kind)
 {
@@ -212,6 +230,58 @@ int main(void)
     assert(mac_tach_revs(&io, &d, 0, &mn, &avg, &mx) == MAC_ERR_BAD_ARGS);
     assert(mac_rpm_x100(0, 3) == 0 && mac_rpm_x100(1, 3) == 0xFFFFu);
 
-    puts("mac drive: classification, status bits, recalibrate/seek/step faults, motor, eject, tachometer passed");
+    /* M2: zones and the zone speed check */
+    assert(mac_zone(0) == 0 && mac_zone(15) == 0 && mac_zone(16) == 1 && mac_zone(47) == 2 &&
+           mac_zone(48) == 3 && mac_zone(64) == 4 && mac_zone(79) == 4 && mac_zone(200) == 4);
+    assert(mac_zone_rpm_x100(0) == 39400u && mac_zone_rpm_x100(4) == 59000u && mac_zone_rpm_x100(5) == 0u);
+    assert(mac_speed_ok(39400u + 788u, 0, 20) && !mac_speed_ok(39400u + 789u, 0, 20));
+    assert(mac_speed_ok(59000u - 1180u, 4, 20) && !mac_speed_ok(59000u - 1181u, 4, 20));
+    assert(!mac_speed_ok(0, 0, 20) && !mac_speed_ok(39400u, 5, 20));
+
+    /* M2: 400K speed from the PWM duty - direction of the relation unknown, found per zone */
+    static const int gains[] = {400, -400};
+    for (unsigned g = 0; g < 2u; g++) {
+        fresh(MAC_KIND_400K); mac_reset(&d); d.kind = MAC_KIND_400K;
+        sim.pwm_speed = true; sim.pwm_base = gains[g] > 0 ? 300 : 700; sim.pwm_gain = gains[g];
+        mac_motor(&io, &d, true);
+        for (uint8_t z = 0; z < MAC_ZONES; z++) {
+            assert(mac_pwm_tune(&io, &d, z) == MAC_OK);
+            assert(d.zone_pwm[z] && d.pwm_permille == d.zone_pwm[z] && sim.duty == d.zone_pwm[z]);
+            assert(mac_speed_ok(d.tach_rpm_x100, z, MAC_PWM_TOL_PERMILLE));
+            assert(mac_speed_ok((uint16_t)(100u * sim.rpm), z, MAC_PWM_TOL_PERMILLE));
+            rests_on_data(&d);
+        }
+        for (uint8_t z = 1; z < MAC_ZONES; z++) {      /* faster zone = more (or less) duty */
+            assert(gains[g] > 0 ? d.zone_pwm[z] > d.zone_pwm[z - 1] : d.zone_pwm[z] < d.zone_pwm[z - 1]);
+        }
+        /* a seek into another zone applies that zone's duty */
+        assert(mac_seek(&io, &d, 5) == MAC_OK);
+        mac_pwm_apply(&io, &d, d.zone_pwm[0]);
+        assert(mac_seek(&io, &d, 70) == MAC_OK);
+        mac_pwm_zone(&io, &d);
+        assert(sim.duty == d.zone_pwm[4] && d.pwm_permille == d.zone_pwm[4]);
+        const unsigned calls = sim.pwm_calls;
+        mac_pwm_zone(&io, &d);                            /* same zone: nothing to change */
+        assert(sim.pwm_calls == calls);
+    }
+    fresh(MAC_KIND_400K); mac_reset(&d); d.kind = MAC_KIND_400K;     /* speed range too small */
+    sim.pwm_speed = true; sim.pwm_base = 300; sim.pwm_gain = 50;
+    mac_motor(&io, &d, true);
+    assert(mac_pwm_tune(&io, &d, 2) == MAC_ERR_SPEED && !d.zone_pwm[2] && d.pwm_permille == MAC_PWM_MAX);
+    fresh(MAC_KIND_400K); mac_reset(&d); d.kind = MAC_KIND_400K;     /* PWM without effect (JP5 open) */
+    sim.rpm = 400;
+    mac_motor(&io, &d, true);
+    assert(mac_pwm_tune(&io, &d, 0) == MAC_ERR_SPEED && !d.zone_pwm[0]);
+    fresh(MAC_KIND_400K); mac_reset(&d); d.kind = MAC_KIND_400K;     /* no tachometer: PWM off again */
+    sim.rpm = 0;
+    assert(mac_pwm_tune(&io, &d, 0) == MAC_ERR_NO_TACH && d.pwm_permille == 0 && sim.duty == 0);
+    assert(mac_pwm_tune(&io_nopwm, &d, 0) == MAC_ERR_BAD_ARGS && mac_pwm_tune(&io, &d, 5) == MAC_ERR_BAD_ARGS);
+    d.kind = MAC_KIND_800K; d.pwm_permille = 500; d.zone_pwm[0] = 300; d.track = 3;
+    const unsigned before = sim.pwm_calls;
+    mac_pwm_zone(&io, &d);                                /* never on an 800K drive */
+    assert(sim.pwm_calls == before);
+
+    puts("mac drive: classification, status bits, recalibrate/seek/step faults, motor, eject, tachometer, "
+         "zones and 400K PWM search passed");
     return 0;
 }

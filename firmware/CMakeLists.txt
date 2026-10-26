@@ -205,6 +205,7 @@ set(PROJECT_SOURCES
     src/ufi_compare.c
     src/ufi_media.c
     src/ufi_mac.c
+    src/ufi_mac_pwm.c
     src/ufi_capabilities.c
     src/ufi_analysis_job.c
     src/ufi_survey.c
