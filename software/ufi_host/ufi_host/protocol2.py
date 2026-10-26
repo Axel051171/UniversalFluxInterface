@@ -1271,7 +1271,7 @@ class Device2:
         data = self.request(JOB)
         if len(data) != 24 or data[0] != 1:
             raise ValueError("invalid job status")
-        schema, kind, state, status, job_id, packets, size, crc = struct.unpack("<BBBBQIII", data)
+        _schema, kind, state, status, job_id, packets, size, crc = struct.unpack("<BBBBQIII", data)
         return dict(id=job_id, kind=kind, state=state, status=status,
                     packets=packets, bytes=size, crc=crc)
 

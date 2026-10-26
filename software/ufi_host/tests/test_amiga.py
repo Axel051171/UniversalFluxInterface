@@ -118,7 +118,7 @@ def test_incomplete_source_refused_and_missing_reported(kwargs):
 
 
 def test_conflicting_valid_duplicates_and_revolutions_never_vote():
-    deltas, rev, _ = vector(duplicate=True)
+    deltas, _rev, _ = vector(duplicate=True)
     with pytest.raises(ValueError, match='conflicting'):
         readback.reference(deltas)
     _, good, _ = vector()

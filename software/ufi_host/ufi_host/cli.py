@@ -393,7 +393,8 @@ def cmd_iec_write(dev: P2.Device2, a) -> None:
     from . import cbm
     if a.new and getattr(a, "resume", False):
         raise ValueError("--new cannot be combined with --resume")
-    data = open(a.input, "rb").read()
+    with open(a.input, "rb") as fh:
+        data = fh.read()
     kind, tracks = cbm.geometry(len(data))
     image_bytes = cbm.image_size(kind, tracks)
     if any(code != 1 for code in data[image_bytes:]):
