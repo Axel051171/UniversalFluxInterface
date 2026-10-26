@@ -21,7 +21,7 @@ powershell.exe -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$F/ger
     --labels 'Designator,Value,Footprint,MPN,LCSC,Quantity' --group-by Value,Footprint,LCSC \
     -o "$F/UFI_Headless-bom.csv" "$S" >/dev/null
 "$CLI" sch export bom --exclude-dnp --fields 'Value,Reference,Footprint,LCSC' \
-    --labels 'Comment,Designator,Footprint,LCSC Part #' --group-by Value,Footprint,LCSC \
+    --labels 'Comment,Designator,Footprint,LCSC Part #' --group-by Value,Footprint,LCSC --ref-range-delimiter '' \
     -o "$F/UFI_Headless-bom-jlc.csv" "$S" >/dev/null
 
 # STEP for the enclosure check (board + populated parts, DNP parts left out)
