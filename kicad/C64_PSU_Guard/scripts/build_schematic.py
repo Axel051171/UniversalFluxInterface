@@ -6,7 +6,7 @@ Two identical protection channels (5 V and 12 V) between a PC power supply and t
   (current limit, fast trip, OVP/UVLO dividers, soft start, auto retry) -> output.
 LEDs: green = rail present at the output, red = channel switched off (FLT),
 one red "reverse polarity" LED fed from whichever input rail is negative.
-J3 is a reserve header for the UFI board (OFF input, FLT outputs).
+J3 links to the UFI board J20 GUARD (OFF input, ERR outputs), v0.2: keyed JST XH.
 
 Run with KiCad's bundled Python:
     "C:/Program Files/KiCad/10.0/bin/python.exe" build_schematic.py
@@ -28,13 +28,15 @@ LED0603 = "LED_SMD:LED_0603_1608Metric"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOD123 = "Diode_SMD:D_SOD-123"
 SOIC8 = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-HDR4 = "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
+XH4 = "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"   # keyed, v0.2 (was a 2.54 mm pin header)
+XH4_MPN = "JST B4B-XH-A(LF)(SN) (XH 2.5 mm, 3 A, keyed)"
 TERM3 = "TerminalBlock:TerminalBlock_MaiXu_MX126-5.0-03P_1x03_P5.00mm"
 
-# JLCPCB/LCSC part numbers, looked up 2026-10-11 via the JLCPCB parts API (all in stock).
+# JLCPCB/LCSC part numbers, looked up 2026-10-11 via the JLCPCB parts API, re-checked 2026-10-26
+# (v0.2: SMAJ13A C110519 and JST B4B-XH-A C144395 new, all in stock).
 LCSC = {
     "TPS25921ADR": "C189199", "AO3401A": "C15127", "2N7002": "C8545",
-    "BZT52C10": "C2103", "1N4148W": "C81598", "SMF5.0CA": "C2980402", "SMAJ15CA": "C110044",
+    "BZT52C10": "C2103", "1N4148W": "C81598", "SMF5.0CA": "C2980402", "SMAJ13A": "C110519",
     "green": "C12624", "red": "C2286",
     ("100k", R0603): "C25803", ("49.9k", R0603): "C23184", ("30k", R0603): "C22984",
     ("15.4k", R0603): "C22804", ("11k", R0603): "C25950", ("115k", R0603): "C22783",
@@ -42,7 +44,7 @@ LCSC = {
     ("2.2k", R0603): "C4190",
     ("22nF", C0603): "C21122", ("100nF", C0603): "C14663", ("1uF", C0603): "C15849",
     ("10uF/35V", C1206): "C454102",
-    "PSU_IN": "C32713270", "UFI_LINK": "C32713270", "DRIVE": "C474882", "EXT_ERR": "C54620389",
+    "PSU_IN": "C144395", "UFI_LINK": "C144395", "DRIVE": "C474882", "EXT_ERR": "C54620389",
 }
 
 
@@ -91,8 +93,15 @@ def channel(sh, v: str, y0: float, tvs: str, r_uv: str, r_ov: str, r_ilim: str, 
     sh.part("Transistor_FET", "AO3401A", ref("Q"), "AO3401A", 70, y0, {"3": vin, "2": vp, "1": gate}, SOT23)
     R(sh, "100k", 55, y0 + 15, gate, "GND")
     sh.part("Device", "D_Zener", ref("D"), "BZT52C10", 85, y0 + 15, {"1": vp, "2": gate}, SOD123)
-    sh.part("Device", "D_TVS", ref("D"), tvs, 105, y0 + 15, {"1": vp, "2": "GND"},
-            "Diode_SMD:D_SMA" if tvs.startswith("SMAJ") else "Diode_SMD:D_SMF")
+    if tvs.startswith("SMAJ"):
+        # v0.2: unidirectional SMAJ13A (cathode = pin 1 = rail, footprint pad 1 = cathode band);
+        # VRWM 13 V above 12.6 V (12 V + 5 %), VBR 14.4-15.9 V, VC 21.5 V at 18.6 A - the
+        # SMAJ15CA of v0.1 clamped at 24.4 V, above the TPS25921A IN rating (20 V, 22 V <= 10 ms)
+        sh.part("Device", "D_Zener", ref("D"), tvs, 105, y0 + 15, {"1": vp, "2": "GND"}, "Diode_SMD:D_SMA",
+                {"MPN": "Diodes SMAJ13A-13-F (unidirectional TVS, VRWM 13 V, VC 21.5 V @ 18.6 A)",
+                 "Description": "Unidirectional TVS, cathode (pin 1) to the 12 V rail"})
+    else:
+        sh.part("Device", "D_TVS", ref("D"), tvs, 105, y0 + 15, {"1": vp, "2": "GND"}, "Diode_SMD:D_SMF")
     C(sh, "10uF/35V", 120, y0 + 15, vp, "GND", C1206)
     C(sh, "100nF", 130, y0 + 15, vp, "GND")
     sh.pwr_flag(vp, 95, y0 - 10)
@@ -121,20 +130,22 @@ def channel(sh, v: str, y0: float, tvs: str, r_uv: str, r_ov: str, r_ilim: str, 
 def main():
     sh = Sheet("C64 PSU Guard", PROJECT)
     sh.text("C64 PSU GUARD - protected 5 V / 12 V feed for a 1541-II / 1581 drive from a PC power supply.\n"
-            "J1 PSU in (Berg: 1 +5V, 2/3 GND, 4 +12V)  ->  J2 drive out (DIN pin 1 = 5V, 2 = GND, 4 = 12V).\n"
+            "v0.2 2026-10-26: J1 PSU in = JST XH B4B-XH-A, keyed (1 +5V, 2/3 GND, 4 +12V; Berg <-> XH adapter cable)\n"
+            "->  J2 drive out (DIN pin 1 = 5V, 2 = GND, 4 = 12V).\n"
             "Channel 5 V: limit 1.2 A, OVP 6.0 V, UVLO 4.2 V.  Channel 12 V: limit 1.5 A, OVP 14.0 V, UVLO 10.4 V.\n"
-            "TPS25921A = auto retry: red LED on while the channel is off, off again when the fault is gone.\n"
-            "J3 UFI link (reserve): 1 GND, 2 OFF (high = both channels off), 3 FLT5, 4 FLT12 (open drain).",
+            "TPS25921A = auto retry: red LED on while the channel is off (thermal shutdown), off again when the fault is gone.\n"
+            "J3 UFI link = JST XH B4B-XH-A, 1:1 XH cable to UFI J20 GUARD: 1 GND, 2 OFF (high = both channels off), 3 ERR5, 4 ERR12.",
             20, 15, 1.5)
     sh.part("Connector_Generic", "Conn_01x04", ref("J"), "PSU_IN", 35, 60,
-            {"1": "G:+5V_IN", "2": "GND", "3": "GND", "4": "G:+12V_IN"}, HDR4,
-            {"Note": "PC PSU floppy (Berg) plug: 1 +5V red, 2/3 GND black, 4 +12V yellow"})
+            {"1": "G:+5V_IN", "2": "GND", "3": "GND", "4": "G:+12V_IN"}, XH4,
+            {"MPN": XH4_MPN,
+             "Note": "keyed XH housing on the adapter cable, Berg pin order 1:1: 1 +5V red, 2/3 GND black, 4 +12V yellow"})
     sh.pwr_flag("G:+5V_IN", 50, 40)
     sh.pwr_flag("G:+12V_IN", 60, 40)
     sh.pwr_flag("GND", 40, 90)
 
     channel(sh, "5", 70, "SMF5.0CA", "49.9k", "30k", "115k", "1k")
-    channel(sh, "12", 170, "SMAJ15CA", "15.4k", "11k", "143k", "3.3k")
+    channel(sh, "12", 170, "SMAJ13A", "15.4k", "11k", "143k", "3.3k")
 
     # reverse-polarity indicator: GND -> R -> LED -> diode -> whichever input rail is negative
     sh.text("Reverse polarity LED: conducts only when +5V_IN or +12V_IN is negative against GND\n"
@@ -153,11 +164,14 @@ def main():
     # ERR5/ERR12 open-drain outputs, high (pull-up on the UFI side) = fault or board unpowered.
     sh.text("UFI link: OFF high = both channels off. ERR5/ERR12 = open drain, released (high) when the\n"
             "channel reports a fault or the guard is unpowered, pulled low while the channel is on.\n"
-            "UFI Headless J9: ERR5 -> pin 3 (PB6), ERR12 -> pin 4 (PB7) (2.2k pull-ups there), OFF <- pin 5 (PE0), GND pin 9.",
+            "UFI Headless v1.0 J20 GUARD (1:1 XH cable): 1 GND, 2 OFF <- PG7 (220R), 3 ERR5 -> PG8, 4 ERR12 -> PC9\n"
+            "(10k pull-ups to 3.3 V, 220R series resistors and PESD3V3L1BA on the UFI side).",
             230, 200, 1.27)
     sh.part("Connector_Generic", "Conn_01x04", ref("J"), "UFI_LINK", 300, 220,
-            {"1": "GND", "2": "G:OFF", "3": "ERR5", "4": "ERR12"}, HDR4,
-            {"Note": "1 GND, 2 OFF (high = both channels off, 100k pull-down), 3 ERR5, 4 ERR12 (open drain, high = fault)"})
+            {"1": "GND", "2": "G:OFF", "3": "ERR5", "4": "ERR12"}, XH4,
+            {"MPN": XH4_MPN,
+             "Note": "1:1 XH cable to UFI J20: 1 GND, 2 OFF (high = both channels off, 100k pull-down), "
+                     "3 ERR5, 4 ERR12 (open drain, high = fault)"})
     R(sh, "100k", 280, 240, "G:OFF", "GND")
     sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 215, {"1": "G:FLT5", "2": "GND", "3": "ERR5"}, SOT23)
     sh.part("Transistor_FET", "2N7002", ref("Q"), "2N7002", 265, 235, {"1": "G:FLT12", "2": "GND", "3": "ERR12"}, SOT23)
@@ -173,6 +187,14 @@ def main():
             {"Note": "external fault LED, 1 = + (anode), 2 = - (cathode), ~2.5 mA"})
     sh.part("Device", "D_Small", ref("D"), "1N4148W", 80, 295, {"2": "XK", "1": "G:FLT5"}, SOD123)
     sh.part("Device", "D_Small", ref("D"), "1N4148W", 80, 305, {"2": "XK", "1": "G:FLT12"}, SOD123)
+
+    # v0.2: defined FLT level - 100k from each FLT to its protected rail, parallel to the red LED
+    # chain (the LED alone leaves FLT floating below the rail, Q5/Q6 gates high-impedance).
+    # Numbered last so the v0.1 references stay unchanged.
+    sh.text("FLT pull-ups (v0.2): 100k FLT5 -> V5_P, 100k FLT12 -> V12_P (TPS25921A FLT: open drain, 20 V max).",
+            110, 285, 1.27)
+    R(sh, "100k", 130, 300, "V5_P", "G:FLT5")
+    R(sh, "100k", 150, 300, "V12_P", "G:FLT12")
 
     (OUT / f"{PROJECT}.kicad_sch").write_text(sh.render(PROJECT, f"/{sh.uuid}", is_root=True), encoding="utf8")
     pro = OUT / f"{PROJECT}.kicad_pro"
