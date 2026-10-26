@@ -1,4 +1,9 @@
-"""Local user-supplied BMOW MOOFs; no firmware binary execution or redistribution."""
+"""Local user-supplied BMOW MOOFs; no firmware binary execution or redistribution.
+
+The firmware decoder (format 6) runs on two revolutions of every track; the host decoder of
+read-mac (ufi_host.mac, the same 2 us cells as on the Mac drive at J23) decodes the revolution
+of every track twice (the sector across the splice) and must find every sector of the zone
+with valid checksums."""
 import argparse
 import hashlib
 import shutil
@@ -58,5 +63,27 @@ def main():
     subprocess.run([compiler(),'-std=c11','-O2','-Wall','-Wextra','-Werror','-D_CRT_SECURE_NO_WARNINGS','-I',str(FW/'include'),
         *extra_cflags(),str(FW/'tests/mac_corpus_decoder.c'),*[str(FW/'src'/s) for s in ('ufi_mfm.c','ufi_verify.c','ufi_quality.c','ufi_protection.c','ufi_metrics.c')],'-o',str(exe)],check=True)
     subprocess.run([str(exe),str(vectors)],check=True,timeout=90)
+    host(records)
+
+
+def host(records):
+    from ufi_host import mac
+    sectors = 0
+    for rec in records:
+        c, h, bits = struct.unpack_from('<III', rec)
+        stream = rec[12:]
+        deltas, run = [], 0
+        for i in list(range(bits)) * 2:            # two revolutions: the splice sector wraps
+            run += 1
+            if stream[i >> 3] & (0x80 >> (i & 7)):
+                deltas.append(run * mac.CELL_TICKS)
+                run = 0
+        best = mac.decode_nibbles(mac.nibbles(deltas)).best()
+        want = mac.sectors_per_track(c)
+        good = [r for r in range(want) if (c, h, r) in best and best[(c, h, r)].ok]
+        assert len(good) == want, f'host decoder, track {c}.{h}: {len(good)}/{want} sectors'
+        assert {best[(c, h, r)].fmt for r in good} <= {mac.FORMAT_400K, mac.FORMAT_800K}
+        sectors += want
+    print(f'MOOF corpus, host decoder (read-mac): {len(records)} tracks, {sectors} sectors with valid checksums')
 
 if __name__=='__main__':main()

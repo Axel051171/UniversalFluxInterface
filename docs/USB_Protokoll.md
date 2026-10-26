@@ -697,6 +697,20 @@ hängen ihr Ergebnis an):
 | 15 | u8 | nur Op 4: Zone |
 | 16 | u16 | nur Op 4: gefundener Tastgrad in Promille |
 
+**Lesen (Host `ufi read-mac`).** READ wie bei Disk II: RD über TIM2_CH3, kein Index,
+Umdrehungen = 200-ms-Abschnitte (READ-Flag Bit0); eine Mac-Umdrehung dauert 102–152 ms, jeder
+Abschnitt enthält also jeden Sektor. SIDE wählt den Kopf über das Lesedatenregister. Die Firmware
+dekodiert Mac-GCR als Format 6 für ANALYZE und die Analysejobs (5.4); `ufi read-mac` dekodiert auf
+dem Host mit denselben Marken (D5 AA 96 / D5 AA AD, DE AA), Prüfsummen und 2-µs-Zellen
+(`ufi_host/mac.py`, gegen den MOOF-Korpus geprüft), liest Spuren mit fehlenden oder fehlerhaften
+Sektoren bis zu `--retries` mal nach und schreibt ein Rohabbild `.img`/`.dsk` (512-Byte-Blöcke
+in der Reihenfolge Spur, Seite, Sektor; 400K = 409 600, 800K = 819 200 Byte) oder DiskCopy 4.2
+(`.dc42`/`.image`, mit den 12 Tag-Bytes je Block und beiden Prüfsummen). `--speed` prüft je Zone
+einmal den Tachometer (Op 3). FDHD 1,44 MB: `--mfm` dekodiert IBM-MFM mit 500 kbit/s auf dem
+Host in ein `.img`; die Umschaltung der SuperDrive in den MFM-Betrieb ist ein Registerbefehl,
+dessen Adresse hier nicht belegt ist – `--mode-cmd REG` sendet ihn als Rohbefehl, ohne Vorgabe,
+am Gerät zu bestimmen.
+
 **DIAG_RPM** misst beim Mac-Laufwerk über den Tachometer (60 Impulse je Umdrehung) statt über
 einen Index; `pulse` ist 0.
 

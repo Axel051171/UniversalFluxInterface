@@ -479,6 +479,104 @@ def cmd_monitor(dev: P2.Device2, a) -> None:
               f"spread {(hi - lo) / (total / n) * 100:.3f} %" + ("" if not status else f", status {status}"))
 
 
+def _mac_open(dev: P2.Device2) -> P2.MacStatus:
+    """Select the Macintosh drive on J23 (board v1.0) and make sure something answers."""
+    dev.select("mac")
+    st = dev.mac_status()
+    if st.kind == 0:
+        raise SystemExit("no Macintosh drive answers on J23 (board v1.0 only; drive supply on: ufi power 3)")
+    return st
+
+
+def cmd_mac(dev: P2.Device2, a) -> None:
+    dev.select("mac")
+    if a.action == "status":
+        print(dev.mac_status())
+    elif a.action == "eject":
+        print(dev.mac_eject())
+    elif a.action == "cmd":
+        if a.value is None:
+            raise SystemExit("ufi mac cmd REG (0..15): raw register command")
+        print(dev.mac_command(a.value))
+    elif a.action == "tach":
+        st = dev.mac_tach(a.value or 0)
+        verdict = {0: "within 2 % of the zone speed", 1: "OUTSIDE 2 % of the zone speed"}.get(st.verdict, "?")
+        print(f"{st}\n  measured {st.tach_rpm:.1f} rpm, zone {st.zone} wants {st.target_rpm:.0f} rpm: {verdict}")
+    elif a.action == "tune":
+        st = dev.mac_pwm_tune(a.value)
+        print(f"{st}\n  zone {st.tuned_zone}: duty {st.duty / 10:.1f} %")
+    elif a.action == "pwm":
+        if a.value is None:
+            raise SystemExit("ufi mac pwm PERMILLE (0 = off)")
+        print(dev.mac_pwm(a.value))
+
+
+def cmd_read_mac(dev: P2.Device2, a) -> int:
+    """Macintosh disk -> raw .img/.dsk or DiskCopy 4.2; GCR (400K/800K) or FDHD MFM (--mfm)."""
+    from . import apple, mac
+    from .readback import decode_ibm
+    st = _mac_open(dev)
+    if a.mfm and st.kind != 3:
+        raise SystemExit(f"--mfm needs a SuperDrive (FDHD); the drive reports {st.kind_name}")
+    if a.mfm and mac.is_dc42_name(a.output):
+        raise SystemExit("DiskCopy 4.2 output only for 400K/800K GCR; use .img for 1.44 MB")
+    sides = a.sides or (1 if st.kind == 1 else 2)
+    if st.kind == 1 and sides == 2:
+        raise SystemExit("a 400K drive has one head")
+    if a.mfm and a.mode_cmd is not None:
+        print(f"MFM mode: raw register command {a.mode_cmd}: {dev.mac_command(a.mode_cmd)}")
+    img = mac.MfmImage() if a.mfm else mac.GcrImage(sides)
+    dev.motor(True)
+    try:
+        dev.recalibrate()
+        zone_checked = -1
+        for track in range(a.tracks):
+            if a.speed and not a.mfm and mac.zone(track) != zone_checked:
+                dev.seek(track)
+                zone_checked = mac.zone(track)
+                t = dev.mac_tach(2)
+                print(f"zone {zone_checked}: {t.tach_rpm:.1f} rpm (zone speed {t.target_rpm:.0f})"
+                      + ("" if t.verdict == 0 else "  OUTSIDE 2 %"))
+            for side in range(sides):
+                want = mac.MFM_HD_SECTORS if a.mfm else mac.sectors_per_track(track)
+                merged = {} if a.mfm else mac.TrackDecode()
+                for _attempt in range(1 + a.retries):
+                    cap = dev.read_track(track, side, a.revs, no_index=True)
+                    if a.mfm:
+                        for rev in cap.revolutions:
+                            try:
+                                for k, v in decode_ibm(apple.deltas_of(rev), 500_000).items():
+                                    merged.setdefault(k, v)
+                            except ValueError:
+                                pass
+                        good = sum((track, side, r, 2) in merged for r in range(1, want + 1))
+                    else:
+                        dec = mac.decode_capture(cap)
+                        merged.sectors += dec.sectors
+                        merged.header_errors += dec.header_errors
+                        merged.data_errors += dec.data_errors
+                        merged.code_errors += dec.code_errors
+                        best = merged.best()
+                        good = sum(1 for s in range(want) if (track, side, s) in best and best[(track, side, s)].ok)
+                    if good == want:
+                        break
+                img.add_track(track, side, merged)
+                extra = "" if a.mfm else (f", {merged.header_errors} header, {merged.data_errors} data, "
+                                          f"{merged.code_errors} coding errors")
+                print(f"track {track:2d}.{side}: {good:2d}/{want} sectors{extra}", flush=True)
+    finally:
+        dev.motor(False)
+    if a.mfm:
+        img.write(a.output)
+    else:
+        img.write(a.output, name=a.name)
+    weak = [] if a.mfm else img.weak
+    print(f"{a.output}: {a.tracks} tracks x {sides} sides, missing {len(img.missing)}, checksum faults kept {len(weak)}")
+    for t, s, r in img.missing[:40]:
+        print(f"  missing t{t}.{s} s{r}")
+    return 1 if img.missing else 0
+
+
 def run_v2(dev: P2.Device2, a) -> bool:
     """v2-only commands; returns False when a.cmd is not one of them."""
     if a.cmd == "caps":
@@ -548,6 +646,8 @@ def run_v2(dev: P2.Device2, a) -> bool:
         print(dev.fdd_pins(a.pin4, a.pin33))
     elif a.cmd == "net":                  # board v1.0, LAN stage L5
         print(dev.net())
+    elif a.cmd == "mac":                  # board v1.0, Macintosh drive on J23
+        cmd_mac(dev, a)
     else:
         return False
     return True
@@ -556,7 +656,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
 V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
            "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check",
-           "rtc", "sensor", "rails", "sync", "pins", "net"}
+           "rtc", "sensor", "rails", "sync", "pins", "net", "mac", "read-mac"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -852,6 +952,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--pin4", type=int, choices=(0, 1))
     p.add_argument("--pin33", type=int, choices=(0, 1))
     sub.add_parser("net", help="LAN (W5500, board v1.0): link, address (DHCP / link-local / static), session, drive owner")
+    p = sub.add_parser("mac", help="Macintosh 3.5-inch drive on J23 (board v1.0, drive mac): status, eject, raw register "
+                       "command, tachometer against the zone speed, 400K PWM search/duty")
+    p.add_argument("action", nargs="?", default="status", choices=("status", "eject", "cmd", "tach", "tune", "pwm"))
+    p.add_argument("value", nargs="?", type=int, help="cmd: register 0..15; tach: revolutions; tune: zone 0..4 "
+                   "(default: zone of the head); pwm: duty per mille (0 = off)")
+    p = sub.add_parser("read-mac", help="Macintosh disk on J23 (board v1.0) -> .img/.dsk (raw 512-byte blocks) or "
+                       ".dc42/.image (DiskCopy 4.2 with tags): 400K/800K GCR decoded on the host; --mfm reads a "
+                       "1.44 MB disk in a SuperDrive (IBM MFM, raw .img)")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--tracks", type=int, default=80)
+    p.add_argument("--sides", type=int, choices=(1, 2), help="default from the drive kind (400K: 1)")
+    p.add_argument("-r", "--revs", type=int, default=2, help="200 ms slices per READ (a revolution is 102-152 ms)")
+    p.add_argument("--retries", type=int, default=2, help="re-reads of a track with missing or bad sectors")
+    p.add_argument("--speed", action="store_true", help="tachometer check once per speed zone")
+    p.add_argument("--mfm", action="store_true", help="FDHD: 1.44 MB IBM MFM at 500 kbit/s")
+    p.add_argument("--mode-cmd", type=int, metavar="REG", help="raw register command sent before an --mfm read "
+                   "(the SuperDrive's MFM mode command; not verified on hardware, no default)")
+    p.add_argument("--name", default="UFI", help="DiskCopy 4.2 disk name")
     p = sub.add_parser("discover", help="find UFI boards on the LAN by UDP broadcast (port 55100); no device connection")
     p.add_argument("--timeout", type=float, default=1.0, help="seconds to collect replies")
     p.add_argument("--address", default="255.255.255.255", help="broadcast or unicast address to ask")
@@ -909,6 +1027,8 @@ def main(argv: list[str] | None = None) -> int:
             print("error: --integrity and --extended require UFI v2 firmware", file=sys.stderr)
             return 1
         if isinstance(dev, P2.Device2):
+            if a.cmd == "read-mac":
+                return cmd_read_mac(dev, a)
             if run_v2(dev, a):
                 return 0
         elif a.cmd in V2_ONLY:

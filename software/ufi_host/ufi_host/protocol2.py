@@ -125,6 +125,11 @@ RAILS_FMT = struct.Struct("<HHB")          # v5_mv, v12_mv, flags
 RAIL_5V_LOW, RAIL_12V_LOW, RAIL_5V_ON, RAIL_12V_ON, RAIL_FITTED = 0x01, 0x02, 0x04, 0x08, 0x10
 RAIL_5V_MIN_MV, RAIL_12V_MIN_MV = 4500, 10800
 SYNC_FMT = struct.Struct("<BBBIIII")       # active, source, level, count, last_t2, last_t32, period
+MAC = 0x29                                # board v1.0: Macintosh 3.5" drive on J23, Sony registers (doc 1.7)
+MAC_STATUS, MAC_COMMAND, MAC_EJECT, MAC_TACH, MAC_PWM_TUNE, MAC_PWM = 0, 1, 2, 3, 4, 5
+MAC_KINDS = {0: "none", 1: "400K", 2: "800K", 3: "FDHD"}
+MAC_FLAG_NAMES = ("disk", "write_protected", "motor", "ready", "track0", "stepping")
+MAC_ZONE_RPM = (394, 429, 472, 525, 590)  # tracks 0-15 / 16-31 / 32-47 / 48-63 / 64-79
 FDD_PINS_FMT = struct.Struct("<BB")        # pins, outputs
 FDD_PIN_NAMES = ("pin2_low", "pin4_low", "cstout", "wgate_bus", "wlock_hw", "flt5", "flt12", "sync")
 FEATURE_NAMES = {1: "flux read", 2: "extended flux write", 3: "IEC", 4: "Apple port", 5: "Amiga port",
@@ -633,6 +638,68 @@ class FddPins:
     def __str__(self) -> str:
         return (f"pins 0x{self.pins:02x} [{', '.join(self.names()) or '-'}], outputs: pin4 {'on' if self.outputs & 1 else 'off'}, "
                 f"pin33 {'high' if self.outputs & 2 else 'low'}")
+
+
+@dataclass
+class MacStatus:
+    """MAC 0x29 status block (doc 1.7): drive kind, status bits, raw register levels, head, speed."""
+    kind: int
+    flags: int
+    extra: int
+    sense: int
+    track: int | None
+    side: int
+    zone: int | None = None
+    target_rpm: float = 0.0
+    tach_rpm: float = 0.0
+    pwm_permille: int = 0
+    verdict: int | None = None              # op 3: 0 within 2 % of the zone speed, 1 outside
+    periods: tuple[int, int, int] | None = None   # op 3: min/avg/max revolution in 275 MHz ticks
+    tuned_zone: int | None = None           # op 4
+    duty: int | None = None                 # op 4: per mille found for that zone
+
+    @classmethod
+    def unpack(cls, b: bytes, op: int = MAC_STATUS) -> MacStatus:
+        if len(b) < 8 or b[0] != 1:
+            raise ValueError("invalid MAC status block")
+        s = cls(b[1], b[2], b[3], b[4] | b[5] << 8, None if b[6] == 0xFF else b[6], b[7])
+        if len(b) >= 15:
+            s.zone = None if b[8] == 0xFF else b[8]
+            target, tach, s.pwm_permille = struct.unpack_from("<HHH", b, 9)
+            s.target_rpm, s.tach_rpm = target / 100, tach / 100
+        if op == MAC_TACH and len(b) >= 28:
+            s.verdict = b[15]
+            s.periods = struct.unpack_from("<III", b, 16)
+        if op == MAC_PWM_TUNE and len(b) >= 18:
+            s.tuned_zone, s.duty = b[15], struct.unpack_from("<H", b, 16)[0]
+        return s
+
+    @property
+    def kind_name(self) -> str:
+        return MAC_KINDS.get(self.kind, f"kind {self.kind}")
+
+    def names(self) -> list[str]:
+        return [n for i, n in enumerate(MAC_FLAG_NAMES) if self.flags & (1 << i)]
+
+    @property
+    def disk(self) -> bool:
+        return bool(self.flags & 1)
+
+    @property
+    def write_protected(self) -> bool:
+        return bool(self.flags & 2)
+
+    def __str__(self) -> str:
+        head = "unknown" if self.track is None else f"track {self.track}"
+        text = (f"{self.kind_name} drive, {', '.join(self.names()) or 'no disk'}, {head} head {self.side}, "
+                f"sense 0x{self.sense:04x}, CSTOUT {'on' if self.extra & 1 else 'off'}")
+        if self.zone is not None:
+            text += f", zone {self.zone} ({self.target_rpm:.0f} rpm)"
+        if self.tach_rpm:
+            text += f", tach {self.tach_rpm:.1f} rpm"
+        if self.pwm_permille:
+            text += f", PWM {self.pwm_permille / 10:.1f} %"
+        return text
 
 
 @dataclass
@@ -2315,6 +2382,41 @@ class Device2:
             return FddPins.unpack(self.request(FDD_PINS))
         payload = bytes([0xFF if pin4 is None else int(bool(pin4)), 0xFF if pin33 is None else int(bool(pin33))])
         return FddPins.unpack(self.request(FDD_PINS, payload))
+
+    # -- Macintosh drive on J23 (board v1.0, doc 1.7) ----------------------------
+    def mac_status(self) -> MacStatus:
+        """MAC 0x29 op 0: drive kind, status bits and raw register levels (drive mac selected)."""
+        return MacStatus.unpack(self.request(MAC, bytes([MAC_STATUS])))
+
+    def mac_command(self, reg: int) -> MacStatus:
+        """MAC op 1: raw register command (CA2..CA0, SEL = reg bits 3..0) latched by an LSTRB pulse."""
+        if not 0 <= reg <= 15:
+            raise ValueError("register 0..15")
+        return MacStatus.unpack(self.request(MAC, bytes([MAC_COMMAND, reg])))
+
+    def mac_eject(self) -> MacStatus:
+        """MAC op 2: eject (LSTRB held 750 ms); head position and media generation become invalid."""
+        return MacStatus.unpack(self.request(MAC, bytes([MAC_EJECT]), timeout=3.0))
+
+    def mac_tach(self, revs: int = 3) -> MacStatus:
+        """MAC op 3: spindle speed from the tachometer (60 pulses per revolution) against the zone speed."""
+        if not 0 <= revs <= 50:
+            raise ValueError("revs 0..50 (0 = 3)")
+        return MacStatus.unpack(self.request(MAC, bytes([MAC_TACH, revs]), timeout=30.0), MAC_TACH)
+
+    def mac_pwm_tune(self, zone: int | None = None) -> MacStatus:
+        """MAC op 4 (400K drive, JP5 closed): find the PWM duty for a zone's speed with the tachometer;
+        zone None = the zone of the current track."""
+        if zone is not None and not 0 <= zone <= 4:
+            raise ValueError("zone 0..4")
+        payload = bytes([MAC_PWM_TUNE, 0xFF if zone is None else zone])
+        return MacStatus.unpack(self.request(MAC, payload, timeout=30.0), MAC_PWM_TUNE)
+
+    def mac_pwm(self, permille: int) -> MacStatus:
+        """MAC op 5 (400K drive): speed PWM duty in per mille, 0 = output off."""
+        if not 0 <= permille <= 1000:
+            raise ValueError("duty 0..1000 per mille")
+        return MacStatus.unpack(self.request(MAC, bytes([MAC_PWM]) + struct.pack("<H", permille)))
 
     # -- LAN (board v1.0, doc 1.6) ----------------------------------------------
     def net(self) -> NetStatus:

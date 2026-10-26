@@ -76,9 +76,10 @@ class TrackDecode:
         return out
 
 
-def nibbles(deltas: list[int]) -> bytes:
-    """Flux intervals (275 MHz ticks) -> GCR nibble stream, latching on the first 1 bit."""
-    pll = Pll(CELL_RATE)
+def nibbles(deltas: list[int], rate: int = CELL_RATE) -> bytes:
+    """Flux intervals (275 MHz ticks) -> GCR nibble stream, latching on the first 1 bit.
+    rate: Pll rate of the cell (CELL_RATE = 4 us Apple II cells; mac.CELL_RATE = 2 us)."""
+    pll = Pll(rate)
     out = bytearray()
     byte = 0
     for delta in deltas:
