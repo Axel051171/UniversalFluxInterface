@@ -21,7 +21,7 @@ powershell.exe -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$F/ger
     --labels 'Designator,Value,Footprint,MPN,LCSC,Quantity' --group-by Value,Footprint,LCSC \
     -o "$F/C64_PSU_Guard-bom.csv" "$S" >/dev/null
 "$CLI" sch export bom --fields 'Value,Reference,Footprint,LCSC' \
-    --labels 'Comment,Designator,Footprint,LCSC Part #' --group-by Value,Footprint,LCSC \
+    --labels 'Comment,Designator,Footprint,LCSC Part #' --group-by LCSC --ref-range-delimiter '' \
     -o "$F/C64_PSU_Guard-bom-jlc.csv" "$S" >/dev/null
 
 "$CLI" pcb export pos --format csv --units mm --side both --exclude-dnp -o "$F/C64_PSU_Guard-pos.csv" "$B" >/dev/null
