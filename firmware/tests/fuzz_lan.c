@@ -10,10 +10,12 @@
  *      ARP answers for the address being probed, 3 raise IR.CONFLICT; bit3 = a session is
  *      connected during this step.
  *   3  the TCP v2 session (ufi_lan_session.c, L4), see fuzz_session().
+ *   4  the discovery responder (ufi_lan_status.c, L5), see fuzz_disc().
  * Checks: ASan/UBSan and the asserts below. */
 #include "ufi_lan_cfg.h"
 #include "ufi_net.h"
 #include "ufi_lan_session.h"
+#include "ufi_lan_status.h"
 #include "w5500_fake.h"
 #include <assert.h>
 #include <stddef.h>
@@ -166,16 +168,51 @@ static void fuzz_session(const uint8_t* data, size_t size)
     }
 }
 
+/* 4: the discovery responder (ufi_lan_status.c, L5): datagrams [len][bytes] from a host on
+ * the subnet or (len bit7) from elsewhere; every reply is a well-formed "UFI!" packet to
+ * the asker or to the broadcast address. */
+static void fuzz_disc(const uint8_t* data, size_t size)
+{
+    fake_init(&fake);
+    const w5500_t d = fake_dev(&fake);
+    (void)w5500_reset(&d);
+    (void)w5500_setup(&d, FMAC);
+    lan_status_t s;
+    memset(&s, 0, sizeof(s));
+    static const uint8_t ip[4] = {192, 168, 1, 50}, mask[4] = {255, 255, 255, 0};
+    static const uint8_t near[4] = {192, 168, 1, 9}, far[4] = {10, 1, 2, 3};
+    memcpy(s.ip, ip, 4); memcpy(s.mask, mask, 4); memcpy(s.mac, FMAC, 6);
+    s.port = 55100; s.mode = 1;
+    strcpy(s.host, "ufi-02cab3");
+    w5500_set_ip(&d, ip, mask, ip);
+    uint8_t buf[LAN_DISC_REPLY_MAX];
+    bool inflight = false;
+    (void)lan_disc_service(&d, &s, buf, &inflight);
+    for (size_t i = 0; i < size; ) {
+        const size_t want = data[i] & 127u;
+        const size_t take = want <= size - i - 1u ? want : size - i - 1u;
+        fake_udp_rx(&fake, W5500_SOCK_DISCOVER, (data[i] & 128u) ? far : near, 40000, data + i + 1, (uint16_t)take);
+        i += 1u + take;
+        (void)lan_disc_service(&d, &s, buf, &inflight);
+    }
+    for (unsigned k = 0; k < fake.out_n; k++) {
+        const fake_pkt_t* p = &fake.out[k];
+        assert(p->sock == W5500_SOCK_DISCOVER && p->len == 32u && !memcmp(p->data, "UFI!", 4));
+        assert(!memcmp(p->ip, near, 4) || (p->ip[0] == 255u && p->ip[3] == 255u));
+    }
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     if (!size || size > 4096u) {
         return 0;
     }
-    switch (data[0] % 4u) {
+    switch (data[0] % 5u) {
         case 0: fuzz_cfg(data + 1, size - 1u); break;
         case 1: fuzz_dhcp(data + 1, size - 1u); break;
         case 2: fuzz_net(data + 1, size - 1u); break;
-        default: fuzz_session(data + 1, size - 1u); break;
+        case 3: fuzz_session(data + 1, size - 1u); break;
+        default: fuzz_disc(data + 1, size - 1u); break;
     }
     return 0;
 }

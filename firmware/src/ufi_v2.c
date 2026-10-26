@@ -1591,6 +1591,18 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             ret = name ? ufi_file_delete(name) : UFI_ERR_BAD_ARGS;
             break;
         }
+        case V2_NET: {                      /* L5: LAN status, over USB and LAN */
+            if (len) {
+                ret = UFI_ERR_BAD_ARGS;
+                break;
+            }
+            lan_status_t s;
+            memset(&s, 0, sizeof(s));
+            ufi_lan_status(&s);
+            s.host[LAN_HOST_MAX] = '\0';
+            n = lan_status_pack(&s, out);
+            break;
+        }
         case V2_AUTH:                       /* lan_key challenge: LAN only (ufi_lan_session.c) */
             ret = UFI_ERR_NOT_IMPL;
             break;

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include "ufi_lan_cfg.h"
 #include "ufi_net.h"
+#include "ufi_lan_status.h"
 
 /* chip / link state (ufi net, NET.TXT) */
 enum {
@@ -29,6 +30,7 @@ const lan_cfg_t* ufi_lan_cfg(void);
 uint8_t ufi_lan_cfg_source(void);
 const char* ufi_lan_hostname(void);
 const net_t* ufi_lan_net(void);
+void ufi_lan_status(lan_status_t* s);     /* NET 0x48, NET.TXT, discovery (L5) */
 
 /* LAN session as a transport of native frames (L4) */
 bool ufi_lan_tx_idle(void);

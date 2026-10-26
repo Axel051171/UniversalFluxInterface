@@ -1,5 +1,5 @@
 /**
- * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L4)
+ * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L5)
  *
  * W5500 U23 on SPI3: PC10 SCK, PC11 MISO, PC12 MOSI (AF6), PA15 SCSn (GPIO, 10k pull-up
  * R119), PD10 RSTn (GPIO, R121), PD5 INTn (input, R120).  Kernel clock PLL1Q 100 MHz,
@@ -30,6 +30,10 @@
  * counter, the tick, a counter and the peer address: never repeated within a boot even
  * if the RNG does not deliver.
  *
+ * Status (L5, ufi_lan_status.c): ufi_lan_status() feeds NET 0x48; the discovery responder
+ * on UDP 55100 runs with the address polling; NET.TXT on U15 is rewritten whenever state
+ * or address change (retried every 5 s while the file system is busy or exported).
+ *
  * State lives in SRAM2 (.sram2 is NOLOAD, so ufi_lan_init() clears it first): the AXI SRAM
  * .bss/.data budget is frozen at the gate value and DTCM keeps its stack reserve.
  */
@@ -39,15 +43,22 @@
 #include "ufi_lan_cfg.h"
 #include "ufi_net.h"
 #include "ufi_lan_session.h"
+#include "ufi_lan_status.h"
 #include "ufi_sha256.h"
 #include "ufi_w5500.h"
 #include <string.h>
+
+#ifndef UFI_FW_VERSION
+#define UFI_FW_VERSION "0.0"
+#endif
 
 #define LAN_SPI_TIMEOUT_MS  10u
 #define LAN_PHY_POLL_MS     500u
 #define LAN_NET_POLL_MS     10u         /* DHCP / probe timers are seconds; INTn shortens it */
 #define LAN_SESSION_POLL_MS 2u          /* connected session without INTn */
 #define LAN_TX_TIMEOUT_MS   2000u       /* blocking reply: peer not reading -> drop */
+#define LAN_TXT_RETRY_MS    5000u       /* NET.TXT while the file system is not available */
+_Static_assert(NET_PKT_MAX >= LAN_TEXT_MAX && NET_PKT_MAX >= LAN_DISC_REPLY_MAX, "scratch too small");
 _Static_assert(LAN_V2_FRAME_MAX == UFI_V2_FRAME_MAX, "LAN and USB frames differ");
 
 typedef struct {
@@ -67,6 +78,9 @@ typedef struct {
     uint32_t sess_ms;
     uint8_t pool[SHA256_SIZE];          /* AUTH challenge entropy */
     uint32_t nonces;
+    bool disc_inflight;                 /* discovery reply SEND without SEND_OK yet (L5) */
+    bool txt_done;                      /* NET.TXT written for txt_key */
+    uint32_t txt_key, txt_ms;
     uint8_t pkt[NET_PKT_MAX];           /* DHCP messages */
     uint8_t buf[UFI_V2_FRAME_MAX];      /* LAN.CFG text, later the session frame */
 } lan_t;
@@ -318,8 +332,32 @@ void ufi_lan_reload(void)
  * MAIN LOOP
  * ============================================================================ */
 
+/* NET.TXT: current state and address on U15, rewritten on every change */
+static void net_txt(void)
+{
+    const uint32_t key = (uint32_t)lan.state | ((uint32_t)lan.net.changes << 8);
+    const uint32_t now = HAL_GetTick();
+    if (key != lan.txt_key) {
+        lan.txt_key = key;
+        lan.txt_done = false;
+        lan.txt_ms = now - LAN_TXT_RETRY_MS;    /* write at once */
+    }
+    if (lan.txt_done || now - lan.txt_ms < LAN_TXT_RETRY_MS) {
+        return;
+    }
+    lan.txt_ms = now;
+    lan_status_t s;
+    ufi_lan_status(&s);
+    const size_t n = lan_status_text(&s, (char*)lan.pkt);
+    uint16_t written = 0;
+    lan.txt_done = ufi_file_write(LAN_NET_TXT, 0, true, lan.pkt, (uint16_t)n, &written) == UFI_OK;
+}
+
 void ufi_lan_service(void)
 {
+    if (lan.state != LAN_STATE_NO_HW) {
+        net_txt();
+    }
     if (lan.reload) {
         lan.reload = false;
         const lan_cfg_t old = lan.cfg;
@@ -348,9 +386,11 @@ void ufi_lan_service(void)
         return;
     }
     const bool irq = HAL_GPIO_ReadPin(PIN_LAN_INT.port, PIN_LAN_INT.pin) == GPIO_PIN_RESET;
+    bool disc = false;
     if (irq || now - lan.net_ms >= LAN_NET_POLL_MS) {
         lan.net_ms = now;
         net_service(&lan.net, &dev, now, lan_session_connected(&lan.sess));
+        disc = true;
     }
     if (!net_has_address(&lan.net)) {
         if (lan.sess.state != LAN_SESS_DOWN) {
@@ -359,6 +399,11 @@ void ufi_lan_service(void)
         return;
     }
     lan.state = LAN_STATE_BOUND;
+    if (disc) {
+        lan_status_t s;
+        ufi_lan_status(&s);
+        (void)lan_disc_service(&dev, &s, lan.pkt, &lan.disc_inflight);
+    }
     if (lan.sess_changes != lan.net.changes) {
         lan.sess_changes = lan.net.changes;     /* new address: connections to the old one are dead */
         lan_session_close(&lan.sess, &dev, &scb);
@@ -427,6 +472,50 @@ bool ufi_lan_write_allowed(void)
 }
 
 const net_t* ufi_lan_net(void) { return &lan.net; }
+
+/* "1.18-dev" -> 1, 18 */
+static void fw_version(uint8_t* major, uint8_t* minor)
+{
+    uint8_t v[2] = {0, 0};
+    unsigned i = 0;
+    for (const char* p = UFI_FW_VERSION; *p && i < 2u; p++) {
+        if (*p == '.') i++;
+        else if (*p >= '0' && *p <= '9') v[i] = (uint8_t)(v[i] * 10u + (uint8_t)(*p - '0'));
+        else break;
+    }
+    *major = v[0];
+    *minor = v[1];
+}
+
+void ufi_lan_status(lan_status_t* s)
+{
+    memset(s, 0, sizeof(*s));
+    s->state = lan.state;
+    s->mode = lan.net.mode;
+    s->version = lan.version;
+    const bool link = lan.state >= LAN_STATE_LINK_UP;
+    const bool conn = lan_session_connected(&lan.sess);
+    s->flags = (uint8_t)((link ? LAN_F_LINK : 0u) | (link && (lan.phy & W5500_PHY_SPD) ? LAN_F_100M : 0u) |
+                         (link && (lan.phy & W5500_PHY_DPX) ? LAN_F_FULL_DUPLEX : 0u) |
+                         (conn ? LAN_F_CONNECTED : 0u) | (conn && lan.sess.authed ? LAN_F_AUTHED : 0u) |
+                         (lan.cfg.write ? LAN_F_WRITE : 0u) | (lan.cfg.key_len ? LAN_F_KEY : 0u) |
+                         (lan.net.conflict_seen ? LAN_F_CONFLICT : 0u));
+    s->owner = ufi_v2_owner();
+    memcpy(s->ip, lan.net.ip, 4u);
+    memcpy(s->mask, lan.net.mask, 4u);
+    memcpy(s->gw, lan.net.gw, 4u);
+    memcpy(s->dns, lan.net.dns, 4u);
+    memcpy(s->mac, lan.mac, 6u);
+    if (conn) {
+        memcpy(s->peer, lan.sess.peer, 4u);
+        s->peer_port = lan.sess.peer_port;
+    }
+    s->port = lan.cfg.port;
+    s->lease_left = net_lease_left(&lan.net, HAL_GetTick());
+    fw_version(&s->fw_major, &s->fw_minor);
+    s->board_rev = ufi_board_rev();
+    memcpy(s->host, lan.host, sizeof(s->host));
+}
 
 uint8_t ufi_lan_state(void) { return lan.state; }
 uint8_t ufi_lan_version(void) { return lan.version; }

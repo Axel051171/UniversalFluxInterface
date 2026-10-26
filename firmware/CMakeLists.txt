@@ -227,6 +227,7 @@ set(PROJECT_SOURCES
     src/ufi_lan_cfg.c
     src/ufi_net.c
     src/ufi_lan_session.c
+    src/ufi_lan_status.c
     src/ufi_lan.c
     src/system_stm32h7xx.c
     src/stm32h7xx_it.c

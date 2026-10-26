@@ -10,7 +10,7 @@ Targets:
   sd       the stand-alone SD module: image loaders, dump writers, UFI.CFG and the file
            API over an in-memory FatFs fed by the input (fuzz_sd.c)
   lan      the HAL-free LAN parsers: LAN.CFG text, DHCP replies, the address state
-           machine against the W5500 fake, the TCP v2 session (fuzz_lan.c)
+           machine against the W5500 fake, the TCP v2 session, discovery (fuzz_lan.c)
 Stubs: fuzz_stubs.py from the header prototypes, HAL/FatFs declarations from hal_stub/.
 
 usage: python run_fuzz.py [--target parsers|v2|gw|sd|all] [--seconds N] [--replay]
@@ -68,6 +68,7 @@ V2_SEEDS = (
     b'\x00' + record(4, 0x60, 1, b'\x01\x50\x02\x03\x04') + record(4, 0x61, 2) + record(4, 0x62, 3)
     + record(0x24, 0x82, 0, b'\x01\x02') + record(4, 0x06, 4, b'\xff\xff\x00\x00'),
     b'\x01\x55\xaa\x01\x00\x07\x00\x00\x00\x12\x34\x55\xaa',
+    b'\x00' + record(4, 0x48, 1) + record(4, 0x48, 2, b'x') + record(4, 0x49, 3),   # L5 NET, L4 AUTH over USB
     # integrity job around a READ: open (kind 1, id 0x1234), READ, end, status
     b'\x00' + record(4, 0x0B, 1, bytes([1, 1, 0x34, 0x12, 0, 0, 0, 0, 0, 0])) + record(4, 0x20, 2, bytes([5, 1, 3, 0, 0, 0]))
     + record(0x0C, 0, 0) + record(4, 0x0B, 3),
@@ -100,7 +101,7 @@ GW_SEEDS = (
 STUBBED = {
     'v2': dict(harness='fuzz_v2.c', units=('ufi_v2',),
                real=('ufi_job', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media', 'ufi_metrics',
-                     'ufi_write_codec', 'ufi_quality','ufi_protection'),
+                     'ufi_write_codec', 'ufi_quality','ufi_protection', 'ufi_lan_status', 'ufi_lan_cfg'),
                extra={'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'), **LINKER_SYMBOLS}),
     'gw': dict(harness='fuzz_gw.c', units=('ufi_gw',), real=('ufi_resources', 'ufi_cancel'),
                extra={'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'),
@@ -178,7 +179,8 @@ def session_seed(flags, stream):
 
 
 LAN_SEEDS += (session_seed(0xFE, v2_frame(1, 0, 1, b'UFI2') + b'\x01\x55' + v2_frame(4, 0x22, 2, b'\xf2\x48')),
-              session_seed(0xFF, v2_frame(1, 0x49, 1) + v2_frame(1, 0x49, 2, bytes(32)) + v2_frame(1, 0, 3)))
+              session_seed(0xFF, v2_frame(1, 0x49, 1) + v2_frame(1, 0x49, 2, bytes(32)) + v2_frame(1, 0, 3)),
+              b'\x04' + bytes([8]) + b'UFI?\x01\x00\x00\x00' + bytes([0x88]) + b'UFI?\x01\x00\x00\x00' + bytes([3]) + b'UFI')
 
 
 def scp_seed():
@@ -241,7 +243,7 @@ def build_protection():
     return exe
 
 
-LAN_SOURCES = ('ufi_lan_cfg.c', 'ufi_net.c', 'ufi_w5500.c', 'ufi_sha256.c', 'ufi_lan_session.c')
+LAN_SOURCES = ('ufi_lan_cfg.c', 'ufi_net.c', 'ufi_w5500.c', 'ufi_sha256.c', 'ufi_lan_session.c', 'ufi_lan_status.c')
 
 
 def build_lan():
