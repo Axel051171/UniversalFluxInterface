@@ -77,6 +77,7 @@ def index_irq():
 static struct {capture_state_t state;unsigned error_code,revolutions_requested;} g_capture;
 static uint8_t hard_sectors,hs_n,idx_count;
 static uint32_t hs_last,hs_gap,index_mask_ticks,index_previous,period,idx_time[256],idx_pos[256],last_index_ms;
+static uint32_t lead_ticks,lead_arm;                                    /* no lead-in (4.25) */
 static bool index_seen,index_internal,gw_capture,gw_linger;
 static uint64_t gw_limit,gw_end,gw_origin64,gw_linger_ticks;
 static uint16_t gw_indexes;

@@ -97,33 +97,61 @@ class Capture:
                                      # media_generation_start/_end, capture_id; None on older firmware
     provenance: dict | None = None   # v2 END provenance block when read_track(provenance=True) (4.12)
     read_info: object | None = None  # v2 END read context (protocol2.ReadInfo) with read_track(read_context=True) (4.24)
+    lead_in: LeadIn | None = None    # v2 pre-index lead-in with read_track(lead_in=True) (4.25); never a revolution
+
+
+@dataclass
+class LeadIn:
+    """Flux before index 0 (v2 READ flag bit6, USB_Protokoll 4.25): every transition t with
+    -ticks < t < 0 in the stream time base (time 0 = index 0 = start of revolution 0)."""
+    ticks: int                       # window length announced by the stream header (20 ms = 5_500_000 ticks)
+    samples: list[int]               # transition times relative to index 0, all negative, ascending
 
 
 def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01) -> list[Revolution]:
     """Decode a READ_TRACK stream (format: firmware/src/ufi_stream.c) into revolutions.
 
     Time 0 is the first index pulse; a transition at or after index k belongs to
-    revolution k, as in the firmware's RAW finalisation.
+    revolution k, as in the firmware's RAW finalisation.  A lead-in (4.25) is checked
+    and left out; decode_stream_lead() returns it.
     """
+    return decode_stream_lead(data, track, side, flags)[1]
+
+
+def decode_stream_lead(data: bytes, track: int = 0, side: int = 0,
+                       flags: int = 0x01) -> tuple[LeadIn | None, list[Revolution]]:
+    """decode_stream() plus the pre-index lead-in of READ flag bit6 (USB_Protokoll 4.25):
+    0xFF 0x01 u32 L opens the stream (time base -L), the lead-in transitions follow, 0xFF 0x02
+    u32 marks index 0 (must land exactly on time 0).  Without the header: (None, revolutions)."""
     t, flux, index = 0, [], [0]
+    lead: LeadIn | None = None
+    in_lead = False
     i, n = 0, len(data)
+    if n >= 1 and data[0] == 0xFF:
+        if n < 6 or data[1] != 0x01:
+            raise ValueError("bad or truncated lead-in header")
+        ticks = int.from_bytes(data[2:6], "little")
+        lead, in_lead, t, i = LeadIn(ticks, []), True, -ticks, 6
     while i < n:
         b = data[i]
+        sink = lead.samples if in_lead else flux
         if 0x01 <= b <= 0xEF:
             t += b
-            flux.append(t)
+            sink.append(t)
             i += 1
         elif 0xF0 <= b <= 0xFC:
             if i + 2 > n:
                 raise ValueError("truncated two-byte flux interval")
             t += 240 + ((b - 0xF0) << 8) + data[i + 1]
-            flux.append(t)
+            sink.append(t)
             i += 2
         elif b in (0xFD, 0xFE):
             if i + 5 > n:
                 raise ValueError("truncated flux timestamp")
             v = int.from_bytes(data[i + 1:i + 5], "little")
             if b == 0xFD:
+                if in_lead:
+                    raise ValueError("index mark inside the lead-in")
                 if t + v <= index[-1]:
                     raise ValueError("non-increasing index timestamp")
                 index.append(t + v)
@@ -131,10 +159,21 @@ def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01)
                 if v == 0:
                     raise ValueError("zero flux interval")
                 t += v
-                flux.append(t)
+                sink.append(t)
             i += 5
+        elif b == 0xFF and in_lead:
+            if i + 6 > n or data[i + 1] != 0x02:
+                raise ValueError(f"bad or truncated lead-in end at {i}")
+            if t + int.from_bytes(data[i + 2:i + 6], "little") != 0:
+                raise ValueError("lead-in end does not meet the announced length")
+            in_lead = False
+            i += 6
         else:
             raise ValueError(f"bad stream byte 0x{b:02X} at {i}")
+        if in_lead and t >= 0:
+            raise ValueError("lead-in transition at or after index 0")
+    if in_lead:
+        raise ValueError("lead-in without index 0")
     revs, j = [], 0
     for r in range(len(index) - 1):
         start, end = index[r], index[r + 1]
@@ -143,7 +182,7 @@ def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01)
             samples.append(flux[j] - start)
             j += 1
         revs.append(Revolution(track, side, r, flags, end - start, samples))
-    return revs
+    return lead, revs
 
 
 @dataclass

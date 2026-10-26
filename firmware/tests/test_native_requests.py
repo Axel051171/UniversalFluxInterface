@@ -16,7 +16,13 @@ static uint8_t read_seq,hard_sectors=9;
 static unsigned starts,line_calls;
 static int start_error;
 static bool ufi_job_live(void){return false;}
-static bool ufi_drive_is_apple(void){return false;}
+static bool apple,apple_sync,psram=true;                     /* lead-in (4.25) preconditions */
+static bool ufi_drive_is_apple(void){return apple;}
+static bool ufi_drive_sync_index(void){return apple && apple_sync;}
+static bool ufi_flux_store_is_psram(void){return psram;}
+#define UFI_READ_LEAD_IN_TICKS 5500000u
+static uint32_t lead_request,lead_at_start=0xEEEEEEEEu;
+static void ufi_flux_lead_in(uint32_t ticks){lead_request=ticks;}
 static bool half_track_ok;                                   /* Shugart double-step profile active */
 static bool ufi_drive_quarter_ok(uint8_t q){return !q || (q==2 && half_track_ok);}
 static uint32_t get16(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8;}
@@ -24,7 +30,7 @@ static void ufi_flux_hard_sectors(uint8_t n){hard_sectors=n;line_calls++;}
 static void ufi_flux_evidence_context(uint8_t p[6]){memset(p,0,6);p[4]=hard_sectors;}
 static void ufi_stream_begin_v2(uint8_t seq){(void)seq;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t rev,uint32_t period,uint8_t quarter){
-    (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;return start_error;
+    (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;lead_at_start=lead_request;return start_error;
 }
 /* op 39 refusal note (4.8): the parser records field and detail */
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
@@ -56,7 +62,7 @@ static void guarded_checks(void){
     q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
     q[4]=9;note_f=0;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==11); /* prefix only */
     assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
-    op_read=false;q[11]=65;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==64); /* READ flags still checked */
+    op_read=false;q[11]=129;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==128); /* READ flags still checked */
     q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
     media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
     assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
@@ -67,7 +73,16 @@ int main(void){
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;
-    p[3]=64;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==64);
+    p[3]=128;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==128);
+    /* bit6 lead-in (4.25): requested for this start only, cleared behind it; refused without index or PSRAM */
+    p[3]=64;assert(!cmd_read(8,p,4) && starts==before+1 && lead_at_start==UFI_READ_LEAD_IN_TICKS && !lead_request);
+    p[3]=0;assert(!cmd_read(8,p,4) && !lead_at_start && !lead_request);before=starts;calls=line_calls;
+    p[3]=65;assert(cmd_read(8,p,4)==UFI_ERR_NOT_IMPL && starts==before && line_calls==calls);  /* bit0: no index pulses */
+    p[3]=64;apple=true;assert(cmd_read(8,p,4)==UFI_ERR_NOT_IMPL && starts==before);            /* Apple/Mac without sync sensor */
+    apple_sync=true;assert(!cmd_read(8,p,4) && starts==before+1 && lead_at_start==UFI_READ_LEAD_IN_TICKS);
+    apple=apple_sync=false;psram=false;assert(cmd_read(8,p,4)==UFI_ERR_NOT_IMPL && starts==before+1);   /* AXI fallback store */
+    psram=true;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_read(8,p,4)==UFI_ERR_SEEK_FAIL && !lead_request);start_error=0;
+    p[3]=0;before=starts;
     p[3]=32;p[2]=0;assert(!cmd_read(8,p,4) && read_context && info_revs==0 && starts==before+1);   /* bit5: read context in END (4.24), raw revs 0 */
     p[3]=0;p[2]=2;assert(!cmd_read(8,p,4) && !read_context && info_revs==2);before=starts;
     p[3]=16;assert(!cmd_read(8,p,4) && read_progress && !read_provenance && starts==before+1);   /* bit4: progress events (2.3) */

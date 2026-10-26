@@ -37,9 +37,10 @@ from .protocol import (
     TIMING_FIELDS,
     _timing_unpack,
     Capture,
+    LeadIn,
     DriveStatus,
     Stream,
-    decode_stream,
+    decode_stream_lead,
 )
 
 log = logging.getLogger(__name__)
@@ -189,6 +190,8 @@ READ_NO_INDEX, WRITE_VERIFY = 0x01, 0x01
 READ_PROVENANCE = 0x08                  # READ flag (1.18, 4.12): END carries the 96-byte provenance block
 READ_PROGRESS = 0x10                    # READ flag (1.18, 2.3): event 0x85 after every completed revolution
 READ_CONTEXT = 0x20                     # READ flag (1.18-dev, 4.24): END carries the 132-byte read context block
+READ_LEAD_IN = 0x40                     # READ flag (1.18-dev, 4.25): flux of the 20 ms before index 0 ahead of revolution 0
+LEAD_IN_TICKS = 5_500_000               # ... the lead-in the firmware delivers (UFI_READ_LEAD_IN_TICKS, 20 ms)
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
 TIME_SCALE = 0x08                       # WRITE flag: scale u16 in 1/1000 follows (1.14)
@@ -2025,8 +2028,13 @@ class Device2:
                    no_index: bool = False, period_ms: int = 0, hard_sectors: int = 0,
                    quarter: int = 0, frame_sink=None, integrity: bool | None = None,
                    expected_config: int | None = None, expected_media: int | None = None,
-                   provenance: bool = False, progress=None, read_context: bool = False) -> Capture:
+                   provenance: bool = False, progress=None, read_context: bool = False,
+                   lead_in: bool = False) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
+        lead_in (firmware 1.18-dev, READ flag bit 6, 4.25): the stream also carries the flux of the
+        20 ms before index 0, decoded into Capture.lead_in (LeadIn: negative times, time 0 = index 0);
+        never counted as a revolution.  Older firmware refuses the bit (14; op 38 READ mask bit 6),
+        without index pulses (no_index, Apple/Mac without sync sensor) or PSRAM it answers 11.
         progress (firmware 1.18, READ flag bit 4): callable(revolution, index_ticks, elapsed_ms)
         invoked for every event 0x85 the board sends after a completed revolution; needs the
         event mask bit (enable_events()).
@@ -2045,7 +2053,7 @@ class Device2:
         revolutions = max(1, min(revolutions, MAX_READ_REVS))
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0) | \
                 (READ_PROVENANCE if provenance else 0) | (READ_PROGRESS if progress is not None else 0) | \
-                (READ_CONTEXT if read_context else 0)
+                (READ_CONTEXT if read_context else 0) | (READ_LEAD_IN if lead_in else 0)
         if quarter:
             flags |= QUARTER_TRACKS
             track = track * 4 + quarter
@@ -2053,6 +2061,8 @@ class Device2:
         if guarded and (expected_config is None or expected_media is None or
                         not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
             raise ValueError('guarded read requires nonzero u32 configuration and media generations')
+        if lead_in and no_index:
+            raise ValueError('a lead-in needs index pulses (not with no_index)')
         job = self._job_open(1) if (self.integrity if integrity is None else integrity) else None
         seq = self._next_seq()
         crc_errors = self.parser.crc_errors
@@ -2094,7 +2104,10 @@ class Device2:
             if self.parser.crc_errors != crc_errors:
                 raise ValueError("CRC error during flux capture; refusing a potentially incomplete stream")
             rflags = 0x01 | (0x02 if f.status == OVERFLOW else 0)
-            revs = decode_stream(bytes(data), track, side, rflags)
+            lead: LeadIn | None
+            lead, revs = decode_stream_lead(bytes(data), track, side, rflags)
+            if (lead is not None) != lead_in:
+                raise ValueError("lead-in requested but missing" if lead_in else "unrequested lead-in in the stream")
             end = job.finish(f.payload) if job else f.payload
             if len(end) < 1 or end[0] > len(revs) or end[0] > revolutions:
                 raise ValueError("invalid capture END count")
@@ -2103,7 +2116,7 @@ class Device2:
             revs = revs[:end[0]]
             block = end[1 + GEN_BLOCK.size:1 + GEN_BLOCK.size + PROVENANCE_SIZE] if provenance else b""
             return Capture(revs, f.status, generation_block(end, 1),
-                           decode_provenance(block) if len(block) == PROVENANCE_SIZE else None, info_of(end))
+                           decode_provenance(block) if len(block) == PROVENANCE_SIZE else None, info_of(end), lead)
 
     def write_limits(self) -> WriteLimits:
         """Effective limits of the write backend (firmware 1.15, caps bit 14)."""

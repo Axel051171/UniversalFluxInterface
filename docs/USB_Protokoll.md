@@ -56,6 +56,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.22 Präzises Roh-Prüflesen mit U11-Referenz (Op50/54)
   - 4.23 Flaggesteuerte Kopierschutz-Hinweisanalyse (Op55/56)
   - 4.24 Lesekontext im READ-Ende (READ-Flag Bit5, 1.18-dev)
+  - 4.25 Vorlauf vor dem ersten Index (READ-Flag Bit6, 1.18-dev)
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -404,9 +405,10 @@ beginnt erst, wenn `byte_count` Bytes empfangen sind (Status 10 davor); der Stre
 zwischen Puffer und TIM3 ändert daran nichts: erfüllt. Pin 34 READY/DSKCHG – die Firmware liest Pin
 34 weiter über PF3 (READY, Amiga) bzw. PF2 (DSKCHG, Shugart); die Rücklesungen Pin 2/4 (0x47)
 liefern die Messung, welche Laufwerke Pin 2/4/34 wie treiben – eine Zuordnungsänderung folgt erst
-nach diesen Messungen, nicht erfunden. **Offen, nicht Teil von A10:** Ringpuffer vor dem Index
-(die Aufnahme beginnt mit dem ersten Index nach dem Start, `CAPTURE_WAITING_INDEX`; ein
-Vorlauf verlangt den Umbau der DMA-Erfassung in `ufi_flux.c`, Owner-Datei mit offenen Änderungen).
+nach diesen Messungen, nicht erfunden. **Nicht Teil von A10, seit 26.10.2026 als Option
+vorhanden:** Fluss vor dem Index – ohne Flag beginnt die Aufnahme weiterhin mit dem ersten Index
+nach dem Start (`CAPTURE_WAITING_INDEX`); READ-Flag Bit6 liefert zusätzlich die 20 ms davor aus
+demselben PSRAM-Ring (4.25).
 
 ### 1.6 LAN-Transport (Platine v1.0, W5500 U23)
 
@@ -764,16 +766,20 @@ Gleich dem v1-Stream (`ufi_stream.c`): Zeit 0 = erster Indeximpuls (bzw. Start o
 | `F0…FC b` | Abstand = 240 + ((Wert − 0xF0) << 8) + b |
 | `FD u32` | Indeximpuls, u32 = Ticks nach dem letzten Wechsel (nur Lesen) |
 | `FE u32` | Abstand = u32 |
-| `00`, `FF` | reserviert |
+| `FF 01 u32` | nur READ mit Flags Bit6 (4.25), erstes Element: Vorlauf von u32 Ticks, die Zeitbasis beginnt bei −u32 |
+| `FF 02 u32` | nur READ mit Flags Bit6 (4.25): Index 0 (Zeit 0), u32 = Ticks nach dem letzten Vorlaufwechsel (bzw. nach −Vorlauf) |
+| `00`, `FF` sonst | reserviert |
 
 Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen meldet die Zahl der gesendeten vollen Umdrehungen. Ohne Index (Apple ohne Sync-Sensor, `flags` Bit0) markieren `FD`-Einträge die Abschnittsgrenzen (`period_ms`, 0 = 200 ms).
 
 **Zählregel der Indexmarken (im Code geprüft, `ufi_stream.c`/`ufi_flux.c`, 1.18-dev):**
 
-- Zeit 0 ist der **erste** Indeximpuls (ohne Index: der Aufnahmestart). Erst dieser Impuls schaltet
-  die RDATA-Aufnahme ein; Flusswechsel davor gibt es im Strom nicht.
+- Zeit 0 ist der **erste** Indeximpuls (ohne Index: der Aufnahmestart). Ohne Flags Bit6 schaltet
+  erst dieser Impuls die RDATA-Aufnahme ein; Flusswechsel davor gibt es im Strom nicht. Mit Bit6
+  steht der Vorlauf davor, eingerahmt von `FF 01` und `FF 02` (4.25); die Regeln unten gelten
+  ab `FF 02` unverändert, der Vorlauf ist keine Umdrehung.
 - Der Strom beginnt **ohne** `FD`: der erste Impuls selbst wird nicht als Marke gesendet, der erste
-  Abstand zählt ab ihm.
+  Abstand zählt ab ihm (mit Bit6: ab dem letzten Vorlaufwechsel, wie nach jeder `FD`-Marke).
 - Jede Umdrehung wird von genau **einem** `FD` abgeschlossen: Umdrehung k (k = 1 … N) umfasst die
   Flusswechsel nach dem (k−1)-ten und vor dem k-ten `FD`. Ein Wechsel genau auf dem Indexzeitpunkt
   gehört zur folgenden Umdrehung.
@@ -948,7 +954,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | 0x29 | MAC (Platine v1.0) | – oder `op` u8: 0 Status, 1 `reg` u8 Rohbefehl, 2 Auswurf, 3 [`revs`] Tachometer, 4 [`zone`] 400K-PWM suchen, 5 `duty` u16 400K-PWM | Statusblock 15 Byte (Typ, Statusbits, Rohstatus, Spur, Kopf, Zone, Zonen- und Tachodrehzahl, PWM), Op 3/4 mit Ergebnis; nur mit Laufwerk 11 auf v1.0 (sonst 2 bzw. 11); Abschnitt 1.7 |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme; dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev, Bit6 Vorlauf vor dem ersten Index im Strom, 1.18-dev, 4.25), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme (Bit6 mit Bit0, Apple/Mac ohne Sync-Sensor oder ohne PSRAM: Status 11); dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -1164,6 +1170,7 @@ Es gibt keine sinnvolle globale Einstellung „alle Flags einschalten“.
 | Op50 aktiv + geprüftes WRITE mit Splice-Offset, Gate-Vor-/Nachlauf, klassischem Pfad oder fehlender Quellperiode | Vor WGATE abgelehnt; siehe4.22. Ohne angefordertes Prüflesen wird durch Op50 allein kein Prüflesen gestartet. |
 | Decoder-Toleranzen + Fehler-/Kopierschutzanalyse | Kombinierbar. Annahme beschädigter Sektoren bedeutet keine Reparatur: Fehlerzähler und Befundbits bleiben maßgeblich. |
 | Op55 + zu wenige Aufnahmeumdrehungen / zu kleines Zeitbudget | Kein zusätzlicher Leseauftrag durch die Flags allein. Bericht meldet unzureichende Abdeckung beziehungsweise die Analyse endet mit Timeout. |
+| READ Vorlauf Bit6 + ohne Index Bit0 (oder Apple/Mac ohne Sync-Sensor, oder Ersatzspeicher ohne PSRAM) | Status 11 (NOT_IMPL) vor jeder Laufwerksbewegung; der Vorlauf braucht Indeximpulse und den PSRAM-Ring (4.25). Mit Bit1 (hartsektoriert), Bit2–5 und GUARDED_READ kombinierbar; der Vorlauf ändert weder `revs`, die `FD`-Marken, die Ereignisse 0x85 noch die Blöcke im Ende-Rahmen. |
 
 Mehr angeforderte Auswertung benötigt zusätzliche Rechenzeit und Berichtskapazität.
 Ein Zeitbudget muss dazu passen. Strenge Op31-/Op50-Vergleiche können absichtlich
@@ -1851,7 +1858,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | Offset | Typ | Inhalt | Stand 1.18-dev |
 |---:|---|---|---|
 | 0 | u8 | Schema | 1 |
-| 1 | u8 | READ-Flags (0x20, 0x28) | 0x3F (0x1F vor dem Lesekontextbit 5, 0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0x7F (0x3F vor dem Vorlaufbit 6, 0x1F vor dem Lesekontextbit 5, 0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
 | 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker, Bit4 Rohprüfung) | 0x1F (0x0F vor 4.17, 0x07 vor 4.16, 0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
@@ -2909,7 +2916,7 @@ Ein Verlustfenster:
 | 3 | u8 | 0 |
 | 4 | u64 | Fensterbeginn in Ticks seit dem ersten Index (Zeitbasis des Stroms, über TIM2-Überläufe exakt aus den Indexabständen summiert): letzter Zeitpunkt, an dem die Firmware die Aufnahme als intakt geprüft hat |
 | 12 | u64 | Fensterende in Ticks seit dem ersten Index: Erkennung und Abbruch; 0 bei offenem Ende |
-| 20 | u32 | Flusswechsel, die vor dem Fensterbeginn sicher gespeichert waren (Untergrenze, Stromreihenfolge ab dem ersten Index) |
+| 20 | u32 | Flusswechsel, die vor dem Fensterbeginn sicher gespeichert waren (Untergrenze, Stromreihenfolge ab dem ersten Index; mit READ-Flag Bit6 ab dem ersten Vorlaufwechsel, 4.25) |
 
 Bedeutung und Grenzen:
 
@@ -2933,6 +2940,93 @@ Bedeutung und Grenzen:
 - Host: `read_track(..., read_context=True)` → `Capture.read_info` (`ReadInfo`, Verlustfenster als
   `LossWindow`; `None` bei älterer Firmware); bei Fehlerstatus trägt die `DeviceError` das Feld
   `read_info`. `ufi read --read-info` druckt die Zusammenfassung.
+- Mit READ-Flag Bit6 (Vorlauf, 4.25) zählt Offset 20 ab dem ersten Vorlaufwechsel; ein Verlust vor
+  Index 0 trägt Bit5 „vor dem ersten Index“.
+
+### 4.25 Vorlauf vor dem ersten Index (READ-Flag Bit6, 1.18-dev)
+
+Wunsch F7 der UFT-Abstimmung vom 26.10.2026: Flusswechsel **kurz vor** dem ersten Index, damit
+Schreibstöße (Splices) und Kanten, die genau am Index liegen (Kopierschutz, Splice-Analyse), nicht
+an der Stromgrenze abgeschnitten werden. Rein optional: ohne Bit6 ist der Strom Byte für Byte der
+bisherige (nativer Test `regression_stream_lead_in` mit festem Prüfwert aus dem Stand vor der
+Änderung).
+
+**Erkennung:** Op 38 READ-Maske Bit6 (`0x7F`). Ältere Firmware weist Bit6 mit Status 14 ab (Op 39:
+Feld 2, Detail 0x40). Status 11 (NOT_IMPL), bevor sich etwas bewegt: Bit6 zusammen mit Bit0 (ohne
+Index), auf einem Apple-/Mac-Laufwerk ohne Sync-Sensor (dort gibt es nur Zeitabschnitte) und ohne
+PSRAM (der 224-KB-Ersatzspeicher hat nur zwei DMA-Blöcke, die der Ring nicht halten kann).
+Kombinierbar mit Bit1–5 und GUARDED_READ 0x28.
+
+**Länge:** fest 20 ms = 5 500 000 Ticks (`UFI_READ_LEAD_IN_TICKS`). Begründung: der Vorlauf liegt
+in demselben PSRAM-Ring wie die Umdrehungen (63 Blöcke zu 32 768 Wörtern; mit Op-50-Referenz 31);
+der Ring muss während des Wartens nur die letzten 21 ms halten, auch bei ED (≈ 1,5 µs je Wechsel
+≈ 14 000 Wörter) weniger als ein halber Block. Ein Block wird erst nach dem Lesen wiederverwendet;
+der Ersatzspeicher ohne PSRAM könnte das nicht (darum Status 11). 20 ms decken bei 300 U/min 10 %
+der Spur vor dem Index ab – die Lücke zwischen Spurende und Index samt Splice.
+
+**Ablauf:** Mit Bit6 startet RDATA schon beim Aufnahmestart (nicht erst am Index). Index 0 ist der
+erste Indeximpuls, der mindestens 20 ms nach dem Start kommt; ein früherer Impuls wird übergangen,
+der nächste wird Index 0 – das kostet höchstens eine Umdrehung Wartezeit (bei 300 U/min in etwa
+10 % der Fälle). Die Index-Zeitüberschreitung (600 ms ab Start, Status 3) bleibt unverändert, auch
+für Laufwerke ohne Indeximpuls. Während des Wartens verwirft der Streamer jeden Wechsel, der älter
+als 20 ms + 1 ms Schutzabstand ist (er kann nicht mehr in das Fenster vor dem künftigen Index 0
+fallen), damit der Ring frei bleibt; gesendet wird bis Index 0 nichts.
+
+**Strom (Ergänzung zu 2.2):**
+
+| Bytes | Bedeutung |
+|---|---|
+| `FF 01 u32 L` | erstes Element des Stroms: Vorlauf von L Ticks, die Zeitbasis beginnt bei −L |
+| Abstände wie in 2.2 | jeder Flusswechsel t mit −L < t < 0, aufsteigend; der erste Abstand zählt ab −L (≥ 1) |
+| `FF 02 u32 v` | Index 0 = Zeit 0; v = Ticks nach dem letzten Vorlaufwechsel (L ohne Vorlaufwechsel); immer genau einmal |
+| ab hier unverändert | Umdrehung 0 … N−1, N `FD`-Marken; der erste Abstand nach `FF 02` zählt ab dem letzten Vorlaufwechsel, so wie nach jeder `FD`-Marke |
+
+- **Naht:** Vorlauf und Umdrehungen kommen aus einer einzigen Folge des Rings; der Lesezeiger
+  läuft ohne Sprung weiter, kein Wechsel fehlt oder erscheint doppelt (nativer Test mit Timer- und
+  Ringüberlauf, Wechsel genau auf −L und genau auf Index 0). Ein Wechsel genau auf −L gehört nicht
+  zum Vorlauf, einer genau auf Index 0 gehört zu Umdrehung 0 (hinter `FF 02`).
+- **Kürzerer Vorlauf:** nur, wenn der Index-Interrupt beim Verwerfen mehr als 1 ms verspätet war;
+  dann beginnt das Fenster hinter dem zuletzt verworfenen Wechsel, und L im Kopf nennt die
+  tatsächliche, kürzere Länge. Erfundene Daten gibt es nie; L = 0 ist formal zulässig.
+- **Zählung:** Der Vorlauf ist **keine** Umdrehung: `revs` im Ende-Rahmen, die Zahl der
+  `FD`-Marken, Ereignis 0x85 (`revolution` = k nach dem k-ten `FD`) und alle Blöcke im Ende-Rahmen
+  (Generation 4.5, Provenienz 4.12, Lesekontext 4.24) bleiben, wie sie ohne Bit6 wären.
+- **Lesekontext (Bit5):** Jeder Verlust beendet die Aufnahme wie bisher (Status 6 bzw. 10, `revs` 0).
+  RDATA-Überlauf oder voller Speicher vor Index 0 erscheint mit Art-Bit5 „vor dem ersten Index“
+  (keine Stromzeit); Offset 20 (sicher gespeicherte Wechsel) zählt in Stromreihenfolge ab dem
+  ersten Vorlaufwechsel und ist 0, solange der Streamer den Vorlauf noch nicht eingeordnet hatte
+  (gültige Untergrenze). Prüfstempel vor Index 0 ergeben Stromzeit 0.
+- **Provenienz, Belege, Analyse:** Generations-/Provenienzblock unverändert. Mit Rohindex-Belegen
+  (4.1) erscheint der übergangene Impuls als gewöhnlicher Indexeintrag; Speicherzähler der Belege
+  umfassen die Wartezeit. ANALYZE, QUALITY, Dumps, Op 48/52, der v1-Strom und der
+  Greaseweazle-Modus setzen Bit6 nie; ihre Aufnahmen und Messwerte sind unverändert. Abbruch
+  (ABORT 0x21) und Medienwechsel wirken wie ohne Bit6.
+- **Speicher:** kein neuer Puffer; 32 Byte zusätzlicher DTCM-Zustand, AXI-Reserve unverändert.
+
+**Beispiel** (L = 5 500 000 = `0x0053EC60`, zwei Vorlaufwechsel bei −3000 und −239 Ticks,
+Umdrehung 0 beginnt mit einem Wechsel bei +861):
+
+```
+FF 01 60 EC 53 00        Vorlauf 5 500 000 Ticks, Zeit −5 500 000
+FE A8 E0 53 00           +5 497 000 → −3000
+F9 D9                    +2761     → −239   (240 + (0x09 << 8) + 0xD9)
+FF 02 EF 00 00 00        Index 0 nach 239 Ticks → Zeit 0
+F3 5C                    +1100     → +861   (ab −239)
+…                        Umdrehungen wie ohne Bit6, N × FD
+```
+
+**Host:** `read_track(..., lead_in=True)` → `Capture.lead_in` (`LeadIn`: `ticks` = L, `samples` =
+Zeiten relativ zu Index 0, alle negativ); `Capture.revolutions` sind dieselben wie ohne Bit6.
+`decode_stream_lead()` liefert (Vorlauf, Umdrehungen), `decode_stream()` prüft den Vorlauf und
+lässt ihn weg. `ufi read --lead-in` druckt die Zusammenfassung; `-o` schreibt nur die Umdrehungen.
+
+**Hinweis für die UFT-Seite (F7):** vor dem Setzen Op 38 Bit6 prüfen; Status 11 heißt „auf diesem
+Laufwerk/Board nicht möglich“, nicht „Fehler der Diskette“. Den Strom nur mit Bit6 auf `FF 01` am
+Anfang prüfen; Vorlaufwechsel als negative Zeiten vor Umdrehung 0 einordnen und **nicht** als
+Umdrehung zählen. Für Splices am Index: Vorlauf + Anfang von Umdrehung 0 bilden eine lückenlose
+Folge; mit mehreren Umdrehungen liegt dieselbe Stelle zusätzlich an jedem `FD`, der Vorlauf ist nur
+der Blick vor den ersten. L aus dem Kopf verwenden, nicht 20 ms annehmen. Auf der Platine noch
+nicht gemessen: Lage des übergangenen Impulses, tatsächliche Wartezeit, Verhalten bei ED.
 
 ## 5 Lesen, Schreiben und Prüflesen
 

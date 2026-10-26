@@ -61,6 +61,9 @@ V2_SEEDS = (
     b'\x00' + record(4, 0x00, 1, b'ping') + record(4, 0x01, 2) + record(4, 0x02, 3) + record(4, 0x09, 4),
     b'\x00' + record(4, 0x0F, 1, b'\x00') + record(4, 0x0F, 2, b'\x14') + record(4, 0x0C, 3) + record(4, 0x0D, 4),
     b'\x00' + record(4, 0x20, 1, bytes([0, 0, 2, 0, 0, 0])) + record(0x08, 0, 0) + record(4, 0x0E, 2),
+    # READ with the pre-index lead-in (flag bit6, 4.25), alone and with no-index / hard-sector bits
+    b'\x00' + record(4, 0x20, 1, bytes([0, 0, 2, 0x40])) + record(4, 0x20, 2, bytes([0, 0, 2, 0x41, 0, 0]))
+    + record(4, 0x20, 3, bytes([0, 0, 2, 0x62, 0, 0, 10])) + record(4, 0x21, 4),
     b'\x00' + record(4, 0x22, 1, bytes([0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0])) + record(5, 0x22, 1, b'\xf2\x48\xf1\x80\xf1\x80')
     + record(0x18, 0, 0),
     b'\x00' + record(4, 0x50, 1, b'\x00\x00') + record(4, 0x51, 2, b'\x00\x00\x00\x00\x10\x00UFI.CFG')

@@ -543,6 +543,10 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     const uint8_t flags=len>=4u?p[3]:0;
     if(flags&~UFI_V2_READ_FLAG_MASK){refuse(REFUSE_FLAGS,(uint8_t)(flags&~UFI_V2_READ_FLAG_MASK));return UFI_ERR_BAD_ARGS;}
     if(len==7u && !(flags&2u)){refuse(REFUSE_LENGTH,6);return UFI_ERR_BAD_ARGS;}   /* sectors byte without HARD_SECTORS */
+    /* bit6 pre-index lead-in (4.25): needs index pulses (not bit0, not Apple/Mac without a sync
+     * sensor) and the PSRAM ring; the AXI fallback store cannot hold the window */
+    if((flags&0x40u) && ((flags&1u) || (ufi_drive_is_apple() && !ufi_drive_sync_index()) || !ufi_flux_store_is_psram()))
+        return UFI_ERR_NOT_IMPL;
     uint8_t revs = p[2];
     if (revs == 0) revs = 1;
     if (revs > REVOLUTIONS_STREAM) revs = REVOLUTIONS_STREAM;
@@ -565,7 +569,9 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     if(quarter && !ufi_drive_quarter_ok(quarter)){refuse(REFUSE_TRACK,ufi_drive_is_apple()?1:2);return UFI_ERR_BAD_ARGS;}   /* 2: Shugart half track needs double step, q = 2 */
     uint8_t previous[6];ufi_flux_evidence_context(previous);
     ufi_flux_hard_sectors(sectors);
+    ufi_flux_lead_in((flags & 0x40u) ? UFI_READ_LEAD_IN_TICKS : 0u);   /* consumed by this start only */
     const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
+    ufi_flux_lead_in(0);
     if (ret == UFI_OK) {
         op_read = true;
         read_seq = seq;

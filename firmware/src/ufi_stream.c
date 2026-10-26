@@ -15,6 +15,12 @@
  * meaning).  The stream ends right after index pulse n, followed by
  * {UFI_EVT_READ_DONE, status, 1} + [n] (n = complete revolutions in the stream).
  *
+ * Pre-index lead-in (v2 READ flag bit6 only, docs/USB_Protokoll.md 4.25; never without it):
+ *   0xFF 0x01, u32 LE     first element: lead-in of L ticks, the time base starts at -L
+ *   0xFF 0x02, u32 LE     index 0 (time 0), u32 = ticks after the previous transition / -L
+ * Between them every transition t with -L < t < 0, deltas as above, the first one from -L;
+ * the delta after 0xFF 0x02 runs from the last lead-in transition, as after 0xFD.
+ *
  * Greaseweazle mode (ufi_gw.c, CMD_READ_FLUX): the same pipeline in the Greaseweazle flux
  * code (cdc_acm_protocol.h of the Greaseweazle firmware, public domain): raw bytes, no
  * message headers, ticks at GW_SAMPLE_FREQ = 275 MHz / 4, terminated by a 0 byte; the
@@ -62,6 +68,12 @@ static bool gw;                     /* Greaseweazle flux code (ufi_gw.c) */
 static uint32_t gw_rem;             /* 275 MHz ticks not yet passed on (below one GW tick) */
 static bool v2;                     /* UFI v2 DATA frames (ufi_v2.c) */
 static uint8_t v2_seq;              /* seq of the READ request */
+/* Lead-in (4.25), DTCM to keep the AXI budget; every ufi_stream_begin() sets them */
+#define LEAD_GUARD (FLUX_TIMER_FREQ / 1000u)   /* 1 ms bound for a late index ISR while trimming */
+__attribute__((section(".dtcm"))) static uint32_t lead;        /* lead-in ticks, 0 = none */
+__attribute__((section(".dtcm"))) static uint32_t lead_start;  /* window start: transitions after it */
+__attribute__((section(".dtcm"))) static uint32_t lead_floor;  /* newest stamp trimmed before index 0 */
+__attribute__((section(".dtcm"))) static bool lead_floored, lead_skip;
 
 /* ============================================================================
  * ENCODER
@@ -160,6 +172,16 @@ static void put_index(uint32_t offset)
     fill += 5;
 }
 
+/* Lead-in marks (4.25): kind 1 = lead-in of v ticks, kind 2 = index 0, v ticks after t_last */
+static void put_lead(uint8_t kind, uint32_t v)
+{
+    uint8_t* o = &buf[cur][HDR + fill];
+    o[0] = 0xFF;
+    o[1] = kind;
+    put_u32(&o[2], v);
+    fill += 6;
+}
+
 /* Emit every known index pulse up to time ts (inclusive limit: index <= ts) */
 static void put_indexes_before(uint32_t ts, bool all)
 {
@@ -167,6 +189,11 @@ static void put_indexes_before(uint32_t ts, bool all)
     while (!done && fill <= cap - ROOM && next_idx < known &&
            (all || (int32_t)(ts - ufi_flux_index_time(next_idx)) >= 0)) {
         const uint32_t period = ufi_flux_index_time(next_idx) - t_last;
+        if (lead && !next_idx) {
+            put_lead(2, period);            /* index 0 closes the lead-in: no revolution, no event */
+            next_idx++;
+            continue;
+        }
         put_index(period);
         next_idx++;
         if (v2 && ufi_v2_read_progress()) {     /* READ flag bit4 (1.18): one event per completed revolution */
@@ -207,20 +234,28 @@ static void encode(bool halted)
             ufi_metric_add(&ufi_metrics.cache_bytes,bytes);cache_end=phys+run;
         }
         const uint32_t ts = s[phys];
-        if (gw && ufi_flux_gw_past_end(ts)) {
-            if (halted) rd = wr;             /* discard DMA samples after the deadline */
-            break;
+        if (lead_skip && (int32_t)(ts - lead_start) <= 0) {
+            /* older than the lead-in window (4.25): consumed, never sent */
+        } else {
+            if (lead_skip) {
+                lead_skip = false;
+                ufi_flux_lead_in_base(rd);  /* stream order of the loss windows (4.24) */
+            }
+            if (gw && ufi_flux_gw_past_end(ts)) {
+                if (halted) rd = wr;         /* discard DMA samples after the deadline */
+                break;
+            }
+            const uint32_t d = ts - t_last;
+            if (!halted && ((int32_t)(now - ts) < TS_MARGIN || (!gw && d >= DELTA_MAX))) {
+                break;                      /* too fresh, or stale data: retry next call */
+            }
+            put_indexes_before(ts, false);
+            if (done || fill > cap - ROOM) {
+                break;
+            }
+            put_delta(ts - t_last);         /* an index SPACE may advance the cursor */
+            t_last = ts;
         }
-        const uint32_t d = ts - t_last;
-        if (!halted && ((int32_t)(now - ts) < TS_MARGIN || (!gw && d >= DELTA_MAX))) {
-            break;                          /* too fresh, or stale data: retry next call */
-        }
-        put_indexes_before(ts, false);
-        if (done || fill > cap - ROOM) {
-            break;
-        }
-        put_delta(ts - t_last);             /* an index SPACE may advance the cursor */
-        t_last = ts;
         rd++;
         work++;
         if (++phys == words) {
@@ -249,6 +284,56 @@ static void encode(bool halted)
         put_indexes_before(0, true);
         if (gw && next_idx >= ufi_flux_index_count()) done = true;
     }
+}
+
+/* Waiting for index 0 with a lead-in (4.25): index 0 lies in the future, so a transition more
+ * than lead + LEAD_GUARD ticks old can never fall into its window and is consumed to keep the
+ * ring free.  The newest trimmed stamp is noted: should index 0 still be older than the guard
+ * assumes, the window starts there and the header reports the shorter lead-in. */
+static void lead_trim(void)
+{
+    const uint32_t now = ufi_flux_now();
+    uint32_t wr = ufi_flux_written();
+    if (g_capture.state != CAPTURE_WAITING_INDEX) {
+        return;                             /* index 0 arrived meanwhile: lead_open() decides */
+    }
+    if (wr > 0) {
+        wr--;                               /* the newest word may still be on its way */
+    }
+    uint32_t words;
+    const volatile uint32_t* s = ufi_flux_store(&words);
+    uint32_t work = 0;
+    while (rd < wr && work < STREAM_WORK_WORDS) {
+        const uint32_t phys = rd % words;
+        if (!work || !(phys & 7u)) {
+            SCB_InvalidateDCache_by_Addr((void*)&s[phys & ~7u], 32);
+            ufi_metric_add(&ufi_metrics.cache_bytes, 32);
+        }
+        const uint32_t ts = s[phys];
+        if ((int32_t)(now - ts) <= (int32_t)(lead + LEAD_GUARD)) {
+            break;
+        }
+        lead_floor = ts;
+        lead_floored = true;
+        rd++;
+        work++;
+    }
+    ufi_flux_stream_consumed(rd);
+}
+
+/* Index 0 is known: the lead-in header opens the stream, transitions up to lead_start are
+ * skipped by encode() */
+static void lead_open(void)
+{
+    const uint32_t t0 = ufi_flux_index_time(0);
+    lead_start = t0 - lead;
+    if (lead_floored && (int32_t)(lead_floor - lead_start) > 0) {
+        lead_start = (int32_t)(lead_floor - t0) < 0 ? lead_floor : t0;
+    }
+    put_lead(1, t0 - lead_start);
+    t_last = lead_start;
+    next_idx = 0;                           /* index 0 is sent as 0xFF 0x02 */
+    lead_skip = true;
 }
 
 /* ============================================================================
@@ -355,6 +440,8 @@ void ufi_stream_begin(void)
     n_final = 0;
     started = false;
     done = false;
+    lead = 0;
+    lead_floored = lead_skip = false;
     tx_start_ms = HAL_GetTick();
     ufi_flux_set_streaming(true);
     active = true;
@@ -379,6 +466,7 @@ void ufi_stream_begin_v2(uint8_t seq)
     cap = UFI_V2_MAX_PAYLOAD;
     if (ufi_job_live()) cap-=UFI_JOB_HEADER;
     send_at = cap - ROOM + 1u;
+    lead = ufi_flux_lead_in_ticks();        /* READ flag bit6 (4.25), latched by the capture start */
 }
 
 void ufi_stream_abort(void)
@@ -417,11 +505,18 @@ static void stream_service(void)
         }
         return;
     }
+    if (st == CAPTURE_WAITING_INDEX && lead) {
+        lead_trim();                        /* lead-in: keep only the window before index 0 */
+        return;
+    }
     if (st != CAPTURE_RUNNING && st != CAPTURE_COMPLETE) {
         return;                             /* waiting for the first index pulse */
     }
     if (!started) {
         t_last = gw ? ufi_flux_gw_origin() : ufi_flux_index_time(0);
+        if (lead) {
+            lead_open();
+        }
         started = true;
     }
     const bool halted = (st == CAPTURE_COMPLETE);

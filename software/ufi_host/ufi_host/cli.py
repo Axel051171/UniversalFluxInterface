@@ -870,6 +870,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--read-info", action="store_true",
                    help="READ flag bit 5 (firmware 1.18-dev): the END carries the read context (revolution clamp, head position, "
                         "DENSITY/DRATE, cached clock and climate, loss windows); printed after the summary")
+    p.add_argument("--lead-in", action="store_true",
+                   help="READ flag bit 6 (firmware 1.18-dev): also capture the flux of the 20 ms before index 0 "
+                        "(write splices at the index); summarised, never counted as a revolution or written to -o")
     p.add_argument("--amiga-quality", metavar="JSON", help="save adaptive Amiga quality report; keep raw flux with -o capture.scp")
     p.add_argument("--amiga-spt", type=int, choices=(11, 22), default=11)
     p.add_argument("track", type=int)
@@ -1391,8 +1394,14 @@ def main(argv: list[str] | None = None) -> int:
             if a.steps:
                 dev.step_schedule(*_parse_steps(a.steps))
             cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter,
-                                 provenance=getattr(a, "provenance", False), read_context=getattr(a, "read_info", False))
+                                 provenance=getattr(a, "provenance", False), read_context=getattr(a, "read_info", False),
+                                 **({"lead_in": True} if getattr(a, "lead_in", False) else {}))
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
+            if getattr(a, "lead_in", False):
+                li = cap.lead_in
+                print(f"lead-in: {len(li.samples)} flux in the {li.ticks} ticks ({li.ticks / P.FLUX_CLOCK_HZ * 1000:.2f} ms) "
+                      f"before index 0" + (f", first {-li.samples[0]} ticks, last {-li.samples[-1]} ticks before it"
+                                           if li.samples else ""))
             if getattr(a, "read_info", False):
                 for line in _read_info_lines(cap.read_info):
                     print(line)

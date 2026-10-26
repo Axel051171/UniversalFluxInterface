@@ -4,7 +4,7 @@ from test_regressions import ERRORS, FW, function, run, typedef
 
 def main():
     code = '#include <stdint.h>\n#include <stdbool.h>\n#include <stdio.h>\n#include <string.h>\n#include <assert.h>\n#include "ufi_metrics.h"\n' + ERRORS
-    code += '#include "ufi_evidence.h"\n'+typedef(FW/'include/ufi_firmware.h','capture_state_t')+r'''
+    code += '#include "ufi_evidence.h"\n#include "ufi_read_info.h"\n'+typedef(FW/'include/ufi_firmware.h','capture_state_t')+r'''
 static struct {capture_state_t state;unsigned error_code,revolutions_requested,revolutions_captured;
     unsigned current_track,current_side,current_quarter;void* buffer;} g_capture;
 static struct {uint32_t SR,DIER,CCER,CCR1,CCR2,CCR3,CNT;} timer;
@@ -31,6 +31,8 @@ static bool loss_ready,loss_hashed;
 static uint8_t capture_loss_flags,loss_position[4];
 static uint32_t loss_first,loss_count,loss_hash,store_generation,capture_media_token;
 static volatile uint32_t loss_clean_time,loss_clean_pos,loss_seen_time;   /* READ info (4.24) */
+static uint32_t lead_request,lead_ticks,lead_arm;                         /* lead-in (4.25) */
+static volatile uint32_t lead_base;
 static uint32_t index_mask_ticks,index_previous;
 static uint64_t gw_limit,gw_origin64,gw_end,gw_linger_ticks;
 static uint16_t gw_indexes;
@@ -64,10 +66,11 @@ static void SCB_InvalidateDCache_by_Addr(void* p,int32_t n){assert(p==store && n
 static void capture_halt(void);
 static void ufi_flux_invalidate(void);
 '''
-    for name in ('dma_pos','capture_rdata_arm','capture_loss_status','capture_latch_loss',
+    for name in ('dma_pos','capture_rdata_arm','capture_rdata_on','capture_loss_status','capture_latch_loss',
                  'capture_halt','capture_check_loss','ufi_flux_capture_start','ufi_flux_index_event',
                  'ufi_flux_tim2_irq','ufi_flux_dma_irq','gw_poll_deadline','ufi_flux_loss_snapshot',
-                 'ufi_flux_loss_read','ufi_flux_archive_id','ufi_flux_invalidate'):
+                 'ufi_flux_loss_read','ufi_flux_archive_id','ufi_flux_invalidate','ufi_flux_written',
+                 'ufi_flux_loss_window'):
         code += function('ufi_flux.c',name)
     code += r'''
 static void prepare(bool apple){
@@ -82,7 +85,51 @@ static void prepare(bool apple){
     period=0;index_internal=gw_capture=gw_linger=false;gw_limit=0;
     capture_loss_flags=0;loss_ready=loss_hashed=false;evidence_config=0;
     irq_mask=0;dma_stops=0;capture_media_token=42;store_generation=7;
+    lead_request=lead_ticks=lead_arm=0;lead_base=UINT32_MAX;
     for(unsigned i=0;i<16;i++)store[i]=1000+i;
+}
+/* Pre-index lead-in (4.25): RDATA before index 0, early pulse passed over, losses and overrun
+ * while waiting, stream-order loss samples */
+static void lead_in_checks(void){
+    ufi_loss_raw_t w;const volatile uint32_t* times;uint8_t count;uint32_t per;
+    prepare(false);g_capture.state=CAPTURE_IDLE;timer.DIER=timer.CCER=0;timer.CNT=0xFFFFFF00u;lead_request=1000;
+    assert(!ufi_flux_capture_start(2,0) && g_capture.state==CAPTURE_WAITING_INDEX && lead_ticks==1000 && !lead_request);
+    assert((timer.DIER&rd_de) && (timer.CCER&TIM_CCER_CC1E) && (timer.DIER&TIM_DIER_CC2IE));
+    assert(lead_arm==0xFFFFFF00u && lead_base==UINT32_MAX && !idx_count);
+    dma.NDTR=chunk_words-3;assert(ufi_flux_written()==3);         /* stored before index 0 */
+    ufi_flux_index_event(0x2E7u);                                  /* 999 ticks after the arm, across the wrap */
+    assert(g_capture.state==CAPTURE_WAITING_INDEX && !idx_count);
+    ufi_flux_index_event(0x2E8u);
+    assert(g_capture.state==CAPTURE_RUNNING && idx_count==1 && idx_time[0]==0x2E8u && idx_pos[0]==3);
+    assert(ufi_flux_capture_start(1,0)==UFI_ERR_BUSY);
+    /* without the request: no RDATA before index 0, index 0 at sample 0; a period start drops it */
+    prepare(false);g_capture.state=CAPTURE_IDLE;timer.DIER=timer.CCER=0;
+    assert(!ufi_flux_capture_start(2,0) && !lead_ticks && !(timer.DIER&rd_de) && !(timer.CCER&TIM_CCER_CC1E));
+    dma.NDTR=chunk_words-3;assert(!ufi_flux_written());
+    ufi_flux_index_event(10);assert(g_capture.state==CAPTURE_RUNNING && !idx_pos[0] && (timer.DIER&rd_de));
+    prepare(false);g_capture.state=CAPTURE_IDLE;lead_request=1000;
+    assert(!ufi_flux_capture_start(2,1000) && !lead_ticks && !lead_request);
+    /* an RDATA overcapture before index 0 counts only with the lead-in */
+    prepare(false);g_capture.state=CAPTURE_WAITING_INDEX;idx_count=0;timer.SR=TIM_SR_CC1OF;
+    assert(!capture_check_loss() && g_capture.state==CAPTURE_WAITING_INDEX);
+    lead_ticks=1000;assert(capture_check_loss() && g_capture.state==CAPTURE_ERROR && capture_loss_flags==1);
+    assert(ufi_flux_loss_window(&w,&times,&count,&per)==1 && w.kind==(READ_LOSS_RDATA|READ_LOSS_BEFORE_INDEX) && !w.samples);
+    /* after index 0 the loss samples count from the first lead-in transition */
+    prepare(false);lead_ticks=1000;lead_base=2;chunks_done=1;dma.NDTR=2;
+    assert(!capture_check_loss() && loss_clean_pos==6);
+    timer.SR=TIM_SR_CC1OF;assert(capture_check_loss());
+    assert(ufi_flux_loss_window(&w,&times,&count,&per)==1 && w.kind==READ_LOSS_RDATA && w.samples==4);
+    lead_base=UINT32_MAX;assert(ufi_flux_loss_window(&w,&times,&count,&per)==1 && !w.samples);
+    lead_base=7;assert(ufi_flux_loss_window(&w,&times,&count,&per)==1 && !w.samples);
+    lead_ticks=0;assert(ufi_flux_loss_window(&w,&times,&count,&per)==1 && w.samples==6);
+    /* the ring fills before index 0: explicit overflow error, no silent wait for the timeout */
+    unsigned overruns=ufi_metrics.capture_overruns;
+    prepare(false);g_capture.state=CAPTURE_WAITING_INDEX;idx_count=0;streaming=stream_scratch=true;
+    dma_status.LISR=DMA_LISR_TCIF0;ufi_flux_dma_irq();
+    assert(g_capture.state==CAPTURE_WAITING_INDEX && ufi_metrics.capture_overruns==overruns);
+    prepare(false);g_capture.state=CAPTURE_WAITING_INDEX;idx_count=0;lead_ticks=1000;streaming=stream_scratch=true;
+    dma_status.LISR=DMA_LISR_TCIF0;ufi_flux_dma_irq();
+    assert(g_capture.state==CAPTURE_ERROR && g_capture.error_code==1 && ufi_metrics.capture_overruns==overruns+1);
 }
 int main(void){
     uint32_t info[4],old_hash,value;uint8_t position[4],out[65];
@@ -141,7 +188,8 @@ int main(void){
     dma.NDTR=1;ufi_flux_dma_irq();
     assert(g_capture.state==CAPTURE_ERROR && g_capture.error_code==1 && dma_stops==1);
     assert(end_pos==UINT32_MAX && ufi_metrics.capture_overruns==1);
-    puts("capture integrity: CH1/CH3/index loss, arm/reset, stop/deadline, masks, retained ring windows and bounds passed");
+    lead_in_checks();
+    puts("capture integrity: CH1/CH3/index loss, arm/reset, stop/deadline, masks, retained ring windows, bounds and lead-in passed");
     return 0;
 }
 '''

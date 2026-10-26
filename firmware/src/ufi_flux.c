@@ -12,6 +12,8 @@
  * memory register at the next one.  Chunks are contiguous, so the store stays one linear
  * array; revolutions are slices of it.  After completion the slices are finalised in
  * place: boundaries corrected by timestamp, samples made relative to their index pulse.
+ * RDATA starts at the first index pulse; only a streamed v2 READ with the lead-in flag
+ * (bit6, docs/USB_Protokoll.md 4.25) starts it with the capture and keeps the ring's tail.
  */
 
 #include "ufi_firmware.h"
@@ -67,6 +69,16 @@ static uint8_t loss_position[4];
  * intact (flux-timer stamp and stored samples), the halt notes the detection stamp.  DTCM: the
  * AXI SRAM budget stays unchanged; set at every capture start, never read before. */
 __attribute__((section(".dtcm"))) static volatile uint32_t loss_clean_time,loss_clean_pos,loss_seen_time;
+/* Pre-index lead-in (READ flag bit6, 4.25): with lead_ticks set, RDATA runs from the capture
+ * start (lead_arm = first stamp surely captured), index 0 is the first pulse at least lead_ticks
+ * after lead_arm, and the streamer keeps the transitions of the lead_ticks before it.  lead_base:
+ * logical sample of the first stream transition, set by the streamer, UINT32_MAX until known.
+ * DTCM: the AXI SRAM budget stays unchanged; cleared at flux init, latched at every start. */
+__attribute__((section(".dtcm"))) static uint32_t lead_request,lead_ticks,lead_arm;
+__attribute__((section(".dtcm"))) static volatile uint32_t lead_base;
+void ufi_flux_lead_in(uint32_t ticks) { lead_request = ticks; }
+uint32_t ufi_flux_lead_in_ticks(void) { return lead_ticks; }
+void ufi_flux_lead_in_base(uint32_t pos) { lead_base = pos; }
 void ufi_flux_archive_info(uint8_t out[8]) {
     memcpy(out,archive_info,8);
 }
@@ -194,6 +206,10 @@ static void capture_rdata_arm(void){
     TIM2->DIER|=rd_de;
     TIM2->CCER|=rd_de==TIM_DIER_CC3DE?TIM_CCER_CC3E:TIM_CCER_CC1E;
 }
+/* RDATA is latched while running, and while waiting for index 0 with a lead-in (4.25) */
+static bool capture_rdata_on(void){
+    return g_capture.state==CAPTURE_RUNNING || (g_capture.state==CAPTURE_WAITING_INDEX && lead_ticks);
+}
 static uint8_t capture_loss_status(uint32_t status,bool running){
     uint8_t loss=0;
     if(running && (status&(rd_de==TIM_DIER_CC3DE?TIM_SR_CC3OF:TIM_SR_CC1OF)))loss|=1;
@@ -213,7 +229,7 @@ static bool capture_check_loss(void){
     bool active=g_capture.state==CAPTURE_RUNNING || g_capture.state==CAPTURE_WAITING_INDEX;
     /* READ info (4.24): position and stamp before the status read, so a clear flag covers both */
     const uint32_t pos=g_capture.state==CAPTURE_RUNNING?dma_pos():0u,now=TIM2->CNT;
-    bool lost=active && capture_loss_status(TIM2->SR,g_capture.state==CAPTURE_RUNNING);
+    bool lost=active && capture_loss_status(TIM2->SR,capture_rdata_on());
     if(lost){
         capture_halt();g_capture.error_code=2;g_capture.state=CAPTURE_ERROR;
     }else if(active){
@@ -332,6 +348,8 @@ void ufi_flux_init(void)
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
     HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
 
+    lead_request = lead_ticks = 0;
+    lead_base = UINT32_MAX;
     g_capture.state = CAPTURE_IDLE;
 }
 
@@ -414,6 +432,9 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
         return UFI_ERR_BUFFER_FULL;
     }
     period = period_ticks;
+    lead_ticks = period ? 0u : lead_request;    /* a lead-in needs index pulses; one start only */
+    lead_request = 0;
+    lead_base = UINT32_MAX;
     ufi_flux_invalidate();
     capture_media_token=ufi_drive_media_token();
     gw_capture = false;
@@ -457,6 +478,12 @@ int ufi_flux_capture_start(uint8_t revolutions, uint32_t period_ticks)
 
     g_capture.state = CAPTURE_WAITING_INDEX;
     capture_clear_status(TIM_SR_CC2IF | TIM_SR_CC2OF);
+    if (lead_ticks) {
+        /* lead-in (4.25): RDATA streams into the ring from now on; the stamp is read after the
+         * enable, so every transition after lead_arm is stored */
+        capture_rdata_arm();
+        lead_arm = TIM2->CNT;
+    }
     TIM2->DIER |= TIM_DIER_CC2IE;
     return UFI_OK;
 }
@@ -469,7 +496,7 @@ static void capture_halt(void)
      * manufacture an RDATA overcapture while DMA requests are disabled. */
     TIM2->CCER&=~(rd_de==TIM_DIER_CC3DE?TIM_CCER_CC3E:TIM_CCER_CC1E);
     TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
-    if(active)capture_latch_loss(capture_loss_status(TIM2->SR,g_capture.state==CAPTURE_RUNNING));
+    if(active)capture_latch_loss(capture_loss_status(TIM2->SR,capture_rdata_on()));
     dma_freeze(); /* drain pending writes before taking the final ring cursor */
     end_pos = dma_pos();
     bool scratch=(DMA1_Stream0->CR&DMA_SxCR_CT)?DMA1_Stream0->M1AR==(uint32_t)dma_scratch:
@@ -652,11 +679,18 @@ void ufi_flux_index_event(uint32_t t)
     }
 
     if (g_capture.state == CAPTURE_WAITING_INDEX) {
+        /* lead-in (4.25): a pulse before the window is filled is passed over, the next one
+         * becomes index 0 (at most one revolution later; the index timeout keeps counting) */
+        if (lead_ticks && (int32_t)(t - lead_arm) < (int32_t)lead_ticks) {
+            return;
+        }
         idx_time[0] = t;
-        idx_pos[0] = 0;
+        idx_pos[0] = lead_ticks ? dma_pos() : 0;
         idx_count = 1;
         last_index_ms = HAL_GetTick();
-        capture_rdata_arm();       /* start streaming RDATA timestamps */
+        if (!lead_ticks) {
+            capture_rdata_arm();   /* start streaming RDATA timestamps */
+        }
         g_capture.state = CAPTURE_RUNNING;
         ufi_sched_arm(t);
     } else if (g_capture.state == CAPTURE_RUNNING && !period) {
@@ -703,7 +737,7 @@ void ufi_flux_dma_irq(void)
         /* Store full before all revolutions were captured: keep the complete ones */
         TIM2->DIER &= ~(rd_de | TIM_DIER_CC2IE);
         dma_stop();
-        if (g_capture.state == CAPTURE_RUNNING) {
+        if (capture_rdata_on()) {           /* also a lead-in that filled the ring before index 0 */
             ufi_metrics.capture_overruns++;
             end_pos = chunks_done * chunk_words;    /* logical: == store_words without ring */
             g_capture.error_code = 1;       /* overflow: fewer revolutions than requested */
@@ -869,7 +903,7 @@ uint32_t ufi_flux_written(void)
     const uint32_t mask=__get_PRIMASK();
     __disable_irq();                        /* chunks_done / NDTR / state must agree */
     const capture_state_t s = g_capture.state;
-    if (s == CAPTURE_RUNNING) {
+    if (capture_rdata_on()) {               /* RUNNING, or the lead-in before index 0 */
         pos = dma_pos();
     } else if (s == CAPTURE_COMPLETE || s == CAPTURE_ERROR) {
         pos = end_pos;
@@ -935,6 +969,12 @@ uint8_t ufi_flux_loss_window(ufi_loss_raw_t* out,const volatile uint32_t** times
         }
     }
     if(!idx_count)out->kind|=READ_LOSS_BEFORE_INDEX;
+    if(lead_ticks){
+        /* lead-in (4.25): stream order starts at the first lead-in transition; before the
+         * streamer has placed it, 0 is the only safe lower bound */
+        const uint32_t base=lead_base;
+        out->samples=base!=UINT32_MAX && out->samples>=base?out->samples-base:0u;
+    }
     return 1;
 }
 

@@ -9,19 +9,23 @@ from ufi_host import protocol as P
 from ufi_host.scp import ScpRevolution, read_scp, scp_to_ticks, ticks_to_scp, write_scp
 
 
-def encode_stream(revs) -> bytes:
+def encode_delta(d: int) -> bytes:
+    """One flux interval of the READ_TRACK stream code (spec: firmware/src/ufi_stream.c)."""
+    if 1 <= d <= 0xEF:
+        return bytes([d])
+    if 240 <= d <= 3567:
+        return bytes([0xF0 + ((d - 240) >> 8), (d - 240) & 0xFF])
+    return b"\xFE" + struct.pack("<I", d)
+
+
+def encode_stream(revs, last: int = 0) -> bytes:
     """Independent encoder for the READ_TRACK stream (spec: firmware/src/ufi_stream.c).
-    revs: [(index_ticks, samples relative to that revolution's index), ...]"""
-    out, t, start = bytearray(), 0, 0
+    revs: [(index_ticks, samples relative to that revolution's index), ...]
+    last: time of the previous transition (a lead-in's last one, 4.25), 0 = index 0"""
+    out, t, start = bytearray(), last, 0
     for ticks, samples in revs:
         for s in samples:
-            d = start + s - t
-            if 1 <= d <= 0xEF:
-                out.append(d)
-            elif 240 <= d <= 3567:
-                out += bytes([0xF0 + ((d - 240) >> 8), (d - 240) & 0xFF])
-            else:
-                out += b"\xFE" + struct.pack("<I", d)
+            out += encode_delta(start + s - t)
             t = start + s
         start += ticks
         out += b"\xFD" + struct.pack("<I", start - t)
@@ -141,6 +145,73 @@ def test_stream_covers_every_code_and_halves_the_data():
 def test_stream_rejects_reserved_bytes():
     with pytest.raises(ValueError):
         P.decode_stream(b"\x00")
+
+
+def encode_lead_stream(ticks: int, lead: list[int], revs, end_offset: int | None = None) -> bytes:
+    """Independent encoder of the pre-index lead-in (USB_Protokoll 4.25): 0xFF 0x01 u32 ticks,
+    the lead-in deltas from -ticks, 0xFF 0x02 u32 (index 0 after the last transition), revolutions."""
+    out, t = bytearray(b"\xFF\x01" + struct.pack("<I", ticks)), -ticks
+    for s in lead:
+        out += encode_delta(s - t)
+        t = s
+    out += b"\xFF\x02" + struct.pack("<I", -t if end_offset is None else end_offset)
+    return bytes(out + encode_stream(revs, last=t))
+
+
+def test_stream_lead_in_is_separate_from_the_revolutions():
+    """4.25: the lead-in comes back on its own, the revolutions stay exactly as without it, also
+    with a transition exactly on index 0 (revolution 0) and an empty lead-in."""
+    revs = [(1_000_000, [0, 5, 4000, 900_000]), (900_000, [1, 2, 3])]
+    for lead in ([-5_499_999, -100_000, -3567, -240, -1], [-12], []):
+        data = encode_lead_stream(5_500_000, lead, revs)
+        got, plain = P.decode_stream_lead(data, 2, 1)
+        assert got == P.LeadIn(5_500_000, lead)
+        assert [(r.index_ticks, r.samples) for r in plain] == revs == [(r.index_ticks, r.samples) for r in P.decode_stream(data)]
+    old = encode_stream(revs[1:])                                 # no transition on index 0 without a lead-in
+    assert P.decode_stream_lead(old) == (None, P.decode_stream(old))
+    assert P.decode_stream_lead(b"\xFF\x01\0\0\0\0\xFF\x02\0\0\0\0")[0] == P.LeadIn(0, [])
+
+
+def test_stream_lead_in_rejects_malformed_marks():
+    ok = encode_lead_stream(1000, [-500], [(2000, [10])])
+    bad = [ok[:5],                                               # truncated header
+           b"\xFF\x02" + ok[2:],                                 # index 0 mark as first element
+           encode_lead_stream(1000, [-500], [(2000, [10])], end_offset=499),   # index 0 not at time 0
+           encode_lead_stream(1000, [-500], [(2000, [10])])[:-6 - 6],          # stream ends inside the lead-in
+           b"\xFF\x01" + struct.pack("<I", 100) + b"\xFE" + struct.pack("<I", 100) + b"\xFF\x02\0\0\0\0",  # transition on index 0
+           b"\xFF\x01" + struct.pack("<I", 100) + b"\xFD" + struct.pack("<I", 100),                     # FD inside
+           ok + b"\xFF\x02\0\0\0\0",                              # second index 0 mark
+           ok[:6] + b"\xFF\x01" + ok[2:6] + ok[6:],              # second header
+           b"\xFF\x03" + ok[2:]]
+    for data in bad:
+        with pytest.raises(ValueError):
+            P.decode_stream_lead(data)
+        with pytest.raises(ValueError):
+            P.decode_stream(data)
+
+
+def test_stream_decoder_random_input_only_raises_value_error():
+    """Bounded random-input pass over the stream decoder (lead-in marks included): every input is
+    either decoded consistently or refused with ValueError, never another exception."""
+    import random
+    rng = random.Random(4250)
+    alphabet = [0x00, 0x01, 0x7F, 0xEF, 0xF0, 0xFC, 0xFD, 0xFE, 0xFF, 0x02, 0x03]
+    seeds = [encode_lead_stream(1000, [-999, -1], [(5000, [0, 4999])]), encode_stream([(5000, [1, 2])])]
+    for n in range(3000):
+        if n % 3:
+            data = bytearray(rng.choice(seeds))
+            for _ in range(rng.randint(1, 4)):
+                if data:
+                    data[rng.randrange(len(data))] = rng.choice(alphabet) if rng.random() < 0.7 else rng.randrange(256)
+        else:
+            data = bytearray(rng.choice(alphabet) for _ in range(rng.randint(0, 24)))
+        try:
+            lead, revs = P.decode_stream_lead(bytes(data))
+        except ValueError:
+            continue
+        if lead is not None:
+            assert all(-lead.ticks < s < 0 for s in lead.samples) and lead.samples == sorted(set(lead.samples))
+        assert all(0 <= s < r.index_ticks for r in revs for s in r.samples)
 
 
 def test_read_overflow_keeps_complete_revolutions():

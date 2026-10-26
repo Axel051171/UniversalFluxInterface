@@ -403,7 +403,12 @@ uint32_t ufi_flux_written(void);                // samples DMA has stored so far
 uint8_t ufi_flux_index_count(void);             // index pulses seen (index 0 = start)
 uint32_t ufi_flux_index_time(uint8_t k);        // TIM2 time of index pulse k
 void ufi_flux_stream_consumed(uint32_t samples); // ring buffer: samples the streamer has read
-const char* ufi_psram_result(void);              // PSRAM self-test result text
+// pre-index lead-in (READ flag bit6, docs/USB_Protokoll.md 4.25): 20 ms, fits the PSRAM ring
+#define UFI_READ_LEAD_IN_TICKS (FLUX_TIMER_FREQ / 50u)
+void ufi_flux_lead_in(uint32_t ticks);          // for the next capture start only, 0 = none
+uint32_t ufi_flux_lead_in_ticks(void);          // lead-in of the current/last capture, 0 = none
+void ufi_flux_lead_in_base(uint32_t pos);       // streamer: logical sample of the first stream transition
+const char* ufi_psram_result(void);             // PSRAM self-test result text
 
 // Board extras v0.5 (ufi_board.c): drive supplies, currents, write lock, board ID, safety
 void ufi_board_init(bool power_on);              // false = safe mode (button B at start-up)
