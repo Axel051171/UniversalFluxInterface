@@ -14,13 +14,15 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FAKE_OUT_MAX    32u
-#define FAKE_PKT_MAX    1600u
+#define FAKE_OUT_MAX    2048u
+#define FAKE_PKT_MAX    640u
 
 typedef struct {
     uint8_t sock, ip[4], src_ip[4], mask[4], gw[4];
     uint16_t port, sport, len;
     bool arp_ok;                    /* delivered (SEND_OK) or ARP timed out */
+    uint16_t rtr;                   /* retry time and count when it was sent (ARP probe timing) */
+    uint8_t rcr;
     uint8_t data[FAKE_PKT_MAX];
 } fake_pkt_t;
 
@@ -121,6 +123,8 @@ static inline void fake_send(w5500_fake_t* f, uint8_t s)
             p->sport = fake_get16(&r[W5500_Sn_PORT]);
             p->len = n;
             p->arp_ok = ok;
+            p->rtr = fake_get16(&f->common[W5500_RTR]);
+            p->rcr = f->common[W5500_RCR];
             for (unsigned i = 0; i < n && i < FAKE_PKT_MAX; i++) p->data[i] = f->tx[s][(rd + i) & (size - 1u)];
         }
     } else if (r[W5500_Sn_SR] == W5500_SOCK_ESTABLISHED || r[W5500_Sn_SR] == W5500_SOCK_CLOSE_WAIT) {
@@ -295,6 +299,8 @@ static inline void fake_rx_bytes(w5500_fake_t* f, uint8_t s, const uint8_t* p, u
 static inline void fake_udp_rx(w5500_fake_t* f, uint8_t s, const uint8_t ip[4], uint16_t port,
                         const uint8_t* data, uint16_t n)
 {
+    const uint16_t used = (uint16_t)(f->rx_wr[s] - fake_get16(&f->sreg[s][W5500_Sn_RX_RD]));
+    if (used + 8u + n > fake_size(f, s, false)) return;     /* the chip drops what does not fit */
     uint8_t h[8];
     memcpy(h, ip, 4);
     fake_put16(&h[4], port);

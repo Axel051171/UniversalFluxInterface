@@ -1,5 +1,5 @@
 /**
- * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L2)
+ * UFI Flux Engine - LAN board glue (board v1.0, stages L1-L3)
  *
  * W5500 U23 on SPI3: PC10 SCK, PC11 MISO, PC12 MOSI (AF6), PA15 SCSn (GPIO, 10k pull-up
  * R119), PD10 RSTn (GPIO, R121), PD5 INTn (input, R120).  Kernel clock PLL1Q 100 MHz,
@@ -17,6 +17,9 @@
  * system the defaults apply without writing.  CFG_RELOAD (0x54) reads it again after its
  * reply went out and restarts the chip when anything changed.
  *
+ * Address (L3, ufi_net.c): started when the PHY reports a link, stopped when it goes away
+ * (DHCP again on the next link); serviced every 10 ms or at once when INTn is low.
+ *
  * State lives in SRAM2 (.sram2 is NOLOAD, so ufi_lan_init() clears it first): the AXI SRAM
  * .bss/.data budget is frozen at the gate value and DTCM keeps its stack reserve.
  */
@@ -24,11 +27,13 @@
 #include "ufi_firmware.h"
 #include "ufi_lan.h"
 #include "ufi_lan_cfg.h"
+#include "ufi_net.h"
 #include "ufi_w5500.h"
 #include <string.h>
 
 #define LAN_SPI_TIMEOUT_MS  10u
 #define LAN_PHY_POLL_MS     500u
+#define LAN_NET_POLL_MS     10u         /* DHCP / probe timers are seconds; INTn shortens it */
 
 typedef struct {
     SPI_HandleTypeDef spi;
@@ -39,8 +44,10 @@ typedef struct {
     bool reload;                        /* CFG_RELOAD: read LAN.CFG again at the next service */
     lan_cfg_t cfg;
     char host[LAN_HOST_MAX + 1];
-    uint32_t phy_ms;
+    uint32_t phy_ms, net_ms;
     uint32_t spi_errors;
+    net_t net;                          /* address: DHCP / link-local / fixed (L3) */
+    uint8_t pkt[NET_PKT_MAX];           /* DHCP messages */
     uint8_t buf[UFI_V2_FRAME_MAX];      /* LAN.CFG text, later the session frame */
 } lan_t;
 
@@ -160,6 +167,11 @@ static void lan_start(void)
 {
     memcpy(lan.mac, lan.cfg.mac_set ? lan.cfg.mac : lan.uid_mac, 6u);
     lan_cfg_hostname(&lan.cfg, lan.mac, lan.host);
+    if (lan.net.mode != NET_MODE_NONE) {
+        lan.net.changes++;              /* the chip reset drops the address */
+    }
+    lan.net.mode = NET_MODE_NONE;
+    lan.net.state = NET_IDLE;
     chip_reset_hold();
     if (!lan.cfg.enabled) {
         lan.state = LAN_STATE_OFF;
@@ -228,9 +240,28 @@ void ufi_lan_service(void)
     if (now - lan.phy_ms >= LAN_PHY_POLL_MS) {
         lan.phy_ms = now;
         lan.phy = w5500_phy(&dev);
-        lan.state = (lan.phy & W5500_PHY_LNK) ? LAN_STATE_LINK_UP : LAN_STATE_LINK_DOWN;
+        const bool up = (lan.phy & W5500_PHY_LNK) != 0;
+        if (up && lan.net.state == NET_IDLE) {
+            net_start(&lan.net, &dev, &lan.cfg, lan.mac, lan.host, lan.pkt, now);
+        } else if (!up && lan.net.state != NET_IDLE) {
+            net_stop(&lan.net, &dev);   /* cable out: address gone, DHCP again on the next link */
+        }
+        lan.state = up ? LAN_STATE_LINK_UP : LAN_STATE_LINK_DOWN;
+    }
+    if (lan.state < LAN_STATE_LINK_UP) {
+        return;
+    }
+    const bool irq = HAL_GPIO_ReadPin(PIN_LAN_INT.port, PIN_LAN_INT.pin) == GPIO_PIN_RESET;
+    if (irq || now - lan.net_ms >= LAN_NET_POLL_MS) {
+        lan.net_ms = now;
+        net_service(&lan.net, &dev, now, false);
+    }
+    if (net_has_address(&lan.net)) {
+        lan.state = LAN_STATE_BOUND;
     }
 }
+
+const net_t* ufi_lan_net(void) { return &lan.net; }
 
 uint8_t ufi_lan_state(void) { return lan.state; }
 uint8_t ufi_lan_version(void) { return lan.version; }

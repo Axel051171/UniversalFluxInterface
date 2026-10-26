@@ -9,7 +9,8 @@ Targets:
   gw       the whole Greaseweazle-compatible protocol behind generated stubs (fuzz_gw.c)
   sd       the stand-alone SD module: image loaders, dump writers, UFI.CFG and the file
            API over an in-memory FatFs fed by the input (fuzz_sd.c)
-  lan      the HAL-free LAN parsers: LAN.CFG text (fuzz_lan.c)
+  lan      the HAL-free LAN parsers: LAN.CFG text, DHCP replies, the address state
+           machine against the W5500 fake (fuzz_lan.c)
 Stubs: fuzz_stubs.py from the header prototypes, HAL/FatFs declarations from hal_stub/.
 
 usage: python run_fuzz.py [--target parsers|v2|gw|sd|all] [--seconds N] [--replay]
@@ -122,6 +123,37 @@ LAN_SEEDS = (b'\x00lan=on\r\nip=dhcp\r\nmask=255.255.255.0\r\ngw=\r\ndns=\r\nhos
              b'\x00hostname=Lab-1\nport=65535\nlan_write=1\nlan=off\n=5\n# c\n')
 
 
+def dhcp_seeds():
+    """DHCP OFFER/ACK for the first transaction of fuzz_lan.c's state machine: MAC
+    02:20:64:02:ca:b3, xid = first xorshift32 step of FNV-1a(MAC) ^ now (1), as ufi_net.c."""
+    mac = bytes([0x02, 0x20, 0x64, 0x02, 0xca, 0xb3])
+    x = 2166136261
+    for b in mac:
+        x = ((x ^ b) * 16777619) & 0xFFFFFFFF
+    x ^= (x << 13) & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= (x << 5) & 0xFFFFFFFF
+    xid = x ^ 1
+
+    def reply(kind):
+        m = bytearray(300)
+        m[0:3] = b'\x02\x01\x06'
+        m[4:8] = xid.to_bytes(4, 'big')
+        m[16:20] = bytes([192, 168, 1, 77])
+        m[28:34] = mac
+        m[236:240] = bytes([0x63, 0x82, 0x53, 0x63])
+        o = bytes([53, 1, kind, 54, 4, 192, 168, 1, 1, 1, 4, 255, 255, 255, 0, 3, 4, 192, 168, 1, 1,
+                   51, 4, 0, 0, 0x0e, 0x10, 255])
+        m[240:240 + len(o)] = o
+        return bytes(m)
+    offer, ack = reply(2), reply(5)
+    return (b'\x01' + xid.to_bytes(4, 'big') + ack,
+            b'\x02' + bytes([0x10, 44]) + offer + bytes([1, 10, 0x10, 44]) + ack + bytes([1, 50, 1, 255, 1, 255]))
+
+
+LAN_SEEDS += dhcp_seeds() + (b'\x02' + bytes([1, 255]) * 3 + bytes([2, 0, 1, 255, 3, 0, 1, 100]),)
+
+
 def scp_seed():
     """SCP with one track of eight 2 us cells; flags bit 4 = mutable image without checksum."""
     hdr = b'SCP' + bytes([0x19, 0x80, 1, 0, 1, 0x10, 0, 0, 0]) + bytes(4)
@@ -182,7 +214,7 @@ def build_protection():
     return exe
 
 
-LAN_SOURCES = ('ufi_lan_cfg.c',)
+LAN_SOURCES = ('ufi_lan_cfg.c', 'ufi_net.c', 'ufi_w5500.c', 'ufi_sha256.c')
 
 
 def build_lan():

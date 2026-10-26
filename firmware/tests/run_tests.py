@@ -51,6 +51,7 @@ TESTS = {
     "test_sha256": ["src/ufi_sha256.c"],
     "test_w5500": ["src/ufi_w5500.c", "src/ufi_sha256.c"],
     "test_lan_cfg": ["src/ufi_lan_cfg.c"],
+    "test_net": ["src/ufi_net.c", "src/ufi_w5500.c", "src/ufi_sha256.c", "src/ufi_lan_cfg.c"],
 }
 
 

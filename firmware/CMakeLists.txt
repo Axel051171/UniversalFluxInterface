@@ -225,6 +225,7 @@ set(PROJECT_SOURCES
     src/ufi_sha256.c
     src/ufi_w5500.c
     src/ufi_lan_cfg.c
+    src/ufi_net.c
     src/ufi_lan.c
     src/system_stm32h7xx.c
     src/stm32h7xx_it.c

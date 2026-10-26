@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / 'firmware/src'
 PURE = ('ufi_capabilities', 'ufi_media', 'ufi_write_codec', 'ufi_write_wave',
         'ufi_compare', 'ufi_job', 'ufi_quality', 'ufi_protection', 'ufi_mfm', 'ufi_verify', 'ufi_image', 'ufi_hfe_v3', 'ufi_raw_verify',
-        'ufi_sha256', 'ufi_w5500', 'ufi_lan_cfg')
+        'ufi_sha256', 'ufi_w5500', 'ufi_lan_cfg', 'ufi_net')
 NEEDS_REAL_HAL = {'ufi_board', 'ufi_clock', 'ufi_composite', 'ufi_crash', 'ufi_debug', 'ufi_diag',
                   'ufi_flux', 'ufi_main', 'ufi_msc', 'ufi_power', 'ufi_psram', 'ufi_sd', 'ufi_selftest',
                   'ufi_sense', 'ufi_sync', 'ufi_usb', 'ufi_write',

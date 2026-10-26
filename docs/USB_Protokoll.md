@@ -451,6 +451,40 @@ dass etwas geschrieben wird. Ein Wert, der sich nicht lesen lässt, lässt die V
 CFG_RELOAD liest LAN.CFG erst, nachdem seine Antwort hinaus ist; hat sich etwas geändert, startet
 der W5500 mit den neuen Einstellungen neu (eine bestehende LAN-Sitzung endet dabei).
 
+**IP-Adresse (Stufe L3):** Ohne Link keine Adresse; mit Link je nach `ip=`:
+
+- **DHCP** (RFC 2131/2132, eigener Client auf Socket 1, UDP 68 → 67): DISCOVER, nach 4 s und
+  weiteren 8 s wiederholt; REQUEST für das erste Angebot (Optionen 50/54), ACK → die Adresse wird
+  vor der Nutzung per ARP geprüft (RFC 2131 3.1 Schritt 5); ist sie belegt: DECLINE, 10 s Pause,
+  von vorn. Jede Nachricht trägt das BROADCAST-Flag (bis zur Bindung ist SIPR 0.0.0.0 und der
+  W5500 verwirft Unicast an eine fremde Adresse), Client-ID 61 = `01` + MAC, Hostname 12 =
+  `hostname` bzw. `ufi-XXXXXX`, Parameterliste 1/3/6/51/58/59. Übernommen werden Maske (ohne
+  Option /24), erster Router, erster DNS-Server, Lease, T1, T2 (ohne Angabe Lease/2 und 7/8).
+  Ab T1 REQUEST per Unicast an den Server, ab T2 per Broadcast (alle 10 s wiederholt), mit
+  Ablauf der Lease ist die Adresse weg und es beginnt ein neues DISCOVER; NAK ebenso. Leases über
+  20 Tage werden wie 20 Tage behandelt (32-Bit-Millisekundenzeit), unendliche nie erneuert.
+- **Link-Local-Rückfall** (RFC 3927): kommt nach dem dritten DISCOVER (20 s) kein Angebot,
+  wählt die Firmware eine Adresse aus 169.254.1.0–169.254.254.255 (Zufallsgenerator mit der MAC
+  als Startwert: dieselbe Platine probiert nach einem Neustart zuerst dieselbe Adresse), wartet
+  0–1 s und prüft sie per ARP; belegt → nächste Adresse, nach 10 Konflikten nur noch eine Probe
+  je Minute. Maske 255.255.0.0, kein Gateway. Meldet der Chip später einen Konflikt (IR Bit7),
+  wird die Adresse aufgegeben und eine neue geprüft. Solange keine LAN-Sitzung verbunden ist,
+  versucht die Firmware alle 60 s wieder DHCP und wechselt bei Erfolg auf die DHCP-Adresse.
+  ARP-Ankündigungen (Gratuitous ARP) sendet der W5500 außerhalb von MACRAW nicht; Gegenstellen
+  lösen die Adresse beim ersten Kontakt selbst auf.
+- **Feste Adresse** `ip=a.b.c.d` mit `mask`, `gw`, `dns`: sofort gesetzt, kein DHCP, keine Probe;
+  ein gemeldeter Konflikt wird nur angezeigt.
+
+**ARP-Probe ohne MACRAW:** Socket 3 sendet ein UDP-Byte an den Discard-Port (9) des Kandidaten,
+während SIPR 0.0.0.0, SUBR 0.0.0.0 und GAR = Kandidat gesetzt sind. Der W5500 löst das Ziel vorher
+per ARP auf, und diese Anfrage trägt die Absenderadresse 0.0.0.0 – genau die Probe aus RFC 3927.
+Mit Maske 0 ist jedes Ziel lokal, GAR = Kandidat deckt auch den gerouteten Weg ab. Antwort
+(SEND_OK) = Adresse belegt, keine Antwort innerhalb RTR × (RCR + 1) (TIMEOUT) = frei.
+Link-Local-Probe mit RTR 1,5 s und RCR 2 (drei Anfragen im Abstand 1,5 s), DHCP-Prüfung mit
+0,5 s und RCR 1; danach wieder RTR 200 ms, RCR 8 (Vorgaben des Chips). Gewählt statt MACRAW, weil
+dafür weder Ethernet-Rahmen gebaut noch ein weiterer Puffer belegt werden muss; dass der Chip die
+Anfrage wirklich mit Absender 0.0.0.0 sendet, ist nur mit einem Mitschnitt am Gerät zu bestätigen.
+
 ## 2 Rahmen, Zeitbasis und Ereignisse (UFI v2)
 
 ### 2.1 Rahmen (beide Richtungen)

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "ufi_lan_cfg.h"
+#include "ufi_net.h"
 
 /* chip / link state (ufi net, NET.TXT) */
 enum {
@@ -11,6 +12,7 @@ enum {
     LAN_STATE_OFF = 2,          /* LAN.CFG lan=off: chip held in reset */
     LAN_STATE_LINK_DOWN = 3,
     LAN_STATE_LINK_UP = 4,      /* PHY link, no address yet */
+    LAN_STATE_BOUND = 5,        /* address in use (DHCP, link-local or fixed: ufi_net.h) */
 };
 
 /* where the settings came from */
@@ -26,3 +28,4 @@ void ufi_lan_mac(uint8_t mac[6]);
 const lan_cfg_t* ufi_lan_cfg(void);
 uint8_t ufi_lan_cfg_source(void);
 const char* ufi_lan_hostname(void);
+const net_t* ufi_lan_net(void);
