@@ -289,6 +289,8 @@ uint32_t* ufi_flux_reference(uint32_t* words){
     *words=reference_reserved && store_psram?PSRAM_SIZE_BYTES/8u:0;
     return *words?flux_store+PSRAM_SIZE_BYTES/8u:NULL;
 }
+static void store_dma_gate(void);
+
 void ufi_flux_init(void)
 {
     __HAL_RCC_D2SRAM1_CLK_ENABLE(); /* CPU-only capture evidence */
@@ -352,19 +354,43 @@ void ufi_flux_init(void)
     lead_base = UINT32_MAX;
     g_capture.state = CAPTURE_IDLE;
 
-    /* The PSRAM store is kept only when the capture stream itself writes it correctly */
-    if (store_psram) {
-        const uint32_t r = ufi_flux_dma_selftest();
-        if (r == UFI_DMA_TEST_NOT_RUN) {
-            ufi_psram_note("PSRAM 8 MB ok, DMA test did not run");
-        } else if (r != 0u) {
-            static char text[] = "PSRAM found, DMA writes unsafe (run 0 code 0)";
-            text[sizeof(text) - 10u] = (char)('0' + ((r >> 8) & 0xFu));
-            text[sizeof(text) - 3u] = (char)('0' + (r & 0xFu));
-            select_store(false);
-            ufi_psram_note(text);
-        }
+    store_dma_gate();
+}
+
+/* The PSRAM store is kept only when the capture stream itself writes it correctly */
+static void store_dma_gate(void)
+{
+    if (!store_psram) {
+        return;
     }
+    const uint32_t r = ufi_flux_dma_selftest();
+    ufi_psram_dma_result(r);
+    if (r != 0u && r != UFI_DMA_TEST_NOT_RUN) {
+        select_store(false);
+    }
+}
+
+/* Host request: PSRAM start-up and both write tests again (lifts the "PSRAM off" latch and
+ * a safe-start skip). A start that dies here latches the PSRAM off again. */
+int ufi_flux_store_retest(void)
+{
+#if defined(UFI_FORCE_INTERNAL_FLUX_STORE)
+    return UFI_ERR_NOT_IMPL;
+#else
+    if (g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
+        ufi_write_get_state() == WRITE_ACTIVE) {
+        return UFI_ERR_BUSY;
+    }
+    if (store_psram) {                      /* nothing of the window may stay in the cache */
+        SCB_CleanDCache_by_Addr(flux_store, (int32_t)PSRAM_SIZE_BYTES);
+        SCB_InvalidateDCache_by_Addr(flux_store, (int32_t)PSRAM_SIZE_BYTES);
+    }
+    select_store(false);                    /* nobody points into the window during the init */
+    ufi_psram_unlatch();
+    select_store(ufi_psram_init() == UFI_OK);
+    store_dma_gate();
+    return UFI_OK;
+#endif
 }
 
 uint32_t ufi_flux_now(void)

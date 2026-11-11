@@ -96,6 +96,11 @@ SELFTEST_ITEMS = {
                       "before/after changed, 4 not increasing, 5 stopped); warn = no DMA request, skip = no PSRAM store"),
 }
 SELFTEST_STATUS = {0: "ok", 1: "FAIL", 2: "skip", 3: "warn"}
+PSRAM_STATES = {0: "no PSRAM", 1: "in use", 2: "failed", 3: "safe start (not touched)",
+                4: "off (latched after a dead start)", 5: "in use, DMA test did not run"}
+PSRAM_PHASES = {0: "-", 1: "controller", 2: "QPI reset", 3: "SPI reset", 4: "read ID", 5: "enter QPI",
+                6: "map window", 7: "first read", 8: "first write", 9: "32-bit writes", 10: "cache lines",
+                11: "DMA writes"}
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
 CHECK_DISK, PROBE_TRACKS, SEEK_TEST, AMIGA_ID = 0x17, 0x18, 0x19, 0x1A
 DIAG_RPM, DRIVE_SCAN, INDEX_SIM = 0x1B, 0x1C, 0x1D          # firmware 1.13
@@ -2339,6 +2344,26 @@ class Device2:
             id_, st, val = struct.unpack_from("<BBI", p, 1 + 6 * i)
             out.append((id_, SELFTEST_ITEMS.get(id_, (f"item{id_}", ""))[0], st, val))
         return out
+
+    def psram_status(self, retest: bool = False) -> dict:
+        """PSRAM start-up result as structured data (firmware of 2026-11-11 or newer, SELFTEST
+        'P'). retest=True runs the start-up and both write tests again first; that lifts the
+        "PSRAM off" latch and a safe-start skip, destroys the flux store contents and is
+        refused while a capture or write runs. Older firmware answers with the item list of
+        a full self-test: ValueError."""
+        data = self.request(SELFTEST, b"P\x01" if retest else b"P", timeout=8.0)
+        if len(data) != 32 or data[0] != 1:
+            raise ValueError("firmware without the PSRAM status block (SELFTEST 'P')")
+        state, phase, latched = data[1], data[2], data[3]
+        fill, asc, desc, lone = struct.unpack_from("<4H", data, 10)
+        dma, rsr = struct.unpack_from("<II", data, 20)
+        return dict(state=state, state_name=PSRAM_STATES.get(state, f"state {state}"),
+                    phase=phase, phase_name=PSRAM_PHASES.get(phase, f"phase {phase}"),
+                    latched_phase=latched, latched_phase_name=PSRAM_PHASES.get(latched, "") if latched else "",
+                    id=data[4:6].hex(" "), gpio_id=data[6:8].hex(" "),
+                    controller_timeout=bool(data[8] & 1), lines_bad=bool(data[8] & 2),
+                    narrow=dict(fill=fill, asc=asc, tail=data[9], desc=desc, lone=lone),
+                    dma=None if dma == 0xFFFFFFFF else dma, dma_not_run=dma == 0xFFFFFFFF, reset_rsr=rsr)
 
     # -- IEC ----------------------------------------------------------------
     def iec_reset(self) -> None:

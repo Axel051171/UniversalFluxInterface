@@ -24,6 +24,9 @@
 
 #include "ufi_firmware.h"
 #include <stdio.h>
+#include <string.h>
+
+#include <string.h>
 
 #if BOARD_HAS_PSRAM
 
@@ -58,7 +61,8 @@ static const char* psram_result = "PSRAM init failed";
  * (bus fault -> reset, or a stalled bus). DTCM keeps its contents through a reset, so the
  * step entered last tells the next start where the previous one died; that start leaves
  * the PSRAM alone and the board comes up on the internal store instead of looping. */
-#define TRIAL_MAGIC             0x50535200u     /* "PSR", step in the low byte */
+#define TRIAL_MAGIC             0x50535200u     /* "PSR": start-up in progress, phase in the low byte */
+#define LATCH_MAGIC             0x504F4600u     /* "POF": PSRAM off after a dead start, phase in the low byte */
 /* volatile: each step must really be stored; for the compiler all but the last are dead */
 __attribute__((section(".dtcm.psram_trial"), aligned(4))) static volatile uint32_t psram_trial;
 
@@ -374,6 +378,44 @@ static const char* psram_line_test(volatile uint32_t* mem)
 }
 
 /* Returns UFI_OK when the PSRAM answered with the right ID and passed a pattern test */
+/* ---- status of the last start-up, also as structured data (SELFTEST 'P') -------------- */
+
+static const char* const phase_name[] = {
+    "", "controller", "QPI reset", "SPI reset", "read ID", "enter QPI", "map window",
+    "first read", "first write", "32-bit writes", "cache lines", "DMA writes",
+};
+
+static struct {
+    uint8_t state;              /* UFI_PSRAM_STATE_* */
+    uint8_t phase;              /* phase that failed, or the last one passed */
+    uint8_t latched_phase;      /* phase a dead start did not get past, 0 = none */
+    uint8_t id[2], gpio_id[2];
+    uint8_t flags;              /* bit0 controller timeout, bit1 cache line test failed */
+    narrow_t narrow;
+    uint32_t dma;
+} diag;
+
+static char status_text[96];
+
+/* A phase failed without killing the start: text, structured data, marker cleared */
+static int phase_failed(uint8_t phase, bool controller_timeout, const char* text)
+{
+    diag.state = UFI_PSRAM_STATE_FAILED;
+    diag.phase = phase;
+    if (controller_timeout) {
+        diag.flags |= 1u;
+    }
+    if (text == NULL) {
+        /* "sent" is all the controller can say: a command it clocked out is not a command
+         * the chip took. A timeout here is the controller itself, not the PSRAM. */
+        snprintf(status_text, sizeof(status_text), "PSRAM init: %s, controller timeout", phase_name[phase]);
+        text = status_text;
+    }
+    psram_result = text;
+    psram_trial = 0;
+    return controller_timeout ? UFI_ERR_TIMEOUT : UFI_ERR_NOT_IMPL;
+}
+
 /* Requested before ufi_flux_init() (safe start): the next ufi_psram_init() touches neither
  * the controller nor the chip and reports the reason. */
 static const char* skip_reason;
@@ -383,24 +425,65 @@ void ufi_psram_skip(const char* why)
     skip_reason = why;
 }
 
+/* Host request "test the PSRAM again": lifts a safe-start skip and the latch */
+void ufi_psram_unlatch(void)
+{
+    skip_reason = NULL;
+    psram_trial = 0;
+}
+
+/* A marker left by an earlier start. Returns true when the PSRAM stays off.
+ * Policy (owner default 2026-11-11): latched off until a power-on reset or a host retest,
+ * so a board with a PSRAM fault stays reachable through every later reset. */
+static bool psram_latched(void)
+{
+    const uint32_t mark = psram_trial;
+    const bool fresh = (mark & ~0xFFu) == TRIAL_MAGIC;
+    if (!fresh && (mark & ~0xFFu) != LATCH_MAGIC) {
+        return false;
+    }
+    const uint32_t rsr = ufi_crash_reset_flags();
+    if (rsr & RCC_RSR_PORRSTF) {
+        psram_trial = 0;                    /* power cycle: DTCM is stale, start afresh */
+        return false;
+    }
+    const uint8_t phase = (uint8_t)(mark & 0xFFu);
+    const char* name = phase < sizeof(phase_name) / sizeof(phase_name[0]) ? phase_name[phase] : "?";
+    psram_trial = LATCH_MAGIC | phase;
+    diag.state = UFI_PSRAM_STATE_LATCHED;
+    diag.latched_phase = phase;
+    if (fresh) {
+        /* The reset that ended that start: a watchdog or software reset is the firmware
+         * giving up (hang, fault handler); a pin reset is somebody pressing RESET or a
+         * debugger, which says nothing about the PSRAM. */
+        const char* how = (rsr & RCC_RSR_IWDG1RSTF) ? "watchdog" :
+                          (rsr & RCC_RSR_SFTRSTF) ? "software reset" :
+                          (rsr & RCC_RSR_PINRSTF) ? "pin reset" : "reset";
+        snprintf(status_text, sizeof(status_text),
+                 "PSRAM off: last start ended in phase %u %s (%s); power cycle or retest",
+                 (unsigned)phase, name, how);
+    } else {
+        snprintf(status_text, sizeof(status_text),
+                 "PSRAM off since a start ended in phase %u %s; power cycle or retest",
+                 (unsigned)phase, name);
+    }
+    psram_result = status_text;
+    return true;
+}
+
 int ufi_psram_init(void)
 {
+    memset(&diag, 0, sizeof(diag));
     if (skip_reason != NULL) {
-        psram_trial = 0;                /* a deliberate skip is not a death in the test */
-        psram_result = skip_reason;
+        diag.state = UFI_PSRAM_STATE_SAFE_START;
+        psram_result = skip_reason;         /* a deliberate skip leaves a latch as it is */
         return UFI_ERR_NOT_IMPL;
     }
-    /* The previous start died inside the memory test: leave the PSRAM alone once, so the
-     * board comes up and reports it (the reset line of INFO carries the fault record). */
-    if ((psram_trial & ~0xFFu) == TRIAL_MAGIC) {
-        static char died[] = "PSRAM skipped: last start died at memory test step 0";
-        died[sizeof(died) - 2u] = (char)('0' + (psram_trial & 0xFu));
-        psram_trial = 0;
-        psram_result = died;
+    if (psram_latched()) {
         return UFI_ERR_NOT_IMPL;
     }
-    psram_trial = 0;
 
+    trial(UFI_PSRAM_PH_CONTROLLER);
     __HAL_RCC_OCTOSPIM_CLK_ENABLE();
     __HAL_RCC_OSPI1_CLK_ENABLE();
     __HAL_RCC_OSPI1_FORCE_RESET();
@@ -423,8 +506,9 @@ int ufi_psram_init(void)
     hospi.Init.DelayBlockBypass = HAL_OSPI_DELAY_BLOCK_BYPASSED;
     hospi.Init.MaxTran = 0;
     hospi.Init.Refresh = PSRAM_TCEM_CYCLES - 16;
+    hospi.State = HAL_OSPI_STATE_RESET;                 /* a retest starts the HAL handle afresh */
     if (HAL_OSPI_Init(&hospi) != HAL_OK) {
-        return UFI_ERR_TIMEOUT;
+        return phase_failed(UFI_PSRAM_PH_CONTROLLER, true, NULL);
     }
     HAL_OSPI_SetTimeout(&hospi, PSRAM_HAL_TIMEOUT_MS);  /* waits inside the HAL (memory-mapped entry) */
 
@@ -435,7 +519,7 @@ int ufi_psram_init(void)
     m.IOHighPort = HAL_OSPIM_IOPORT_NONE;
     m.Req2AckTime = 1;
     if (HAL_OSPIM_Config(&hospi, &m, PSRAM_HAL_TIMEOUT_MS) != HAL_OK) {
-        return UFI_ERR_TIMEOUT;
+        return phase_failed(UFI_PSRAM_PH_CONTROLLER, true, NULL);
     }
 
     HAL_Delay(1);                                       /* tPU 150 us after power-up */
@@ -443,91 +527,131 @@ int ufi_psram_init(void)
      * v1.0 bench boards even after a power cycle. There READ ID does not exist and the
      * one-line reset is not understood, so the reset and "exit quad" go out on four lines
      * first; a chip in SPI mode sees two clocks of an unfinished command and ignores them. */
-    psram_cmd(PSRAM_CMD_RESET_EN, true);
-    psram_cmd(PSRAM_CMD_RESET, true);
+    trial(UFI_PSRAM_PH_QPI_RESET);
+    if (psram_cmd(PSRAM_CMD_RESET_EN, true) != UFI_OK || psram_cmd(PSRAM_CMD_RESET, true) != UFI_OK) {
+        return phase_failed(UFI_PSRAM_PH_QPI_RESET, true, NULL);
+    }
     HAL_Delay(1);
-    psram_cmd(PSRAM_CMD_EXIT_QPI, true);
-    psram_cmd(PSRAM_CMD_RESET_EN, false);
-    psram_cmd(PSRAM_CMD_RESET, false);
+    if (psram_cmd(PSRAM_CMD_EXIT_QPI, true) != UFI_OK) {
+        return phase_failed(UFI_PSRAM_PH_QPI_RESET, true, NULL);
+    }
+    trial(UFI_PSRAM_PH_SPI_RESET);
+    if (psram_cmd(PSRAM_CMD_RESET_EN, false) != UFI_OK || psram_cmd(PSRAM_CMD_RESET, false) != UFI_OK) {
+        return phase_failed(UFI_PSRAM_PH_SPI_RESET, true, NULL);
+    }
     HAL_Delay(1);
 
-    uint8_t id[2] = {0, 0};
-    const int id_status = psram_read_id(id);
-    if (id_status != UFI_OK || id[0] != PSRAM_ID_MF || id[1] != PSRAM_ID_KGD) {
-        /* bring-up aid: the two bytes actually read (expected 0D 5D); "t/o" = the
-         * controller itself timed out. 00 00 / FF FF = no answer on IO1, anything
-         * else = the chip answers but the sampling is off. */
-        static char text[] = "PSRAM not answering (id XX XX    ) gpio XX XX";
-        static const char hex[] = "0123456789ABCDEF";
-        text[24] = hex[id[0] >> 4];
-        text[25] = hex[id[0] & 0xFu];
-        text[27] = hex[id[1] >> 4];
-        text[28] = hex[id[1] & 0xFu];
-        if (id_status != UFI_OK) {
-            text[30] = 't';
-            text[31] = '/';
-            text[32] = 'o';
-        }
-        /* second opinion without the OCTOSPI controller: same ID by plain GPIO with a
-         * pull-up on SO. 0D 5D here = the chip is fine, the controller setup is not;
-         * FF FF = the chip does not drive SO at all. */
-        uint8_t raw[2] = {0, 0};
-        psram_gpio_probe(raw);
-        text[40] = hex[raw[0] >> 4];
-        text[41] = hex[raw[0] & 0xFu];
-        text[43] = hex[raw[1] >> 4];
-        text[44] = hex[raw[1] & 0xFu];
-        psram_result = text;
-        return UFI_ERR_NOT_IMPL;                        /* not fitted / not answering */
+    trial(UFI_PSRAM_PH_ID);
+    const int id_status = psram_read_id(diag.id);
+    if (id_status != UFI_OK || diag.id[0] != PSRAM_ID_MF || diag.id[1] != PSRAM_ID_KGD) {
+        /* The two bytes actually read (expected 0D 5D); "t/o" = the controller itself timed
+         * out. Second opinion without the controller: the same ID by plain GPIO with a
+         * pull-up on SO. 0D 5D there = chip fine, controller setup not; FF FF = the chip
+         * does not drive SO at all. */
+        psram_gpio_probe(diag.gpio_id);
+        snprintf(status_text, sizeof(status_text), "PSRAM not answering (id %02X %02X%s) gpio %02X %02X",
+                 diag.id[0], diag.id[1], id_status != UFI_OK ? " t/o" : "", diag.gpio_id[0], diag.gpio_id[1]);
+        return phase_failed(UFI_PSRAM_PH_ID, id_status != UFI_OK, status_text);
     }
+
     /* the ID is read; everything from here on is allowed at the working clock */
+    trial(UFI_PSRAM_PH_ENTER_QPI);
     const uint32_t busy_since = HAL_GetTick();
     while ((hospi.Instance->SR & OCTOSPI_SR_BUSY) != 0u) {
         if (HAL_GetTick() - busy_since > 10u) {
-            return UFI_ERR_TIMEOUT;                     /* "PSRAM init failed" */
+            return phase_failed(UFI_PSRAM_PH_ENTER_QPI, true, NULL);
         }
     }
     MODIFY_REG(hospi.Instance->DCR2, OCTOSPI_DCR2_PRESCALER, (uint32_t)(OSPI_PRESCALER - 1));
     hospi.Init.ClockPrescaler = OSPI_PRESCALER;
-    if (psram_cmd(PSRAM_CMD_ENTER_QPI, false) != UFI_OK || psram_memory_mapped() != UFI_OK) {
-        return UFI_ERR_TIMEOUT;
+    if (psram_cmd(PSRAM_CMD_ENTER_QPI, false) != UFI_OK) {
+        return phase_failed(UFI_PSRAM_PH_ENTER_QPI, true, NULL);
+    }
+    trial(UFI_PSRAM_PH_MAP);
+    if (psram_memory_mapped() != UFI_OK) {
+        return phase_failed(UFI_PSRAM_PH_MAP, true, NULL);
     }
 
-    /* Memory test in steps; the marker names the step a dying start did not get past:
-     * 1 window mapped, 2 first read, 3 first write, 4 narrow writes, 5 cache lines */
+    /* Memory test; the marker names the phase a dying start did not get past */
     volatile uint32_t* mem = (volatile uint32_t*)OCTOSPI1_BASE;
-    trial(1);
     psram_mpu(false);
-    trial(2);
+    trial(UFI_PSRAM_PH_FIRST_READ);
     (void)mem[0];
-    trial(3);
+    trial(UFI_PSRAM_PH_FIRST_WRITE);
     mem[0] = pat_s(0);
-    trial(4);
-    narrow_t nr = {0};
-    psram_narrow_test(mem, &nr);
-    psram_narrow_test(mem + (1024u - 128u) / 4u, &nr);     /* across a 1 KB page boundary */
-    trial(5);
+    trial(UFI_PSRAM_PH_NARROW);
+    psram_narrow_test(mem, &diag.narrow);
+    psram_narrow_test(mem + (1024u - 128u) / 4u, &diag.narrow);    /* across a 1 KB page boundary */
+    trial(UFI_PSRAM_PH_LINES);
     psram_mpu(true);
     const char* lines = psram_line_test(mem);
+    if (lines != NULL) {
+        diag.flags |= 2u;
+    }
     psram_trial = 0;
 
     /* The store is handed out only when the window behaves like RAM for 32-bit writes
      * (DMA capture) and for cache lines (CPU). Otherwise the numbers go into INFO. */
-    const bool exact = nr.fill == 0u && nr.asc == 0u && nr.desc == 0u && nr.lone == 0u && nr.tail == 0u;
-    if (exact && lines == NULL) {
-        psram_result = "PSRAM 8 MB ok";
-        return UFI_OK;
+    const narrow_t* nr = &diag.narrow;
+    const bool exact = nr->fill == 0u && nr->asc == 0u && nr->desc == 0u && nr->lone == 0u && nr->tail == 0u;
+    if (!exact) {
+        snprintf(status_text, sizeof(status_text),
+                 "PSRAM found, 32-bit writes unsafe (f%lu a%lu t%lu d%lu l%lu, lines %s)",
+                 (unsigned long)nr->fill, (unsigned long)nr->asc, (unsigned long)nr->tail,
+                 (unsigned long)nr->desc, (unsigned long)nr->lone, lines == NULL ? "ok" : "bad");
+        return phase_failed(UFI_PSRAM_PH_NARROW, false, status_text);
     }
-    if (exact) {
-        psram_result = lines;
-        return UFI_ERR_DMA;
+    if (lines != NULL) {
+        return phase_failed(UFI_PSRAM_PH_LINES, false, lines);
     }
-    static char text[80];
-    snprintf(text, sizeof(text), "PSRAM found, 32-bit writes unsafe (f%lu a%lu t%lu d%lu l%lu, lines %s)",
-             (unsigned long)nr.fill, (unsigned long)nr.asc, (unsigned long)nr.tail,
-             (unsigned long)nr.desc, (unsigned long)nr.lone, lines == NULL ? "ok" : "bad");
-    psram_result = text;
-    return UFI_ERR_NOT_IMPL;
+    diag.state = UFI_PSRAM_STATE_OK;
+    diag.phase = UFI_PSRAM_PH_LINES;
+    psram_result = "PSRAM 8 MB ok";
+    return UFI_OK;
+}
+
+/* Result of the capture-stream write test (ufi_flux.c), which runs after this init */
+void ufi_psram_dma_result(uint32_t result)
+{
+    diag.dma = result;
+    if (result == 0u) {
+        diag.phase = UFI_PSRAM_PH_DMA;
+    } else if (result == UFI_DMA_TEST_NOT_RUN) {
+        diag.state = UFI_PSRAM_STATE_DMA_NOT_RUN;
+        psram_result = "PSRAM 8 MB ok, DMA test did not run";
+    } else {
+        diag.state = UFI_PSRAM_STATE_FAILED;
+        diag.phase = UFI_PSRAM_PH_DMA;
+        snprintf(status_text, sizeof(status_text), "PSRAM found, DMA writes unsafe (run %lu code %lu)",
+                 (unsigned long)(result >> 8), (unsigned long)(result & 0xFFu));
+        psram_result = status_text;
+    }
+}
+
+static uint16_t sat16(uint32_t v)
+{
+    return v > 0xFFFFu ? 0xFFFFu : (uint16_t)v;
+}
+
+/* 32 bytes, schema 1 (docs/USB_Protokoll.md, SELFTEST 'P') */
+uint8_t ufi_psram_status_pack(uint8_t* out)
+{
+    const uint16_t n[4] = {sat16(diag.narrow.fill), sat16(diag.narrow.asc), sat16(diag.narrow.desc),
+                           sat16(diag.narrow.lone)};
+    const uint32_t rsr = ufi_crash_reset_flags();
+    memset(out, 0, 32);
+    out[0] = 1;
+    out[1] = diag.state;
+    out[2] = diag.phase;
+    out[3] = diag.latched_phase;
+    memcpy(&out[4], diag.id, 2);
+    memcpy(&out[6], diag.gpio_id, 2);
+    out[8] = diag.flags;
+    out[9] = (uint8_t)diag.narrow.tail;
+    memcpy(&out[10], n, 8);
+    memcpy(&out[20], &diag.dma, 4);
+    memcpy(&out[24], &rsr, 4);
+    return 32;
 }
 
 const char* ufi_psram_result(void)
@@ -550,6 +674,22 @@ void ufi_psram_skip(const char* why)
 void ufi_psram_note(const char* text)
 {
     (void)text;
+}
+
+void ufi_psram_unlatch(void)
+{
+}
+
+void ufi_psram_dma_result(uint32_t result)
+{
+    (void)result;
+}
+
+uint8_t ufi_psram_status_pack(uint8_t* out)
+{
+    memset(out, 0, 32);
+    out[0] = 1;
+    return 32;
 }
 
 int ufi_psram_init(void)

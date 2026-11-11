@@ -1111,6 +1111,20 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             break;
         }
         case V2_SELFTEST:                   /* -> n u8, n x (id u8, status u8, value u32) */
+            if (len >= 1u && p[0] == 'P') {     /* PSRAM status block; 'P' 01 = test again first */
+                if (len > 2u || (len == 2u && p[1] != 1u)) {
+                    ret = UFI_ERR_BAD_ARGS;
+                    break;
+                }
+                if (len == 2u) {
+                    ret = ufi_flux_store_retest();
+                    if (ret != UFI_OK) {
+                        break;
+                    }
+                }
+                n = ufi_psram_status_pack(out);
+                break;
+            }
             out[0] = ufi_selftest(&out[1], 24);   /* A10: 13 items + ids 15.. + log */
             n = (uint16_t)(1u + 6u * out[0]);
             break;

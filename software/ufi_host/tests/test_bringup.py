@@ -42,6 +42,7 @@ class FakeV10(FakeV2):
         self.v5_on, self.v12_on = 5010, 11950
         self.tcxo = True
         self.selftest_items = list(V10_SELFTEST)
+        self.psram_block = None         # SELFTEST 'P' (firmware of 2026-11-11); None = older firmware
         self.revs = [TRACK_REV] * 3
         self.read_info_block = _read_info_block(flags=0x08 | 0x10 | 0x20)
         self.history = []               # (cmd, payload) of the board/drive requests, in order
@@ -80,6 +81,9 @@ class FakeV10(FakeV2):
             pins = (0x10 if self.lock else 0) | (0 if on5 else 0x20) | (0 if on12 else 0x40)
             pins |= (0x20 if self.efuse_fault & 1 and on5 else 0) | (0x40 if self.efuse_fault & 2 and on12 else 0)
             r(0, P2.FDD_PINS_FMT.pack(pins, 0))
+        elif cmd == P2.SELFTEST and a[:1] == b"P" and self.psram_block is not None:
+            self.requests.append(f)
+            r(0, self.psram_block)
         elif cmd == P2.SELFTEST:
             self.requests.append(f)
             r(0, bytes([len(self.selftest_items)]) + b"".join(_item(*i) for i in self.selftest_items))
@@ -199,6 +203,37 @@ def test_v10_keep_rtc_and_no_12v(clock):
     assert not [a for c, a in fake.history if c == P2.RTC and a]               # calendar untouched
     assert [a[0] for c, a in fake.history if c == P2.POWER and a] == [0, 1, 0]
     assert "--no-12v" in st["rails.on"].detail
+
+
+def _psram_block(state, phase, latched=0, id_=b"\x0d\x5d", gpio=b"\0\0", flags=0, tail=0,
+                 narrow=(0, 0, 0, 0), dma=0, rsr=0x00FE0000):
+    return (bytes([1, state, phase, latched]) + id_ + gpio + bytes([flags, tail]) +
+            struct.pack("<4H", *narrow) + b"\0\0" + struct.pack("<II", dma, rsr) + b"\0\0\0\0")
+
+
+@pytest.mark.parametrize("block, verdict, text", [
+    (None, None, None),                                                         # older firmware: no step
+    (_psram_block(1, 11), "ok", "in use, phase 11 DMA writes"),
+    (_psram_block(5, 10, dma=0xFFFFFFFF), "warn", "DMA test did not run"),
+    (_psram_block(2, 4, id_=b"\0\0", gpio=b"\xff\xff"), "fail", "id 00 00 gpio ff ff"),
+    (_psram_block(2, 9, tail=1, narrow=(0, 0, 63, 2)), "fail", "'desc': 63"),
+    (_psram_block(2, 11, dma=0x0203), "fail", "DMA run 2 code 3"),
+    (_psram_block(2, 2, flags=1), "fail", "controller timeout"),
+    (_psram_block(4, 0, latched=8), "fail", "off since a start ended in phase 8 first write"),
+])
+def test_v10_psram_status_block(clock, block, verdict, text):
+    """Structured PSRAM start-up result (bench 2026-11-11): each state reaches the report."""
+    fake = FakeV10()
+    fake.psram_block = block
+    assert len(block or b"x" * 32) == 32
+    rep = bringup.Report()
+    bringup.run(P2.Device2(fake), rep)
+    steps = _steps(rep)
+    if block is None:
+        assert "psram_status" not in steps
+        return
+    assert steps["psram_status"].status == verdict and text in steps["psram_status"].detail
+    assert "rsr 00FE0000" in steps["psram_status"].detail
 
 
 def test_v10_no_12v_skips_the_12v_selftest_item(clock):

@@ -393,6 +393,24 @@ bool ufi_flux_store_is_psram(void);
 int ufi_psram_init(void);                       // ufi_psram.c
 void ufi_psram_skip(const char* why);           // before ufi_flux_init(): leave the PSRAM alone, INFO shows why
 void ufi_psram_note(const char* text);          // replaces the PSRAM result text of INFO (static text)
+void ufi_psram_unlatch(void);                   // host retest: lifts a safe-start skip and the "PSRAM off" latch
+void ufi_psram_dma_result(uint32_t result);     // ufi_flux.c reports the capture-stream write test
+uint8_t ufi_psram_status_pack(uint8_t* out);    // 32 bytes, schema 1 (SELFTEST 'P')
+int ufi_flux_store_retest(void);                // PSRAM start-up and DMA test again; UFI_ERR_BUSY unless idle
+/* Start-up phases of the PSRAM (trial marker, texts, status block) */
+enum {
+    UFI_PSRAM_PH_CONTROLLER = 1, UFI_PSRAM_PH_QPI_RESET, UFI_PSRAM_PH_SPI_RESET, UFI_PSRAM_PH_ID,
+    UFI_PSRAM_PH_ENTER_QPI, UFI_PSRAM_PH_MAP, UFI_PSRAM_PH_FIRST_READ, UFI_PSRAM_PH_FIRST_WRITE,
+    UFI_PSRAM_PH_NARROW, UFI_PSRAM_PH_LINES, UFI_PSRAM_PH_DMA,
+};
+enum {
+    UFI_PSRAM_STATE_NONE = 0,       /* no PSRAM in this build / bypassed */
+    UFI_PSRAM_STATE_OK,             /* flux store is the PSRAM */
+    UFI_PSRAM_STATE_FAILED,         /* phase names where; internal store */
+    UFI_PSRAM_STATE_SAFE_START,     /* button B: not touched */
+    UFI_PSRAM_STATE_LATCHED,        /* an earlier start died in latched_phase: off until power cycle or retest */
+    UFI_PSRAM_STATE_DMA_NOT_RUN,    /* PSRAM in use, the DMA test got no request */
+};
 #define UFI_DMA_TEST_NOT_RUN 0xFFFFFFFFu
 uint32_t ufi_flux_dma_selftest(void);           // capture-stream write test into the PSRAM store: 0 ok, NOT_RUN, run << 8 | code
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter

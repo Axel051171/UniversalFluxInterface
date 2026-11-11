@@ -688,7 +688,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     return True
 
 
-V2_ONLY = {"diagnostics", "features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
+V2_ONLY = {"diagnostics", "psram","features", "job-status", "release", "iec-identify", "caps", "describe", "files", "get", "put", "rm", "cfg", "events", "mode", "dump", "dump-status", "scan", "index-sim", "rpm-select", "iec-nib", "analyze", "format", "write-limits",
            "dump-abort", "copy", "power", "iec-status", "iec-read", "iec-write", "sd-write", "monitor", "extra", "profile", "apple-gcr", "tolerance", "apple-stats", "apple-table",
            "write-lock", "masks", "refusal", "verify-report", "speed-check", "weak", "recognize", "provenance", "precomp", "survey", "raw-check",
            "rtc", "sensor", "rails", "sync", "pins", "net", "mac", "read-mac", "write-mac"}
@@ -718,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
         "bus", nargs="?", choices=("pc", "ds"), default="pc", help="pc: a/b/amiga/amiga2, ds: Shugart bus ds0-ds3")
     sub.add_parser("write-limits", help="what the write backend accepts (firmware 1.15): clock, max intervals, min/max interval")
     sub.add_parser("diagnostics", help="buffer occupancy, DMA/USB errors and memory reserves")
+    p = sub.add_parser("psram", help="PSRAM start-up result as data; 'retest' runs the start-up and write tests again")
+    p.add_argument("action", nargs="?", choices=("retest",))
     sub.add_parser("features", help="supported/configured/available features")
     sub.add_parser("job-status", help="last extended job state and integrity totals")
     sub.add_parser("release", help="release native ownership while idle")
@@ -1102,6 +1104,9 @@ def main(argv: list[str] | None = None) -> int:
             for name, fl in dev.drive_scan(a.bus == "ds"):
                 print(f"{name:8} {'yes' if fl & P2.DIAG_TRACK0 else '-':8} "
                       f"{'spins' if fl & P2.DIAG_INDEX else '-':5} {'yes' if fl & P2.DIAG_WPROT else '-'}")
+        elif a.cmd == "psram":
+            import json
+            print(json.dumps(dev.psram_status(retest=a.action == "retest"), indent=2))
         elif a.cmd == "diagnostics":
             import json
             print(json.dumps(dev.diagnostics(), indent=2))

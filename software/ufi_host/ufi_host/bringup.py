@@ -205,15 +205,39 @@ def _discovery(dev: P2.Device2, rep: Report, ctx: Context) -> None:
                         + ("; SYNC off by configuration (apple_sync=0)" if sync_off else ""))
 
 
+def _psram_status(dev: P2.Device2, rep: Report) -> dict | None:
+    """Structured PSRAM start-up result; None on firmware before 2026-11-11 (it answers the
+    'P' request with the item list of a self-test)."""
+    try:
+        status = dev.psram_status()
+    except (ValueError, P2.DeviceError):
+        return None
+    verdict = {1: "ok", 5: "warn"}.get(status["state"], "fail")
+    detail = f"{status['state_name']}, phase {status['phase']} {status['phase_name']}"
+    if status["latched_phase"]:
+        detail += f", off since a start ended in phase {status['latched_phase']} {status['latched_phase_name']}"
+    if status["state"] == 2 and status["phase"] == 4:
+        detail += f", id {status['id']} gpio {status['gpio_id']}"
+    if status["state"] == 2 and status["phase"] == 9:
+        detail += f", narrow {status['narrow']}"
+    if status["dma"]:
+        detail += f", DMA run {status['dma'] >> 8} code {status['dma'] & 0xFF}"
+    if status["controller_timeout"]:
+        detail += ", controller timeout"
+    rep.add("psram_status", verdict, detail + f"; reset rsr {status['reset_rsr']:08X}", status)
+    return status
+
+
 def _diagnostics(dev: P2.Device2, rep: Report, ctx: Context) -> None:
     diag = rep.guarded("diagnostics", dev.diagnostics)
+    status = _psram_status(dev, rep)
     if diag:
         errors = {k: diag[k] for k in ("capture_overruns", "capture_dma_errors", "write_dma_errors", "write_underruns") if diag[k]}
         rep.add("diagnostics", "ok" if not errors else "warn",
                 f"psram {'on' if diag['psram'] else 'OFF (fallback store)'}, store {diag['store_words']} words, "
                 f"AXI free {diag['axi_free_bytes']} B, stack space {diag['stack_space_bytes']} B"
                 + (f", error counters {errors}" if errors else ""))
-        if not diag["psram"]:
+        if not diag["psram"] and status is None:    # with the status block that step names the cause
             rep.add("psram_store", "fail", "flux store is the internal fallback: U11 not detected")
 
 
