@@ -16,6 +16,10 @@
 #include "ufi_read_info.h"
 #include <string.h>
 
+#ifdef USE_WATCHDOG
+IWDG_HandleTypeDef hiwdg;       /* UFI_WATCHDOG_INIT / UFI_WATCHDOG_FEED (ufi_fixes.h) */
+#endif
+
 /* ============================================================================
  * GLOBALE VARIABLEN (extern referenziert in ufi_flux.c, ufi_write.c)
  * ============================================================================ */

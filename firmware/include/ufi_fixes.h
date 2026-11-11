@@ -72,9 +72,16 @@ static inline uint32_t ring_buffer_free(uint32_t head, uint32_t tail, uint32_t s
 /* Fix #9: Watchdog */
 #ifdef USE_WATCHDOG
 extern IWDG_HandleTypeDef hiwdg;
+/* 32.8 s (LSI 32 kHz / 256 / 4096): the longest period the IWDG offers. The feed sites in
+ * the long operations were written before the watchdog was ever built and are not proven
+ * on a drive; until they are, the period only has to catch a hang (stalled bus, endless
+ * loop), not a slow operation. Tighten after bench data. Frozen while a debugger halts
+ * the core, so an OpenOCD session does not end in a reset. */
+#define UFI_WATCHDOG_PERIOD_MS  32768u
 #define UFI_WATCHDOG_INIT() do { \
+    __HAL_DBGMCU_FREEZE_IWDG1(); \
     hiwdg.Instance = IWDG1; \
-    hiwdg.Init.Prescaler = IWDG_PRESCALER_64; \
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_256; \
     hiwdg.Init.Reload = 4095; \
     hiwdg.Init.Window = 4095; \
     HAL_IWDG_Init(&hiwdg); \

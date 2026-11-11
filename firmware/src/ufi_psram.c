@@ -50,6 +50,9 @@ static const char* psram_result = "PSRAM init failed";
 #define OSPI_CLK_HZ             (275000000UL / OSPI_PRESCALER)
 #define PSRAM_TCEM_CYCLES       ((OSPI_CLK_HZ / 1000000UL) * 8UL)   /* 8 us */
 #define PSRAM_IDLE_CYCLES       16u     /* CS# released this long after the prefetch stalls */
+/* Every controller wait in this file. A command takes microseconds; the HAL default of
+ * 5 s per call would add up to more than the watchdog period on a dead controller. */
+#define PSRAM_HAL_TIMEOUT_MS    100u
 
 /* Start-up trial marker. The first accesses through the window can kill the start-up
  * (bus fault -> reset, or a stalled bus). DTCM keeps its contents through a reset, so the
@@ -177,7 +180,7 @@ static int psram_cmd(uint8_t instr, bool qpi)
     c.DummyCycles = 0;
     c.DQSMode = HAL_OSPI_DQS_DISABLE;
     c.SIOOMode = HAL_OSPI_SIOO_INST_EVERY_CMD;
-    return HAL_OSPI_Command(&hospi, &c, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) == HAL_OK ? UFI_OK : UFI_ERR_TIMEOUT;
+    return HAL_OSPI_Command(&hospi, &c, PSRAM_HAL_TIMEOUT_MS) == HAL_OK ? UFI_OK : UFI_ERR_TIMEOUT;
 }
 
 static int psram_read_id(uint8_t id[2])
@@ -197,8 +200,8 @@ static int psram_read_id(uint8_t id[2])
     c.DummyCycles = 0;
     c.DQSMode = HAL_OSPI_DQS_DISABLE;
     c.SIOOMode = HAL_OSPI_SIOO_INST_EVERY_CMD;
-    if (HAL_OSPI_Command(&hospi, &c, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK ||
-        HAL_OSPI_Receive(&hospi, id, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+    if (HAL_OSPI_Command(&hospi, &c, PSRAM_HAL_TIMEOUT_MS) != HAL_OK ||
+        HAL_OSPI_Receive(&hospi, id, PSRAM_HAL_TIMEOUT_MS) != HAL_OK) {
         return UFI_ERR_TIMEOUT;
     }
     return UFI_OK;
@@ -220,14 +223,14 @@ static int psram_memory_mapped(void)
     c.OperationType = HAL_OSPI_OPTYPE_READ_CFG;
     c.Instruction = PSRAM_CMD_QUAD_READ;
     c.DummyCycles = PSRAM_QPI_READ_WAIT;
-    if (HAL_OSPI_Command(&hospi, &c, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+    if (HAL_OSPI_Command(&hospi, &c, PSRAM_HAL_TIMEOUT_MS) != HAL_OK) {
         return UFI_ERR_TIMEOUT;
     }
     c.OperationType = HAL_OSPI_OPTYPE_WRITE_CFG;
     c.Instruction = PSRAM_CMD_QUAD_WRITE;
     c.DummyCycles = 0;
     c.DQSMode = HAL_OSPI_DQS_ENABLE;            /* erratum ES0491 2.8.6, see the file header */
-    if (HAL_OSPI_Command(&hospi, &c, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+    if (HAL_OSPI_Command(&hospi, &c, PSRAM_HAL_TIMEOUT_MS) != HAL_OK) {
         return UFI_ERR_TIMEOUT;
     }
 
@@ -423,6 +426,7 @@ int ufi_psram_init(void)
     if (HAL_OSPI_Init(&hospi) != HAL_OK) {
         return UFI_ERR_TIMEOUT;
     }
+    HAL_OSPI_SetTimeout(&hospi, PSRAM_HAL_TIMEOUT_MS);  /* waits inside the HAL (memory-mapped entry) */
 
     OSPIM_CfgTypeDef m = {0};
     m.ClkPort = 1;
@@ -430,7 +434,7 @@ int ufi_psram_init(void)
     m.IOLowPort = HAL_OSPIM_IOPORT_1_LOW;
     m.IOHighPort = HAL_OSPIM_IOPORT_NONE;
     m.Req2AckTime = 1;
-    if (HAL_OSPIM_Config(&hospi, &m, HAL_OSPI_TIMEOUT_DEFAULT_VALUE) != HAL_OK) {
+    if (HAL_OSPIM_Config(&hospi, &m, PSRAM_HAL_TIMEOUT_MS) != HAL_OK) {
         return UFI_ERR_TIMEOUT;
     }
 

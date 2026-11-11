@@ -88,6 +88,7 @@ if(NOT UFI_RELEASE_OPTIMIZATION MATCHES "^(2|3|s)$")
 endif()
 set(CMAKE_C_FLAGS_RELEASE "-O${UFI_RELEASE_OPTIMIZATION} -DNDEBUG")
 option(UFI_FORCE_INTERNAL_FLUX_STORE "Qualification image: bypass U11 and use internal flux fallback" OFF)
+option(UFI_WATCHDOG "Independent watchdog (IWDG1, 32.8 s): a hang ends in a reset instead of a dead board" ON)
 
 set(CMAKE_ASM_FLAGS "${MCU_FLAGS} -x assembler-with-cpp")
 
@@ -122,6 +123,7 @@ set(HAL_SOURCES
     ${HAL_PATH}/Src/stm32h7xx_hal_tim.c
     ${HAL_PATH}/Src/stm32h7xx_hal_tim_ex.c
     ${HAL_PATH}/Src/stm32h7xx_hal_ospi.c
+    ${HAL_PATH}/Src/stm32h7xx_hal_iwdg.c
     ${HAL_PATH}/Src/stm32h7xx_hal_mdma.c
     ${HAL_PATH}/Src/stm32h7xx_hal_adc.c
     ${HAL_PATH}/Src/stm32h7xx_hal_adc_ex.c
@@ -278,6 +280,9 @@ add_executable(${PROJECT_NAME}.elf
 target_compile_options(${PROJECT_NAME}.elf PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-usage>)
 if(UFI_FORCE_INTERNAL_FLUX_STORE)
     target_compile_definitions(${PROJECT_NAME}.elf PRIVATE UFI_FORCE_INTERNAL_FLUX_STORE=1)
+endif()
+if(UFI_WATCHDOG)
+    target_compile_definitions(${PROJECT_NAME}.elf PRIVATE USE_WATCHDOG=1)
 endif()
 find_program(UFI_CCACHE ccache)
 if(UFI_CCACHE AND NOT CMAKE_C_COMPILER_LAUNCHER)
