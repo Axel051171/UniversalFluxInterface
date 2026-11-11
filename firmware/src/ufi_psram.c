@@ -23,9 +23,8 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_psram.h"
 #include <stdio.h>
-#include <string.h>
-
 #include <string.h>
 
 #if BOARD_HAS_PSRAM
@@ -341,12 +340,22 @@ static void psram_narrow_test(volatile uint32_t* m, narrow_t* r)
 /* ---- line test (cacheable): data lines (walking one), address lines (unique value at
  * every power-of-two word offset, catches shorted/open address bits), pattern in each MB.
  * Returns NULL or the fault text. */
+/* Writes back and drops the one cache line that holds *p: the test must read from the
+ * chip, and it must not disturb the rest of the cache (it used to clean the whole cache
+ * 34 times). */
+static void line_flush(volatile uint32_t* p)
+{
+    uint32_t* line = (uint32_t*)((uintptr_t)p & ~(uintptr_t)31u);
+    SCB_CleanDCache_by_Addr(line, 32);
+    SCB_InvalidateDCache_by_Addr(line, 32);
+}
+
 static const char* psram_line_test(volatile uint32_t* mem)
 {
     const uint32_t words = PSRAM_SIZE_BYTES / 4u;
     for (uint32_t bit = 1; bit != 0; bit <<= 1) {
         mem[0] = bit;
-        SCB_CleanInvalidateDCache();
+        line_flush(&mem[0]);
         if (mem[0] != bit) {
             return "PSRAM data line fault";
         }
@@ -355,7 +364,10 @@ static const char* psram_line_test(volatile uint32_t* mem)
     for (uint32_t a = 1; a < words; a <<= 1) {
         mem[a] = 0xC0DE0000u ^ a;
     }
-    SCB_CleanInvalidateDCache();
+    line_flush(&mem[0]);
+    for (uint32_t a = 1; a < words; a <<= 1) {
+        line_flush(&mem[a]);
+    }
     if (mem[0] != 0x5555AAAAu) {
         return "PSRAM address line fault";
     }
@@ -365,10 +377,12 @@ static const char* psram_line_test(volatile uint32_t* mem)
         }
     }
     for (uint32_t a = 0; a < words; a += words / 8u) {
-        mem[a + 3] = 0xA5A50000u ^ a;
+        mem[a + 3] = 0xA5A50000u ^ a;       /* words 3 and 4 share one 32-byte line */
         mem[a + 4] = ~(0xA5A50000u ^ a);
     }
-    SCB_CleanInvalidateDCache();
+    for (uint32_t a = 0; a < words; a += words / 8u) {
+        line_flush(&mem[a + 3]);
+    }
     for (uint32_t a = 0; a < words; a += words / 8u) {
         if (mem[a + 3] != (0xA5A50000u ^ a) || mem[a + 4] != ~(0xA5A50000u ^ a)) {
             return "PSRAM pattern fault";
