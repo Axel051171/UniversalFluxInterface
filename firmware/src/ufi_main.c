@@ -95,17 +95,23 @@ void ufi_init(void)
     UFI_WATCHDOG_INIT();        /* Fix #9 */
 
     board_gpio_init();          /* all pins in their released / idle state */
-    ufi_drive_init();
-    ufi_iec_init();
-    ufi_flux_init();            /* TIM2 + DMA, PSRAM self-test */
-    ufi_write_init();
     /* Buttons held at power-up (v0.5): A = ROM USB-DFU bootloader (recovery even when the
-     * USB firmware is broken), B = safe mode: drive supplies stay off (BOARD_STATUS bit6) */
+     * USB firmware is broken), B = safe mode: drive supplies stay off (BOARD_STATUS bit6).
+     * Read before anything that can fail to return: the bench run of 2026-11-11 looped in
+     * the PSRAM start-up, where neither button was reachable. Safe mode therefore also
+     * leaves the PSRAM alone (internal flux store). */
     HAL_Delay(5);               /* button pull-ups settle */
     if (HAL_GPIO_ReadPin(PIN_BTN_A.port, PIN_BTN_A.pin) == GPIO_PIN_RESET) {
         ufi_request_bootloader();
     }
     const bool safe_mode = HAL_GPIO_ReadPin(PIN_BTN_B.port, PIN_BTN_B.pin) == GPIO_PIN_RESET;
+    if (safe_mode) {
+        ufi_psram_skip("PSRAM skipped: safe start (button B)");
+    }
+    ufi_drive_init();
+    ufi_iec_init();
+    ufi_flux_init();            /* TIM2 + DMA, PSRAM self-test */
+    ufi_write_init();
     ufi_board_init(!safe_mode); /* drive supplies on (5 V, then 12 V) unless safe mode */
     if (safe_mode) {
         led_set(&PIN_LED_ERR, true);

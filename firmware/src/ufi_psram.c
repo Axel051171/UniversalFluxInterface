@@ -371,8 +371,22 @@ static const char* psram_line_test(volatile uint32_t* mem)
 }
 
 /* Returns UFI_OK when the PSRAM answered with the right ID and passed a pattern test */
+/* Requested before ufi_flux_init() (safe start): the next ufi_psram_init() touches neither
+ * the controller nor the chip and reports the reason. */
+static const char* skip_reason;
+
+void ufi_psram_skip(const char* why)
+{
+    skip_reason = why;
+}
+
 int ufi_psram_init(void)
 {
+    if (skip_reason != NULL) {
+        psram_trial = 0;                /* a deliberate skip is not a death in the test */
+        psram_result = skip_reason;
+        return UFI_ERR_NOT_IMPL;
+    }
     /* The previous start died inside the memory test: leave the PSRAM alone once, so the
      * board comes up and reports it (the reset line of INFO carries the fault record). */
     if ((psram_trial & ~0xFFu) == TRIAL_MAGIC) {
@@ -518,6 +532,11 @@ const char* ufi_psram_result(void)
 }
 
 #else
+
+void ufi_psram_skip(const char* why)
+{
+    (void)why;
+}
 
 int ufi_psram_init(void)
 {
