@@ -60,6 +60,8 @@ SELFTEST_EXPECT = {
     "v_fdd12": ((0, 2), "skip while the drive supply is off or without dividers"),
     "wgate_lock": ((0, 2), "v1.0: WGATE must stay off with the lock set (A11f); skip on v0.x"),
     "fdd_pins": ((0, 2, 3), "v1.0 read-backs; warn = WGATE bus or eFuse fault seen at idle"),
+    "psram_dma": ((0,), "capture stream writes the PSRAM store; fail = run << 8 | code, the PSRAM must not be "
+                        "used for captures; warn = the test got no DMA request; skip = internal store"),
 }
 
 # v1.0 board with A10 firmware: these items must be ok, anything else is a failure (the

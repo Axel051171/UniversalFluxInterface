@@ -392,6 +392,9 @@ uint32_t* ufi_flux_reference(uint32_t* words);
 bool ufi_flux_store_is_psram(void);
 int ufi_psram_init(void);                       // ufi_psram.c
 void ufi_psram_skip(const char* why);           // before ufi_flux_init(): leave the PSRAM alone, INFO shows why
+void ufi_psram_note(const char* text);          // replaces the PSRAM result text of INFO (static text)
+#define UFI_DMA_TEST_NOT_RUN 0xFFFFFFFFu
+uint32_t ufi_flux_dma_selftest(void);           // capture-stream write test into the PSRAM store: 0 ok, NOT_RUN, run << 8 | code
 uint32_t ufi_flux_now(void);                    // free-running TIM2 counter
 uint64_t ufi_flux_now64(void);
 void ufi_write_set_extended(bool on);

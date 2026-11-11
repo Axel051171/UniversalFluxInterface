@@ -351,6 +351,20 @@ void ufi_flux_init(void)
     lead_request = lead_ticks = 0;
     lead_base = UINT32_MAX;
     g_capture.state = CAPTURE_IDLE;
+
+    /* The PSRAM store is kept only when the capture stream itself writes it correctly */
+    if (store_psram) {
+        const uint32_t r = ufi_flux_dma_selftest();
+        if (r == UFI_DMA_TEST_NOT_RUN) {
+            ufi_psram_note("PSRAM 8 MB ok, DMA test did not run");
+        } else if (r != 0u) {
+            static char text[] = "PSRAM found, DMA writes unsafe (run 0 code 0)";
+            text[sizeof(text) - 10u] = (char)('0' + ((r >> 8) & 0xFu));
+            text[sizeof(text) - 3u] = (char)('0' + (r & 0xFu));
+            select_store(false);
+            ufi_psram_note(text);
+        }
+    }
 }
 
 uint32_t ufi_flux_now(void)
@@ -417,6 +431,131 @@ static void dma_arm(void)
     DMA1_Stream0->CR = (DMA1_Stream0->CR & ~(DMA_SxCR_CT | DMA_SxCR_CIRC)) |
                        DMA_SxCR_DBM | DMA_SxCR_TCIE | DMA_SxCR_TEIE | DMA_SxCR_DMEIE;
     DMA1_Stream0->CR |= DMA_SxCR_EN;    /* idle until TIM2 issues CC1 requests */
+}
+
+/* ============================================================================
+ * DMA WRITE TEST INTO THE PSRAM STORE (bench 2026-11-11)
+ * ============================================================================
+ * The PSRAM start-up test writes with the CPU. A capture writes 32-bit words with DMA1
+ * stream 0, FIFO off, and for H723 + APS6404L there are reports that the OCTOSPI pads a
+ * write narrower than 64 bit with zeros. This test uses that same stream and width: every
+ * software capture event on TIM2 channel 1 (EGR CC1G) raises one DMA request, the stream
+ * stores the running counter. No drive and no wiring is needed.
+ * Checked per run: the words stored are strictly increasing counter values, and the guard
+ * words before and after the run still hold their pattern (a padded write zeroes the word
+ * after it). Runs: start of the store, across a 1 KB PSRAM page, across the boundary of
+ * the two capture blocks, and the last words of the store against the scratch block.
+ * Not covered: the double-buffer switch itself (it changes the address, not the kind of
+ * bus access) and the request rate of a real track. */
+#define DMA_TEST_WORDS  96u
+#define DMA_TEST_GUARD  8u
+
+static uint32_t dma_test_pattern(uint32_t i)
+{
+    return 0x81818181u + (i & 0x3Fu) * 0x01010101u;     /* no zero byte */
+}
+
+static void dma_test_cache(uint32_t* first, uint32_t words, bool clean)
+{
+    uint32_t* line = (uint32_t*)((uintptr_t)first & ~(uintptr_t)31u);
+    const int32_t size = (int32_t)((((uintptr_t)(first + words) - (uintptr_t)line) + 31u) & ~(uintptr_t)31u);
+    if (clean) {
+        SCB_CleanDCache_by_Addr(line, size);
+    }
+    SCB_InvalidateDCache_by_Addr(line, size);
+}
+
+/* One run with the first DMA word at p. 0 ok, 1 DMA error flag, 2 guard before changed,
+ * 3 guard after changed, 4 stored words not increasing, 5 transfers stopped part-way;
+ * UFI_DMA_TEST_NOT_RUN when not a single request arrived (the test itself did not work). */
+static uint32_t dma_test_run(uint32_t* p)
+{
+    volatile uint32_t* base = p - DMA_TEST_GUARD;
+    const uint32_t total = DMA_TEST_WORDS + 2u * DMA_TEST_GUARD;
+    for (uint32_t i = 0; i < total; i++) {
+        base[i] = dma_test_pattern(i);
+    }
+    dma_test_cache(p - DMA_TEST_GUARD, total, true);
+
+    dma_stop();
+    DMA1_Stream0->PAR = (uint32_t)&TIM2->CNT;       /* increasing by itself, no input needed */
+    DMA1_Stream0->M0AR = (uint32_t)p;
+    DMA1_Stream0->NDTR = DMA_TEST_WORDS;
+    DMA1_Stream0->CR &= ~(DMA_SxCR_DBM | DMA_SxCR_CT | DMA_SxCR_CIRC | DMA_SxCR_TCIE |
+                          DMA_SxCR_HTIE | DMA_SxCR_TEIE | DMA_SxCR_DMEIE);
+    DMA1_Stream0->CR |= DMA_SxCR_EN;
+    const uint32_t dier = TIM2->DIER;
+    TIM2->DIER = (dier & ~(TIM_DIER_CC1DE | TIM_DIER_CC3DE)) | TIM_DIER_CC1DE;
+
+    uint32_t done = 0;
+    for (; done < DMA_TEST_WORDS; done++) {
+        const uint32_t left = DMA1_Stream0->NDTR;
+        TIM2->EGR = TIM_EGR_CC1G;
+        const uint32_t t0 = HAL_GetTick();
+        while (DMA1_Stream0->NDTR == left && (DMA1_Stream0->CR & DMA_SxCR_EN) != 0u) {
+            if (HAL_GetTick() - t0 > 2u) {
+                break;
+            }
+        }
+        if (DMA1_Stream0->NDTR == left && (DMA1_Stream0->CR & DMA_SxCR_EN) != 0u) {
+            break;                                  /* request not served */
+        }
+    }
+    const uint32_t flags = DMA1->LISR;
+    TIM2->DIER = dier & ~(TIM_DIER_CC1DE | TIM_DIER_CC3DE);
+    dma_stop();
+    TIM2->SR = ~(TIM_SR_CC1IF | TIM_SR_CC1OF);
+
+    if (done == 0u) {
+        return UFI_DMA_TEST_NOT_RUN;
+    }
+    if (flags & (DMA_LISR_TEIF0 | DMA_LISR_DMEIF0)) {
+        return 1u;
+    }
+    if (done < DMA_TEST_WORDS) {
+        return 5u;
+    }
+    dma_test_cache(p - DMA_TEST_GUARD, total, false);
+    for (uint32_t i = 0; i < DMA_TEST_GUARD; i++) {
+        if (base[i] != dma_test_pattern(i)) {
+            return 2u;
+        }
+        if (base[DMA_TEST_GUARD + DMA_TEST_WORDS + i] != dma_test_pattern(DMA_TEST_GUARD + DMA_TEST_WORDS + i)) {
+            return 3u;
+        }
+    }
+    for (uint32_t i = 1; i < DMA_TEST_WORDS; i++) {
+        if ((int32_t)(base[DMA_TEST_GUARD + i] - base[DMA_TEST_GUARD + i - 1u]) <= 0) {
+            return 4u;
+        }
+    }
+    return 0u;
+}
+
+/* 0 ok; UFI_DMA_TEST_NOT_RUN; otherwise run number (1..4) << 8 | fault code of that run.
+ * Destroys the store contents; only for the PSRAM store and only while nothing captures. */
+uint32_t ufi_flux_dma_selftest(void)
+{
+    if (!store_psram || store_words < 4u * 1024u) {
+        return UFI_DMA_TEST_NOT_RUN;
+    }
+    ufi_flux_invalidate();
+    uint32_t* const at[4] = {
+        &flux_store[DMA_TEST_GUARD],
+        &flux_store[5u * 256u - DMA_TEST_WORDS / 2u],           /* across a 1 KB page */
+        &flux_store[chunk_words - DMA_TEST_WORDS / 2u],         /* across the two DMA blocks */
+        &flux_store[store_words - DMA_TEST_WORDS],              /* store end, guard in the scratch block */
+    };
+    for (uint32_t run = 0; run < 4u; run++) {
+        const uint32_t r = dma_test_run(at[run]);
+        if (r == UFI_DMA_TEST_NOT_RUN) {
+            return r;
+        }
+        if (r != 0u) {
+            return ((run + 1u) << 8) | r;
+        }
+    }
+    return 0u;
 }
 
 /* ============================================================================

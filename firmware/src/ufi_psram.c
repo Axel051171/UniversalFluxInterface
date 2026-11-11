@@ -535,11 +535,21 @@ const char* ufi_psram_result(void)
     return psram_result;
 }
 
+void ufi_psram_note(const char* text)
+{
+    psram_result = text;
+}
+
 #else
 
 void ufi_psram_skip(const char* why)
 {
     (void)why;
+}
+
+void ufi_psram_note(const char* text)
+{
+    (void)text;
 }
 
 int ufi_psram_init(void)

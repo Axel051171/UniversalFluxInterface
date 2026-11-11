@@ -28,7 +28,7 @@ typedef struct {
 static const char* const item_names[] = {
     "", "timer", "usb_sof", "psram", "sd", "rail_5v", "rail_12v", "board_id", "usbc_cc",
     "fdd_lines", "iec_loop", "index_loop", "last_reset", "stack_free", "log",
-    "rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock", "fdd_pins",
+    "rtc", "sht40", "sync", "v_fdd5", "v_fdd12", "wgate_lock", "fdd_pins", "psram_dma",
 };
 
 /* ---- single items ------------------------------------------------------- */
@@ -333,6 +333,21 @@ static void t_fdd_pins(st_item_t* it)
     it->status = (it->value & (FDD_PIN_WGATE_SENSE | FDD_PIN_FLT5 | FDD_PIN_FLT12)) ? ST_WARN : ST_OK;
 }
 
+/* Capture stream (DMA1 stream 0, 32-bit words) writes into the PSRAM store and the
+ * neighbours stay intact; value 0, or run << 8 | fault code of ufi_flux_dma_selftest().
+ * Warn = no DMA request arrived, the test itself did not work. Destroys the store. */
+static void t_psram_dma(st_item_t* it)
+{
+    if (!ufi_flux_store_is_psram() || g_capture.state == CAPTURE_WAITING_INDEX ||
+        g_capture.state == CAPTURE_RUNNING || ufi_write_get_state() == WRITE_ACTIVE) {
+        it->status = ST_SKIP;
+        return;
+    }
+    const uint32_t r = ufi_flux_dma_selftest();
+    it->value = r == UFI_DMA_TEST_NOT_RUN ? 0u : r;
+    it->status = r == 0u ? ST_OK : r == UFI_DMA_TEST_NOT_RUN ? ST_WARN : ST_FAIL;
+}
+
 static void t_last_reset(st_item_t* it)
 {
     it->value = ufi_crash_kind();
@@ -387,6 +402,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     ITEM(19, t_vrail(&items[n], 1));
     ITEM(20, t_wgate_lock(&items[n]));
     ITEM(21, t_fdd_pins(&items[n]));
+    ITEM(22, t_psram_dma(&items[n]));
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */

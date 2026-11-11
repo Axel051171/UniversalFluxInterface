@@ -92,6 +92,8 @@ SELFTEST_ITEMS = {
     19: ("v_fdd12", "FDD_12V at the connector mV (fail < 10800 while on, skip = off / v0.x)"),
     20: ("wgate_lock", "A11f lock: 0 ok, 1 = WGATE reached the bus despite the lock, 2 = bus active at idle"),
     21: ("fdd_pins", "v1.0 read-backs: bit0 pin2 bit1 pin4 bit2 CSTOUT bit3 WGATE bus bit4 WLOCK_HW bit5/6 FLT bit7 SYNC"),
+    22: ("psram_dma", "capture DMA writes into the PSRAM store: 0 ok, else run << 8 | code (1 DMA error, 2/3 guard "
+                      "before/after changed, 4 not increasing, 5 stopped); warn = no DMA request, skip = no PSRAM store"),
 }
 SELFTEST_STATUS = {0: "ok", 1: "FAIL", 2: "skip", 3: "warn"}
 SELECT, MOTOR, SEEK, RECAL, SIDE, TIMING_CMD, LINES = 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16
