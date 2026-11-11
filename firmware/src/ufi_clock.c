@@ -26,6 +26,7 @@
 #include "ufi_firmware.h"
 
 #define LSE_WAIT_MS   2000u     /* own limit instead of LSE_STARTUP_TIMEOUT (5 s) */
+#define RTC_SYNC_WAIT_MS 20u    /* shadow register resync after init mode (< 1 ms at 32.768 kHz) */
 
 static bool hse_bypass;
 static bool rtc_ready;
@@ -134,9 +135,20 @@ static bool rtc_enter_init(void)
     return true;
 }
 
+/* Leaves init mode and waits until the shadow registers hold the new calendar: without
+ * this a read straight after a set still returns the old TR/DR (the copy happens up to
+ * two RTCCLK periods after the counter restarts). RSF is write protected, so it is
+ * cleared before the lock; a timeout is not an error, the calendar itself is set. */
 static void rtc_exit_init(void)
 {
     RTC->ISR &= ~RTC_ISR_INIT;
+    RTC->ISR = ~(RTC_ISR_RSF | RTC_ISR_INIT);   /* rc_w0: clears RSF only */
+    const uint32_t t0 = HAL_GetTick();
+    while ((RTC->ISR & RTC_ISR_RSF) == 0u) {
+        if (HAL_GetTick() - t0 > RTC_SYNC_WAIT_MS) {
+            break;
+        }
+    }
     RTC->WPR = 0xFFu;
 }
 

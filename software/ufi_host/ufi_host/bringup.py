@@ -193,10 +193,14 @@ def _discovery(dev: P2.Device2, rep: Report, ctx: Context) -> None:
             if len(absent) == len(v10_ids):
                 rep.add("features.v10", "skip", "firmware before stage A10 (no feature ids 11-14)")
             else:
+                # SYNC (13) is available only with apple_sync=1 in UFI.CFG (default 0): a setting,
+                # not a board fault, so it is named but not judged
                 down = [P2.FEATURE_NAMES.get(i, str(i)) for i in v10_ids
-                        if i in by_id and by_id[i]["supported"] and not by_id[i]["available"]]
+                        if i != 13 and i in by_id and by_id[i]["supported"] and not by_id[i]["available"]]
+                sync_off = 13 in by_id and by_id[13]["supported"] and not by_id[13]["available"]
                 rep.add("features.v10", "fail" if down else "ok",
-                        "RTC, SHT40, SYNC, rail voltages " + (f"unavailable: {down}" if down else "available"))
+                        "RTC, SHT40, SYNC, rail voltages " + (f"unavailable: {down}" if down else "available")
+                        + ("; SYNC off by configuration (apple_sync=0)" if sync_off else ""))
 
 
 def _diagnostics(dev: P2.Device2, rep: Report, ctx: Context) -> None:
@@ -301,7 +305,7 @@ def _fdd_pins_verdict(value: int, power: int | None) -> tuple[str, str]:
     return "ok", f"[{', '.join(names) or '-'}]" + (f"; {', '.join(off)} with the rail off is expected (ENUV low)" if off else "")
 
 
-def _selftest(dev: P2.Device2, rep: Report, ctx: Context) -> None:
+def _selftest(dev: P2.Device2, rep: Report, ctx: Context, has_12v: bool = True) -> None:
     if ctx.v10:
         _quiet(lambda: dev.select(0))       # wgate_lock and index_loop run only with nothing selected
     items = rep.guarded("selftest", dev.selftest)
@@ -318,7 +322,10 @@ def _selftest(dev: P2.Device2, rep: Report, ctx: Context) -> None:
             ctx.usb_sof_ppm = val
         ctx.selftest[name] = (st, val)
         extra = ""
-        if strict and name in V10_STRICT:
+        if name == "v_fdd12" and st == 1 and not has_12v:
+            # the 12 V rail is switched on but the board has no 12 V input (USB only)
+            status, note = "skip", "--no-12v: no 12 V supply at the board, nothing to judge"
+        elif strict and name in V10_STRICT:
             status = "ok" if st == 0 else "fail"
             note = f"v1.0 must be ok; else {V10_STRICT[name]}"
         elif strict and name == "fdd_pins" and st in (0, 3):
@@ -739,7 +746,7 @@ def run(dev: P2.Device2, rep: Report, index_sim: bool = False, *, expect_rev: in
     _supplies(dev, rep, ctx)
     _rtc(dev, rep, ctx, keep_rtc)
     _sensor(dev, rep, ctx)
-    _selftest(dev, rep, ctx)
+    _selftest(dev, rep, ctx, has_12v)
     _clocks(dev, rep, ctx)
     _rails(dev, rep, ctx, has_12v, with_drive=bool(drive))
     _lan(dev, rep, ctx)

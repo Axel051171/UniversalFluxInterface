@@ -201,6 +201,19 @@ def test_v10_keep_rtc_and_no_12v(clock):
     assert "--no-12v" in st["rails.on"].detail
 
 
+def test_v10_no_12v_skips_the_12v_selftest_item(clock):
+    """Bench 2026-11-11: USB only, rail switched on, v_fdd12 fails in the firmware - not a board fault."""
+    for has_12v, want in ((False, "skip"), (True, "fail")):
+        fake = FakeV10()
+        assert fake.selftest_items[17][0] == 19
+        fake.selftest_items[17] = (19, 1, 4)
+        rep = bringup.Report()
+        bringup.run(P2.Device2(fake), rep, has_12v=has_12v)
+        step = _steps(rep)["selftest.v_fdd12"]
+        assert step.status == want
+        assert ("--no-12v" in step.detail) == (want == "skip")
+
+
 @pytest.mark.parametrize("fault, step, text", [
     ("efuse", "rails.on", "eFuse fault"),
     ("lowrail", "rails.on", "below limit: 5 V"),

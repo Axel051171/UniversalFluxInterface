@@ -36,6 +36,10 @@ static const char* const item_names[] = {
 /* TIM2 (275 MHz) against the SysTick millisecond: catches a wrong PLL / prescaler */
 static void t_timer(st_item_t* it)
 {
+    /* start on a tick edge: from an arbitrary phase the window is 19..20 ms (up to -5 %) */
+    const uint32_t edge = HAL_GetTick();
+    while (HAL_GetTick() == edge) {
+    }
     const uint32_t t0 = TIM2->CNT;
     const uint32_t m0 = HAL_GetTick();
     while (HAL_GetTick() - m0 < 20u) {
@@ -59,14 +63,23 @@ static void t_usb_sof(st_item_t* it)
             return;
         }
     }
-    const uint32_t t0 = TIM2->CNT;
+    /* A frame number that jumps (asynchronous read during the update, bus reset) used to
+     * count as thousands of frames and gave about -1 000 000 ppm on the bench: the
+     * measurement restarts on the next frame edge instead. */
+    uint32_t t0 = TIM2->CNT;
     fn = (dev->DSTS & USB_OTG_DSTS_FNSOF) >> 8;
     uint32_t frames = 0;
     while (frames < 128u) {
         const uint32_t f = (dev->DSTS & USB_OTG_DSTS_FNSOF) >> 8;
         if (f != fn) {
-            frames += (f - fn) & 0x3FFFu;
+            const uint32_t step = (f - fn) & 0x3FFFu;
             fn = f;
+            if (step > 4u) {
+                t0 = TIM2->CNT;
+                frames = 0;
+            } else {
+                frames += step;
+            }
         }
         if (HAL_GetTick() - m0 > 400u) {
             it->status = ST_SKIP;
