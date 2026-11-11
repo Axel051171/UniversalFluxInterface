@@ -67,19 +67,58 @@ static const char* kind_name(uint32_t k)
            k == 4u ? "UsageFault" : "fault";
 }
 
+/* RCC_RSR as found at this start-up. The flags accumulate until they are cleared, so a
+ * start that never got as far as clearing them (2026-11-11: fault loop in the PSRAM test)
+ * leaves several set at once: 0x01FA0000 = power-on and software. Read and cleared first
+ * thing, so every start sees only what happened since the previous one. */
+static uint32_t reset_rsr;
+
+void ufi_crash_capture_reset(void)
+{
+    reset_rsr = RCC->RSR;
+    __HAL_RCC_CLEAR_RESET_FLAGS();
+}
+
+uint32_t ufi_crash_reset_flags(void)
+{
+    return reset_rsr;
+}
+
+/* Every cause that is set. A power-on reset also sets brown-out and pin, and a software
+ * or watchdog reset also sets pin (NRST is driven): those implied flags are not named. */
+static void reset_causes(char* out, size_t size)
+{
+    const uint32_t f = reset_rsr;
+    const bool por = (f & RCC_RSR_PORRSTF) != 0u;
+    const bool internal = (f & (RCC_RSR_SFTRSTF | RCC_RSR_IWDG1RSTF | RCC_RSR_WWDG1RSTF | RCC_RSR_LPWRRSTF)) != 0u;
+    const struct { bool on; const char* name; } cause[] = {
+        {por, "power-on"},
+        {!por && (f & RCC_RSR_BORRSTF) != 0u, "brown-out"},
+        {(f & RCC_RSR_IWDG1RSTF) != 0u, "watchdog"},
+        {(f & RCC_RSR_WWDG1RSTF) != 0u, "window watchdog"},
+        {(f & RCC_RSR_SFTRSTF) != 0u, "software"},
+        {(f & RCC_RSR_LPWRRSTF) != 0u, "low-power"},
+        {!por && !internal && (f & RCC_RSR_BORRSTF) == 0u && (f & RCC_RSR_PINRSTF) != 0u, "pin"},
+    };
+    size_t n = 0;
+    out[0] = 0;
+    for (size_t i = 0; i < sizeof(cause) / sizeof(cause[0]); i++) {
+        if (cause[i].on && n < size) {
+            n += (size_t)snprintf(out + n, size - n, "%s%s", n ? "+" : "", cause[i].name);
+        }
+    }
+    if (n == 0u) {
+        snprintf(out, size, "unknown");
+    }
+}
+
 void ufi_crash_boot(void)
 {
-    const char* cause =
-        __HAL_RCC_GET_FLAG(RCC_FLAG_PORRST) ? "power-on" :
-        __HAL_RCC_GET_FLAG(RCC_FLAG_IWDG1RST) ? "watchdog" :
-        __HAL_RCC_GET_FLAG(RCC_FLAG_WWDG1RST) ? "window watchdog" :
-        __HAL_RCC_GET_FLAG(RCC_FLAG_BORRST) ? "brown-out" :
-        __HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) ? "software" :
-        __HAL_RCC_GET_FLAG(RCC_FLAG_PINRST) ? "pin" : "unknown";
-    __HAL_RCC_CLEAR_RESET_FLAGS();
+    char cause[64];
+    reset_causes(cause, sizeof(cause));
 
     if (rec.magic != CRASH_MAGIC || rec.sum != checksum(&rec)) {
-        snprintf(last_text, sizeof(last_text), "reset: %s", cause);
+        snprintf(last_text, sizeof(last_text), "reset: %s (rsr %08lX)", cause, (unsigned long)reset_rsr);
         return;
     }
     last_kind = (uint8_t)rec.kind;
@@ -92,12 +131,14 @@ void ufi_crash_boot(void)
         "UFI %s %s after %lu ms\r\n"
         "r0=%08lX r1=%08lX r2=%08lX r3=%08lX\r\n"
         "r12=%08lX lr=%08lX pc=%08lX xpsr=%08lX\r\n"
-        "cfsr=%08lX hfsr=%08lX mmfar=%08lX bfar=%08lX\r\n",
+        "cfsr=%08lX hfsr=%08lX mmfar=%08lX bfar=%08lX\r\n"
+        "reset %s rsr=%08lX\r\n",
         UFI_FW_VERSION, kind_name(rec.kind), (unsigned long)rec.uptime_ms,
         (unsigned long)rec.r[0], (unsigned long)rec.r[1], (unsigned long)rec.r[2],
         (unsigned long)rec.r[3], (unsigned long)rec.r[4], (unsigned long)rec.r[5],
         (unsigned long)rec.r[6], (unsigned long)rec.r[7], (unsigned long)rec.cfsr,
-        (unsigned long)rec.hfsr, (unsigned long)rec.mmfar, (unsigned long)rec.bfar);
+        (unsigned long)rec.hfsr, (unsigned long)rec.mmfar, (unsigned long)rec.bfar,
+        cause, (unsigned long)reset_rsr);
     uint16_t written = 0;
     if (n > 0) {
         ufi_file_write("CRASH.LOG", 0, true, (const uint8_t*)text, (uint16_t)n, &written);

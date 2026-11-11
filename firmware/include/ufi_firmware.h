@@ -743,6 +743,8 @@ uint8_t ufi_iec_loopback(void);         // ufi_iec.c: bit0-3 ATN/CLK/DATA/SRQ no
 
 // fault record / reset cause (1.14, ufi_crash.c)
 void ufi_crash_fault(const uint32_t* frame, uint32_t kind);   // from the fault handlers
+void ufi_crash_capture_reset(void);     // first thing in ufi_init(): keep RCC_RSR, clear the flags
+uint32_t ufi_crash_reset_flags(void);   // RCC_RSR as found at this start-up
 void ufi_crash_boot(void);              // start-up: CRASH.LOG, reset cause text
 const char* ufi_crash_last(void);       // "reset: power-on" / "reset: HardFault pc=..."
 uint8_t ufi_board_rev(void);            // 5/6/7 (v0.x) or 10 (v1.0) from the BOARD_ID divider, 0 = unknown (ufi_v2.c)
