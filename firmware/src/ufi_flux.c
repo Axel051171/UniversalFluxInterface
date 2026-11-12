@@ -476,6 +476,11 @@ static void dma_arm(void)
 #define DMA_TEST_WORDS  96u
 #define DMA_TEST_GUARD  8u
 
+/* Of the failing (or last) run: guards changed before, after, data not increasing, data
+ * zero, value and word index (from the first guard) of the first wrong word, words wrong
+ * after the pattern fill (code 6: the fill itself failed, the stream did not run) */
+static uint32_t dma_detail[7];
+
 static uint32_t dma_test_pattern(uint32_t i)
 {
     return 0x81818181u + (i & 0x3Fu) * 0x01010101u;     /* no zero byte */
@@ -502,6 +507,24 @@ static uint32_t dma_test_run(uint32_t* p)
         base[i] = dma_test_pattern(i);
     }
     dma_test_cache(p - DMA_TEST_GUARD, total, true);
+
+    /* The pattern must be in the chip before the stream runs. Bench 2026-11-12: one guard
+     * word behind the run was wrong while the word right after the last DMA write was
+     * intact, which points at this fill (CPU through the cache) and not at the DMA. */
+    memset(dma_detail, 0, sizeof(dma_detail));
+    for (uint32_t i = 0; i < total; i++) {
+        const uint32_t v = base[i];
+        if (v != dma_test_pattern(i)) {
+            if (dma_detail[6]++ == 0u) {
+                dma_detail[4] = v;
+                dma_detail[5] = i;
+            }
+        }
+    }
+    if (dma_detail[6] != 0u) {
+        return 6u;
+    }
+    dma_test_cache(p - DMA_TEST_GUARD, total, false);
 
     dma_stop();
     DMA1_Stream0->PAR = (uint32_t)&TIM2->CNT;       /* increasing by itself, no input needed */
@@ -542,20 +565,33 @@ static uint32_t dma_test_run(uint32_t* p)
         return 5u;
     }
     dma_test_cache(p - DMA_TEST_GUARD, total, false);
+    /* The whole picture of the run, not only the first fault (bench 2026-11-12: "run 1
+     * code 3" did not say whether one guard word was zeroed or the data was damaged too):
+     * guard words changed before / after, data words not increasing, data words zero, and
+     * the value found in the first guard word after the run. */
     for (uint32_t i = 0; i < DMA_TEST_GUARD; i++) {
-        if (base[i] != dma_test_pattern(i)) {
-            return 2u;
-        }
-        if (base[DMA_TEST_GUARD + DMA_TEST_WORDS + i] != dma_test_pattern(DMA_TEST_GUARD + DMA_TEST_WORDS + i)) {
-            return 3u;
-        }
-    }
-    for (uint32_t i = 1; i < DMA_TEST_WORDS; i++) {
-        if ((int32_t)(base[DMA_TEST_GUARD + i] - base[DMA_TEST_GUARD + i - 1u]) <= 0) {
-            return 4u;
+        const uint32_t after = DMA_TEST_GUARD + DMA_TEST_WORDS + i;
+        dma_detail[0] += base[i] != dma_test_pattern(i);
+        if (base[after] != dma_test_pattern(after)) {
+            if (dma_detail[1]++ == 0u) {
+                dma_detail[4] = base[after];        /* first wrong guard word: value and index */
+                dma_detail[5] = after;
+            }
         }
     }
-    return 0u;
+    for (uint32_t i = 0; i < DMA_TEST_WORDS; i++) {
+        const uint32_t v = base[DMA_TEST_GUARD + i];
+        dma_detail[3] += v == 0u;
+        if (i > 0u) {
+            dma_detail[2] += (int32_t)(v - base[DMA_TEST_GUARD + i - 1u]) <= 0;
+        }
+    }
+    return dma_detail[0] ? 2u : dma_detail[1] ? 3u : dma_detail[2] ? 4u : 0u;
+}
+
+const uint32_t* ufi_flux_dma_detail(void)
+{
+    return dma_detail;
 }
 
 /* 0 ok; UFI_DMA_TEST_NOT_RUN; otherwise run number (1..4) << 8 | fault code of that run.

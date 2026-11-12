@@ -350,6 +350,50 @@ static void line_flush(volatile uint32_t* p)
     SCB_InvalidateDCache_by_Addr(line, 32);
 }
 
+/* Long sequential CPU writes (the pattern that makes the core stream stores past the
+ * cache): first whole lines, then a run that starts and ends inside a doubleword, each
+ * read back from the chip together with the words around it. Returns NULL or a text. */
+#define STREAM_FIRST    256u            /* word index, line aligned */
+#define STREAM_WORDS    1056u           /* 132 lines */
+#define STREAM_INNER    3u              /* inner run starts 3 words in ... */
+#define STREAM_INNER_N  1027u           /* ... and has an odd length */
+
+static void region_flush(volatile uint32_t* p, uint32_t words)
+{
+    SCB_CleanDCache_by_Addr((uint32_t*)(uintptr_t)p, (int32_t)(words * 4u));
+    SCB_InvalidateDCache_by_Addr((uint32_t*)(uintptr_t)p, (int32_t)(words * 4u));
+}
+
+static const char* psram_stream_test(volatile uint32_t* mem)
+{
+    static char text[64];
+    volatile uint32_t* r = mem + STREAM_FIRST;
+    for (uint32_t i = 0; i < STREAM_WORDS; i++) {
+        r[i] = pat_s(i & 0x3Fu);
+    }
+    region_flush(r, STREAM_WORDS);
+    for (uint32_t i = 0; i < STREAM_WORDS; i++) {
+        if (r[i] != pat_s(i & 0x3Fu)) {
+            snprintf(text, sizeof(text), "PSRAM cache write fault (fill w[%lu]=%08lX)",
+                     (unsigned long)i, (unsigned long)r[i]);
+            return text;
+        }
+    }
+    for (uint32_t i = STREAM_INNER; i < STREAM_INNER + STREAM_INNER_N; i++) {
+        r[i] = pat_p(i & 0x3Fu);
+    }
+    region_flush(r, STREAM_WORDS);
+    for (uint32_t i = 0; i < STREAM_WORDS; i++) {
+        const bool inner = i >= STREAM_INNER && i < STREAM_INNER + STREAM_INNER_N;
+        if (r[i] != (inner ? pat_p(i & 0x3Fu) : pat_s(i & 0x3Fu))) {
+            snprintf(text, sizeof(text), "PSRAM cache write fault (run w[%lu]=%08lX)",
+                     (unsigned long)i, (unsigned long)r[i]);
+            return text;
+        }
+    }
+    return NULL;
+}
+
 static const char* psram_line_test(volatile uint32_t* mem)
 {
     const uint32_t words = PSRAM_SIZE_BYTES / 4u;
@@ -407,6 +451,7 @@ static struct {
     uint8_t flags;              /* bit0 controller timeout, bit1 cache line test failed */
     narrow_t narrow;
     uint32_t dma;
+    uint32_t dma_detail[5];     /* ufi_flux_dma_detail() of a failed DMA test */
 } diag;
 
 static char status_text[96];
@@ -598,7 +643,21 @@ int ufi_psram_init(void)
     psram_narrow_test(mem + (1024u - 128u) / 4u, &diag.narrow);    /* across a 1 KB page boundary */
     trial(UFI_PSRAM_PH_LINES);
     psram_mpu(true);
+    /* Bench 2026-11-12: a sequential CPU fill of 112 words left word 110 zero in the chip
+     * although word 111 was right. With "dynamic read allocate" the Cortex-M7 stops loading
+     * cache lines during a long sequential write and sends the stores straight to the bus;
+     * a 32-bit store that is not merged with its neighbour then arrives as a 64-bit beat
+     * with four byte strobes, and this OCTOSPI cannot mask bytes on a memory without DQS:
+     * the other half of the doubleword is written as zero. With the mode off every write
+     * goes through the cache and reaches the chip as whole lines only. Costs a line fill
+     * before memset-like writes, for all memory. */
+    SCnSCB->ACTLR |= SCnSCB_ACTLR_DISRAMODE_Msk;
+    __DSB();
+    __ISB();
     const char* lines = psram_line_test(mem);
+    if (lines == NULL) {
+        lines = psram_stream_test(mem);
+    }
     if (lines != NULL) {
         diag.flags |= 2u;
     }
@@ -636,8 +695,15 @@ void ufi_psram_dma_result(uint32_t result)
     } else {
         diag.state = UFI_PSRAM_STATE_FAILED;
         diag.phase = UFI_PSRAM_PH_DMA;
-        snprintf(status_text, sizeof(status_text), "PSRAM found, DMA writes unsafe (run %lu code %lu)",
-                 (unsigned long)(result >> 8), (unsigned long)(result & 0xFFu));
+        const uint32_t* d = ufi_flux_dma_detail();
+        memcpy(diag.dma_detail, d, sizeof(diag.dma_detail));
+        /* code 6 = the pattern fill by the CPU was already wrong (f = words), the stream
+         * did not run; w[i]=v = index and value of the first wrong word */
+        snprintf(status_text, sizeof(status_text),
+                 "PSRAM found, DMA writes unsafe (run %lu code %lu: b%lu a%lu d%lu z%lu f%lu w[%lu]=%08lX)",
+                 (unsigned long)(result >> 8), (unsigned long)(result & 0xFFu), (unsigned long)d[0],
+                 (unsigned long)d[1], (unsigned long)d[2], (unsigned long)d[3], (unsigned long)d[6],
+                 (unsigned long)d[5], (unsigned long)d[4]);
         psram_result = status_text;
     }
 }
@@ -665,6 +731,9 @@ uint8_t ufi_psram_status_pack(uint8_t* out)
     memcpy(&out[10], n, 8);
     memcpy(&out[20], &diag.dma, 4);
     memcpy(&out[24], &rsr, 4);
+    for (unsigned i = 0; i < 4u; i++) {     /* failed DMA test: guards before / after, data not increasing, data zero */
+        out[28u + i] = diag.dma_detail[i] > 255u ? 255u : (uint8_t)diag.dma_detail[i];
+    }
     return 32;
 }
 

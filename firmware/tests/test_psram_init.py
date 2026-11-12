@@ -139,8 +139,14 @@ static void HAL_MPU_Disable(void) {}
 static void HAL_MPU_Enable(uint32_t m) { (void)m; }
 static void HAL_MPU_ConfigRegion(MPU_Region_InitTypeDef* r) { (void)r; }
 static unsigned cache_ops;
-static void SCB_CleanDCache_by_Addr(void* a, int32_t n) { (void)a; assert(n == 32); cache_ops++; }
-static void SCB_InvalidateDCache_by_Addr(void* a, int32_t n) { (void)a; assert(n == 32); cache_ops++; }
+static uint32_t* window;
+static void SCB_CleanDCache_by_Addr(void* a, int32_t n) { assert(n > 0 && n % 32 == 0 && ((uintptr_t)a - (uintptr_t)window) % 32u == 0); cache_ops++; }
+static void SCB_InvalidateDCache_by_Addr(void* a, int32_t n) { assert(n > 0 && n % 32 == 0 && ((uintptr_t)a - (uintptr_t)window) % 32u == 0); cache_ops++; }
+static struct { uint32_t ACTLR; } scnscb;
+#define SCnSCB (&scnscb)
+#define SCnSCB_ACTLR_DISRAMODE_Msk 0x800u
+#define __DSB()
+#define __ISB()
 
 #define RCC_RSR_PINRSTF 0x00400000u
 #define RCC_RSR_PORRSTF 0x00800000u
@@ -148,8 +154,10 @@ static void SCB_InvalidateDCache_by_Addr(void* a, int32_t n) { (void)a; assert(n
 #define RCC_RSR_IWDG1RSTF 0x04000000u
 static uint32_t reset_flags;
 static uint32_t ufi_crash_reset_flags(void) { return reset_flags; }
+static const uint32_t dma_detail_model[7] = {0, 1, 0, 300, 0, 111, 0};       /* one guard after zeroed; 300 saturates */
+const uint32_t* ufi_flux_dma_detail(void) { return dma_detail_model; }
 
-static uint32_t* window;
+
 #define OCTOSPI1_BASE ((uintptr_t)window)
 #include "../src/ufi_psram.c"
 
@@ -176,7 +184,8 @@ int main(void)
     assert(write_dqs == HAL_OSPI_DQS_ENABLE);           /* erratum ES0491 2.8.6 */
     assert(id_prescaler == OSPI_PROBE_PRESCALER && 275u / id_prescaler <= 33u);    /* READ ID <= 33 MHz */
     assert(octospi.DCR2 == OSPI_PRESCALER - 1u);
-    assert(cache_ops > 0);                              /* by address, 32 bytes (asserted in the stub) */
+    assert(cache_ops > 0);                              /* by address, whole lines (asserted in the stub) */
+    assert(scnscb.ACTLR & SCnSCB_ACTLR_DISRAMODE_Msk);   /* no stores past the cache (bench 2026-11-12) */
     const int calls_ok = hal_calls;
     assert(ufi_psram_status_pack(s) == 32 && s[0] == 1 && s[1] == UFI_PSRAM_STATE_OK &&
            s[2] == UFI_PSRAM_PH_LINES && s[3] == 0 && s[4] == 0x0D && s[5] == 0x5D && s[8] == 0);
@@ -187,7 +196,8 @@ int main(void)
     ufi_psram_dma_result((2u << 8) | 3u);
     ufi_psram_status_pack(s);
     assert(s[1] == UFI_PSRAM_STATE_FAILED && s[2] == UFI_PSRAM_PH_DMA && s[20] == 3 && s[21] == 2 &&
-           has("DMA writes unsafe (run 2 code 3)"));
+           has("DMA writes unsafe (run 2 code 3: b0 a1 d0 z300 f0 w[111]=00000000)") &&
+           s[28] == 0 && s[29] == 1 && s[30] == 0 && s[31] == 255);
 
     /* bench fault 1: warm start, the chip is still in QPI mode */
     board(true, true, RCC_RSR_SFTRSTF | RCC_RSR_PINRSTF);

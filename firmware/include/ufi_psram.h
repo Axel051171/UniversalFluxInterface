@@ -33,5 +33,8 @@ enum {
 };
 
 #define UFI_DMA_TEST_NOT_RUN 0xFFFFFFFFu        /* ufi_flux_dma_selftest(): no DMA request was served */
+/* ufi_flux.c, of the failing run: guard words changed before, after, data words not increasing,
+ * data words zero, value of the first guard word after the run */
+const uint32_t* ufi_flux_dma_detail(void);
 
 #endif /* UFI_PSRAM_H */

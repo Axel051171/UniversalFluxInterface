@@ -105,6 +105,12 @@ store shrinks to 31 chunks. The fallback array stays reserved even when the PSRA
      32.8 s watchdog on a dead controller.
    - The memory-mapped timeout counter (`PSRAM_IDLE_CYCLES`) releases CS# after the read prefetch so the
      chip can refresh; its interrupt is disabled because nobody handles it.
+   - Bench 2026-11-12: a long sequential CPU write left one word zero in the chip. With "dynamic read
+     allocate" the Cortex-M7 sends stores past the cache; an unmerged 32-bit store arrives as a 64-bit
+     beat with four strobes and this OCTOSPI cannot mask bytes without DQS. `ufi_psram_init()` sets
+     `SCnSCB->ACTLR` DISRAMODE before the cacheable tests and `psram_stream_test()` writes that pattern.
+     Do not clear the bit while the PSRAM window is cacheable. True 32-bit bus writes (DMA, device
+     memory) and whole cache lines were correct on the board.
 10. **Trial marker and latch.** `trial(phase)` stores `TRIAL_MAGIC | phase` in `psram_trial` (DTCM, survives
     reset) before each risky step. A start that dies there (bus fault, watchdog) makes the next start
     turn it into `LATCH_MAGIC`: the PSRAM stays off on every later start until a power-on reset
@@ -152,7 +158,9 @@ store shrinks to 31 chunks. The fallback array stays reserved even when the PSRA
    controller call is iterated there) and run it.
 4. A changed INFO text or status block (32 bytes, schema 1, `ufi_psram_status_pack()`) also changes
    `docs/USB_Protokoll.md` (SELFTEST `'P'`, INFO texts) and section 8.2a of `docs/Bringup_2026-10-24.md`.
-5. State in the commit what was not run on a board; none of the hardening stages has bench proof yet.
+5. State in the commit what was not run on a board. Bench state 2026-11-12: one v1.0 board passes the
+   bring-up run with the PSRAM in use and the DMA test ok; the failure, latch and watchdog paths have
+   never been provoked on hardware.
 
 ### Build a qualification image without U11
 
@@ -226,6 +234,7 @@ __attribute__((section(".dtcm"))) static uint32_t lead_request, lead_ticks, lead
 | INFO: "PSRAM not answering (id .. ..) gpio .. .." | READ ID wrong; `gpio 0D 5D` means chip fine and controller set-up wrong, `FF FF` means chip silent | check the controller configuration, or the soldering of U11 with `psram_probe.tcl` |
 | INFO: "PSRAM found, 32-bit writes unsafe (...)" or "DMA writes unsafe (run N code C)" | narrow writes disturb neighbouring words | board stays on the fallback store by design; do not bypass the test |
 | INFO: "PSRAM skipped: safe start (button B)" | button B held at start-up | restart without the button, or `ufi psram retest` |
+| INFO: "PSRAM cache write fault (fill/run w[i]=v)" or "DMA writes unsafe (... code 6 ...)" | a sequential CPU write did not reach the chip complete (stores past the cache, see invariant 9) | check that DISRAMODE is set before any cacheable write to the window |
 | Start-up loops with HardFault inside a cache clean | memory-mapped write answered with a bus error (DQSE cleared) | keep `HAL_OSPI_DQS_ENABLE` on the write command |
 | Three ERR blinks at start-up, `caps` bit0 clear | flux store is the fallback | read the INFO text and `ufi psram` for state and phase |
 | Variable in a NOLOAD section holds an old value after reset | section is not cleared | initialise in code |
