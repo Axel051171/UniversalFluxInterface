@@ -538,14 +538,15 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     if (ufi_job_live() && (ufi_job.kind!=1 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
     /* bit7 (2026-11-12): one more byte, read_flags2, closes the payload behind the fields the
      * other bits ask for (shapes 5, 7, 8 instead of 4, 6, 7). It is taken off here, so the
-     * rest of the parser sees the shapes it always saw. No bit of it is assigned yet: the
-     * mask is 0 and a set bit is refused, which keeps the byte free for later READ options. */
+     * rest of the parser sees the shapes it always saw. Bits outside the mask are refused.
+     * flags2 bit0: double step for this READ only (logical track n at physical 2n). */
+    uint8_t flags2 = 0;
     if (len >= 4u && len <= 8u && (p[3] & 0x80u)) {
         if (len != 5u && len != 7u && len != 8u) {
             refuse(REFUSE_LENGTH, 5);
             return UFI_ERR_BAD_ARGS;
         }
-        const uint8_t flags2 = p[len - 1u];
+        flags2 = p[len - 1u];
         if (flags2 & (uint8_t)~UFI_V2_READ_FLAGS2_MASK) {
             refuse(REFUSE_FLAGS2, (uint8_t)(flags2 & (uint8_t)~UFI_V2_READ_FLAGS2_MASK));
             return UFI_ERR_BAD_ARGS;
@@ -582,12 +583,17 @@ static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
     /* bit2: track field in quarter tracks (Apple), 1.14 */
     const uint8_t track = (len >= 4u && (p[3] & 0x04u)) ? p[0] >> 2 : p[0];
     const uint8_t quarter = (len >= 4u && (p[3] & 0x04u)) ? p[0] & 3u : 0u;
-    if(quarter && !ufi_drive_quarter_ok(quarter)){refuse(REFUSE_TRACK,ufi_drive_is_apple()?1:2);return UFI_ERR_BAD_ARGS;}   /* 2: Shugart half track needs double step, q = 2 */
+    /* flags2 bit0: the stepper of an Apple or Mac drive has no double step */
+    const bool twice = (flags2 & UFI_V2_READ2_DOUBLE_STEP) != 0;
+    if (twice && ufi_drive_is_apple()) return UFI_ERR_NOT_IMPL;
+    ufi_drive_double_step_once(twice);      /* seen by the half-track check and the seek of this start */
+    if(quarter && !ufi_drive_quarter_ok(quarter)){ufi_drive_double_step_once(false);refuse(REFUSE_TRACK,ufi_drive_is_apple()?1:2);return UFI_ERR_BAD_ARGS;}   /* 2: Shugart half track needs double step, q = 2 */
     uint8_t previous[6];ufi_flux_evidence_context(previous);
     ufi_flux_hard_sectors(sectors);
     ufi_flux_lead_in((flags & 0x40u) ? UFI_READ_LEAD_IN_TICKS : 0u);   /* consumed by this start only */
     const int ret = ufi_capture_start_q(track, p[1], revs, period_ticks, quarter);
     ufi_flux_lead_in(0);
+    ufi_drive_double_step_once(false);
     if (ret == UFI_OK) {
         op_read = true;
         read_seq = seq;

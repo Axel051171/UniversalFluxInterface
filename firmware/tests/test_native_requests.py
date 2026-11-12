@@ -24,13 +24,15 @@ static bool ufi_flux_store_is_psram(void){return psram;}
 static uint32_t lead_request,lead_at_start=0xEEEEEEEEu;
 static void ufi_flux_lead_in(uint32_t ticks){lead_request=ticks;}
 static bool half_track_ok;                                   /* Shugart double-step profile active */
-static bool ufi_drive_quarter_ok(uint8_t q){return !q || (q==2 && half_track_ok);}
+static bool twice_now,twice_at_start;static unsigned twice_sets;
+static void ufi_drive_double_step_once(bool on){twice_now=on;if(on)twice_sets++;}
+static bool ufi_drive_quarter_ok(uint8_t q){return !q || (q==2 && (half_track_ok||twice_now));}
 static uint32_t get16(const uint8_t* p){return p[0]|(uint32_t)p[1]<<8;}
 static void ufi_flux_hard_sectors(uint8_t n){hard_sectors=n;line_calls++;}
 static void ufi_flux_evidence_context(uint8_t p[6]){memset(p,0,6);p[4]=hard_sectors;}
 static void ufi_stream_begin_v2(uint8_t seq){(void)seq;}
 static int ufi_capture_start_q(uint8_t c,uint8_t h,uint8_t rev,uint32_t period,uint8_t quarter){
-    (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;lead_at_start=lead_request;return start_error;
+    (void)c;(void)h;(void)rev;(void)period;(void)quarter;starts++;lead_at_start=lead_request;twice_at_start=twice_now;return start_error;
 }
 /* op 39 refusal note (4.8): the parser records field and detail */
 enum {REFUSE_LENGTH=1,REFUSE_FLAGS,REFUSE_TRACK,REFUSE_SIDE,REFUSE_REVS,REFUSE_SECTORS,REFUSE_SCALE,
@@ -78,10 +80,19 @@ int main(void){
     p[3]=128;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_LENGTH && note_d==5);
     assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==5);
     p[4]=0;assert(!cmd_read(8,p,5) && starts==before+1);before=starts;calls=line_calls;   /* flags, flags2 = 0 */
-    p[4]=1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS2 && note_d==1);
-    p[4]=0x80;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==0x80);
+    assert(!twice_at_start && !twice_now && !twice_sets);
+    p[4]=2;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS2 && note_d==2);
+    p[4]=0x80|1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==0x80 && !twice_sets);
+    /* flags2 bit0: double step for this start only, cleared behind it also when the start fails */
+    p[4]=1;assert(!cmd_read(8,p,5) && starts==before+1 && twice_at_start && !twice_now);before=starts;
+    start_error=UFI_ERR_SEEK_FAIL;assert(cmd_read(8,p,5)==UFI_ERR_SEEK_FAIL && twice_at_start && !twice_now);start_error=0;before=starts;
+    p[4]=0;assert(!cmd_read(8,p,5) && !twice_at_start);before=starts;                     /* the next READ steps singly again */
+    p[4]=1;apple=true;calls=line_calls;assert(cmd_read(8,p,5)==UFI_ERR_NOT_IMPL && starts==before && line_calls==calls && !twice_now);apple=false;
+    p[3]=128|4;p[0]=4*17+2;assert(!cmd_read(8,p,5) && twice_at_start && !twice_now);before=starts;   /* half track 17.5 without a double-step profile */
+    p[0]=4*17+1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && starts==before && !twice_now);   /* refused: flag cleared too */
+    p[0]=0;p[3]=128;p[4]=0;calls=line_calls;
     p[3]=128|1;p[4]=p[5]=0;p[6]=0;assert(!cmd_read(8,p,7) && starts==before+1);before=starts;  /* period u16, then flags2 */
-    p[6]=4;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==4);
+    p[6]=4;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==4);p[6]=0;
     p[3]=128|2;p[6]=5;p[7]=0;assert(!cmd_read(8,p,8) && hard_sectors==5 && starts==before+1);before=starts;   /* sectors, then flags2 */
     p[7]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==2);
     p[3]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==3);   /* 8 bytes without bit7 */

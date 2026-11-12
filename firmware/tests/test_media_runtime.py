@@ -13,6 +13,7 @@ static drive_type_t g_current_drive=DRIVE_SHUGART_A;
 static drive_status_t g_drive_status[DRIVE_TYPE_COUNT];
 static media_state_t media[DRIVE_TYPE_COUNT];
 static drive_timing_t g_timing;
+static bool double_step_request;     /* READ flags2 bit0, not exercised here */
 static int g_last_dir,physical=30,direction;
 static bool change_line,motor=true,stuck,missing;
 static int early;
@@ -48,7 +49,7 @@ int ufi_drive_recalibrate(void);
 '''
     for name in ('ufi_drive_media_token','ufi_drive_media_matches','ufi_drive_media_status',
                  'ufi_drive_profile_set','ufi_drive_media_set','ufi_drive_media_notify',
-                 'ufi_drive_position_invalidate','ufi_drive_media_observed','ufi_drive_step','seek_physical','ufi_drive_seek',
+                 'ufi_drive_position_invalidate','ufi_drive_media_observed','ufi_drive_step','seek_physical','double_step','ufi_drive_seek',
                  'ufi_drive_recalibrate','ufi_drive_select_side'):
         code+=function('ufi_drive.c',name)
     code+=r'''

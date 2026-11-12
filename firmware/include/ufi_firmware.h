@@ -557,6 +557,7 @@ bool ufi_drive_is_mac(void);                // current drive is the Macintosh 3.
 bool ufi_drive_sync_index(void);            // the SYNC sensor gives the index: Disk II with apple_sync=1 (never the Mac drive)
 int ufi_drive_mac_op(const uint8_t* p, uint16_t len, uint8_t* out, uint16_t* n);   // UFI v2 MAC 0x29 (docs 1.7)
 int ufi_drive_mac_tach(uint8_t revs, uint32_t* min_ticks, uint32_t* avg_ticks, uint32_t* max_ticks);   // Mac: revolution times from the tachometer, 275 MHz ticks
+void ufi_drive_double_step_once(bool on);   // READ flags2 bit 0: double step for the operation started next; the caller clears it
 bool ufi_drive_quarter_ok(uint8_t quarter); // quarter form allowed: Apple 0..3, Shugart half track (2) with double_step (1.18)
 void ufi_flux_select_apple(bool apple);     // capture RDDATA (TIM2_CH3) instead of RDATA
 

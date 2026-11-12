@@ -395,6 +395,22 @@ int ufi_drive_apple_step(int direction)
 
 static int seek_physical(uint32_t phys);
 
+/* Double step for one request (READ flags2 bit 0, 2026-11-12): a 40-track disk in an 80-track
+ * drive chosen by the host per format, without changing the drive timing for everything
+ * else. Set by the request parser before it starts the operation and cleared by it right
+ * after the start, so no later seek inherits it. Shugart-type drives only. */
+static bool double_step_request;
+
+void ufi_drive_double_step_once(bool on)
+{
+    double_step_request = on;
+}
+
+static bool double_step(void)
+{
+    return g_timing.double_step != 0 || double_step_request;
+}
+
 /* Quarter form accepted for the selected drive: Apple 0..3; Shugart only the half track (2)
  * when the profile double-steps, where logical track n sits at physical 2n and the half track
  * at 2n+1 (1.18).  A plain stepper has no position between its steps otherwise. */
@@ -403,7 +419,7 @@ bool ufi_drive_quarter_ok(uint8_t quarter)
     if (quarter == 0) return true;
     if (g_current_drive == DRIVE_NONE || g_current_drive == DRIVE_IEC) return false;
     if (is_apple(g_current_drive)) return quarter <= 3u && !is_mac(g_current_drive);   /* Mac: whole tracks */
-    return quarter == 2u && g_timing.double_step != 0;
+    return quarter == 2u && double_step();
 }
 
 /* Seek with a quarter-track offset (Apple 0..3; Shugart half track with double step; quarter 0 =
@@ -711,7 +727,7 @@ int ufi_drive_seek(uint8_t track)
     }
     /* double step: logical track n sits at physical track 2n (40-track disk, 80-track drive);
      * current_track counts physical tracks */
-    return seek_physical(g_timing.double_step ? 2u * track : track);
+    return seek_physical(double_step() ? 2u * track : track);
 }
 
 /* Shugart step sequence to a physical track (half tracks of a double-step profile included) */

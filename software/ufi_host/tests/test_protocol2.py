@@ -696,6 +696,8 @@ class FakeV2:
                 self.emit_event(code, payload)
         elif cmd == P2.READ:
             _track, _side, revs, flags, _period = P2.READ_REQ.unpack_from(a)
+            if flags & 0x80 and len(a) in (7, 8) and not a[-1] & ~0x01:
+                flags &= 0x7F                                 # bit7: read_flags2 closes the payload, bit0 double step (2026-11-12)
             if flags & ~0x7F:                                 # op 38 READ mask: bit3 provenance in END (4.12), bit4 progress events (2.3), bit5 read context (4.24), bit6 lead-in (4.25)
                 self.refusal = (cmd, seq, P2.BAD_ARGS, 2, flags & ~0x7F)
                 r(P2.BAD_ARGS)
@@ -1632,6 +1634,22 @@ def test_last_refusal(monkeypatch, capsys):
     assert cli.main(["refusal"]) == 0 and "flags2, detail 32" in capsys.readouterr().out
     monkeypatch.setattr(P2, "open_serial", lambda port=None: FakeV2())
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
+
+
+def test_read_double_step_sends_the_extension_byte():
+    """READ flags2 (2026-11-12): the extension byte goes out only with a bit set, as the last
+    payload byte and announced by flag bit 7; a plain read keeps the old shape."""
+    fake = GuardedDevice(revolutions=REVS)
+    dev = P2.Device2(fake)
+    dev.read_track(3, 0, 2)
+    plain = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
+    assert len(plain) == 6 and not plain[3] & P2.READ_FLAGS2
+    dev.read_track(3, 0, 2, double_step=True)
+    ext = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
+    assert len(ext) == 7 and ext[3] & P2.READ_FLAGS2 and ext[-1] == P2.READ2_DOUBLE_STEP and ext[0] == 3
+    dev.read_track(3, 0, 2, hard_sectors=10, double_step=True)
+    ext = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
+    assert len(ext) == 8 and ext[6] == 10 and ext[7] == P2.READ2_DOUBLE_STEP
 
 
 def test_flag_masks(monkeypatch, capsys):

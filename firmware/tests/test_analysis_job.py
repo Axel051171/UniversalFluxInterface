@@ -592,7 +592,7 @@ int main(void){
     uint8_t fm[2]={38};assert(!ufi_analysis_command(fm,1,out,&size) && size==16 && out[0]==1);
     assert(out[1]==UFI_V2_READ_FLAG_MASK && out[2]==0xff && out[3]==UFI_V2_WRITE_FLAGS2_MASK && out[4]==0xff && out[5]==7);
     assert((out[6]|out[7]<<8)==APPLE_GCR_FLAG_MASK && (out[8]|out[9]<<8)==MFM_TOL_MASK);
-    assert((out[10]|out[11]<<8)==QUALITY_FEATURE_MASK && (out[12]|out[13]<<8)==EVIDENCE_MASK && out[14]==0xb1 && !out[15]);
+    assert((out[10]|out[11]<<8)==QUALITY_FEATURE_MASK && (out[12]|out[13]<<8)==EVIDENCE_MASK && out[14]==0xb1 && out[15]==UFI_V2_READ_FLAGS2_MASK);
     busy=true;assert(!ufi_analysis_command(fm,1,out,&size) && size==16);busy=false;   /* read-only, never BUSY */
     fm[1]=1;assert(ufi_analysis_command(fm,2,out,&size)==UFI_ERR_BAD_ARGS);
     /* Op 35: Apple II nibble statistics - 178 bytes, schema 1, no revolutions before a format 7 analysis */

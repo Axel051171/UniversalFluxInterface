@@ -27,12 +27,13 @@ static const int PIN_FDD_WPROT=3;
 static int HAL_GPIO_ReadPin(int port,int pin){(void)port;(void)pin;return apl_wrprot?GPIO_PIN_SET:GPIO_PIN_RESET;}
 static bool bus_in(const int* p){(void)p;return fdd_wprot;}
 static struct {uint16_t double_step;} g_timing;
+static bool double_step_request;     /* READ flags2 bit0, not exercised here */
 bool ufi_drive_write_protected(void);
 bool ufi_drive_sync_index(void);
 bool ufi_drive_quarter_ok(uint8_t quarter);
 bool ufi_drive_is_mac(void);
 '''
-    for name in ('ufi_drive_write_protected', 'ufi_drive_sync_index', 'ufi_drive_quarter_ok', 'ufi_drive_is_mac'):
+    for name in ('ufi_drive_write_protected', 'ufi_drive_sync_index', 'double_step', 'ufi_drive_quarter_ok', 'ufi_drive_is_mac'):
         code += function('ufi_drive.c', name)
     code += r'''
 int main(void){

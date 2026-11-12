@@ -199,7 +199,8 @@ READ_PROGRESS = 0x10                    # READ flag (1.18, 2.3): event 0x85 afte
 READ_CONTEXT = 0x20                     # READ flag (1.18-dev, 4.24): END carries the 132-byte read context block
 READ_LEAD_IN = 0x40                     # READ flag (1.18-dev, 4.25): flux of the 20 ms before index 0 ahead of revolution 0
 READ_FLAGS2 = 0x80                      # READ flag (2026-11-12): one byte read_flags2 closes the payload; accepted
-                                        # bits = flag_masks()["read_flags2"], none assigned yet
+                                        # bits = flag_masks()["read_flags2"]
+READ2_DOUBLE_STEP = 0x01                # read_flags2 bit 0: double step for this READ only
 LEAD_IN_TICKS = 5_500_000               # ... the lead-in the firmware delivers (UFI_READ_LEAD_IN_TICKS, 20 ms)
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
@@ -2041,7 +2042,7 @@ class Device2:
                    quarter: int = 0, frame_sink=None, integrity: bool | None = None,
                    expected_config: int | None = None, expected_media: int | None = None,
                    provenance: bool = False, progress=None, read_context: bool = False,
-                   lead_in: bool = False) -> Capture:
+                   lead_in: bool = False, double_step: bool = False) -> Capture:
         """Streamed capture: DATA frames while the disk turns, END frame with the revolutions.
         lead_in (firmware 1.18-dev, READ flag bit 6, 4.25): the stream also carries the flux of the
         20 ms before index 0, decoded into Capture.lead_in (LeadIn: negative times, time 0 = index 0);
@@ -2078,7 +2079,15 @@ class Device2:
         job = self._job_open(1) if (self.integrity if integrity is None else integrity) else None
         seq = self._next_seq()
         crc_errors = self.parser.crc_errors
-        payload = READ_REQ.pack(track, side, revolutions, flags, period_ms) + (bytes([hard_sectors]) if hard_sectors else b"")
+        # double_step (firmware of 2026-11-12, READ flags2 bit 0): logical track n at physical 2n for
+        # this read only (40-track disk in an 80-track drive), without changing the drive timing.
+        # The byte goes out only when a bit is set, so older firmware keeps getting the old shapes;
+        # ask flag_masks()["read_flags2"] first - older firmware refuses the request with status 16.
+        flags2 = READ2_DOUBLE_STEP if double_step else 0
+        if flags2:
+            flags |= READ_FLAGS2
+        payload = READ_REQ.pack(track, side, revolutions, flags, period_ms) + (bytes([hard_sectors]) if hard_sectors else b"") \
+            + (bytes([flags2]) if flags2 else b"")
         command = GUARDED_READ if guarded else READ
         if guarded:
             payload = struct.pack('<II', expected_config, expected_media) + payload
