@@ -955,7 +955,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x1F | STEP_SCHEDULE (1.14) | `flags` u8 (Bit0 Positionen in Viertelspuren), `n` u8 (≤ 32), n × (`at_ms` u16, `pos` u8) | – |
 | 0x29 | MAC (Platine v1.0) | – oder `op` u8: 0 Status, 1 `reg` u8 Rohbefehl, 2 Auswurf, 3 [`revs`] Tachometer, 4 [`zone`] 400K-PWM suchen, 5 `duty` u16 400K-PWM | Statusblock 15 Byte (Typ, Statusbits, Rohstatus, Spur, Kopf, Zone, Zonen- und Tachodrehzahl, PWM), Op 3/4 mit Ergebnis; nur mit Laufwerk 11 auf v1.0 (sonst 2 bzw. 11); Abschnitt 1.7 |
 | **Fluss** | | | |
-| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev, Bit6 Vorlauf vor dem ersten Index im Strom, 1.18-dev, 4.25), `period_ms` u16, bei Bit1 `sectors` u8 (1.14) | Annahme (Bit6 mit Bit0, Apple/Mac ohne Sync-Sensor oder ohne PSRAM: Status 11); dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
+| 0x20 | READ | `track, side, revs` u8, `flags` u8 (Bit0 ohne Index, Bit1 hartsektoriert, Bit2 `track` in Viertelspuren (Apple 0–3; Shugart ab 1.18 nur Halbspur 2 bei Doppelschritt-Profil), Bit3 Provenienzblock im Ende-Rahmen, Bit4 Fortschrittsereignis 0x85 je Umdrehung, 1.18, Bit5 Lesekontext im Ende-Rahmen, 1.18-dev, Bit6 Vorlauf vor dem ersten Index im Strom, 1.18-dev, 4.25, Bit7 Erweiterungsbyte `flags2` folgt, 2026-11-12), `period_ms` u16, bei Bit1 `sectors` u8 (1.14), bei Bit7 zuletzt `flags2` u8 (Nutzlastlängen dann 5, 7 oder 8 statt 4, 6, 7; angenommene Bits = Op 38 Byte 15, derzeit keines: ein gesetztes Bit → Status 16 mit Feld `flags2`, Bit7 ohne das Byte → Status 16 mit Feld Länge) | Annahme (Bit6 mit Bit0, Apple/Mac ohne Sync-Sensor oder ohne PSRAM: Status 11); dann Daten-Rahmen, Ende-Rahmen mit `revs` u8, ab 1.18 gefolgt vom Generationsblock (17 Byte, 4.5), mit Bit3 vom Provenienzblock (96 Byte, 4.12) und mit Bit5 zuletzt vom Lesekontext (132 Byte, 4.24) |
 | 0x27 | GUARDED_WRITE | `config_generation, media_generation` je u32, danach vollständige WRITE-Nutzlast (ohne Kommandobyte) | Antwort 0x27; DATA und END weiterhin 0x22, gleiche Sequenz; siehe 4.5 |
 | 0x28 | GUARDED_READ (1.18) | `config_generation, media_generation` je u32, danach vollständige READ-Nutzlast (ohne Kommandobyte) | Antwort 0x28 (16 veraltete Konfiguration, 21 anderes/kein Medium, keine Daten vor der Annahme); DATA und END weiterhin 0x20, gleiche Sequenz; siehe 4.5 |
 | 0x21 | ABORT | – | – (bricht Lesen/Schreiben ab; der laufende Vorgang endet mit Ende-Rahmen Status 4) |
@@ -1859,7 +1859,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | Offset | Typ | Inhalt | Stand 1.18-dev |
 |---:|---|---|---|
 | 0 | u8 | Schema | 1 |
-| 1 | u8 | READ-Flags (0x20, 0x28) | 0x7F (0x3F vor dem Vorlaufbit 6, 0x1F vor dem Lesekontextbit 5, 0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
+| 1 | u8 | READ-Flags (0x20, 0x28) | 0xFF (0x7F vor dem Erweiterungsbit 7, 0x3F vor dem Vorlaufbit 6, 0x1F vor dem Lesekontextbit 5, 0x0F vor dem Fortschrittsbit 4, 0x07 vor dem Provenienzbit 3) |
 | 2 | u8 | WRITE-Flags (0x22, 0x27) | 0xFF |
 | 3 | u8 | WRITE `flags2` (Bit0 Spurrest löschen, Bit1 Startversatz, Bit2 Präkompensation je Auftrag, Bit3 Weak-Marker, Bit4 Rohprüfung) | 0x1F (0x0F vor 4.17, 0x07 vor 4.16, 0x03 vor 4.14) |
 | 4 | u8 | Analyseflags (ANALYZE 0x25, Op 1 Byte 3); Regel bleibt: Bits 1–7 brauchen Bit 0 | 0xFF |
@@ -1869,7 +1869,7 @@ mit denen die Parser prüfen, nicht eine zweite Pflegeliste:
 | 10 | u16 | QUALITY-Merkmale (`features`, Op 1 Länge 37) | 0x000F |
 | 12 | u16 | Diagnoseflags (`diagnostic_flags`, 5.2) | 0x0018 |
 | 14 | u8 | Positionsbyte der Analyse (Seite, Viertelspurmodus, Viertel) | 0xB1 |
-| 15 | u8 | reserviert | 0 |
+| 15 | u8 | READ `flags2` (2026-11-12): Maske des Erweiterungsbytes, das READ mit Flag Bit7 als letztes Nutzlastbyte annimmt; vorher reserviert | 0x00 (noch kein Bit vergeben; 0 heißt auch auf älterer Firmware „keine Erweiterungsbits“) |
 
 Reine Abfrage: auch während Dump, Jobs oder gehaltener Ressource beantwortet, nie BUSY;
 jede Nutzlast nach dem Op-Byte → BAD_ARGS. Eine Maske sagt nur, welche Bits der Parser

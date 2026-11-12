@@ -198,6 +198,8 @@ READ_PROVENANCE = 0x08                  # READ flag (1.18, 4.12): END carries th
 READ_PROGRESS = 0x10                    # READ flag (1.18, 2.3): event 0x85 after every completed revolution
 READ_CONTEXT = 0x20                     # READ flag (1.18-dev, 4.24): END carries the 132-byte read context block
 READ_LEAD_IN = 0x40                     # READ flag (1.18-dev, 4.25): flux of the 20 ms before index 0 ahead of revolution 0
+READ_FLAGS2 = 0x80                      # READ flag (2026-11-12): one byte read_flags2 closes the payload; accepted
+                                        # bits = flag_masks()["read_flags2"], none assigned yet
 LEAD_IN_TICKS = 5_500_000               # ... the lead-in the firmware delivers (UFI_READ_LEAD_IN_TICKS, 20 ms)
 HARD_SECTORS = 0x02                     # READ/WRITE flag: sector-hole count follows (1.14)
 QUARTER_TRACKS = 0x04                   # READ/WRITE flag: track field = track * 4 + quarter (Apple, 1.14)
@@ -1703,7 +1705,10 @@ class Device2:
         return {"read_flags": reply[1], "write_flags": reply[2], "write_flags2": reply[3],
                 "analyze_flags": reply[4], "format_hint_max": reply[5], "apple_gcr_flags": apple,
                 "tolerance_flags": tolerance, "quality_features": features, "diagnostic_flags": diagnostics,
-                "position_byte": reply[14]}
+                "position_byte": reply[14],
+                # byte 15 (2026-11-12): mask of read_flags2, the byte READ takes behind its other
+                # fields when READ_FLAGS2 is set; 0 = no extension bit (also on older firmware)
+                "read_flags2": reply[15]}
 
     def raw_verify_options(self, flags: int | None = None, tolerance_permille: int | None = None) -> dict:
         """Op 31 (firmware 1.18, USB_Protokoll 6.3): options of the raw timing/density fingerprint.  Both

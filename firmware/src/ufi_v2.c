@@ -536,6 +536,22 @@ bool ufi_v2_read_context(void) { return read_context; }
 static int cmd_read(uint8_t seq, const uint8_t* p, uint16_t len)
 {
     if (ufi_job_live() && (ufi_job.kind!=1 || ufi_job.state!=JOB_OPEN)) return UFI_ERR_BUSY;
+    /* bit7 (2026-11-12): one more byte, read_flags2, closes the payload behind the fields the
+     * other bits ask for (shapes 5, 7, 8 instead of 4, 6, 7). It is taken off here, so the
+     * rest of the parser sees the shapes it always saw. No bit of it is assigned yet: the
+     * mask is 0 and a set bit is refused, which keeps the byte free for later READ options. */
+    if (len >= 4u && len <= 8u && (p[3] & 0x80u)) {
+        if (len != 5u && len != 7u && len != 8u) {
+            refuse(REFUSE_LENGTH, 5);
+            return UFI_ERR_BAD_ARGS;
+        }
+        const uint8_t flags2 = p[len - 1u];
+        if (flags2 & (uint8_t)~UFI_V2_READ_FLAGS2_MASK) {
+            refuse(REFUSE_FLAGS2, (uint8_t)(flags2 & (uint8_t)~UFI_V2_READ_FLAGS2_MASK));
+            return UFI_ERR_BAD_ARGS;
+        }
+        len--;
+    }
     if (len != 3u && len != 4u && len != 6u && len != 7u) {
         refuse(REFUSE_LENGTH, 3);
         return UFI_ERR_BAD_ARGS;

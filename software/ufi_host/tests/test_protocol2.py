@@ -1640,7 +1640,8 @@ def test_flag_masks(monkeypatch, capsys):
     dev = P2.Device2(fake)
     assert dev.flag_masks() == {"read_flags": 0x7F, "write_flags": 0xFF, "write_flags2": 0x1F, "analyze_flags": 0xFF,
                                 "format_hint_max": 7, "apple_gcr_flags": 0x3F, "tolerance_flags": 0x1F,
-                                "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1}
+                                "quality_features": 0x07, "diagnostic_flags": 0x18, "position_byte": 0xB1,
+                                "read_flags2": 0}      # byte 15: 0 on firmware without READ extension bits
     assert fake.requests[-1].payload == bytes([38])
     assert dev.flag_masks()["apple_gcr_flags"] == max(P2.APPLE_GCR_FLAGS.values()) * 2 - 1    # every host name fits the mask
     assert dev.flag_masks()["tolerance_flags"] == sum(P2.TOLERANCE_FLAGS.values())

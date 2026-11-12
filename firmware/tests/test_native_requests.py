@@ -62,7 +62,7 @@ static void guarded_checks(void){
     q[4]=0;assert(cmd_guarded_read(3,q,11)==UFI_ERR_MEDIA_CHANGED && starts==before);       /* media 0 */
     q[4]=9;note_f=0;assert(cmd_guarded_read(3,q,10)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==11); /* prefix only */
     assert(!cmd_guarded_read(3,q,11) && starts==before+1 && op_read && read_seq==3 && !aborts);
-    op_read=false;q[11]=129;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_FLAGS && note_d==128); /* READ flags still checked */
+    op_read=false;q[11]=129;assert(cmd_guarded_read(4,q,12)==UFI_ERR_BAD_ARGS && starts==before+1 && note_f==REFUSE_LENGTH && note_d==5); /* READ flags still checked: bit7 needs the read_flags2 byte */
     q[11]=0;start_error=UFI_ERR_SEEK_FAIL;assert(cmd_guarded_read(4,q,11)==UFI_ERR_SEEK_FAIL && !op_read);start_error=0;
     media_after_start=10;g_capture.state=CAPTURE_RUNNING;      /* change seen right after the start */
     assert(cmd_guarded_read(5,q,11)==UFI_ERR_MEDIA_CHANGED && aborts==1 && !op_read && g_capture.state==CAPTURE_IDLE);
@@ -73,7 +73,19 @@ int main(void){
     uint8_t p[12]={0,0,2,0,0,0,5};
     assert(!cmd_read(7,p,3) && starts==1 && op_read && read_seq==7);
     unsigned before=starts,calls=line_calls;
-    p[3]=128;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS && note_d==128);
+    /* bit7: read_flags2 closes the payload (shapes 5, 7, 8); no bit of it is assigned yet */
+    assert(sizeof(p)>=8);
+    p[3]=128;assert(cmd_read(8,p,6)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_LENGTH && note_d==5);
+    assert(cmd_read(8,p,4)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_LENGTH && note_d==5);
+    p[4]=0;assert(!cmd_read(8,p,5) && starts==before+1);before=starts;calls=line_calls;   /* flags, flags2 = 0 */
+    p[4]=1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS2 && note_d==1);
+    p[4]=0x80;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==0x80);
+    p[3]=128|1;p[4]=p[5]=0;p[6]=0;assert(!cmd_read(8,p,7) && starts==before+1);before=starts;  /* period u16, then flags2 */
+    p[6]=4;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==4);
+    p[3]=128|2;p[6]=5;p[7]=0;assert(!cmd_read(8,p,8) && hard_sectors==5 && starts==before+1);before=starts;   /* sectors, then flags2 */
+    p[7]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==2);
+    p[3]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==3);   /* 8 bytes without bit7 */
+    p[3]=0;p[4]=p[5]=p[7]=0;p[6]=5;hard_sectors=0;before=starts;calls=line_calls;    /* buffer as before this block */
     /* bit6 lead-in (4.25): requested for this start only, cleared behind it; refused without index or PSRAM */
     p[3]=64;assert(!cmd_read(8,p,4) && starts==before+1 && lead_at_start==UFI_READ_LEAD_IN_TICKS && !lead_request);
     p[3]=0;assert(!cmd_read(8,p,4) && !lead_at_start && !lead_request);before=starts;calls=line_calls;

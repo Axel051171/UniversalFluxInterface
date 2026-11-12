@@ -730,7 +730,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         out[8]=(uint8_t)MFM_TOL_MASK;out[9]=(uint8_t)(MFM_TOL_MASK>>8);
         out[10]=(uint8_t)QUALITY_FEATURE_MASK;out[11]=(uint8_t)(QUALITY_FEATURE_MASK>>8);
         out[12]=(uint8_t)EVIDENCE_MASK;out[13]=(uint8_t)(EVIDENCE_MASK>>8);
-        out[14]=UFI_V2_POSITION_MASK;
+        out[14]=UFI_V2_POSITION_MASK;out[15]=UFI_V2_READ_FLAGS2_MASK;   /* byte 15 was a zero reserve: 0 also means "no extension bits" on older firmware */
         *size=16;return UFI_OK;
     }
     if(p[0]==35 && n==1){
