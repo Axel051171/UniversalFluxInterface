@@ -15,6 +15,7 @@
 #include <string.h>
 
 #define CRASH_MAGIC     0x43524153u     /* "SARC" */
+#define CRASH_SAVE_TRIES 2u             /* further starts that retry CRASH.LOG before the record is dropped */
 
 typedef struct {
     uint32_t magic;
@@ -55,7 +56,11 @@ void ufi_crash_fault(const uint32_t* frame, uint32_t kind)
     rec.bfar = SCB->BFAR;
     rec.uptime_ms = HAL_GetTick();
     rec.sum = checksum(&rec);
-    SCB_CleanDCache();
+    /* No cache clean here. The record is in DTCM, which is not cached, and nothing else
+     * in RAM is read after the reset. A clean would write every dirty line back, also
+     * lines of the PSRAM window: if that window is why we are here (bus error on a
+     * memory-mapped write, bench 2026-11-11), the handler faults a second time, the core
+     * locks up and only the watchdog ends it 33 s later. */
     NVIC_SystemReset();
     for (;;) {
     }
@@ -118,13 +123,14 @@ void ufi_crash_boot(void)
     reset_causes(cause, sizeof(cause));
 
     if (rec.magic != CRASH_MAGIC || rec.sum != checksum(&rec)) {
+        last_kind = 0;
         snprintf(last_text, sizeof(last_text), "reset: %s (rsr %08lX)", cause, (unsigned long)reset_rsr);
         return;
     }
-    last_kind = (uint8_t)rec.kind;
-    snprintf(last_text, sizeof(last_text), "reset: %s pc=%08lX lr=%08lX cfsr=%08lX (CRASH.LOG)",
-             kind_name(rec.kind), (unsigned long)rec.r[6], (unsigned long)rec.r[5],
-             (unsigned long)rec.cfsr);
+    /* kind: fault in the low byte; above it the number of starts at which CRASH.LOG could
+     * not be written (the record is then kept for the next start instead of being lost) */
+    const uint32_t kind = rec.kind & 0xFFu, tries = rec.kind >> 8;
+    last_kind = (uint8_t)kind;
 
     char text[320];
     const int n = snprintf(text, sizeof(text),
@@ -133,18 +139,30 @@ void ufi_crash_boot(void)
         "r12=%08lX lr=%08lX pc=%08lX xpsr=%08lX\r\n"
         "cfsr=%08lX hfsr=%08lX mmfar=%08lX bfar=%08lX\r\n"
         "reset %s rsr=%08lX\r\n",
-        UFI_FW_VERSION, kind_name(rec.kind), (unsigned long)rec.uptime_ms,
+        UFI_FW_VERSION, kind_name(kind), (unsigned long)rec.uptime_ms,
         (unsigned long)rec.r[0], (unsigned long)rec.r[1], (unsigned long)rec.r[2],
         (unsigned long)rec.r[3], (unsigned long)rec.r[4], (unsigned long)rec.r[5],
         (unsigned long)rec.r[6], (unsigned long)rec.r[7], (unsigned long)rec.cfsr,
         (unsigned long)rec.hfsr, (unsigned long)rec.mmfar, (unsigned long)rec.bfar,
         cause, (unsigned long)reset_rsr);
     uint16_t written = 0;
-    if (n > 0) {
-        ufi_file_write("CRASH.LOG", 0, true, (const uint8_t*)text, (uint16_t)n, &written);
+    const bool saved = n > 0 && ufi_file_write("CRASH.LOG", 0, true, (const uint8_t*)text, (uint16_t)n, &written) == UFI_OK
+                       && written == (uint16_t)n;
+    /* Saved: reported once. Not saved (SD NAND absent, full, not ready): the record stays
+     * for up to CRASH_SAVE_TRIES further starts, then it is given up so that a board
+     * without storage does not report an old fault for ever. */
+    const bool keep = !saved && tries < CRASH_SAVE_TRIES;
+    snprintf(last_text, sizeof(last_text), "reset: %s%s pc=%08lX lr=%08lX cfsr=%08lX (%s)",
+             tries ? "earlier " : "", kind_name(kind), (unsigned long)rec.r[6], (unsigned long)rec.r[5],
+             (unsigned long)rec.cfsr,
+             saved ? "CRASH.LOG" : keep ? "CRASH.LOG not written, kept" : "CRASH.LOG not written");
+    if (keep) {
+        rec.kind = kind | ((tries + 1u) << 8);
+        rec.sum = checksum(&rec);
+    } else {
+        rec.magic = 0;
+        rec.sum = 0;
     }
-    rec.magic = 0;                      /* reported once */
-    rec.sum = 0;
 }
 
 /* Stack high-water mark: at start-up the free DTCM between the end of the .dtcm data
