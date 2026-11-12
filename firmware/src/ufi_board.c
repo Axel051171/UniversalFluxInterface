@@ -18,6 +18,7 @@
  */
 
 #include "ufi_firmware.h"
+#include "ufi_lan.h"                    /* ufi_v2_owner(): who owns the drive when USB goes away */
 #include "usbd_core.h"
 
 extern USBD_HandleTypeDef hUsbDevice;
@@ -224,9 +225,12 @@ void ufi_board_service(void)
         if (ufi_dump_active()) {
             return;                             /* stand-alone dump: USB not needed */
         }
-        ufi_capture_abort();
-        ufi_write_abort();
-        ufi_drive_safe_state();
+        /* L4: a LAN session that owns the drive keeps its work, as in ufi_composite_service() */
+        if (ufi_v2_owner() != UFI_ROUTE_LAN) {
+            ufi_capture_abort();
+            ufi_write_abort();
+            ufi_drive_safe_state();
+        }
     }
 
     /* transfers count as activity; idle motor goes off after motor_off_s */

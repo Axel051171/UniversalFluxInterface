@@ -301,6 +301,17 @@ static int pack_deltas(void) {
  * FLUX-DATEN EMPFANGEN
  * ============================================================================ */
 
+/* The precompensation override and the weak-cell markers belong to one write.  Only the v2 WRITE
+ * command sets them (after ufi_write_prepare); without this reset every later write that does not
+ * come through that command - format, USB floppy, dump write-back, the v1 protocol - would inherit
+ * the values of the last v2 write. */
+static void write_options_reset(void) {
+    precomp_override = false;
+    precomp_override_ns = 0;
+    weak_jitter = -1;
+    weak_seed = weak_applied = 0;
+}
+
 int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool verify) {
     if (g_write.state != WRITE_IDLE ||
         g_capture.state == CAPTURE_WAITING_INDEX || g_capture.state == CAPTURE_RUNNING ||
@@ -341,6 +352,7 @@ int ufi_write_prepare(uint8_t track, uint8_t side, uint32_t flux_count, bool ver
     g_write.erase_rest = false;
     g_write.start_offset = 0;
     g_write.raw_check = false;
+    write_options_reset();
     g_write.state = WRITE_RECEIVING;
 
     return UFI_OK;
@@ -1015,6 +1027,9 @@ int ufi_erase_track_ms(uint8_t track, uint8_t side, uint32_t ms) {
     ret=blocking_write_guard(media);if(ret)return ret;
     wdata_idle();
     led_set(&PIN_LED_FDD,true);diagnostic_write=true;g_write.state=WRITE_ACTIVE;
+    /* v1.0 (A9b): without WLOCK_FW low the hardware gate swallows WGATE and nothing is erased;
+     * write_finish() locks it again */
+    ufi_board_write_enable(true);
     if(ufi_drive_is_apple())HAL_GPIO_WritePin(PIN_APL_WRREQ.port,PIN_APL_WRREQ.pin,GPIO_PIN_RESET);
     else bus_out(&PIN_FDD_WGATE,true); /* no WDATA pulses = DC erase */
     ret=blocking_write_wait(ms,media);
@@ -1352,6 +1367,7 @@ int ufi_write_pattern(uint8_t track, uint8_t side, uint16_t interval_ns, uint16_
     led_set(&PIN_LED_FDD, true);
     diagnostic_write=true;
     g_write.state=WRITE_ACTIVE;
+    ufi_board_write_enable(true);           /* v1.0 (A9b): open the hardware WGATE gate; write_finish() locks it again */
     bus_out(&PIN_FDD_WGATE, true);
     __HAL_TIM_ENABLE(&htim3);
 

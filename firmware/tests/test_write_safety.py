@@ -58,32 +58,54 @@ static int ufi_drive_seek(uint8_t t){(void)t;return seek_error;}
 static int ufi_drive_select_side(uint8_t s){side_calls++;return s>1?UFI_ERR_BAD_ARGS:side_error;}
 static bool ufi_flux_index_asserted(void){return !no_index && tick%10u==0;}
 static void led_set(const int* p,bool b){(void)p;led=b;}
-static void bus_out(const int* p,bool b){(void)p;gate=b;if(b){gate_at=tick;opened++;}}
+/* v1.0 (A9b): WLOCK_FW is the firmware half of the hardware WGATE gate.  A gate signal raised while
+ * it is still closed never reaches the drive: the operation would report success and write nothing. */
+static bool fw_open;
+static unsigned fw_enables,locked_opens;
+static void ufi_board_write_enable(bool on){fw_open=on;if(on)fw_enables++;}
+static void bus_out(const int* p,bool b){(void)p;gate=b;if(b){gate_at=tick;opened++;if(!fw_open)locked_opens++;}}
 static void HAL_GPIO_WritePin(int p,int pin,int level){
     (void)p;(void)pin;apple_gate=level==GPIO_PIN_RESET;
-    if(apple_gate){gate_at=tick;opened++;}
+    if(apple_gate){gate_at=tick;opened++;if(!fw_open)locked_opens++;}
 }
 static void wdata_idle(void){}
 static void write_finish(write_state_t s){
     gate_duration=tick-gate_at;gate=apple_gate=led=false;tim.CR1&=~1u;
-    g_write.state=s;diagnostic_write=false;finished++;
+    g_write.state=s;diagnostic_write=false;finished++;fw_open=false;
 }
+/* per-write options of ufi_write.c that only the v2 WRITE command sets */
+static bool precomp_override;
+static uint16_t precomp_override_ns;
+static int32_t weak_jitter=-1;
+static uint32_t weak_seed,weak_applied;
 '''
-    for name in ('blocking_write_guard','blocking_write_wait','ufi_erase_track_ms','ufi_write_pattern'):
+    for name in ('blocking_write_guard','blocking_write_wait','ufi_erase_track_ms','ufi_write_pattern',
+                 'write_options_reset'):
         code+=function('ufi_write.c',name)
+    # every write is prepared by ufi_write_prepare(): that is where the options of the write before must end
+    assert 'write_options_reset();' in function('ufi_write.c','ufi_write_prepare')
     code+=r'''
 static void reset(void){
     gate=apple_gate=led=cancelled=locked=soft_locked=protected=apple=streaming=no_index=false;
     motor=true;tick=gate_at=gate_duration=cancel_at=change_at=protect_at=lock_at=0;media=1;
     seek_error=side_error=0;opened=watchdogs=side_calls=finished=0;
+    fw_open=false;fw_enables=0;
     g_write.state=WRITE_IDLE;g_capture.state=CAPTURE_IDLE;
     memset(&tim,0,sizeof tim);
 }
 static int operation(unsigned pattern,uint8_t side){
     return pattern?ufi_write_pattern(0,side,4000,5000):ufi_erase_track_ms(0,side,5000);
 }
-static void safe(void){assert(!gate && !apple_gate && !led && g_write.state==WRITE_IDLE);}
+/* after every operation: gate signals off, firmware lock closed again, and the lock was never
+ * opened by an operation that did not get as far as raising the gate */
+static void safe(void){
+    assert(!gate && !apple_gate && !led && g_write.state==WRITE_IDLE);
+    assert(!fw_open && (opened || !fw_enables) && !locked_opens);
+}
 int main(void){
+    precomp_override=true;precomp_override_ns=1500;weak_jitter=64;weak_seed=7;weak_applied=3;
+    write_options_reset();
+    assert(!precomp_override && !precomp_override_ns && weak_jitter==-1 && !weak_seed && !weak_applied);
     (void)HAL_Delay; /* retained only to make the pre-fix implementation executable */
     for(unsigned pattern=0;pattern<2;pattern++){
         reset();assert(operation(pattern,2)==UFI_ERR_BAD_ARGS && !opened);safe();
@@ -112,6 +134,7 @@ int main(void){
     reset();tim.CCMR1=TIM_CCMR1_OC1PE;tim.CCR1=0;
     assert(!ufi_write_pattern(0,0,4000,10) && tim.CCR1==WRITE_PULSE_TICKS-1u);
     assert((tim.CR1&TIM_CR1_DIR) && !(tim.CCMR1&TIM_CCMR1_OC1PE));safe();
+    puts("write safety: erase and pattern open the firmware gate before WGATE, per-write options end with the write");
     return 0;
 }
 '''

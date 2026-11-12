@@ -123,25 +123,33 @@ void board_gpio_init(void)
      * (released = high).  The revision comes from the BOARD_ID divider; the ADC initialises
      * itself on the first reading.  Until this point the 100k gate pull-downs (v1.0) and the
      * floating LS07 inputs (v0.x) keep every line released. */
-    board_fdd_mosfet = ufi_board_rev() >= 10u;
+    const uint8_t rev = ufi_board_rev();
+    board_fdd_mosfet = rev >= 10u;
     const GPIO_PinState fdd_rel = board_fdd_mosfet ? GPIO_PIN_RESET : GPIO_PIN_SET;
+    /* Unknown BOARD_ID (0: broken divider, ADC fault): the released level is not known - high
+     * asserts every line on a v1.0 board, low on a v0.x board.  The Shugart outputs then stay
+     * inputs, so the board itself keeps them released as it does during reset (see above); the
+     * drive is not usable, SELFTEST board_id and INFO "rev ?" name the reason. */
+    const uint32_t fdd_mode = rev ? GPIO_MODE_OUTPUT_PP : GPIO_MODE_INPUT;
 
     /* Bus outputs: latch the released level before switching to output mode,
      * so no line glitches to "asserted" during start-up. */
     const uint16_t fdd_e = GPIO_PIN_7 | GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 |
-                           GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15;
+                           GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_15;      /* PE14 = WGATE_n: below */
     const uint16_t iec_d = GPIO_PIN_0 | GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3 | GPIO_PIN_4;
     HAL_GPIO_WritePin(GPIOE, fdd_e, fdd_rel);
-    /* A11f: PE14 = WGATE_n stays active low on v1.0 (NOR gate U31 behind it), released = high */
+    /* A11f: PE14 = WGATE_n stays active low on v1.0 (NOR gate U31 behind it), released = high on
+     * every board, so it is driven whatever the revision reads */
     HAL_GPIO_WritePin(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOD, iec_d, BUS_OUT_RELEASE);          /* IEC: LS07 U9 on every board */
     HAL_GPIO_WritePin(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, fdd_rel);
     HAL_GPIO_WritePin(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, fdd_rel);
-    init_pins(GPIOE, fdd_e, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_HIGH, 0);
-    init_pins(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+    init_pins(GPIOE, fdd_e, fdd_mode, GPIO_NOPULL, GPIO_SPEED_FREQ_HIGH, 0);
+    init_pins(PIN_FDD_WGATE.port, PIN_FDD_WGATE.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_HIGH, 0);
+    init_pins(PIN_FDD_DRATE.port, PIN_FDD_DRATE.pin, fdd_mode, GPIO_NOPULL,
               GPIO_SPEED_FREQ_LOW, 0);
     init_pins(GPIOD, iec_d, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL, GPIO_SPEED_FREQ_MEDIUM, 0);
-    init_pins(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+    init_pins(PIN_FDD_WDATA.port, PIN_FDD_WDATA.pin, fdd_mode, GPIO_NOPULL,
               GPIO_SPEED_FREQ_VERY_HIGH, 0);
 
     /* Inputs are driven by the 74LVC14A: no pull resistors needed */
@@ -202,7 +210,7 @@ void board_gpio_init(void)
      * (their 100k pull-downs already hold them there during reset); guard error lines have
      * 10k pull-ups on the board, WGATE_SENSE is driven by the HC14 */
     HAL_GPIO_WritePin(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, fdd_rel);   /* A11b: MOSFET gate low = released */
-    init_pins(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
+    init_pins(PIN_INDEX_SIM.port, PIN_INDEX_SIM.pin, fdd_mode, GPIO_NOPULL,
               GPIO_SPEED_FREQ_LOW, 0);
     HAL_GPIO_WritePin(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_PIN_RESET);
     init_pins(GPIOG, PIN_LOOP_EN.pin | PIN_GUARD_OFF.pin, GPIO_MODE_OUTPUT_PP, GPIO_NOPULL,
