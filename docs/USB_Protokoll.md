@@ -3216,6 +3216,11 @@ als Taktabweichung in den Lesekontext (4.24) und den Herkunftsblock (4.12) über
 beginnt die Messung an der ersten Rahmengrenze nach dem Sprung. Nachweis im nativen Test
 `test_selftest_items.py` mit virtueller Zeit; auf der Platine nicht provoziert.
 
+Sicherer Start (Taste B beim Einschalten): Die ERR-LED zeigt den sicheren Start dauerhaft an. Bisher
+lief danach noch das dreimalige Blinken für „PSRAM ausgefallen“ und ließ die LED dunkel zurück,
+obwohl das PSRAM beim sicheren Start absichtlich übersprungen wird. Das Blinken entfällt jetzt beim
+sicheren Start; `board_status` Bit 6 und der INFO-Text waren und bleiben richtig.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

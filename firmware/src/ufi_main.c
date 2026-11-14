@@ -133,8 +133,9 @@ void ufi_init(void)
     ufi_mode_init();            /* mode switch on J13: flux / USB floppy / SD drive */
 
     /* PSRAM fitted but failed its self-test: 3 ERR blinks (flux store falls back to SRAM,
-     * GET_INFO reports the result) */
-    if (BOARD_HAS_PSRAM && !ufi_flux_store_is_psram()) {
+     * GET_INFO reports the result).  Not after a safe start: the PSRAM was left alone on
+     * purpose there, and the blinking ended with the ERR LED off although it marks safe mode. */
+    if (BOARD_HAS_PSRAM && !ufi_flux_store_is_psram() && !safe_mode) {
         for (int i = 0; i < 3; i++) {
             led_set(&PIN_LED_ERR, true);
             HAL_Delay(150);
