@@ -3221,6 +3221,14 @@ lief danach noch das dreimalige Blinken für „PSRAM ausgefallen“ und ließ d
 obwohl das PSRAM beim sicheren Start absichtlich übersprungen wird. Das Blinken entfällt jetzt beim
 sicheren Start; `board_status` Bit 6 und der INFO-Text waren und bleiben richtig.
 
+USB-Seriennummer (1.2): Der Seriennummern-String teilt sich den Puffer mit den übrigen Strings,
+bekam aber keinen eigenen Kopf. Länge und Typ stammten vom zuvor abgefragten String, zum Beispiel
+32 (Produktname) statt 26. Linux kürzt auf die empfangenen Bytes und las die zwölf Hex-Ziffern
+trotzdem; ein Host, der die Längenangabe prüft, kann den String verwerfen. Jetzt trägt der String
+immer Länge 26 und Typ 3, die zwölf Ziffern sind unverändert. Folge unter Windows möglich: Das Gerät
+wird einmalig als neue Instanz mit Seriennummer eingerichtet (COM-Port-Nummer kann wechseln). Auf
+keinem Betriebssystem nachgemessen.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

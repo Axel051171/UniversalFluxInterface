@@ -146,6 +146,11 @@ uint8_t *USBD_HS_SerialStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length)
     (void)speed;
     *length = USB_SIZ_STRING_SERIAL;
 
+    /* The string buffer is shared with the other strings: length and type of the one asked
+     * for before were still in it (e.g. 32 for the product name instead of 26). */
+    USBD_StrDesc[0] = USB_SIZ_STRING_SERIAL;
+    USBD_StrDesc[1] = USB_DESC_TYPE_STRING;
+
     /* Get unique device ID */
     Get_SerialNum();
 
@@ -186,11 +191,9 @@ static void Get_SerialNum(void)
 
     deviceserial0 += deviceserial2;
 
-    if (deviceserial0 != 0)
-    {
-        IntToUnicode(deviceserial0, &USBD_StrDesc[2], 8);
-        IntToUnicode(deviceserial1, &USBD_StrDesc[18], 4);
-    }
+    /* always written: with the shared buffer an unwritten string is the tail of another one */
+    IntToUnicode(deviceserial0, &USBD_StrDesc[2], 8);
+    IntToUnicode(deviceserial1, &USBD_StrDesc[18], 4);
 }
 
 /**
