@@ -17,6 +17,7 @@ import struct
 from dataclasses import dataclass, field
 
 from .protocol import FLUX_CLOCK_HZ
+from .atomic import write_atomic
 
 BLOCK = 512
 ENC_ISOIBM_MFM, ENC_AMIGA_MFM, ENC_ISOIBM_FM, ENC_UNKNOWN = 0, 1, 2, 0xFF
@@ -180,8 +181,7 @@ def write_hfe(path: str, img: HfeImage) -> None:
             body += s1[k * 256:(k + 1) * 256].ljust(256, b"\0")
         struct.pack_into("<HH", lut, 4 * c, block, 2 * n)
         block += blocks
-    with open(path, "wb") as f:
-        f.write(bytes(hdr) + bytes(lut) + bytes(body))
+    write_atomic(path, bytes(hdr) + bytes(lut) + bytes(body))
 
 
 def read_hfe(path: str) -> HfeImage:
@@ -377,5 +377,4 @@ def write_hfe_v3(path: str, img: HfeImage) -> None:
                 data = encoded.get((c,h),b'')[b*256:(b+1)*256]
                 body.extend(data.ljust(256,b'\x0f'))  # reversed NOP
         block += blocks
-    with open(path,'wb') as output:
-        output.write(header+lut+body)
+    write_atomic(path, header+lut+body)

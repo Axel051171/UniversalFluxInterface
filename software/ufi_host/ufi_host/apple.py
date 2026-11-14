@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .hfe import Pll
+from .atomic import write_atomic
 
 CELL_RATE = 125_000                 # Pll(rate) models MFM cells of 1/(2*rate): 4 us
 SYMBOLS = bytes([
@@ -229,8 +230,7 @@ class DiskImage:
         return good
 
     def write(self, path: str) -> None:
-        with open(path, "wb") as f:
-            f.write(self.data)
+        write_atomic(path, self.data)
 
 
 def order_for_name(path: str, requested: str | None) -> str:

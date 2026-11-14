@@ -14,6 +14,7 @@ import struct
 from dataclasses import dataclass
 
 from .protocol import FLUX_CLOCK_HZ
+from .atomic import write_atomic
 
 SCP_HZ = 40_000_000
 N_TRACKS = 168
@@ -88,8 +89,7 @@ def write_scp(path: str, tracks: dict[int, list[ScpRevolution]], revolutions: in
     checksum = sum(tail) & 0xFFFFFFFF
     header = b"SCP" + bytes([0x22, DISK_OTHER, revolutions, nums[0] if nums else 0,
                              nums[-1] if nums else 0, FLAG_INDEX | 0x80, 0, heads, 0])
-    with open(path, "wb") as f:
-        f.write(header + struct.pack("<I", checksum) + tail)
+    write_atomic(path, header + struct.pack("<I", checksum) + tail)
 
 
 def read_scp(path: str) -> tuple[int, dict[int, list[ScpRevolution]]]:

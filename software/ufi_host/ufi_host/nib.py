@@ -13,6 +13,7 @@ import struct
 from dataclasses import dataclass, field
 
 from . import protocol2 as P2
+from .atomic import write_atomic
 
 SYNC_RUN = re.compile(rb"\xff+")
 G64_TRACKS = 84
@@ -226,6 +227,5 @@ def write_g64(path: str, results: list[TrackResult]) -> None:
         offsets.append(base + len(body))
         speeds.append(speed_zone(ht // 2))
         body += struct.pack("<H", len(data)) + data + bytes(G64_MAX - len(data))
-    with open(path, "wb") as f:
-        f.write(hdr + b"".join(struct.pack("<I", o) for o in offsets)
+    write_atomic(path, hdr + b"".join(struct.pack("<I", o) for o in offsets)
                 + b"".join(struct.pack("<I", v) for v in speeds) + body)

@@ -16,6 +16,7 @@ import struct
 from dataclasses import dataclass, field
 
 from . import apple
+from .atomic import write_atomic
 from .protocol import FLUX_CLOCK_HZ
 
 CELL_RATE = 250_000                 # Pll(rate) models MFM cells of 1/(2*rate): 2 us GCR cells
@@ -315,8 +316,7 @@ def write_dc42(path: str, data: bytes, tags: bytes, sides: int, name: str = "UFI
     header = bytes([len(label)]) + label.ljust(63, b"\0")
     header += struct.pack(">IIIIBBH", len(data), len(tags), dc42_checksum(data),
                           dc42_checksum(tags[12:]) if tags else 0, disk, fmt, 0x0100)
-    with open(path, "wb") as f:
-        f.write(header + data + tags)
+    write_atomic(path, header + data + tags)
 
 
 def read_dc42(raw: bytes) -> tuple[bytes, bytes, int]:
@@ -379,8 +379,7 @@ class GcrImage:
         if is_dc42_name(path):
             write_dc42(path, bytes(self.data), bytes(self.tags), self.sides, name)
         else:
-            with open(path, "wb") as f:
-                f.write(self.data)
+            write_atomic(path, self.data)
 
     @classmethod
     def load(cls, path: str) -> GcrImage:
@@ -423,5 +422,4 @@ class MfmImage:
         return good
 
     def write(self, path: str) -> None:
-        with open(path, "wb") as f:
-            f.write(self.data)
+        write_atomic(path, self.data)

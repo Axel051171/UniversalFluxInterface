@@ -30,6 +30,7 @@ from datetime import datetime
 from pathlib import PurePosixPath
 
 from . import protocol as P
+from .atomic import write_atomic
 from . import protocol2 as P2
 from .hfe import (ENCODINGS, HfeImage, bits_to_deltas, fit_cell16, flux_to_cells, guess_rate, read_hfe,
                   side_bytes, write_hfe)
@@ -652,8 +653,7 @@ def run_v2(dev: P2.Device2, a) -> bool:
     elif a.cmd == "get":
         data = dev.read_file(a.name, _progress(None))
         out = a.output or PurePosixPath(a.name).name
-        with open(out, "wb") as f:
-            f.write(data)
+        write_atomic(out, data)
         print(f"\nwrote {out}: {len(data)} bytes")
     elif a.cmd == "put":
         with open(a.local, "rb") as f:
