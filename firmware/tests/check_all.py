@@ -69,7 +69,7 @@ if __name__ == "__main__":
         'test_quality_runtime','test_analysis_job','test_precision_runtime','test_capture_archive',
         'benchmark_quality','test_apple_gcr','test_tolerance','test_evidence_runtime','test_media_runtime',
         'test_drive_profiles','test_stream_runtime','test_motor_runtime','test_capture_integrity',
-        'test_lan_runtime','test_mac_write_guard','test_psram_init','test_board_safety_runtime','test_crash_boot','test_event_poll','test_weak_reference','test_callgraph','test_sched','test_sim_host','test_command_table','test_sim_sequences','test_perf_budget')
+        'test_lan_runtime','test_mac_write_guard','test_psram_init','test_board_safety_runtime','test_board_power_runtime','test_crash_boot','test_event_poll','test_weak_reference','test_callgraph','test_sched','test_sim_host','test_command_table','test_sim_sequences','test_perf_budget')
     started=time.monotonic()
     with ThreadPoolExecutor(max_workers=JOBS) as pool:
         pending=[pool.submit(execute,(f'firmware/tests/{name}.py',),True) for name in independent]
