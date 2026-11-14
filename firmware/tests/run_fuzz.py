@@ -114,6 +114,9 @@ STUBBED = {
                      'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
                extra=dict(LINKER_SYMBOLS)),
     'usb': dict(harness='fuzz_usb.c', units=('ufi_usb',), real=(), extra=dict(LINKER_SYMBOLS)),
+    # 'fast': compiled with -O2 and without sanitizer/coverage instrumentation. ufi_mfm.c is the hot loop
+    # here (seven decoder passes per format detection) and has its own targets (parsers, protection).
+    'floppy': dict(harness='fuzz_floppy.c', units=('ufi_floppy',), real=(), fast=('ufi_mfm',), extra=dict(LINKER_SYMBOLS)),
     'drive': dict(harness='fuzz_drive.c', units=('ufi_drive',),
                   real=('ufi_drive_extra', 'ufi_media', 'ufi_capabilities', 'ufi_verify', 'ufi_mac'),
                   extra=dict(LINKER_SYMBOLS)),
@@ -133,6 +136,41 @@ USB_SEEDS = tuple(bytes(cmd) + bytes([0, 63]) for cmd in (
     [0x42], [0x50, 1, 80, 2, 3, 0, 0, 0, 0], [0x51], [0x53, 1], [0x53, 2], [0x54], [0xD0, 1, 2, 3], [0xD0, 0],
     [0xD1, 3], [0xF0], [0xFF], [0x55, 0xAA, 1, 0, 1, 0, 0, 0, 0x12, 0x34])) + (
     bytes([0x53, 1, 0x01, 0x53, 0, 0x17, 1, 2, 9, 4, 4, 4, 1, 1, 1]),)
+
+
+
+def floppy_seed(fmt, flags, bpb, ops):
+    """fuzz_floppy.c: format, flags, BPB (bytes/sector, total, sectors/track, heads), then the
+    operations; the harness reads them from the end of the input, so they are stored reversed."""
+    return bytes([fmt, flags]) + b''.join(v.to_bytes(2, 'little') for v in bpb) + bytes(reversed(ops))
+
+
+# ready, read block 5, write block 15, flush, read it back, end + begin, ready, read block 15
+FLOPPY_SCRIPT = [0, 1, 0, 5, 2, 1, 2, 3, 1, 1, 2, 7, 0, 1, 1, 2]
+FLOPPY_SEEDS = (floppy_seed(0, 0, (512, 2880, 18, 2), FLOPPY_SCRIPT),
+                floppy_seed(1, 0, (512, 2400, 15, 2), FLOPPY_SCRIPT),
+                floppy_seed(2, 0, (512, 3360, 21, 2), FLOPPY_SCRIPT),
+                floppy_seed(3, 0, (512, 1440, 9, 2), FLOPPY_SCRIPT + [0x0A, 20, 3, 4, 3]),
+                floppy_seed(3, 0, (512, 720, 9, 1), FLOPPY_SCRIPT),
+                floppy_seed(4, 0, (512, 720, 9, 2), FLOPPY_SCRIPT),
+                floppy_seed(5, 1, (0, 0, 0, 0), FLOPPY_SCRIPT),
+                floppy_seed(5, 0, (512, 1660, 10, 2), FLOPPY_SCRIPT),
+                floppy_seed(6, 0, (512, 1804, 11, 2), FLOPPY_SCRIPT),
+                floppy_seed(7, 0, (512, 5760, 36, 2), FLOPPY_SCRIPT),
+                floppy_seed(8, 0, (0, 0, 0, 0), FLOPPY_SCRIPT),
+                floppy_seed(9, 0, (0, 0, 0, 0), FLOPPY_SCRIPT),
+                floppy_seed(10, 0, (512, 800, 5, 2), FLOPPY_SCRIPT),
+                # write, then a truncated capture, a disk change, write protect, capture error
+                # the limits of the boot sector rule: 83 and 35 cylinders are taken, 84 and 34 are not,
+                # one head with reads far into the disk
+                floppy_seed(0, 0, (512, 18 * 2 * 83, 18, 2), FLOPPY_SCRIPT + [1, 200, 3]),
+                floppy_seed(0, 0, (512, 18 * 100, 18, 1), FLOPPY_SCRIPT + [1, 200, 3]),
+                floppy_seed(3, 0, (512, 9 * 35, 9, 1), FLOPPY_SCRIPT + [1, 20, 3]),
+                floppy_seed(3, 0, (512, 9 * 34, 9, 1), FLOPPY_SCRIPT + [1, 20, 3]),
+                floppy_seed(0, 0, (512, 18 * 80, 18, 1), FLOPPY_SCRIPT + [1, 100, 7, 1, 10, 0]),
+                # the last block and the first one behind the disk, read and written
+                floppy_seed(0, 0, (512, 2880, 18, 2), [0, 0x81, 0xC0, 3, 0x81, 0xC0, 4, 0x82, 0xC0, 3, 0x82, 0xC0, 4, 0x99, 0xC0, 2, 3, 7]),
+                floppy_seed(0, 0, (512, 2880, 18, 2), [0, 2, 2, 2, 0x0D, 90, 1, 3, 3, 0x2D, 0, 0x25, 2, 0, 1, 3, 0x15, 4, 1, 0, 9, 7]))
 
 # LAN parsers: selector byte, then the input (fuzz_lan.c)
 LAN_SEEDS = (b'\x00lan=on\r\nip=dhcp\r\nmask=255.255.255.0\r\ngw=\r\ndns=\r\nhostname=\r\nmac=\r\nport=55100\r\n'
@@ -278,6 +316,10 @@ def build_stubbed(name):
         o = objdir / (unit + '.o')
         subprocess.run([compiler(), *flags, '-w', '-c', str(FW / 'src' / (unit + '.c')), '-o', str(o)], check=True)
         objects.append(o)
+    for unit in spec.get('fast', ()):
+        o = objdir / (unit + '.o')
+        subprocess.run([compiler(), *COMMON, '-O2', *STUB_FLAGS, '-w', '-c', str(FW / 'src' / (unit + '.c')), '-o', str(o)], check=True)
+        objects.append(o)
     subprocess.run([compiler(), *flags, '-Wall', '-Wextra', '-Werror', '-c', str(FW / 'tests' / spec['harness']),
                     '-o', str(harness)], check=True)
     stubs = objdir / 'stubs.c'
@@ -300,6 +342,7 @@ TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
            'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
            'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192),
            'usb': (lambda: build_stubbed('usb'), USB_SEEDS, 'fuzz_usb_corpus', 1024),
+           'floppy': (lambda: build_stubbed('floppy'), FLOPPY_SEEDS, 'fuzz_floppy_corpus', 64),
            'drive': (lambda: build_stubbed('drive'), DRIVE_SEEDS, 'fuzz_drive_corpus', 1024),
            'lan': (build_lan, LAN_SEEDS, 'fuzz_lan_corpus', 4096)}
 
