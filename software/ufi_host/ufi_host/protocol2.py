@@ -818,7 +818,7 @@ def parse_flags(spec, table: dict) -> int:
 
 def _apple_unpack(b: bytes) -> dict:
     if len(b) < 13 or b[0] != 1:
-        raise DeviceError("Apple GCR options: unexpected reply")
+        raise ValueError("Apple GCR options: unexpected reply")
     flags = b[11] | b[12] << 8
     return {"addr_prologue": b[1:4].hex(), "data_prologue": b[4:7].hex(), "addr_epilogue": b[7:9].hex(),
             "data_epilogue": b[9:11].hex(), "flags": flags,
@@ -1521,7 +1521,7 @@ class Device2:
         An empty 'revs' list means no format 7 analysis ran since the last reset."""
         b = self.analysis_op(35)
         if len(b) < 178 or b[0] not in (1, 2):
-            raise DeviceError("Apple GCR statistics: unexpected reply")
+            raise ValueError("Apple GCR statistics: unexpected reply")
         revs = []
         for r in range(b[1]):
             v = struct.unpack_from("<5H", b, 2 + 10 * r)
@@ -1556,7 +1556,7 @@ class Device2:
         else:
             reply = self.analysis_op(36)
         if len(reply) < 65 or reply[0] != 1:
-            raise DeviceError("Apple GCR table: unexpected reply")
+            raise ValueError("Apple GCR table: unexpected reply")
         return bytes(reply[1:65])
 
     def decoder_tolerance(self, flags=None) -> dict:
@@ -1571,7 +1571,7 @@ class Device2:
         else:
             reply = self.analysis_op(34)
         if len(reply) < 3 or reply[0] != 1:
-            raise DeviceError("decoder tolerance: unexpected reply")
+            raise ValueError("decoder tolerance: unexpected reply")
         value = reply[1] | reply[2] << 8
         return {"flags": value, "flag_names": flag_names(value, TOLERANCE_FLAGS)}
 
@@ -1581,7 +1581,7 @@ class Device2:
         mandatory check mask and the current configuration and media generations."""
         reply = self.analysis_op(25)
         if len(reply) < 16 or reply[0] not in (1, 2) or (reply[0] == 2 and len(reply) < 20):
-            raise DeviceError("guarded starts: unexpected reply")
+            raise ValueError("guarded starts: unexpected reply")
         mask, config, media = struct.unpack_from("<III", reply, 4)
         info = {"schema": reply[0], "write_start": reply[1], "write_data": reply[2], "prefix": reply[3],
                 "check_mask": mask, "config_generation": config, "media_generation": media,
@@ -1596,7 +1596,7 @@ class Device2:
         Returns {'revs', 'track', 'side_byte', 'counts': [64 ints]}; revs 0 = nothing to compare."""
         reply = self.analysis_op(42)
         if len(reply) < 68 or reply[0] != 1:
-            raise DeviceError("weak windows: unexpected reply")
+            raise ValueError("weak windows: unexpected reply")
         return {"revs": reply[1], "track": reply[2], "side_byte": reply[3], "counts": list(reply[4:68])}
 
     def provenance(self) -> dict:
@@ -1692,7 +1692,7 @@ class Device2:
                 raise ValueError("speed tolerance: 0 (off) to 500 per mille")
             reply = self.analysis_op(41, struct.pack("<BH", 1, tolerance_permille))
         if len(reply) < 11 or reply[0] != 1:
-            raise DeviceError("speed check: unexpected reply")
+            raise ValueError("speed check: unexpected reply")
         tol, measured, source = struct.unpack_from("<HII", reply, 1)
         rpm = lambda t: round(60 * P.FLUX_CLOCK_HZ / t, 2) if t else 0.0
         return {"tolerance_permille": tol, "measured_ticks": measured, "source_ticks": source,
@@ -1706,7 +1706,7 @@ class Device2:
         previous report in place."""
         reply = self.analysis_op(40)
         if len(reply) < 6 or reply[0] != 1 or len(reply) < 6 + 5 * reply[2]:
-            raise DeviceError("verify report: unexpected reply")
+            raise ValueError("verify report: unexpected reply")
         fmt, count, flags, track, side = reply[1:6]
         sectors = [{"c": c, "h": h, "r": r, "n": n, "state": s, "state_name": VERIFY_SECTOR_STATES.get(s, str(s))}
                    for c, h, r, n, s in (reply[6 + 5 * i:11 + 5 * i] for i in range(count))]
@@ -1720,7 +1720,7 @@ class Device2:
         since reset.  Match command/seq against your own request before naming the field."""
         reply = self.analysis_op(39)
         if len(reply) < 6 or reply[0] != 1:
-            raise DeviceError("last refusal: unexpected reply")
+            raise ValueError("last refusal: unexpected reply")
         return {"command": reply[1], "seq": reply[2], "status": reply[3], "field": reply[4],
                 "field_name": REFUSAL_FIELDS.get(reply[4], f"field {reply[4]}"), "detail": reply[5]}
 
@@ -1729,7 +1729,7 @@ class Device2:
         parser constants, so a GUI enables exactly the options this firmware takes."""
         reply = self.analysis_op(38)
         if len(reply) < 16 or reply[0] != 1:
-            raise DeviceError("flag masks: unexpected reply")
+            raise ValueError("flag masks: unexpected reply")
         apple, tolerance, features, diagnostics = struct.unpack_from("<HHHH", reply, 6)
         return {"read_flags": reply[1], "write_flags": reply[2], "write_flags2": reply[3],
                 "analyze_flags": reply[4], "format_hint_max": reply[5], "apple_gcr_flags": apple,
@@ -1789,7 +1789,7 @@ class Device2:
         status 22; reads and SD file writes stay allowed."""
         reply = self.analysis_op(37, b"\x01" if engage else b"")
         if len(reply) < 2 or reply[0] != 1:
-            raise DeviceError("write lock: unexpected reply")
+            raise ValueError("write lock: unexpected reply")
         return {"session": bool(reply[1] & 1), "jumper": bool(reply[1] & 2), "locked": bool(reply[1] & 3)}
 
     def timing_preset(self, preset: int | str) -> OperatingProfile:

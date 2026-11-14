@@ -386,6 +386,8 @@ uint16_t ufi_v2_generations(uint8_t* out, uint32_t media_start, uint32_t capture
     return UFI_V2_GEN_BLOCK;
 }
 
+static void flush_event(void);
+
 bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
 {
     bool* op = (cmd == UFI_V2_READ) ? &op_read : &op_write;
@@ -393,6 +395,16 @@ bool ufi_v2_end(uint8_t cmd, int result, const uint8_t* payload, uint16_t len)
         return false;                   /* not a v2 operation: v1 completion message */
     }
     *op = false;
+    if (cmd == UFI_V2_READ) {
+        /* The progress event of the last revolution is queued in the same main-loop pass that
+         * ends the stream.  Left to the next pass it went out behind the END, where the host
+         * has already closed the request and never saw it (found 2026-11-14 by the host-in-
+         * the-loop test).  Queued events therefore leave before the END; flush_event() sends
+         * one at a time and only while the transmitter is idle. */
+        for (unsigned i = 0; i < EVQ_SIZE && ev_tail != ev_head; i++) {
+            flush_event();
+        }
+    }
     if (cmd == UFI_V2_WRITE && result == UFI_ERR_TIMEOUT) {
         result = UFI_ERR_DMA;           /* verify capture timed out: verify failed (6) */
     }

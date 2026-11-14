@@ -104,6 +104,9 @@ void HAL_GPIO_TogglePin(GPIO_TypeDef* port, uint16_t pin);
 
 extern uint32_t stub_primask;
 static inline uint32_t __get_PRIMASK(void) {return stub_primask;}
+#ifndef UFI_STUB_OWN_IPSR
+static inline uint32_t __get_IPSR(void) {return 0;}     /* thread mode; ufi_composite_runtime.c brings its own */
+#endif
 static inline void __set_PRIMASK(uint32_t value) {stub_primask=value;}
 static inline void __disable_irq(void) {stub_primask=1;}
 static inline void __enable_irq(void) {stub_primask=0;}
