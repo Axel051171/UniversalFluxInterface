@@ -15,6 +15,49 @@ from test_regressions import BASE, ERRORS, FW, function, run, v2_command_table
 DELIBERATE = {}
 
 
+# The missing column of the command table: which changing ANALYSIS_JOB ops bump the configuration
+# generation (GUARDED_READ / GUARDED_WRITE refuse a token from before).  Every op that
+# analysis_changes() lists must appear in exactly one of these sets, so a new setter cannot stay
+# invisible to guarded requests by accident (as ops 34, 41 and 45 did until 2026-11-14).
+BUMPS_DIRECTLY = {31, 33, 34, 36, 41, 45, 50, 55}      # ufi_config_changed() in the op's own block
+BUMPS_IN_CALLEE = {10: 'ufi_drive_extra_set', 14: 'ufi_drive_profile_set', 15: 'ufi_drive_media_set',
+                   18: 'ufi_drive_operating_profile'}
+DOES_NOT_BUMP = {
+    1: 'starts a job', 4: 'aborts a job', 5: 'starts a self-test', 16: 'media notify: bumps the media generation',
+    24: 'guarded start itself', 26: 'guarded start itself', 27: 'creates a track plan', 29: 'steps a track plan',
+    30: 'track plan persistence', 46: 'track survey start / abort', 52: 'starts a job on the stored capture',
+    37: 'session write lock: guarded writes are refused by the lock itself (status 22)',
+    7: 'evidence configuration - owner decision open (2026-11-14)',
+    11: 'retry strategy - owner decision open (2026-11-14)',
+}
+
+
+def generation_column(v2_source):
+    job = (FW / 'src' / 'ufi_analysis_job.c').read_text(encoding='utf-8')
+    body = job[job.index('int ufi_analysis_command('):]
+    marks = [(m.start(), int(m.group(1))) for m in re.finditer(r'^    if\((?:\()?p\[0\]==(\d+)', body, re.M)]
+    blocks = {}
+    for (start, op), nxt in zip(marks, marks[1:] + [(len(body), None)]):
+        blocks[op] = blocks.get(op, '') + body[start:nxt[0]]
+    direct = {op for op, text in blocks.items() if 'ufi_config_changed()' in text}
+    # op 14/15/16 and 24/26 share a block in the source: name them by their own number
+    direct -= {14, 24}
+    assert direct == BUMPS_DIRECTLY, ('ops calling ufi_config_changed() changed', sorted(direct ^ BUMPS_DIRECTLY))
+    drive = (FW / 'src' / 'ufi_drive.c').read_text(encoding='utf-8')
+    for op, callee in BUMPS_IN_CALLEE.items():
+        assert callee in blocks.get(op, '') or callee in blocks.get(14 if op in (15,) else op, ''), (op, callee)
+        fn = re.search(r'\b%s\([^;{}]*\)\s*\{.*?^\}' % callee, drive, re.M | re.S)
+        assert fn, callee
+        reach = fn.group()
+        assert 'ufi_config_changed()' in reach or 'ufi_drive_set_rpm' in reach or 'ufi_drive_set_timing' in reach \
+            or 'ufi_drive_timing_checked' in reach, (callee, 'no longer bumps the generation')
+    changing = re.search(r'static bool analysis_changes\(.*?^\}', v2_source, re.M | re.S).group()
+    listed = {int(n) for n in re.findall(r'case (\d+):', changing)}
+    classified = BUMPS_DIRECTLY | set(BUMPS_IN_CALLEE) | set(DOES_NOT_BUMP)
+    assert listed == classified, ('changing ops without a decision on the generation', sorted(listed ^ classified))
+    assert not (BUMPS_DIRECTLY & set(DOES_NOT_BUMP)) and not (set(BUMPS_IN_CALLEE) & set(DOES_NOT_BUMP))
+
+
 def main():
     source = (FW / 'src' / 'ufi_v2.c').read_text(encoding='utf-8')
     enum = re.search(r'^enum \{\n    V2_PING = .*?^\};\n', source, re.M | re.S).group()
@@ -33,6 +76,8 @@ def main():
     unhandled = set(rows) - cases
     assert all(re.search(r'\b%s\b' % r, request) or re.search(r'\b%s\b' % r, source.replace(table, ''))
                for r in unhandled), sorted(unhandled)
+
+    generation_column(source)
 
     code = BASE + ERRORS + r'''
 #include "ufi_lan.h"

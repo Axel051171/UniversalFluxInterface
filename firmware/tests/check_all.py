@@ -89,6 +89,11 @@ if __name__ == "__main__":
         raise SystemExit("generated drive code differs from firmware/include/iec_nib.h")
     run("firmware/tools/asm6502.py", "firmware/tools/iec_nib.s", str(build / "iec_nib.bin"))
     run("firmware/tools/test_iec_nib.py", str(build / "iec_nib.bin"))
+    # Build every fuzz target and replay its stored corpus once.  Without this a change that
+    # breaks a fuzz build passed the local gate (2026-11-14: __get_IPSR missing in the HAL stub).
+    # CI fuzzes in its own step; UFI_SKIP_FUZZ_REPLAY=1 skips it for a quick local run.
+    if not os.environ.get("GITHUB_ACTIONS") and not os.environ.get("UFI_SKIP_FUZZ_REPLAY"):
+        run("firmware/tests/run_fuzz.py", "--replay")
     skipped=sum(r['status']=='skipped' for r in RESULTS)
     print(f"Offline software checks finished; {skipped} skipped. "
           + ("Full corpus release gate NOT satisfied. " if skipped else "All configured checks passed. ")

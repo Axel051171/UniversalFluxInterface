@@ -810,8 +810,8 @@ def main(argv: list[str] | None = None) -> int:
                  keep_rtc=a.keep_rtc, drive=a.drive, read_revs=a.read_revs, write_test=a.write_test,
                  write_track=a.write_track)
     if a.report:
-        with open(a.report, "w", encoding="utf-8") as f:
-            f.write(rep.to_json())
+        from .atomic import write_atomic
+        write_atomic(a.report, rep.to_json().encode("utf-8"))   # never a half-written report under the final name
     c = rep.counts()
     print(f"bring-up: {'FAIL' if failed else 'PASS'} - {c['ok']} ok, {c['warn']} warn, {c['fail']} fail, {c['skip']} skip")
     return 1 if failed else 0

@@ -54,3 +54,4 @@ crash-*
 leak-*
 timeout-*
 oom-*
+*.profraw

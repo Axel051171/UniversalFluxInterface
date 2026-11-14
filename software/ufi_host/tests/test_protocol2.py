@@ -1200,6 +1200,23 @@ def test_cli_diagnostics(monkeypatch, capsys):
 
 
 # -- events ---------------------------------------------------------------------
+def test_events_status_and_lost_line():
+    """EVENTS reply block (2026-11-14): decoded when present, None on older firmware (empty reply);
+    `ufi events` ends with what could not be delivered while it listened."""
+    block = bytes([1, 3, 12, 0]) + struct.pack("<III", 0x7F, 5, 0)
+    st = P2.Device2._events_status(block)
+    assert st == {"queue_events": 3, "max_payload": 12, "mask": 0x7F, "dropped_queue_full": 5, "dropped_too_long": 0}
+    assert P2.Device2._events_status(b"") is None and P2.Device2._events_status(bytes([2]) + block[1:]) is None
+    fake = FakeV2()
+    assert P2.Device2(fake).enable_events() is None            # the fake answers like older firmware
+    later = dict(st, dropped_queue_full=9, dropped_too_long=1)
+    assert cli._events_lost(st, st) == "dropped events: none"
+    assert cli._events_lost(None, st) == "dropped events: not reported by this firmware"
+    line = cli._events_lost(st, later)
+    assert line.startswith("dropped events: 4 (queue of 3 full") and "1 too long" in line
+    assert "too long" not in cli._events_lost(st, dict(st, dropped_queue_full=6))
+
+
 def test_events_are_queued_and_decoded():
     fake = FakeV2()
     fake.pending_events = [(P2.EV_BUTTON, b"\x01\x01"), (P2.EV_DISK_CHANGED, b"\x01"),

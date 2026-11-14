@@ -374,7 +374,7 @@ def cmd_caps(dev: P2.Device2) -> None:
 
 
 def cmd_events(dev: P2.Device2) -> None:
-    dev.enable_events(P2.EVENTS_ALL)
+    before = dev.enable_events(P2.EVENTS_ALL)
     print("events enabled - Ctrl+C to stop", flush=True)
     try:
         for ev in dev.iter_events():
@@ -382,7 +382,20 @@ def cmd_events(dev: P2.Device2) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        dev.enable_events(0)
+        after = dev.enable_events(0)
+        print(_events_lost(before, after), flush=True)
+
+
+def _events_lost(before: dict | None, after: dict | None) -> str:
+    """What the firmware could not deliver while we listened (EVENTS reply, 2026-11-14)."""
+    if before is None or after is None:
+        return "dropped events: not reported by this firmware"
+    full = after["dropped_queue_full"] - before["dropped_queue_full"]
+    long = after["dropped_too_long"] - before["dropped_too_long"]
+    if not full and not long:
+        return "dropped events: none"
+    return (f"dropped events: {full} (queue of {after['queue_events']} full: host or transmitter too slow)"
+            + (f", {long} too long for the queue (firmware defect, please report)" if long else ""))
 
 
 def _progress(total: int | None):
