@@ -223,13 +223,28 @@ static void send(uint8_t type, uint8_t cmd, uint8_t seq, uint8_t status,
        ufi_resources_owner()!=UFI_OWNER_GW && (!link.owner || link.owner==ufi_v2_route())) ufi_cancel_request();
 }
 
+/* The BOARD_ID divider is fixed hardware: measured once and kept.  Until 2026-11-14 every call
+ * ran an ADC conversion, and the write path calls this from interrupt handlers
+ * (write_finish() -> ufi_board_write_enable()): a blocking conversion inside the handler, and
+ * one that could cut into a conversion the main loop had running on the same ADC (rail
+ * currents, CC lines) - either side could then read the other's channel.  A wrong revision in
+ * ufi_board_write_enable() would take the v0.x branch on a v1.0 board.
+ * No conversion in an interrupt at all; a recognised revision is final, an unknown one (0, ADC
+ * not ready yet) is measured again from thread context. */
 uint8_t ufi_board_rev(void)
 {
+    static uint8_t rev;
+    static bool known;
+    if (known || __get_IPSR() != 0u) {
+        return rev;
+    }
     const uint16_t id = ufi_adc_mv(ADC_CH_BOARD_ID);
-    return (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? 5u
-         : (id + 200u > BOARD_ID_V06_MV && id < BOARD_ID_V06_MV + 200u) ? 6u
-         : (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 7u
-         : (id + 200u > BOARD_ID_V10_MV && id < BOARD_ID_V10_MV + 200u) ? 10u : 0u;
+    rev = (id + 200u > BOARD_ID_V05_MV && id < BOARD_ID_V05_MV + 200u) ? 5u
+        : (id + 200u > BOARD_ID_V06_MV && id < BOARD_ID_V06_MV + 200u) ? 6u
+        : (id + 200u > BOARD_ID_V07_MV && id < BOARD_ID_V07_MV + 200u) ? 7u
+        : (id + 200u > BOARD_ID_V10_MV && id < BOARD_ID_V10_MV + 200u) ? 10u : 0u;
+    known = rev != 0u;
+    return rev;
 }
 
 static uint32_t caps(uint8_t rev)

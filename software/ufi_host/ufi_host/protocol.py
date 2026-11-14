@@ -119,12 +119,33 @@ def decode_stream(data: bytes, track: int = 0, side: int = 0, flags: int = 0x01)
     return decode_stream_lead(data, track, side, flags)[1]
 
 
+def _close_revolution(revs: list, cur: list[int], start: int, at: int, track: int, side: int, flags: int) -> list[int]:
+    """End the open revolution at index time `at`.  A transition exactly on the index (it can
+    precede a mark with offset 0) belongs to the next revolution: returned as its beginning."""
+    carry: list[int] = []
+    while cur and cur[-1] + start >= at:
+        carry.append(cur.pop() + start - at)
+    carry.reverse()
+    revs.append(Revolution(track, side, len(revs), flags, at - start, cur))
+    return carry
+
+
 def decode_stream_lead(data: bytes, track: int = 0, side: int = 0,
                        flags: int = 0x01) -> tuple[LeadIn | None, list[Revolution]]:
     """decode_stream() plus the pre-index lead-in of READ flag bit6 (USB_Protokoll 4.25):
     0xFF 0x01 u32 L opens the stream (time base -L), the lead-in transitions follow, 0xFF 0x02
     u32 marks index 0 (must land exactly on time 0).  Without the header: (None, revolutions)."""
-    t, flux, index = 0, [], [0]
+    # The revolutions are built while decoding: no list of all absolute times in between.
+    # That intermediate list doubled the peak memory of a long capture (15.4 MiB against 7.7 MiB
+    # for 200 000 transitions, measured 2026-11-14).  `cur` holds the transitions of the open
+    # revolution relative to its index.  An index mark gives a time at or ahead of the cursor
+    # and does not move it, so transitions that follow the mark in the stream can still lie
+    # before that index: marks wait in `pend` until a transition reaches them (or the stream
+    # ends).  Transitions at or after the last index are dropped.
+    t, start, last_at = 0, 0, 0
+    revs: list[Revolution] = []
+    cur: list[int] = []
+    pend: list[int] = []
     lead: LeadIn | None = None
     in_lead = False
     i, n = 0, len(data)
@@ -135,33 +156,34 @@ def decode_stream_lead(data: bytes, track: int = 0, side: int = 0,
         lead, in_lead, t, i = LeadIn(ticks, []), True, -ticks, 6
     while i < n:
         b = data[i]
-        sink = lead.samples if in_lead else flux
         if 0x01 <= b <= 0xEF:
             t += b
-            sink.append(t)
             i += 1
         elif 0xF0 <= b <= 0xFC:
             if i + 2 > n:
                 raise ValueError("truncated two-byte flux interval")
             t += 240 + ((b - 0xF0) << 8) + data[i + 1]
-            sink.append(t)
             i += 2
-        elif b in (0xFD, 0xFE):
+        elif b == 0xFE:
             if i + 5 > n:
                 raise ValueError("truncated flux timestamp")
             v = int.from_bytes(data[i + 1:i + 5], "little")
-            if b == 0xFD:
-                if in_lead:
-                    raise ValueError("index mark inside the lead-in")
-                if t + v <= index[-1]:
-                    raise ValueError("non-increasing index timestamp")
-                index.append(t + v)
-            else:
-                if v == 0:
-                    raise ValueError("zero flux interval")
-                t += v
-                sink.append(t)
+            if v == 0:
+                raise ValueError("zero flux interval")
+            t += v
             i += 5
+        elif b == 0xFD:
+            if i + 5 > n:
+                raise ValueError("truncated flux timestamp")
+            if in_lead:
+                raise ValueError("index mark inside the lead-in")
+            at = t + int.from_bytes(data[i + 1:i + 5], "little")
+            if at <= last_at:
+                raise ValueError("non-increasing index timestamp")
+            pend.append(at)
+            last_at = at
+            i += 5
+            continue
         elif b == 0xFF and in_lead:
             if i + 6 > n or data[i + 1] != 0x02:
                 raise ValueError(f"bad or truncated lead-in end at {i}")
@@ -169,20 +191,25 @@ def decode_stream_lead(data: bytes, track: int = 0, side: int = 0,
                 raise ValueError("lead-in end does not meet the announced length")
             in_lead = False
             i += 6
+            continue
         else:
             raise ValueError(f"bad stream byte 0x{b:02X} at {i}")
-        if in_lead and t >= 0:
-            raise ValueError("lead-in transition at or after index 0")
+        # one transition at time t
+        if in_lead:
+            lead.samples.append(t)
+            if t >= 0:
+                raise ValueError("lead-in transition at or after index 0")
+            continue
+        while pend and pend[0] <= t:
+            at = pend.pop(0)
+            cur = _close_revolution(revs, cur, start, at, track, side, flags)
+            start = at
+        cur.append(t - start)
     if in_lead:
         raise ValueError("lead-in without index 0")
-    revs, j = [], 0
-    for r in range(len(index) - 1):
-        start, end = index[r], index[r + 1]
-        samples = []
-        while j < len(flux) and flux[j] < end:
-            samples.append(flux[j] - start)
-            j += 1
-        revs.append(Revolution(track, side, r, flags, end - start, samples))
+    for at in pend:
+        cur = _close_revolution(revs, cur, start, at, track, side, flags)
+        start = at
     return lead, revs
 
 

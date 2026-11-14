@@ -83,6 +83,49 @@ int main(void)
 '''
     run('regression_event_poll', code)
     queue()
+    board_rev()
+
+
+def board_rev():
+    """ufi_board_rev(): one ADC conversion, never one in an interrupt.  Until 2026-11-14 every
+    call converted, also from the write-path interrupt handlers."""
+    import re
+    from test_regressions import FW
+    board = (FW / 'include' / 'board.h').read_text(encoding='utf-8')
+    mv = {n: int(re.search(r'#define BOARD_ID_%s_MV\s+(\d+)u' % n, board).group(1)) for n in ('V05', 'V06', 'V07', 'V10')}
+    code = r'''
+#include <stdint.h>
+#include <stdbool.h>
+#include <assert.h>
+#define ADC_CH_BOARD_ID 7u
+#define BOARD_ID_V05_MV %du
+#define BOARD_ID_V06_MV %du
+#define BOARD_ID_V07_MV %du
+#define BOARD_ID_V10_MV %du
+static unsigned ipsr, conversions;
+static uint16_t level;
+static unsigned __get_IPSR(void) { return ipsr; }
+static uint16_t ufi_adc_mv(uint32_t ch) { assert(ch == ADC_CH_BOARD_ID && !ipsr); conversions++; return level; }
+''' % (mv['V05'], mv['V06'], mv['V07'], mv['V10']) + function('ufi_v2.c', 'ufi_board_rev') + r'''
+int main(void)
+{
+    /* in an interrupt before anything is known: no conversion, revision unknown */
+    ipsr = 44; level = BOARD_ID_V10_MV;
+    assert(ufi_board_rev() == 0 && !conversions);
+    /* ADC not ready yet (0 mV): unknown, and measured again on the next thread call */
+    ipsr = 0; level = 0;
+    assert(ufi_board_rev() == 0 && conversions == 1);
+    level = BOARD_ID_V10_MV + 150u;
+    assert(ufi_board_rev() == 10 && conversions == 2);
+    /* recognised: final.  No further conversion, whatever the ADC would say now, in any context */
+    level = BOARD_ID_V07_MV;
+    for (unsigned i = 0; i < 5; i++) assert(ufi_board_rev() == 10);
+    ipsr = 44; assert(ufi_board_rev() == 10);
+    assert(conversions == 2);
+    return 0;
+}
+'''
+    run('regression_board_rev', code)
 
 
 def queue():
