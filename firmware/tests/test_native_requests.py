@@ -84,19 +84,19 @@ int main(void){
     p[4]=2;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && line_calls==calls && note_f==REFUSE_FLAGS2 && note_d==2);
     p[4]=0x80|1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==0x80 && !twice_sets);
     /* flags2 bit0: double step for this start only, cleared behind it also when the start fails */
-    p[4]=1;assert(!cmd_read(8,p,5) && starts==before+1 && twice_at_start && !twice_now);before=starts;
-    start_error=UFI_ERR_SEEK_FAIL;assert(cmd_read(8,p,5)==UFI_ERR_SEEK_FAIL && twice_at_start && !twice_now);start_error=0;before=starts;
+    p[4]=1;assert(!cmd_read(8,p,5) && starts==before+1 && twice_at_start && !twice_now);
+    start_error=UFI_ERR_SEEK_FAIL;assert(cmd_read(8,p,5)==UFI_ERR_SEEK_FAIL && twice_at_start && !twice_now);start_error=0;
     p[4]=0;assert(!cmd_read(8,p,5) && !twice_at_start);before=starts;                     /* the next READ steps singly again */
     p[4]=1;apple=true;calls=line_calls;assert(cmd_read(8,p,5)==UFI_ERR_NOT_IMPL && starts==before && line_calls==calls && !twice_now);apple=false;
     p[3]=128|4;p[0]=4*17+2;assert(!cmd_read(8,p,5) && twice_at_start && !twice_now);before=starts;   /* half track 17.5 without a double-step profile */
     p[0]=4*17+1;assert(cmd_read(8,p,5)==UFI_ERR_BAD_ARGS && note_f==REFUSE_TRACK && starts==before && !twice_now);   /* refused: flag cleared too */
-    p[0]=0;p[3]=128;p[4]=0;calls=line_calls;
+    p[0]=0;p[3]=128;p[4]=0;
     p[3]=128|1;p[4]=p[5]=0;p[6]=0;assert(!cmd_read(8,p,7) && starts==before+1);before=starts;  /* period u16, then flags2 */
     p[6]=4;assert(cmd_read(8,p,7)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==4);p[6]=0;
     p[3]=128|2;p[6]=5;p[7]=0;assert(!cmd_read(8,p,8) && hard_sectors==5 && starts==before+1);before=starts;   /* sectors, then flags2 */
     p[7]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && starts==before && note_f==REFUSE_FLAGS2 && note_d==2);
     p[3]=2;assert(cmd_read(8,p,8)==UFI_ERR_BAD_ARGS && note_f==REFUSE_LENGTH && note_d==3);   /* 8 bytes without bit7 */
-    p[3]=0;p[4]=p[5]=p[7]=0;p[6]=5;hard_sectors=0;before=starts;calls=line_calls;    /* buffer as before this block */
+    p[3]=0;p[4]=p[5]=p[7]=0;p[6]=5;hard_sectors=0;before=starts;    /* buffer as before this block */
     /* bit6 lead-in (4.25): requested for this start only, cleared behind it; refused without index or PSRAM */
     p[3]=64;assert(!cmd_read(8,p,4) && starts==before+1 && lead_at_start==UFI_READ_LEAD_IN_TICKS && !lead_request);
     p[3]=0;assert(!cmd_read(8,p,4) && !lead_at_start && !lead_request);before=starts;calls=line_calls;
