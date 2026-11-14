@@ -3194,6 +3194,14 @@ Zeile bekommt die strenge Vorgabe (beansprucht das Laufwerk, während Dump abgew
 Unter-Ops von 0x0F den Zustand ändern, steht weiter in `analysis_changes()`; die Erhöhung der
 Konfigurationsgeneration liegt in den einzelnen Ops und ist noch nicht tabelliert.
 
+Schreibpfad, ohne Änderung am Protokoll: Die Update-Unterbrechung von TIM3 wird erst in der
+vorletzten Ringhälfte eingeschaltet. Das seit dem ersten Update anstehende Flag UIF wurde davor
+nicht gelöscht; die Routine lief deshalb sofort und wartete danach bei jedem Aufruf eine
+Flussperiode auf den DMA-Zähler (Prozessor im Schlussabschnitt eines Schreibvorgangs belegt). Die
+geschriebenen Intervalle waren davon nicht betroffen. Jetzt wird UIF vor dem Einschalten gelöscht.
+Nachweis nur im Simulator (`test_sim_host.py`: kein Aufruf aus einem anstehenden Flag, Intervalle
+unverändert exakt); die Belegungszeit auf der Platine ist nicht gemessen.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

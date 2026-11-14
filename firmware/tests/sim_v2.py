@@ -158,7 +158,8 @@ class SimStream:
         (no pulse).  elapsed counts all periods, the model stores the first 131072."""
         d = self._cmd(b'R')
         rises, on, off, elapsed, n = struct.unpack_from('<5I', d)
-        return dict(gate_rises=rises, gate_on=on, gate_off=off, elapsed=elapsed,
+        irqs, stale = struct.unpack_from('<2I', d, 20 + 8 * n)
+        return dict(gate_rises=rises, gate_on=on, gate_off=off, elapsed=elapsed, timer_irqs=irqs, timer_irqs_stale=stale,
                     periods=[struct.unpack_from('<IHBx', d, 20 + 8 * i)[:3] for i in range(n)])
 
     def busy(self, on):

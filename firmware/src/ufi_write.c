@@ -964,6 +964,11 @@ void ufi_write_dma_irq(void) {
         return;
     }
     if (ws.tail && !(TIM3->DIER & TIM_DIER_UIE)) {
+        /* UIF has been pending since the first update (nothing cleared it while UIE was off):
+         * without this the handler runs at once with an unchanged DMA counter and from then on
+         * every call waits one flux period for it.  Clear first, then read the counter: an
+         * update in between leaves the flag set and costs the same wait, never a miscount. */
+        TIM3->SR = ~TIM_SR_UIF;
         last_ndtr = DMA1_Stream1->NDTR;
         TIM3->DIER |= TIM_DIER_UIE;         /* count the updates from here on */
     }

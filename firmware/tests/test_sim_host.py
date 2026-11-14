@@ -99,6 +99,12 @@ def check_write(exe):
         # ARR + 1 ticks, track 3 gets no precompensation, and the model starts the timer at the
         # index time and drops WGATE at the last update without latency.
         assert w['gate_rises'] == before + 1 and w['elapsed'] == n, (n, w['gate_rises'], w['elapsed'])
+        # The update interrupt is switched on late (in the DMA handler of the half before the last
+        # one).  A pending UIF at that moment calls the handler at once, and on the board every
+        # later call then waits one flux period for the DMA counter (found 2026-11-14).
+        assert w['timer_irqs'] and w['timer_irqs_stale'] == 0, (n, w['timer_irqs'], w['timer_irqs_stale'])
+        # the handler runs for the tail only: at most two ring halves (2 x 2048) plus the closing updates
+        assert w['timer_irqs'] <= min(n, 2 * 2048) + 4, (n, w['timer_irqs'])
         assert [p[0] for p in w['periods']] == deltas, n
         assert all(p[1:] == (109, 6) for p in w['periods']), n          # 110-tick pulse, PWM1
         assert (w['gate_off'] - w['gate_on']) & 0xFFFFFFFF == sum(deltas), n
@@ -108,6 +114,7 @@ def check_write(exe):
     deltas = [1000 + (i * 37) % 200 for i in range(1500)]
     result, w, st, raw, before = write(exe, deltas, extended=True)
     assert isinstance(result, P2.WriteResult) and raw.count(end) == 1, result
+    assert w['timer_irqs'] and w['timer_irqs_stale'] == 0, (w['timer_irqs'], w['timer_irqs_stale'])
     t, transitions = 0, []
     for period, ccr, mode in w['periods']:
         assert mode == 7, mode

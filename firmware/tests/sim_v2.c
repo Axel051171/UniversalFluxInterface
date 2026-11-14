@@ -184,6 +184,9 @@ bool ufi_drive_media_matches(uint32_t token) { return token == 1u; }
 #define REC_MAX (1u << 17)
 static struct { uint32_t period; uint16_t ccr; uint8_t mode; } rec[REC_MAX];
 static uint32_t rec_n, rec_total;
+/* calls of ufi_write_tim3_irq() since WGATE rose; stale: the update interrupt was enabled during
+ * this very update, so the call was caused by a flag that was already pending (TIM3 UIF) */
+static uint32_t tim3_irqs, tim3_irqs_stale;
 static bool enable_open;
 static uint32_t enable_violations, gate_rises, gate_on_time, gate_off_time;
 static bool wgate(void) { return bus_out_state(&PIN_FDD_WGATE); }
@@ -198,6 +201,7 @@ void HAL_GPIO_WritePin(GPIO_TypeDef* port, uint16_t pin, GPIO_PinState state)
         gate_rises++;
         gate_on_time = now_ticks;
         rec_n = rec_total = 0;
+        tim3_irqs = tim3_irqs_stale = 0;
         if (!enable_open) enable_violations++;
     } else if (was && !is) {
         gate_off_time = now_ticks;
@@ -292,6 +296,7 @@ static void dma_flags(void)
 
 static void tim3_update(void)
 {
+    const bool uie_before = (TIM3->DIER & TIM_DIER_UIE) != 0;
     if (wgate() && enable_open) {
         if (rec_n < REC_MAX) {
             rec[rec_n].period = tim3_arr + 1u;
@@ -313,7 +318,10 @@ static void tim3_update(void)
         ufi_write_dma_irq();
         dma_flags();
     }
+    TIM3->SR &= TIM_SR_UIF;                 /* a handler may have written ~UIF (rc_w0) */
     if ((TIM3->DIER & TIM_DIER_UIE) && (TIM3->SR & TIM_SR_UIF)) {
+        tim3_irqs++;
+        if (!uie_before) tim3_irqs_stale++;
         ufi_write_tim3_irq();
         TIM3->SR &= TIM_SR_UIF;
         dma_flags();
@@ -541,6 +549,8 @@ int main(void)
                 out[out_n++] = rec[i].mode;
                 out[out_n++] = 0;
             }
+            put32(tim3_irqs);
+            put32(tim3_irqs_stale);
         } else {
             return 2;
         }
