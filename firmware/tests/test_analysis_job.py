@@ -205,6 +205,28 @@ int main(void){
       pz_ret=UFI_ERR_BAD_ARGS;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BAD_ARGS);pz_ret=0;                 /* zone check refused */
       pp[1]=0;assert(!ufi_analysis_command(pp,2,out,&size) && !pz_n && !out[2]);                                       /* clear */
       busy=true;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BUSY && !ufi_analysis_command(pp,1,out,&size));busy=false; }   /* set waits, read never */
+    /* Found 2026-11-14: settings that change what a guarded request would do must bump the
+     * configuration generation, or GUARDED_READ/WRITE accept a token from before the change.
+     * The precomp profile set above did; the token taken before it is now refused. */
+    assert(ufi_config_generation()!=rd(guarded+1));
+    assert(ufi_analysis_command(media_guarded,42,out,&size)==UFI_ERR_BAD_ARGS && captures==captures_before);
+    { uint32_t g=ufi_config_generation();
+      uint8_t ps[9]={45,1,2, 0,0x7d,0, 40,0xfa,0},pc[2]={45,0},pr[1]={45};
+      assert(!ufi_analysis_command(pr,1,out,&size) && ufi_config_generation()==g);                 /* reading never does */
+      assert(!ufi_analysis_command(ps,9,out,&size) && ufi_config_generation()!=g);g=ufi_config_generation();
+      pz_ret=UFI_ERR_BAD_ARGS;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BAD_ARGS && ufi_config_generation()==g);pz_ret=0;   /* nor a refused set */
+      busy=true;assert(ufi_analysis_command(ps,9,out,&size)==UFI_ERR_BUSY && ufi_config_generation()==g);busy=false;
+      assert(!ufi_analysis_command(pc,2,out,&size) && ufi_config_generation()!=g);g=ufi_config_generation();   /* clear */
+      uint8_t sc[4]={41,1,30,0},sr[1]={41};                                                         /* speed check tolerance */
+      assert(!ufi_analysis_command(sr,1,out,&size) && ufi_config_generation()==g);
+      assert(!ufi_analysis_command(sc,4,out,&size) && ufi_config_generation()!=g);g=ufi_config_generation();
+      sc[2]=0xF5;sc[3]=1;assert(ufi_analysis_command(sc,4,out,&size)==UFI_ERR_BAD_ARGS && ufi_config_generation()==g);   /* 501 permille */
+      sc[2]=0;sc[3]=0;assert(!ufi_analysis_command(sc,4,out,&size));g=ufi_config_generation();      /* off again */
+      uint8_t tl[4]={34,1,1,0},tr[1]={34};                                                          /* decoder tolerance */
+      assert(!ufi_analysis_command(tr,1,out,&size) && ufi_config_generation()==g);
+      assert(!ufi_analysis_command(tl,4,out,&size) && ufi_config_generation()!=g);g=ufi_config_generation();
+      tl[2]=0;assert(!ufi_analysis_command(tl,4,out,&size) && ufi_config_generation()!=g); }        /* strict again */
+    wr(guarded+1,ufi_config_generation());wr(media_guarded+1,ufi_config_generation());
     resource_owner=UFI_OWNER_GW;
     assert(!ufi_analysis_command(&matrix,1,out,&size) && (rd(out+8)&UFI_CAP_BUSY) && !out[34]);
     resource_owner=UFI_OWNER_NONE;

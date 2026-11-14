@@ -101,9 +101,17 @@ static void ufi_flux_stream_consumed(uint32_t n){assert(n>=consumed && n<=produc
 static uint8_t ufi_flux_index_count(void){return idx_n;}
 static uint32_t ufi_flux_index_time(uint8_t k){return idx_t[k];}
 static void ufi_flux_lead_in_base(uint32_t pos){assert(base_pos==UINT32_MAX);base_pos=pos;}
-static bool ufi_v2_read_progress(void){return false;}
-static void ufi_v2_event(uint8_t c,const void* p,uint16_t n){(void)c;(void)p;(void)n;}
-static uint32_t HAL_GetTick(void){return 0;}
+#define UFI_V2_EVT_READ_PROGRESS_SIZE 9u
+static uint32_t read_start_ms;
+static bool progress_on;
+static struct {uint8_t code,len,d[16];} evs[8];
+static unsigned ev_n;
+static bool ufi_v2_read_progress(void){return progress_on;}
+static void ufi_v2_event(uint8_t c,const void* p,uint16_t n){
+    assert(ev_n<8 && n<=16);evs[ev_n].code=c;evs[ev_n].len=(uint8_t)n;memcpy(evs[ev_n].d,p,n);ev_n++;
+}
+/* 1 ms = 275000 ticks; the clock starts 5 s before the capture's first sample time base */
+static uint32_t HAL_GetTick(void){return 5000u+(uint32_t)(now_ticks-0xFFF80000u+9000000u)/275000u;}
 '''
 
 LEAD_MAIN = r'''
@@ -111,7 +119,8 @@ LEAD_MAIN = r'''
 static uint32_t ts[N_SAMPLES];
 static uint8_t out[1u<<20];
 static uint32_t out_n;
-static void flush(void){memcpy(out+out_n,&buf[cur][HDR],fill);out_n+=fill;fill=0;cur^=1u;}
+/* like the real sender, every frame restarts the stall timer tx_start_ms */
+static void flush(void){memcpy(out+out_n,&buf[cur][HDR],fill);out_n+=fill;fill=0;cur^=1u;tx_start_ms=HAL_GetTick();}
 static uint32_t lcg;
 static uint32_t rnd(void){lcg=lcg*1103515245u+12345u;return lcg>>8;}
 static const uint32_t I0=0xFFF80000u;               /* the timer wraps inside revolution 0 */
@@ -210,6 +219,29 @@ int main(void){
     uint32_t h=run_capture(0,first,0,false);
     assert(out_n==8790u && h==0x21dcb95fu);
     decode(false);assert(!lead_n);check(0,"off");
+    assert(!ev_n);                                      /* no progress events without READ flag bit4 / outside v2 */
+    /* READ progress events 0x85 (found 2026-11-14: wrong values, and the path was never tested):
+     * one per completed revolution, 9 bytes, revolution k, its index-to-index length, ms since
+     * the start of the read - not since the last frame.  The stream bytes do not change. */
+    progress_on=true;assert(run_capture(0,first,0,false)==h && !ev_n);       /* still not: v1 stream */
+    v2=true;now_ticks=I0;read_start_ms=HAL_GetTick();
+    assert(run_capture(0,first,0,false)==h && out_n==8790u && ev_n==3);
+    uint32_t prev_ms=0;
+    for(unsigned k=0;k<3;k++){
+        uint32_t ticks,ms;memcpy(&ticks,evs[k].d+1,4);memcpy(&ms,evs[k].d+5,4);
+        assert(evs[k].code==UFI_V2_EVT_READ_PROGRESS && evs[k].len==9 && evs[k].d[0]==k+1u);
+        assert(ticks==idx_t[k+1]-idx_t[k] && ticks>4900000u);               /* the revolution, not the last gap */
+        assert(ms>=(idx_t[k+1]-I0)/275000u && ms<=(idx_t[3]-I0)/275000u+2u && ms>=prev_ms);
+        prev_ms=ms;
+    }
+    assert(prev_ms>=54u);                               /* three revolutions of 18.2 ms: time since the start */
+    assert(tx_start_ms-read_start_ms>=54u);             /* the stall timer did move on with the frames */
+    /* with a lead-in, index 0 closes the lead-in and is no revolution: the same three events */
+    ev_n=0;now_ticks=I0;read_start_ms=HAL_GetTick();
+    run_capture(LEAD_TICKS,0,0,false);
+    assert(ev_n==3 && evs[0].d[0]==1 && evs[2].d[0]==3);
+    {uint32_t ticks;memcpy(&ticks,evs[0].d+1,4);assert(ticks==idx_t[1]-idx_t[0]);}
+    v2=false;progress_on=false;ev_n=0;
     /* seam edges: one transition exactly on index 0 (revolution 0), one exactly on the window start (outside) */
     ts[first]=I0;
     uint32_t edge=0;while((int32_t)(ts[edge]-(I0-LEAD_TICKS))<0)edge++;

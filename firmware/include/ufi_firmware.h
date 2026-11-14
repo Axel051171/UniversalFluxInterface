@@ -366,6 +366,8 @@ uint8_t ufi_sched_pending(void);
 void ufi_sched_arm(uint32_t t);             // operation start (flux-timer time)
 void ufi_sched_clear(void);
 void ufi_sched_service(void);               // main loop
+void ufi_flux_capture_fail_seek(void);      // ufi_flux.c: scheduled step failed, capture ends with error code 5
+void ufi_write_fail(int err);               // ufi_write.c: scheduled step failed, write ends with err
 int ufi_capture_abort(void);
 capture_state_t ufi_capture_get_state(void);
 flux_revolution_t* ufi_capture_get_data(uint8_t revolution);
@@ -495,6 +497,8 @@ enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_BUTTON = 0x81, UFI_V2_EVT_DUMP = 0x82,
        UFI_V2_EVT_POWER = 0x83, UFI_V2_EVT_MODE = 0x84,
        UFI_V2_EVT_READ_PROGRESS = 0x85,      /* 1.18: READ flag bit4, one per completed revolution (2.3) */
        UFI_V2_EVT_WPROT = 0x86 };            /* 1.18: write protect line of the selected drive changed (2.3) */
+#define UFI_V2_EVT_READ_PROGRESS_SIZE 9u    /* revolution u8, index period u32, elapsed ms u32 */
+#define UFI_V2_EVENT_MAX 12u                /* largest event payload the queue of ufi_v2.c takes; longer ones are dropped */
 bool ufi_v2_active(void);
 bool ufi_v2_write_pending(void);                // a v2 WRITE owns the write path
 bool ufi_v2_rx(const uint8_t* buf, uint32_t len);   // USB IRQ; false = pause reception

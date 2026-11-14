@@ -82,6 +82,62 @@ int main(void)
 }
 '''
     run('regression_event_poll', code)
+    queue()
+
+
+def queue():
+    """ufi_v2_event(): every event the firmware produces must fit the queue.  Until 2026-11-14
+    the limit was 8 bytes and the 9-byte read progress event 0x85 was dropped without a trace."""
+    import re
+    from test_regressions import FW
+    header = (FW / 'include' / 'ufi_firmware.h').read_text(encoding='utf-8')
+    source = (FW / 'src' / 'ufi_v2.c').read_text(encoding='utf-8')
+    limit = int(re.search(r'#define UFI_V2_EVENT_MAX (\d+)u', header).group(1))
+    progress = int(re.search(r'#define UFI_V2_EVT_READ_PROGRESS_SIZE (\d+)u', header).group(1))
+    size = int(re.search(r'#define EVQ_SIZE\s+(\d+)u', source).group(1))
+    assert re.search(r'#define EVQ_PAYLOAD\s+UFI_V2_EVENT_MAX\b', source), 'queue limit no longer the shared constant'
+    code = r'''
+#include <stdint.h>
+#include <stdbool.h>
+#include <assert.h>
+#include <string.h>
+#define EVQ_PAYLOAD %du
+#define EVQ_SIZE %du
+#define PROGRESS %du
+enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_READ_PROGRESS = 0x85, UFI_ROUTE_USB = 1, UFI_ROUTE_LAN = 2 };
+typedef struct { uint8_t code, len; uint8_t data[EVQ_PAYLOAD]; } v2_event_t;
+static v2_event_t evq[EVQ_SIZE];
+static uint8_t ev_head, ev_tail;
+static uint32_t ev_mask;
+static bool on, lan_up;
+static struct { uint8_t ev_route; } link;
+static bool ufi_lan_connected(void) { return lan_up; }
+''' % (limit, size, progress) + function('ufi_v2.c', 'ufi_v2_event') + r'''
+int main(void)
+{
+    uint8_t p[EVQ_PAYLOAD + 4];
+    for (unsigned i = 0; i < sizeof p; i++) p[i] = (uint8_t)(0xA0 + i);
+    on = true; ev_mask = 1u << 5;
+    assert(PROGRESS <= EVQ_PAYLOAD);
+    ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, p, PROGRESS);            /* the 9-byte progress event is queued whole */
+    assert(ev_head == 1 && evq[0].code == 0x85 && evq[0].len == PROGRESS && !memcmp(evq[0].data, p, PROGRESS));
+    ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, p, EVQ_PAYLOAD);         /* the limit itself fits */
+    assert(ev_head == 2 && evq[1].len == EVQ_PAYLOAD);
+    ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, p, EVQ_PAYLOAD + 1);     /* one more does not, and writes nothing */
+    assert(ev_head == 2);
+    ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(ev_head == 2);      /* mask bit clear */
+    ufi_v2_event(0x7F, p, 1); ufi_v2_event(0xA0, p, 1); assert(ev_head == 2);   /* outside the 32-bit mask */
+    ev_mask = 0xFFFFFFFFu;
+    for (unsigned i = 0; i < 2u * EVQ_SIZE; i++) ufi_v2_event(UFI_V2_EVT_DISK, p, 1);
+    assert((uint8_t)((ev_head + 1u) % EVQ_SIZE) == ev_tail);        /* full: one slot stays free, the rest dropped */
+    ev_head = ev_tail = 0; on = false;
+    ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(!ev_head);          /* no session */
+    link.ev_route = UFI_ROUTE_LAN; lan_up = true;
+    ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(ev_head == 1);      /* LAN session counts by its connection */
+    return 0;
+}
+'''
+    run('regression_event_queue', code)
 
 
 if __name__ == '__main__':

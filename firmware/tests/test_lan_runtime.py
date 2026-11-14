@@ -11,6 +11,9 @@ def lan_rules_tests():
 enum {UFI_V2_WRITE=0x22,V2_GUARDED_WRITE=0x27,V2_ERASE=0x23,V2_PATTERN=0x24,V2_FORMAT=0x26,
       V2_COPY_START=0x63,V2_WRITE_START=0x64,V2_IEC_BLOCK=0x35,V2_IEC_MEM=0x33,V2_IEC_TARGET=0x36,
       V2_BOOTLOADER=0x04,V2_USB_MODE=0x05,V2_READ_FILE=0x51,V2_WRITE_FILE=0x52,V2_DELETE=0x53,V2_IEC_SEND=0x31};
+enum {V2_PING=0x00,V2_INFO=0x01,V2_STATUS=0x02,V2_EVENTS=0x06,V2_WRITE_LIMITS=0x08,V2_DESCRIBE=0x09,
+      V2_RESOURCE=0x0A,V2_JOB=0x0B,V2_FEATURES=0x0C,V2_DIAGNOSTICS=0x0D,V2_QUALITY=0x0E,V2_ANALYSIS_JOB=0x0F,
+      V2_DUMP_STATUS=0x61,V2_NET=LAN_V2_NET,V2_AUTH=LAN_V2_AUTH};
 enum {UFI_USB_FLUX=0,UFI_USB_SD=1,UFI_USB_FLOPPY=2,UFI_USB_GW=3,UFI_USB_COMPOSITE=4};
 enum {UFI_OWNER_NONE,UFI_OWNER_NATIVE,UFI_OWNER_GW};
 #define OWNER_IDLE_MS 30000u
@@ -32,7 +35,7 @@ typedef struct {uint8_t route; volatile uint8_t owner; uint8_t ev_route; uint32_
 static v2_link_t link;
 '''
     for name in ('locked_write', 'is_lan_cfg', 'lan_refusal', 'owner_busy', 'ufi_v2_claim',
-                 'ufi_v2_owner', 'ufi_v2_route'):
+                 'ufi_v2_owner', 'ufi_v2_route', 'analysis_changes', 'request_readonly'):
         code += function('ufi_v2.c', name)
     code += r'''
 static int refusal_of_file(uint8_t cmd,const char* name){
@@ -78,7 +81,36 @@ int main(void){
     link.owner=UFI_ROUTE_NONE;
     for(uint8_t m=0;m<=4;m++){usb_mode=m;assert(ufi_v2_claim(UFI_ROUTE_LAN)==(m==UFI_USB_FLUX||m==UFI_USB_COMPOSITE));link.owner=0;}
     usb_mode=UFI_USB_COMPOSITE;res_owner=UFI_OWNER_GW;assert(!ufi_v2_claim(UFI_ROUTE_LAN) && ufi_v2_claim(UFI_ROUTE_USB));
-    puts("LAN rules: USB-only ops, write class, LAN.CFG spellings, ownership, idle end, USB modes passed");
+    /* Which requests need the drive ownership.  ANALYSIS_JOB ops that start something change
+     * state in every form; ops with a "set" form change it only with a payload behind the op
+     * byte.  Ops 37, 41, 45, 50, 52 and 55 were treated as queries until 2026-11-14: the other
+     * transport could change them under a session that owned the drive. */
+    static const uint8_t always[]={1,4,5,16,24,26,27,29,52};
+    static const uint8_t with_payload[]={7,10,11,14,15,18,30,31,33,34,36,37,41,45,46,50,55};
+    for(unsigned op=0;op<256;op++){
+        bool a=false,w=false;
+        for(unsigned i=0;i<sizeof always;i++)a|=always[i]==op;
+        for(unsigned i=0;i<sizeof with_payload;i++)w|=with_payload[i]==op;
+        uint8_t q[4]={(uint8_t)op,1,0,0};
+        assert(request_readonly(V2_ANALYSIS_JOB,q,1)==!a);
+        assert(request_readonly(V2_ANALYSIS_JOB,q,2)==!(a||w) && request_readonly(V2_ANALYSIS_JOB,q,4)==!(a||w));
+    }
+    assert(!request_readonly(V2_ANALYSIS_JOB,p,0));                 /* no op byte: not a query */
+    for(unsigned cmd=0;cmd<256;cmd++){
+        const bool query=cmd==V2_PING||cmd==V2_INFO||cmd==V2_STATUS||cmd==V2_DESCRIBE||cmd==V2_FEATURES||
+            cmd==V2_DIAGNOSTICS||cmd==V2_WRITE_LIMITS||cmd==V2_EVENTS||cmd==V2_DUMP_STATUS||cmd==V2_RESOURCE||
+            cmd==V2_QUALITY||cmd==V2_NET||cmd==V2_AUTH||cmd==V2_JOB;
+        if(cmd==V2_ANALYSIS_JOB)continue;
+        assert(request_readonly((uint8_t)cmd,p,0)==query);
+        assert(request_readonly((uint8_t)cmd,p,8)==(query && cmd!=V2_JOB));
+    }
+    /* the consequence: a changing op from the other transport finds the drive owned */
+    link.owner=UFI_ROUTE_NONE;usb_mode=UFI_USB_FLUX;res_owner=UFI_OWNER_NONE;
+    assert(ufi_v2_claim(UFI_ROUTE_USB));
+    { uint8_t lock[2]={37,1},tol[4]={41,1,30,0},read[1]={41};
+      assert(!request_readonly(V2_ANALYSIS_JOB,lock,2) && !ufi_v2_claim(UFI_ROUTE_LAN));
+      assert(!request_readonly(V2_ANALYSIS_JOB,tol,4) && request_readonly(V2_ANALYSIS_JOB,read,1)); }
+    puts("LAN rules: USB-only ops, write class, LAN.CFG spellings, ownership, idle end, USB modes, query/changing ops passed");
     return 0;
 }
 '''

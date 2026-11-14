@@ -3158,6 +3158,26 @@ Wunsch heute erfüllt. „Offen“ heißt: nicht umgesetzt, mit Grund.
 | Schreibseite: Doppelschritt, Präkompensation + Rücklesen, Nachbarspur löschen, Teilspur, Abweichungen aus dem Prüflesen | offen | erst nach der Schreibpfad-Abnahme mit Laufwerk (docs/Abnahme_Schreibpfad.md) |
 | Seite B mit Kopf 1 eines Flippy-Laufwerks (negative Spuren) | offen | braucht ein umgebautes Laufwerk |
 
+### 4.27 Korrekturen aus der Durchsicht vom 14.11.2026
+
+Sieben Befunde einer Code-Durchsicht, jeder am Code bestätigt und behoben. Wo sich dadurch das
+Verhalten am Protokoll ändert, steht es hier; die Formate bleiben gleich.
+
+| Stelle | Vorher | Jetzt |
+|---|---|---|
+| Konfigurationsgeneration (Op 23, GUARDED_READ/WRITE, 4.5) | Setzen von Decoder-Toleranz (Op 34), Apple-Optionen und -Symboltabelle (Op 33, 36), Drehzahlprüfung (Op 41) und Präkompensationsprofil (Op 45) ließ die Generation unverändert: ein geschützter Auftrag nahm ein Token von vor der Änderung an | Jedes erfolgreiche Setzen erhöht die Generation; Lesen und abgewiesenes Setzen nicht. Ein Werkzeug holt das Token **nach** dem Einstellen. Nicht geändert: Beleg-Konfiguration (Op 7) und Wiederholungsstrategie (Op 11) |
+| Laufwerksbesitz zwischen USB und LAN (1.6) | Die setzenden Formen von Op 37, 41, 45, 50, 55 und der Start von Op 52 galten als reine Abfrage: der andere Transport konnte sie ausführen, während eine Sitzung das Laufwerk besaß | Sie beanspruchen das Laufwerk wie jeder ändernde Befehl; vom anderen Transport Status 1. Die einbytigen Leseformen bleiben frei |
+| Ereignis 0x85 (2.3) | Wurde nie gesendet: 9 Byte Nutzdaten, die Warteschlange nahm höchstens 8 und verwarf längere stillschweigend | Warteschlange fasst 12 Byte; die Größen aller Ereignisse sind zur Übersetzungszeit geprüft |
+| Ereignis 0x85, Werte | `index_ticks` war der Abstand vom letzten Flusswechsel zum Index (der Wert der `FD`-Marke), `elapsed_ms` die Zeit seit dem letzten Daten-Rahmen | `index_ticks` = Abstand zwischen den beiden Indeximpulsen dieser Umdrehung; `elapsed_ms` = Zeit seit Beginn des Lesens |
+| STEP_SCHEDULE 0x1F, späte Einträge | Die Zeit lief mit dem 32-Bit-Zähler nach 15,6 s über; Einträge danach wurden nie fällig, obwohl `at_ms` bis 65535 angenommen wird | 64-Bit-Zeitbasis; alle angenommenen Zeiten werden erreicht |
+| STEP_SCHEDULE 0x1F, Fehler beim Schritt | Der Rückgabewert des Schritts wurde ignoriert, der Eintrag galt als erledigt, die Aufnahme lief an der falschen Position weiter | Die laufende Operation endet mit Status 3 (READ: Ende-Rahmen, WRITE: Abschluss), der Rest des Plans entfällt. Ganze Spuren über 83 weist schon das Setzen mit Status 16 ab |
+| Host `read_track(..., quarter=q)` | `Revolution.track` trug den Übertragungswert `Spur·4 + Viertel` (Viertel 1 von Spur 17 → 69) | `Revolution.track` = Spur, neu `Revolution.quarter` = Viertel; die Anfrage ist unverändert |
+
+Nicht umgesetzt aus derselben Durchsicht: der Speicherbedarf des Host-Decoders für lange
+Aufnahmen (rund 13,8 MiB Spitze für 200 000 Flusswechsel) und eine zentrale Befehlstabelle für
+Berechtigungen und Seiteneffekte. Die Einordnung „Abfrage oder ändernd“ steht jetzt immerhin in
+einer Funktion (`request_readonly()` in `ufi_v2.c`) und wird für jede Op-Nummer getestet.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

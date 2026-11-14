@@ -1020,8 +1020,11 @@ def test_diagnostics():
     assert fake.requests[-1].cmd == P2.SEEK and fake.requests[-1].payload == bytes([17, 2])
     dev.seek(17)
     assert fake.requests[-1].payload == bytes([17])
-    dev.read_track(17, 0, 1, quarter=1)
+    cap = dev.read_track(17, 0, 1, quarter=1)
     assert fake.requests[-1].payload == P2.READ_REQ.pack(17 * 4 + 1, 0, 1, P2.QUARTER_TRACKS, 0)
+    # the wire value stays in the request: the revolutions carry track 17 and quarter 1 apart (was track 69)
+    assert cap.revolutions and all(r.track == 17 and r.quarter == 1 and r.side == 0 for r in cap.revolutions)
+    assert all(r.track == 17 and r.quarter == 0 for r in dev.read_track(17, 0, 1).revolutions)
     dev.write_track(17, 0, [1000, 1000, 1000], quarter=3)
     req = [r for r in fake.requests if r.cmd == P2.WRITE][-1].payload
     assert req[0] == 17 * 4 + 3 and req[2] == P2.QUARTER_TRACKS

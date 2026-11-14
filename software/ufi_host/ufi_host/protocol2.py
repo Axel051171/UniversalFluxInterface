@@ -2095,9 +2095,13 @@ class Device2:
         flags = (READ_NO_INDEX if no_index else 0) | (HARD_SECTORS if hard_sectors else 0) | \
                 (READ_PROVENANCE if provenance else 0) | (READ_PROGRESS if progress is not None else 0) | \
                 (READ_CONTEXT if read_context else 0) | (READ_LEAD_IN if lead_in else 0)
+        # The request carries track * 4 + quarter in its track byte; the revolutions keep the
+        # logical track and the quarter apart (until 2026-11-14 Revolution.track was the wire
+        # value: quarter 1 of track 17 came back as track 69).
+        wire_track = track
         if quarter:
             flags |= QUARTER_TRACKS
-            track = track * 4 + quarter
+            wire_track = track * 4 + quarter
         guarded = expected_config is not None or expected_media is not None
         if guarded and (expected_config is None or expected_media is None or
                         not 1 <= expected_config <= 0xffffffff or not 1 <= expected_media <= 0xffffffff):
@@ -2114,7 +2118,7 @@ class Device2:
         flags2 = READ2_DOUBLE_STEP if double_step else 0
         if flags2:
             flags |= READ_FLAGS2
-        payload = READ_REQ.pack(track, side, revolutions, flags, period_ms) + (bytes([hard_sectors]) if hard_sectors else b"") \
+        payload = READ_REQ.pack(wire_track, side, revolutions, flags, period_ms) + (bytes([hard_sectors]) if hard_sectors else b"") \
             + (bytes([flags2]) if flags2 else b"")
         command = GUARDED_READ if guarded else READ
         if guarded:
@@ -2155,6 +2159,8 @@ class Device2:
             rflags = 0x01 | (0x02 if f.status == OVERFLOW else 0)
             lead: LeadIn | None
             lead, revs = decode_stream_lead(bytes(data), track, side, rflags)
+            for r in revs:
+                r.quarter = quarter
             if (lead is not None) != lead_in:
                 raise ValueError("lead-in requested but missing" if lead_in else "unrequested lead-in in the stream")
             end = job.finish(f.payload) if job else f.payload

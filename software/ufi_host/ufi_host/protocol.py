@@ -79,6 +79,7 @@ class Revolution:
     flags: int
     index_ticks: int                 # revolution duration in 275 MHz ticks
     samples: list[int]               # flux timestamps, ticks since this revolution's index
+    quarter: int = 0                 # v2 quarter-track offset 0-3 of the read; track stays the whole track
 
     @property
     def rpm(self) -> float:

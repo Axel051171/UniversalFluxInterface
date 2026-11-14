@@ -64,6 +64,7 @@ static uint32_t t_last;             /* time of the last emitted transition / ind
 static uint8_t next_idx;            /* next index pulse to emit */
 static uint8_t n_final;             /* revolutions in this stream, 0 until known */
 static uint32_t tx_start_ms;
+static uint32_t read_start_ms;          /* start of this stream, for the progress event 0x85 */
 static bool gw;                     /* Greaseweazle flux code (ufi_gw.c) */
 static uint32_t gw_rem;             /* 275 MHz ticks not yet passed on (below one GW tick) */
 static bool v2;                     /* UFI v2 DATA frames (ufi_v2.c) */
@@ -196,11 +197,17 @@ static void put_indexes_before(uint32_t ts, bool all)
         }
         put_index(period);
         next_idx++;
-        if (v2 && ufi_v2_read_progress()) {     /* READ flag bit4 (1.18): one event per completed revolution */
-            uint8_t ev[9];
-            ev[0] = (uint8_t)(next_idx - 1u);
-            memcpy(ev + 1, &period, 4);
-            const uint32_t ms = HAL_GetTick() - tx_start_ms;
+        if (v2 && ufi_v2_read_progress() && next_idx >= 2u) {   /* READ flag bit4 (1.18): one event per completed revolution */
+            /* Revolution k ends at index k.  Its length is the distance between the two index
+             * pulses, not `period` above (that is the offset from the last transition, the value
+             * of the FD mark).  Elapsed time counts from the start of the read: tx_start_ms is the
+             * stall timer and restarts with every DATA frame. */
+            const uint8_t k = (uint8_t)(next_idx - 1u);
+            const uint32_t rev_ticks = ufi_flux_index_time(k) - ufi_flux_index_time((uint8_t)(k - 1u));
+            const uint32_t ms = HAL_GetTick() - read_start_ms;
+            uint8_t ev[UFI_V2_EVT_READ_PROGRESS_SIZE];
+            ev[0] = k;
+            memcpy(ev + 1, &rev_ticks, 4);
             memcpy(ev + 5, &ms, 4);
             ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, ev, sizeof ev);
         }
@@ -443,6 +450,7 @@ void ufi_stream_begin(void)
     lead = 0;
     lead_floored = lead_skip = false;
     tx_start_ms = HAL_GetTick();
+    read_start_ms = tx_start_ms;
     ufi_flux_set_streaming(true);
     active = true;
 }
@@ -493,7 +501,8 @@ static void stream_service(void)
         /* DMA error, no index or overflow before 2 index pulses: drop the partial data */
         fill = 0;
         const int err = g_capture.error_code == 4 ? UFI_ERR_MEDIA_CHANGED : g_capture.error_code == 2 ? UFI_ERR_DMA :
-                        g_capture.error_code == 3 ? UFI_ERR_NO_INDEX : UFI_ERR_BUFFER_FULL;
+                        g_capture.error_code == 3 ? UFI_ERR_NO_INDEX :
+                        g_capture.error_code == 5 ? UFI_ERR_SEEK_FAIL : UFI_ERR_BUFFER_FULL;
         if (gw) {
             finish(err);                    /* 0 byte + status, ERR LED by the host */
             return;

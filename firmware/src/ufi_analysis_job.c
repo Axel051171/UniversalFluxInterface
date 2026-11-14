@@ -618,8 +618,8 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
     if(p[0]==45){                                                            /* precomp profile (4.14): [45] reads, [45,0] clears, [45,1,n,zones] sets */
         if(n==1){*size=ufi_write_precomp_profile(out);return UFI_OK;}
         if(ufi_operation_busy())return UFI_ERR_BUSY;
-        if(n==2 && p[1]==0){(void)ufi_write_precomp_profile_set(p,0);*size=ufi_write_precomp_profile(out);return UFI_OK;}
-        if(n>=3 && p[1]==1 && p[2]>=1 && p[2]<=4 && n==3u+3u*p[2] && !ufi_write_precomp_profile_set(p+3,p[2])){*size=ufi_write_precomp_profile(out);return UFI_OK;}
+        if(n==2 && p[1]==0){(void)ufi_write_precomp_profile_set(p,0);ufi_config_changed();*size=ufi_write_precomp_profile(out);return UFI_OK;}
+        if(n>=3 && p[1]==1 && p[2]>=1 && p[2]<=4 && n==3u+3u*p[2] && !ufi_write_precomp_profile_set(p+3,p[2])){ufi_config_changed();*size=ufi_write_precomp_profile(out);return UFI_OK;}
         return UFI_ERR_BAD_ARGS;
     }
     if(p[0]==22 && n==1){
@@ -664,7 +664,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             apple_gcr_options_t o;memcpy(&o,p+2,sizeof o);
             if(p[1]!=1 || !mfm_apple_options_valid(&o))return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            mfm_apple_set_options(&o);
+            mfm_apple_set_options(&o);ufi_config_changed();     /* guarded requests must see a decoder change */
         }
         const apple_gcr_options_t o=mfm_apple_get_options();out[0]=1;memcpy(out+1,&o,sizeof o);*size=13;return UFI_OK;
     }
@@ -674,7 +674,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             const uint16_t flags=(uint16_t)(p[2]|(uint16_t)p[3]<<8);
             if(p[1]!=1 || (flags&~MFM_TOL_MASK))return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            mfm_set_tolerance(flags);
+            mfm_set_tolerance(flags);ufi_config_changed();
         }
         const uint16_t t=mfm_get_tolerance();out[0]=1;out[1]=(uint8_t)t;out[2]=(uint8_t)(t>>8);*size=3;return UFI_OK;
     }
@@ -683,7 +683,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
         if(n==66){
             if(p[1]!=1 || !mfm_apple_table_valid(p+2))return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            mfm_apple_set_table(p+2);
+            mfm_apple_set_table(p+2);ufi_config_changed();
         }
         out[0]=1;memcpy(out+1,mfm_apple_get_table(),64);*size=65;return UFI_OK;
     }
@@ -707,7 +707,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             const uint16_t t=(uint16_t)(p[2]|(uint16_t)p[3]<<8);
             if(p[1]!=1 || t>500)return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            ufi_write_set_speed_check(t);
+            ufi_write_set_speed_check(t);ufi_config_changed();  /* a guarded write must not run under another tolerance */
         }
         uint16_t tol;uint32_t measured,source;ufi_write_speed_state(&tol,&measured,&source);
         out[0]=1;out[1]=(uint8_t)tol;out[2]=(uint8_t)(tol>>8);wr(out+3,measured);wr(out+7,source);

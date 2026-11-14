@@ -740,6 +740,15 @@ int ufi_flux_capture_gw(uint32_t ticks, uint16_t indexes, uint32_t linger)
     return ret;
 }
 
+/* A scheduled head step failed (ufi_sched.c): the capture no longer belongs to the requested
+ * positions.  Error code 5 ends a streamed READ with status 3. */
+void ufi_flux_capture_fail_seek(void)
+{
+    capture_halt();
+    g_capture.error_code = 5;
+    g_capture.state = CAPTURE_ERROR;
+}
+
 int ufi_flux_capture_stop(void)
 {
     /* Snapshot while the DMA cursor and capture state still describe this run. */

@@ -1181,6 +1181,14 @@ void ufi_write_abort(void) {
     g_write.bytes_received = 0;
 }
 
+/* A scheduled head step failed while writing (ufi_sched.c): stop at once; the completion
+ * reports err instead of the DMA status. */
+void ufi_write_fail(int err) {
+    if (g_write.state != WRITE_ACTIVE) return;
+    write_start_error = err;
+    write_finish(WRITE_ERROR);
+}
+
 void ufi_write_set_precomp(bool enable) {
     g_write.use_precomp = enable;
 }
