@@ -1,4 +1,4 @@
-"""Budget GCC's measured project frames; this is not a call-chain/IRQ stack proof."""
+"""Budget GCC's measured project frames; call chains and IRQ nesting are check_callgraph.py."""
 import argparse
 import json
 from pathlib import Path
@@ -39,7 +39,7 @@ def main():
                 scope='Individual project frames; excludes library frames, call-chain sums and interrupt nesting.')
     if args.report:args.report.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     print(f"Project stack frames OK: max {rows[0]['bytes']} B / 2048 B ({rows[0]['function']}); "
-          'call chains and IRQ nesting require separate validation.')
+          'call chains and IRQ nesting: check_callgraph.py.')
 
 
 if __name__=='__main__':

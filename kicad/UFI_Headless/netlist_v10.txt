@@ -1,0 +1,234 @@
+# Nets of the UFI_Headless schematic, recorded by scripts/verify_netlist.py --write.
+# Regression baseline, not an independent statement of intent (see the script).
+
++12V                     C1.1 C2.1 C3.1 C82.1 D2.1 D27.1 D3.1 R138.1 TP3.1 U2.3 U29.4
++12V_IN                  D2.2 J2.1
++12V_PSU                 D27.2 J17.4
++3V3                     C15.1 C16.1 C17.1 C18.1 C19.1 C20.1 C21.1 C22.1 C23.1 C24.1 C25.1 C26.1 C27.1 C28.1 C29.1 C30.1 C31.1 C32.1 C42.1 C45.1 C46.1 C47.1 C48.1 C49.1 C50.1 C51.1 C53.1 C69.1 C70.1 C75.1 C79.1 C84.1 C86.1 C88.1 FB1.1 FB2.1 J22.12 J22.9 J4.1 R105.1 R107.1 R108.1 R119.1 R120.1 R121.1 R122.1 R123.1 R124.1 R128.1 R131.1 R132.1 R137.1 R143.1 R16.1 R165.1 R167.1 R17.1 R19.1 R20.1 R21.1 R22.1 R23.1 R24.1 R25.1 R33.2 R34.1 R7.1 R74.1 RN10.6 RN10.7 RN10.8 SW2.1 TP1.1 TP12.1 U10.14 U11.8 U12.5 U13.5 U14.5 U15.8 U17.5 U23.28 U25.3 U26.14 U30.8 U31.5 U4.3 U5.108 U5.121 U5.131 U5.143 U5.144 U5.17 U5.30 U5.39 U5.52 U5.62 U5.72 U5.84 U5.95 U8.14 X1.4
++5V                      C11.1 C12.1 C13.1 C14.1 C43.1 C44.1 C58.1 C80.1 R133.1 R92.2 R93.2 R94.2 R95.2 R96.2 TP2.1 U22.5 U28.4 U3.2 U3.7 U4.1 U9.13 U9.14
++5V_DRV                  C5.1 C6.1 C7.1 L1.2 R3.1 U19.6
++5V_PRI                  C8.1 C9.1 R5.1 U19.2 U19.7 U3.3 U3.5
++5V_PSU                  F4.1 J17.1
++5V_PSU_F                C57.1 D17.1 F4.2 R72.1 U19.3 U19.5
+3V3A                     C63.1 C64.1 C65.1 C66.1 C67.1 C68.1 FB2.2 R112.1 R113.1 R114.1 U23.11 U23.15 U23.17 U23.21 U23.4 U23.8
+ACTLED                   R118.2 U23.27
+ACTLED_K                 J22.11 R118.1
+AMI_DRES                 J7.10 R99.1
+AMI_SEL2                 J7.9 JP3.2 R97.1
+AMI_SEL3                 J7.20 R98.1
+APL_EN1                  RN10.1 U16.17 U5.90
+APL_EN2                  RN10.2 U16.15 U5.73
+APL_PH0                  RN9.1 U16.2 U5.50
+APL_PH1                  RN9.2 U16.4 U5.53
+APL_PH2                  RN9.3 U16.6 U5.91
+APL_PH3                  RN9.4 U16.8 U5.55
+APL_RDDATA               U17.6 U5.36
+APL_WRDATA               U16.11 U5.43
+APL_WRPROT               U17.4 U5.76
+APL_WRREQ                RN10.3 U30.5 U5.75
+APL_WRREQ_G              U16.13 U30.3
+AP_EN1                   D15.6 J14.14 U16.3
+AP_EN2                   D16.1 J23.14 U16.5
+AP_M12V                  C56.2 JP6.1 JP8.1 U18.5
+AP_M12V_J                J14.9 JP8.2
+AP_M12V_J6               J23.9 JP6.2
+AP_PH0                   D15.1 J14.2 J23.2 U16.18
+AP_PH1                   D15.3 J14.4 J23.4 U16.16
+AP_PH2                   D15.4 J14.6 J23.6 U16.14
+AP_PH3                   D15.5 J14.8 J23.8 U16.12
+AP_RDDATA                D16.5 J14.16 J23.16 R38.2 U17.1
+AP_WRDATA                D16.4 J14.18 J23.18 U16.9
+AP_WRPROT                D16.6 J14.20 R39.2 U17.3
+AP_WRREQ                 D16.3 J14.10 J23.10 U16.7
+BOARD_ID                 R17.2 R18.1 U5.40
+BOOT0                    R8.1 SW2.2 U5.138
+BTN_A                    R101.1 U5.139
+BTN_B                    R102.1 U5.140
+BUCK_BST                 C4.1 U2.6
+BUCK_FB                  R3.2 R4.1 U2.4
+BUCK_SW                  C4.2 L1.1 U2.2
+CC1                      J1.A5 R1.1 U24.1 U24.6 U5.34
+CC2                      J1.B5 R2.1 U24.3 U24.4 U5.37
+CSTOUT_5V                D31.3 J23.20 JP5.2 R166.2 U26.9
+DBG_RX                   J5.2 U5.78
+DBG_TX                   J5.1 U5.77
+ENUV12                   R141.2 U29.3
+ENUV5                    R135.2 U28.3
+EXP_IO1                  R103.1 U5.141
+EXP_IO2                  R104.1 U5.142
+EXRES                    R111.1 U23.10
+FDD12_EN                 R141.1 R31.1 U5.2
+FDD12_F                  R29.1 U13.3 U29.5
+FDD5_EN                  R135.1 R28.1 U5.1
+FDD5_F                   R26.1 U12.3 U28.5
+FDD_12V                  C54.1 D14.1 J14.13 J14.15 J14.17 J14.19 J23.13 J23.15 J23.17 J23.19 J3.4 J7.23 R162.1 R29.2 U13.4 U18.8
+FDD_5V                   C52.1 C87.1 D13.1 J14.11 J14.12 J19.1 J23.11 J3.1 J7.12 R159.1 R160.1 R166.1 R26.2 R38.1 R39.1 R75.2 R76.2 R77.2 R78.2 R79.2 R80.2 R81.2 R82.2 R83.2 R84.2 R85.2 R86.2 R87.2 R88.2 R89.2 R90.2 R91.2 R97.2 R98.2 R99.2 U12.4 U16.20 U27.20
+FDD_DENSITY              J21.8 Q10.2 R153.1 U5.68
+FDD_DIR                  J21.11 Q8.2 R149.1 U5.65
+FDD_DRATE                Q11.5 R154.1 U5.49
+FDD_DRVSEL_A             J21.15 Q7.5 R146.1 U5.60
+FDD_DRVSEL_B             Q7.2 R147.1 U5.63
+FDD_DSKCHG               J21.4 U5.12 U8.10
+FDD_INDEX                J21.5 TP6.1 U5.35 U5.70 U8.2
+FDD_MOTOR_A              J21.17 Q6.5 R144.1 U5.58
+FDD_MOTOR_B              Q6.2 R145.1 U5.7
+FDD_PIN2_IN              U26.4 U5.85
+FDD_PIN33                R156.1 U5.135
+FDD_PIN4                 Q12.5 R158.1 U5.54
+FDD_PIN4_IN              U26.6 U5.86
+FDD_RDATA                J21.1 TP5.1 U5.41 U8.8
+FDD_READY                J21.6 U5.13 U8.12
+FDD_SIDE                 J21.13 Q9.5 R150.1 U5.66
+FDD_STEP                 J21.9 Q8.5 R148.1 U5.64
+FDD_TRK0                 J21.19 U5.10 U8.4
+FDD_WDATA                J21.3 Q10.5 R152.1 TP7.1 U5.42
+FDD_WGATE                J21.7 R167.2 U31.1 U5.67
+FDD_WGATE_G              Q9.2 R151.1 TP8.1 U31.4
+FDD_WPROT                J21.2 U5.11 U8.6
+FD_DENSITY               J6.2 Q10.6 R84.1 U26.3
+FD_DIR                   D11.1 J6.18 J7.19 Q8.6 R80.1
+FD_DRATE                 JP1.1 Q11.3 R85.1
+FD_DRVSEL_A              D11.6 J6.14 JP3.1 Q7.3 R77.1
+FD_DRVSEL_B              D11.3 J6.12 J7.21 Q7.6 R78.1
+FD_DSKCHG                D9.5 J6.34 J7.11 R90.1 U8.11
+FD_INDEX                 D11.4 J6.8 J7.22 Q11.6 R86.1 U8.1
+FD_MOTOR_A               D11.5 J6.10 Q6.3 R75.1
+FD_MOTOR_B               D9.4 J6.16 J7.8 Q6.6 R76.1
+FD_PIN33                 J6.33 JP7.2
+FD_PIN4                  J6.4 Q12.3 R159.2 U26.5
+FD_PIN6                  J6.6 JP1.2
+FD_RDATA                 D9.3 J6.30 J7.2 R89.1 U22.1 U8.9
+FD_READY                 D9.1 J7.1 R91.1 U8.13
+FD_SIDE                  D9.6 J6.32 J7.13 Q9.3 R81.1
+FD_STEP                  D10.6 J6.20 J7.18 Q8.3 R79.1
+FD_TRK0                  D10.3 J6.26 J7.15 Q5.3 R87.1 U8.3
+FD_WDATA                 D10.5 J6.22 J7.17 Q10.3 R83.1 U22.2
+FD_WGATE                 D10.4 J6.24 J7.16 Q9.6 R82.1 U10.13
+FD_WPROT                 D10.1 J6.28 J7.14 R88.1 U8.5
+FLIPPY                   JP7.3 R156.2 R157.1
+FLT12                    R143.2 U29.6 U5.22
+FLT5                     R137.2 U28.6 U5.21
+FRONT_3V3                J12.1 R105.2
+FRONT_ACT                D22.1 J12.3 R35.2
+FRONT_BTN_A              D18.1 J12.13 R101.2
+FRONT_BTN_B              D19.1 J12.14 R102.2
+FRONT_ERR                D23.1 J12.5 R37.2
+FRONT_FDD                D25.1 J12.9 R36.2
+FRONT_MODE1              D20.1 J12.15 R103.2
+FRONT_MODE2              D21.1 J12.16 R104.2
+FRONT_PWR                D26.1 J12.11 R34.2
+FRONT_USB                D24.1 J12.7 R100.2
+FRONT_WRLED              D29.1 J12.10 R128.2
+GND                      BT1.2 C1.2 C10.2 C11.2 C12.2 C13.2 C14.2 C15.2 C16.2 C17.2 C18.2 C19.2 C2.2 C20.2 C21.2 C22.2 C23.2 C24.2 C25.2 C26.2 C27.2 C28.2 C29.2 C3.2 C30.2 C31.2 C32.2 C33.2 C34.2 C35.2 C36.2 C37.2 C42.2 C43.2 C44.2 C45.2 C46.2 C47.2 C48.2 C49.2 C5.2 C50.2 C51.2 C52.2 C53.2 C54.2 C56.1 C57.2 C58.2 C59.2 C6.2 C60.2 C61.2 C62.2 C63.2 C64.2 C65.2 C66.2 C67.2 C68.2 C69.2 C7.2 C70.2 C71.2 C74.2 C75.2 C76.2 C77.2 C78.2 C79.2 C8.2 C80.2 C81.2 C82.2 C83.2 C84.2 C85.2 C86.2 C87.2 C88.2 C9.2 D1.2 D10.2 D11.2 D12.2 D13.2 D14.2 D15.2 D16.2 D17.2 D18.2 D19.2 D20.2 D21.2 D22.2 D23.2 D24.2 D25.2 D26.2 D28.2 D29.2 D3.2 D31.2 D32.2 D33.2 D34.2 D4.1 D9.2 J1.A1 J1.A12 J1.B1 J1.B12 J12.2 J12.4 J12.6 J12.8 J14.1 J14.3 J14.5 J14.7 J16.7 J16.8 J17.2 J17.3 J19.2 J2.2 J20.1 J21.16 J21.18 J21.20 J22.8 J22.SH J23.1 J23.3 J23.5 J23.7 J3.2 J3.3 J4.3 J4.5 J4.9 J5.3 J6.1 J6.11 J6.13 J6.15 J6.17 J6.19 J6.21 J6.23 J6.25 J6.27 J6.29 J6.3 J6.31 J6.5 J6.7 J6.9 J7.24 J7.3 J7.4 J7.5 J7.6 J7.7 J8.2 JP7.1 Q10.1 Q10.4 Q11.1 Q11.4 Q12.1 Q12.2 Q12.4 Q5.2 Q6.1 Q6.4 Q7.1 Q7.4 Q8.1 Q8.4 Q9.1 Q9.4 R1.2 R10.2 R106.2 R111.2 R134.2 R136.2 R140.2 R142.2 R144.2 R145.2 R146.2 R147.2 R148.2 R149.2 R150.2 R151.2 R152.2 R153.2 R154.2 R155.2 R157.2 R158.2 R161.2 R163.2 R164.2 R18.2 R2.2 R28.2 R31.2 R4.2 R6.2 R73.2 R8.2 RN9.5 RN9.6 RN9.7 RN9.8 SW1.2 TP13.1 TP4.1 U1.2 U10.7 U11.4 U12.2 U13.2 U14.3 U15.4 U16.1 U16.10 U16.19 U17.2 U18.3 U19.1 U2.1 U22.3 U23.14 U23.16 U23.19 U23.23 U23.29 U23.3 U23.48 U23.9 U24.2 U25.4 U26.11 U26.13 U26.7 U27.1 U27.10 U27.11 U27.13 U27.15 U27.17 U27.19 U27.6 U27.8 U28.1 U29.1 U3.1 U30.1 U30.2 U30.4 U31.3 U4.2 U5.107 U5.120 U5.130 U5.16 U5.31 U5.38 U5.51 U5.61 U5.83 U5.94 U8.7 U9.7 X1.2 Y2.2 Y2.4
+GUARD_ERR12              R108.2 R127.1 U5.99
+GUARD_ERR12_J            D34.1 J20.4 R127.2
+GUARD_ERR5               R107.2 R126.1 U5.93
+GUARD_ERR5_J             D33.1 J20.3 R126.2
+GUARD_OFF                R125.1 U5.92
+GUARD_OFF_J              D32.1 J20.2 R125.2
+HSE_IN                   U5.23 X1.3
+I2C_SCL                  R19.2 TP10.1 U25.2 U5.136
+I2C_SDA                  R20.2 TP11.1 U25.1 U5.137
+IEC_ATN                  D12.1 J8.3 R92.1 U10.1 U9.2
+IEC_ATN_IN               U10.2 U5.14
+IEC_ATN_OUT              U5.114 U9.1
+IEC_CLK                  D12.3 J8.4 R93.1 U10.3 U9.4
+IEC_CLK_IN               U10.4 U5.15
+IEC_CLK_OUT              U5.115 U9.3
+IEC_DATA                 D12.4 J8.5 R94.1 U10.5 U9.6
+IEC_DATA_IN              U10.6 U5.18
+IEC_DATA_OUT             U5.116 U9.5
+IEC_RESET                D12.6 J8.6 R96.1 U10.11 U9.10
+IEC_RESET_IN             U10.10 U5.20
+IEC_RESET_OUT            U5.118 U9.11
+IEC_SRQ                  D12.5 J8.1 R95.1 U10.9 U9.8
+IEC_SRQ_IN               U10.8 U5.19
+IEC_SRQ_OUT              U5.117 U9.9
+ILIM12                   R142.1 U29.7
+ILIM5                    R136.1 U28.7
+INDEX_SIM                J21.10 Q11.2 R155.1 U5.4
+I_FDD12                  U13.1 U5.27
+I_FDD5                   U12.1 U5.26
+LAN_CS                   R119.2 U23.32 U5.110
+LAN_INT                  R120.2 U23.36 U5.119
+LAN_MISO                 U23.34 U5.112
+LAN_MOSI                 U23.35 U5.113
+LAN_RST                  R121.2 U23.37 U5.79
+LAN_SCK                  U23.33 U5.111
+LED_ACT                  R11.1 R35.1 U5.56
+LED_ACT_A                D4.2 R11.2
+LED_ERR                  R37.1 U5.88
+LED_FDD                  R36.1 U5.97
+LED_USB                  R100.1 U5.87
+LINKLED                  R117.2 U23.25
+LINKLED_K                J22.10 R117.1
+LOCK                     U14.4 U30.6 U31.2
+LOOP_EN                  J21.12 Q5.1 R106.1 U22.4 U5.129
+M12_CN                   C55.2 U18.4
+M12_CP                   C55.1 U18.2
+MAC_CSTOUT               U26.8 U5.47
+MAC_PWM                  U27.4 U5.100
+MAC_PWM_5V               JP5.1 U27.16
+MAC_SEL                  U27.2 U5.46
+MAC_SEL_5V               D31.1 J23.12 U27.18
+MUX2_PR1                 R72.2 R73.1 U19.4
+MUX2_ST                  R74.2 TP9.1 U19.8
+MUX_PR1                  R5.2 R6.1 U3.4
+NRST                     C37.1 J4.10 SW1.1 U5.25
+OSC32_IN                 C76.1 U5.8 Y3.1
+OSC32_OUT                C77.1 U5.9 Y3.2
+OVP12                    R138.2 R139.1 U29.8
+OVP12B                   R139.2 R140.1
+OVP5                     R133.2 R134.1 U28.8
+PMODE0                   R122.2 U23.45
+PMODE1                   R123.2 U23.44
+PMODE2                   R124.2 U23.43
+PSRAM_CLK                U11.6 U5.48
+PSRAM_CS                 R16.2 U11.1 U5.69
+PSRAM_IO0                U11.5 U5.80
+PSRAM_IO1                U11.2 U5.81
+PSRAM_IO2                U11.3 U5.74
+PSRAM_IO3                U11.7 U5.82
+PWR_SRC                  R7.2 U3.8 U5.89
+RCT                      C74.1 J22.5 R115.2 R116.2
+RDN                      C73.2 J22.6
+RDP                      C72.2 J22.3
+RXN                      C73.1 R116.1 U23.5
+RXP                      C72.1 R115.1 U23.6
+SD_CLK                   U15.3 U5.122
+SD_CMD                   R21.2 U15.5 U5.123
+SD_D0                    R22.2 U15.6 U5.124
+SD_D1                    R23.2 U15.7 U5.125
+SD_D2                    R24.2 U15.1 U5.126
+SD_D3                    R25.2 U15.2 U5.127
+SS12                     C83.1 U29.2
+SS5                      C81.1 U28.2
+SWCLK                    J4.4 U5.109
+SWDIO                    J4.2 U5.105
+SWO                      J4.6 U5.133
+SYNC                     U26.2 U5.96
+SYNC_5V                  D31.4 J19.3 R165.2 U26.1
+TCT                      C71.1 J22.4 R114.2
+TOCAP                    C62.1 U23.20
+TXN                      J22.2 R113.2 U23.1
+TXP                      J22.1 R112.2 U23.2
+USB_DM                   J1.A7 J1.B7 J16.3 U1.3 U1.4 U5.103
+USB_DP                   J1.A6 J1.B6 J16.5 U1.1 U1.6 U5.104
+USB_SHIELD               C85.1 J1.SH R164.1
+V1V2                     C61.1 U23.22
+VBAT                     BT1.1 C78.1 U5.6
+VBUS                     D1.1 F1.1 J1.A4 J1.A9 J1.B4 J1.B9 J16.1 R9.1 U1.5 U24.5
+VBUS_F                   C10.1 F1.2 U3.6
+VBUS_SENSE               R10.1 R9.2 U5.101
+VCAP1                    C35.1 U5.71
+VCAP2                    C36.1 U5.106
+VDDA                     C33.1 C34.1 FB1.2 U5.32 U5.33
+V_FDD12                  R162.2 R163.1 U5.45
+V_FDD5                   R160.2 R161.1 U5.44
+WGATE_SENSE              J21.14 U10.12 U5.132
+WLOCK_FW                 R131.2 U14.2 U5.3
+WLOCK_HW                 D28.1 J12.12 R130.2 R33.1 U14.1
+WREN_SENSE               R130.1 U5.5
+X1_EN                    R132.2 X1.1
+XI                       C59.1 R109.1 U23.30 Y2.1
+XO                       C60.1 R109.2 U23.31 Y2.3

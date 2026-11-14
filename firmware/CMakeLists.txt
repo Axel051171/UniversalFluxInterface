@@ -278,6 +278,8 @@ add_executable(${PROJECT_NAME}.elf
     ${STARTUP_SOURCE}
 )
 target_compile_options(${PROJECT_NAME}.elf PRIVATE $<$<COMPILE_LANGUAGE:C>:-fstack-usage>)
+# Call graph with frame sizes per object (*.ci, VCG text) for tools/check_callgraph.py; changes no code
+target_compile_options(${PROJECT_NAME}.elf PRIVATE $<$<COMPILE_LANGUAGE:C>:-fcallgraph-info=su>)
 if(UFI_FORCE_INTERNAL_FLUX_STORE)
     target_compile_definitions(${PROJECT_NAME}.elf PRIVATE UFI_FORCE_INTERNAL_FLUX_STORE=1)
 endif()
@@ -300,7 +302,8 @@ set_property(TARGET ${PROJECT_NAME}.elf APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/STM32H723ZGTX_FLASH.ld"
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py")
 set_property(TARGET ${PROJECT_NAME}.elf APPEND PROPERTY LINK_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_stack.py")
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_stack.py"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_callgraph.py")
 # Generate .hex and .bin only after the memory gate succeeds.
 add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_memory.py"
@@ -308,6 +311,8 @@ add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
             --report "${CMAKE_CURRENT_BINARY_DIR}/memory_usage.json"
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_stack.py"
             "${CMAKE_CURRENT_BINARY_DIR}" --report "${CMAKE_CURRENT_BINARY_DIR}/stack_usage.json"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_callgraph.py"
+            "${CMAKE_CURRENT_BINARY_DIR}" --report "${CMAKE_CURRENT_BINARY_DIR}/callgraph_usage.json"
     COMMAND ${CMAKE_OBJCOPY} -O ihex ${PROJECT_NAME}.elf ${PROJECT_NAME}.hex
     COMMAND ${CMAKE_OBJCOPY} -O binary ${PROJECT_NAME}.elf ${PROJECT_NAME}.bin
     COMMAND ${CMAKE_SIZE} ${PROJECT_NAME}.elf

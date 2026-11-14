@@ -126,17 +126,20 @@ Platine dafür unten um 12 mm verlängert (110 × 97 mm, zusätzliche Befestigun
 
 ## Erzeugen / Prüfen
 
-Die Schaltpläne werden per Skript generiert – **nicht** von Hand in Eeschema bearbeiten, solange das Design noch im Fluss ist (Änderungen gehen beim nächsten Lauf verloren).
+Bis v0.7 wurden die Schaltpläne von `scripts/build_schematic.py` erzeugt (letzter Lauf 07.10.2026, er schrieb `*.kicad_sch` und `netlist_summary.txt`). Die Überarbeitung zu v1.0 hat die Schaltplandateien geändert, ohne den Generator erneut laufen zu lassen. **`build_schematic.py` deshalb nicht mehr ausführen: Es überschreibt die v1.0-Schaltpläne mit dem Stand v0.7.**
+
+Prüfen (Stand v1.0):
 
 ```bash
 PY="C:/Program Files/KiCad/10.0/bin/python.exe"
 CLI="C:/Program Files/KiCad/10.0/bin/kicad-cli.exe"
 cd kicad/UFI_Headless
-"$PY" scripts/build_schematic.py                       # schreibt *.kicad_sch + netlist_summary.txt
 "$CLI" sch erc --severity-all -o erc.rpt UFI_Headless.kicad_sch
 "$CLI" sch export netlist -o headless.net UFI_Headless.kicad_sch
-"$PY" scripts/verify_netlist.py headless.net           # Soll/Ist-Vergleich aller Netze
+"$PY" scripts/verify_netlist.py headless.net           # Vergleich aller Netze mit netlist_v10.txt
 ```
+
+`netlist_v10.txt` ist die am 14.11.2026 aus dem v1.0-Schaltplan aufgezeichnete Netzliste (231 Netze). Der Vergleich zeigt jede Netzänderung seit der Aufzeichnung; er belegt nicht, dass die aufgezeichneten Netze die beabsichtigten sind (das war die Durchsicht der Überarbeitung, siehe PLAN.md). Nach einer geprüften Schaltplanänderung mit `--write` neu aufzeichnen. `netlist_summary.txt` bleibt als Sollnetzliste des Generators für v0.7 erhalten (`--baseline netlist_summary.txt`, nur mit einem v0.7-Export sinnvoll).
 
 ## Layout v1.0 (Stufe B3, 25.10.2026, 6 Lagen)
 
