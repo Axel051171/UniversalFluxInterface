@@ -3202,6 +3202,13 @@ geschriebenen Intervalle waren davon nicht betroffen. Jetzt wird UIF vor dem Ein
 Nachweis nur im Simulator (`test_sim_host.py`: kein Aufruf aus einem anstehenden Flag, Intervalle
 unverändert exakt); die Belegungszeit auf der Platine ist nicht gemessen.
 
+Überstromabschaltung der Laufwerksversorgung: Jede Abfrage von `board_status` (STATUS, INFO,
+SELFTEST, Leserekord) zählte bisher als Messung mit. Ein Host, der den Status während eines
+Anlaufstroms oft abfragte, konnte die fünf Messungen in Folge deshalb in weniger als 50 ms
+erreichen. Jetzt zählt nur noch der 10-ms-Takt der Platinenüberwachung; die Abfrage misst weiter
+den aktuellen Strom für die Antwort. Die eFuse-Fehlerbits (v1.0) werden ebenfalls nur im Takt
+aktualisiert und sind in der Antwort höchstens 10 ms alt.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

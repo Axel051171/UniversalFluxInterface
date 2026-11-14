@@ -6,8 +6,8 @@ ufi_board_activity and ufi_board_service.  The doubles model pin levels, ADC rea
 millisecond tick; they say nothing about the INA180, the eFuses or real timing.
 
 Covered: overcurrent trip per rail after OVERCURRENT_SAMPLES samples in a row, the shunt scale
-per board revision, eFuse fault mask and its POWER event on change, the status <-> sample_rails
-recursion (one status per event), status flag bits, write enable on v1.0 against v0.x, the
+per board revision, eFuse fault mask and its POWER event on change, one status per event,
+status polling that does not count towards the trip, status flag bits, write enable on v1.0 against v0.x, the
 motor idle-off timer and the sample period.
 """
 from test_regressions import FW, typedef, function, run
@@ -100,7 +100,7 @@ void ufi_board_activity(void);
 void ufi_board_service(void);
 '''
     code += function('ufi_board.c', 'ufi_board_power') + function('ufi_board.c', 'sample_faults')
-    code += function('ufi_board.c', 'sample_rails')
+    code += function('ufi_board.c', 'measure_rails') + function('ufi_board.c', 'sample_rails')
     code += 'static bool session_lock;\n' + function('ufi_board.c', 'ufi_board_soft_lock')
     code += function('ufi_board.c', 'ufi_board_jumper_locked') + function('ufi_board.c', 'ufi_board_write_enable')
     code += function('ufi_board.c', 'ufi_board_status') + function('ufi_board.c', 'ufi_board_activity')
@@ -137,6 +137,20 @@ static void overcurrent(void)
     /* switching a rail on clears its own trip only */
     ufi_board_power(0x02); assert(trip_mask == 1 && power_mask == 2);
     ufi_board_power(0x01); assert(!trip_mask && power_mask == 1 && (port.ODR & 3u) == 1u);
+
+    /* a host polling the status does not shorten the window (it did until 2026-11-14: every
+       ufi_board_status() counted as a sample), and the report still carries a fresh current */
+    fresh(7); adc[ADC_CH_I_FDD5] = 3002;
+    for (unsigned i = 0; i < 100u; i++) assert(ufi_board_status().i5_ma == 1501);
+    assert(power_mask == 3 && !trip_mask && !events && !oc_count[0]);
+    samples(OVERCURRENT_SAMPLES - 1u);
+    for (unsigned i = 0; i < 100u; i++) (void)ufi_board_status();
+    assert(power_mask == 3 && !trip_mask && !events && oc_count[0] == OVERCURRENT_SAMPLES - 1u);
+    samples(1); assert(power_mask == 2 && trip_mask == 1 && events == 1);
+    /* nor does it see an eFuse fault first: that is the tick's job as well */
+    fresh(10); port.IDR &= ~(uint32_t)PIN_FLT5.pin;
+    (void)ufi_board_status(); assert(!fault_mask && !events);
+    samples(1); assert(fault_mask == 1 && events == 1);
 
     /* exactly the limit never trips */
     fresh(7); adc[ADC_CH_I_FDD5] = 3000; adc[ADC_CH_I_FDD12] = 3001;

@@ -30,12 +30,6 @@ from pathlib import Path
 BOUNDED_RECURSION = {
     # cancel during spin-up calls ufi_drive_motor(false), which does not wait and cannot recurse
     'ufi_drive_motor': 1,
-    # status -> sample_rails -> status when a rail trips or the fault mask changes: the fault
-    # mask is updated before the call and a tripped rail is skipped, so at most one fault
-    # change and one trip per rail (two rails)
-    'ufi_board_status': 3,
-    'ufi_board.c:sample_rails': 3,
-    'ufi_board.c:sample_faults': 3,
     # op 24/26 (compare and start) and the track plan (ops 27/28) call the command once more
     # with an inner request: plan resume -> plan create -> start of op 1
     'ufi_analysis_command': 3,

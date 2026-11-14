@@ -99,12 +99,21 @@ static void sample_faults(void)
     }
 }
 
-static void sample_rails(void)
+/* Current of both rails for a report.  Does not count towards the overcurrent trip: that
+ * window is OVERCURRENT_SAMPLES ticks of the board service, whatever the host polls. */
+static void measure_rails(void)
 {
-    sample_faults();
     for (int r = 0; r < 2; r++) {
         /* v1.0 (board_rev 10): 50 mR shunt -> 1 mV/mA; earlier boards 0.1R -> 2 mV/mA */
         rail_ma[r] = (uint16_t)(ufi_adc_mv(rail_adc[r]) / (ufi_board_rev() >= 10u ? 1u : 2u));
+    }
+}
+
+static void sample_rails(void)
+{
+    sample_faults();
+    measure_rails();
+    for (int r = 0; r < 2; r++) {
         if (!((power_mask >> r) & 1u)) {
             oc_count[r] = 0;
             continue;
@@ -175,7 +184,7 @@ bool ufi_board_write_locked(void)
 
 board_status_t ufi_board_status(void)
 {
-    sample_rails();
+    measure_rails();
     board_status_t s = {0};
     s.power = (uint8_t)(power_mask | (uint8_t)(fault_mask << 2));   /* bits 2/3: eFuse fault 5 V / 12 V (v1.0) */
     s.flags = (uint8_t)((ufi_board_jumper_locked() ? 0x01u : 0u) | (uint8_t)(trip_mask << 1) |
