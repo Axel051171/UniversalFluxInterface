@@ -19,7 +19,7 @@ DELIBERATE = {}
 # generation (GUARDED_READ / GUARDED_WRITE refuse a token from before).  Every op that
 # analysis_changes() lists must appear in exactly one of these sets, so a new setter cannot stay
 # invisible to guarded requests by accident (as ops 34, 41 and 45 did until 2026-11-14).
-BUMPS_DIRECTLY = {31, 33, 34, 36, 41, 45, 50, 55}      # ufi_config_changed() in the op's own block
+BUMPS_DIRECTLY = {7, 11, 31, 33, 34, 36, 41, 45, 50, 55}      # ufi_config_changed() in the op's own block
 BUMPS_IN_CALLEE = {10: 'ufi_drive_extra_set', 14: 'ufi_drive_profile_set', 15: 'ufi_drive_media_set',
                    18: 'ufi_drive_operating_profile'}
 DOES_NOT_BUMP = {
@@ -27,8 +27,6 @@ DOES_NOT_BUMP = {
     24: 'guarded start itself', 26: 'guarded start itself', 27: 'creates a track plan', 29: 'steps a track plan',
     30: 'track plan persistence', 46: 'track survey start / abort', 52: 'starts a job on the stored capture',
     37: 'session write lock: guarded writes are refused by the lock itself (status 22)',
-    7: 'evidence configuration - owner decision open (2026-11-14)',
-    11: 'retry strategy - owner decision open (2026-11-14)',
 }
 
 

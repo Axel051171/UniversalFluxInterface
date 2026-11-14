@@ -773,7 +773,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             if(p[1]!=1 || (p[2]&~1u) || p[3] || p[4]>4 || p[5]<2 || p[5]>8 ||
                !p[6] || p[6]>7 || p[7] || !rd(p+8) || rd(p+8)>10000)return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            memcpy(recovery_config,p+1,11);
+            memcpy(recovery_config,p+1,11);ufi_config_changed();   /* a guarded start must not run under another retry strategy */
         }
         memcpy(out,recovery_config,11);*size=11;return UFI_OK;
     }
@@ -782,7 +782,7 @@ int ufi_analysis_command(const uint8_t* p,uint16_t n,uint8_t* out,uint16_t* size
             uint16_t f=(uint16_t)(p[1]|(uint16_t)p[2]<<8);
             if(f&~EVIDENCE_MASK)return UFI_ERR_BAD_ARGS;
             if(ufi_operation_busy() || ufi_job_live())return UFI_ERR_BUSY;
-            ufi_evidence_config(f);
+            ufi_evidence_config(f);ufi_config_changed();           /* what a capture records is part of the configuration */
         }
         memset(out,0,16);out[0]=1;out[1]=(uint8_t)ufi_evidence_configured();wr(out+4,evidence_id());
         out[8]=EVIDENCE_INDEX_MAX;out[9]=EVIDENCE_TRACE_MAX;*size=16;return UFI_OK;

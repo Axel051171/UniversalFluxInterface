@@ -340,8 +340,8 @@ def write_step(b, kind, t, other, owner):
         b.frames.clear()                    # the END of the cancelled WRITE goes to a session that is gone
         w.never_gated()
         w.nothing_more()
-        if t == LAN:
-            assert b.state()['owner'] != LAN
+        if True:    # both transports: a dropped USB session releases the drive like a closed LAN connection
+            assert b.state()['owner'] != t, ('dropped session still owns the drive', NAME[t])
         b.pump(25)
         w.never_gated()
         w.nothing_more()
@@ -361,8 +361,8 @@ def write_step(b, kind, t, other, owner):
             assert periods == w.deltas
         else:
             assert periods is not None and periods == w.deltas[:len(periods)]
-        if t == LAN:
-            assert b.state()['owner'] != LAN
+        if True:    # both transports: a dropped USB session releases the drive like a closed LAN connection
+            assert b.state()['owner'] != t, ('dropped session still owns the drive', NAME[t])
         rises = b.s.written()['gate_rises']
         b.pump(25)
         w.nothing_more()
@@ -454,8 +454,8 @@ def step(b, may_lock):
             drop(b, t)
             b.frames.clear()
             b.idle_after('drop_mid')
-            if t == LAN:
-                assert b.state()['owner'] != LAN
+            if True:    # both transports: a dropped USB session releases the drive like a closed LAN connection
+                assert b.state()['owner'] != t, ('dropped session still owns the drive', NAME[t])
             b.pump(8)
             b.frames.clear()                            # whatever was already on its way before the drop
             seq = start_read(b, t, 1)
@@ -465,8 +465,8 @@ def step(b, may_lock):
         drop(b, t)
         b.pump(2)
         b.frames.clear()
-        if t == LAN:
-            assert b.state()['owner'] != LAN
+        if True:    # both transports: a dropped USB session releases the drive like a closed LAN connection
+            assert b.state()['owner'] != t, ('dropped session still owns the drive', NAME[t])
     elif kind == 'lock':
         lock_step(b, t, owner)
     else:

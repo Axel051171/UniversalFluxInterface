@@ -495,6 +495,7 @@ int main(void){
         assert(!(rd(job.assessment[0])&RECOG_FORMAT_OBSERVED) && !job.assessment[0][17]);
     }
     start_error=0;
+    wr(media_guarded+1,ufi_config_generation());   /* evidence and retry settings changed above: they bump the generation (2026-11-14) */
     change_at_start=true;wr(media_guarded+5,media_token);memcpy(media_guarded+9,p,33);
     assert(ufi_analysis_command(media_guarded,42,out,&size)==UFI_ERR_MEDIA_CHANGED);
     assert(job.state==A_FAILED && (rd(job.assessment[0]+4)&CAUSE_MEDIA) && !ufi_analysis_job_active());
