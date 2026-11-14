@@ -195,7 +195,14 @@ typedef struct { uint32_t Pin, Mode, Pull, Speed, Alternate; } GPIO_InitTypeDef;
 #define GPIO_SPEED_FREQ_LOW       0u
 #define GPIO_SPEED_FREQ_VERY_HIGH 3u
 
-typedef enum { DMA1_Stream1_IRQn = 12, TIM3_IRQn = 29 } IRQn_Type;
+typedef enum { DMA1_Stream1_IRQn = 12, TIM3_IRQn = 29, OTG_HS_IRQn = 77 } IRQn_Type;
+/* USB device controller, as far as ufi_usb.c names it (polled mass storage modes) */
+typedef struct { int unused; } PCD_HandleTypeDef;
+void HAL_PCD_IRQHandler(PCD_HandleTypeDef* hpcd);
+void HAL_NVIC_DisableIRQ(IRQn_Type irq);
+void NVIC_ClearPendingIRQ(IRQn_Type irq);
+#define __ALIGN_BEGIN
+#define __ALIGN_END
 /* peripheral clocks: there is no RCC on the host */
 #define __HAL_RCC_TIM3_CLK_ENABLE()    do { } while (0)
 #define __HAL_RCC_DMA1_CLK_ENABLE()    do { } while (0)

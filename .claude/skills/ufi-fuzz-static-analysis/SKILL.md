@@ -83,6 +83,7 @@ against declaration-only headers in `firmware/tests/hal_stub` and generated doub
 | `gw` | `fuzz_gw.c` | whole `ufi_gw.c` + resources, cancel | Every transmit is non-null, 1..512 bytes; no hang |
 | `sd` | `fuzz_sd.c` | whole `ufi_dump.c` + image, HFE, MFM, verify, quality, protection, compare, codec | FatFs calls respect open/closed state and pointers; `f_mkfs` is never called; no dump stays active; output bounded |
 | `drive` | `fuzz_drive.c` | whole `ufi_drive.c` + drive_extra, media, capabilities, verify, mac | Without an injected sensor fault: successful seek leaves module and head model on the same track, recalibrate ends on track 0, stored profile reads back |
+| `usb` | `fuzz_usb.c` | whole `ufi_usb.c` (legacy v1 commands, transmit helpers, mode switch); all drivers generated stubs | Every v1 reply = header + exactly `length` <= 64 bytes; nothing transmitted in the mass storage modes; packets handed over in exact-size heap blocks. Does not see reuse of stale bytes inside the static 64-byte command buffer |
 | `lan` | `fuzz_lan.c` | `ufi_lan_cfg`, `ufi_net`, `ufi_w5500`, `ufi_sha256`, `ufi_lan_session`, `ufi_lan_status` on `w5500_fake.h` | Config bounds and usable addresses; DHCP reply type; address state machine; session frames with CRC; discovery answer is 32 bytes "UFI!" |
 
 `parsers`, `protection` and `lan` link HAL-free sources directly. `v2`, `gw`, `sd`, `drive` go

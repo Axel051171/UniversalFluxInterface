@@ -113,6 +113,7 @@ STUBBED = {
                real=('ufi_image', 'ufi_hfe_v3', 'ufi_mfm', 'ufi_verify', 'ufi_quality','ufi_protection', 'ufi_compare',
                      'ufi_write_codec', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media'),
                extra=dict(LINKER_SYMBOLS)),
+    'usb': dict(harness='fuzz_usb.c', units=('ufi_usb',), real=(), extra=dict(LINKER_SYMBOLS)),
     'drive': dict(harness='fuzz_drive.c', units=('ufi_drive',),
                   real=('ufi_drive_extra', 'ufi_media', 'ufi_capabilities', 'ufi_verify', 'ufi_mac'),
                   extra=dict(LINKER_SYMBOLS)),
@@ -122,6 +123,16 @@ STUBBED = {
 DRIVE_SEEDS = (bytes([1, 4, 2, 2, 3, 3, 2, 4, 5, 1]), bytes([6, 1, 2, 2, 2, 6, 2, 4]),
                bytes([2, 8, 9, 15, 10, 11, 0, 11]), bytes([3, 20, 21, 4, 2, 16]),
                bytes([7, 12, 19, 13, 14, 22, 23, 17, 18]))
+
+# v1 commands (fuzz_usb.c): OUT packets front to back; the last bytes double as the oracle tail
+# (packet size = 1 + (last byte & 63), then the action between packets)
+USB_SEEDS = tuple(bytes(cmd) + bytes([0, 63]) for cmd in (
+    [0x01], [0x02], [0x10, 1], [0x13, 40], [0x16], [0x17] + [1, 0] * 12, [0x1A, 1, 0], [0x1B, 3], [0x1D],
+    [0x1E, 0, 79, 2], [0x20, 1, 0, 2, 1, 200, 0], [0x21, 1, 1, 3], [0x2F], [0x30, 1, 0, 16, 0, 0, 0],
+    [0x33, 1, 0, 16, 0, 0, 0, 40, 0, 0, 0, 1], [0x34, 1, 0, 0xD0, 0x07, 100, 0], [0x31, 1, 0], [0x41, 0x28, 1],
+    [0x42], [0x50, 1, 80, 2, 3, 0, 0, 0, 0], [0x51], [0x53, 1], [0x53, 2], [0x54], [0xD0, 1, 2, 3], [0xD0, 0],
+    [0xD1, 3], [0xF0], [0xFF], [0x55, 0xAA, 1, 0, 1, 0, 0, 0, 0x12, 0x34])) + (
+    bytes([0x53, 1, 0x01, 0x53, 0, 0x17, 1, 2, 9, 4, 4, 4, 1, 1, 1]),)
 
 # LAN parsers: selector byte, then the input (fuzz_lan.c)
 LAN_SEEDS = (b'\x00lan=on\r\nip=dhcp\r\nmask=255.255.255.0\r\ngw=\r\ndns=\r\nhostname=\r\nmac=\r\nport=55100\r\n'
@@ -288,6 +299,7 @@ TARGETS = {'parsers': (build_parsers, PARSER_SEEDS, 'fuzz_corpus', 32767),
            'v2': (lambda: build_stubbed('v2'), V2_SEEDS, 'fuzz_v2_corpus', 8192),
            'gw': (lambda: build_stubbed('gw'), GW_SEEDS, 'fuzz_gw_corpus', 4096),
            'sd': (lambda: build_stubbed('sd'), SD_SEEDS, 'fuzz_sd_corpus', 8192),
+           'usb': (lambda: build_stubbed('usb'), USB_SEEDS, 'fuzz_usb_corpus', 1024),
            'drive': (lambda: build_stubbed('drive'), DRIVE_SEEDS, 'fuzz_drive_corpus', 1024),
            'lan': (build_lan, LAN_SEEDS, 'fuzz_lan_corpus', 4096)}
 
@@ -311,7 +323,7 @@ def run_target(name, seconds, replay):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--target', choices=('parsers','protection', 'v2', 'gw', 'sd', 'drive', 'lan', 'all'), default='all')
+    parser.add_argument('--target', choices=(*TARGETS, 'all'), default='all')
     parser.add_argument('--seconds', type=int, default=30)
     parser.add_argument('--replay', action='store_true', help='execute the stored corpus once, no mutation')
     args = parser.parse_args()
