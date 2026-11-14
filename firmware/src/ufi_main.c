@@ -219,6 +219,8 @@ void ufi_read_info_begin(uint8_t revs_requested)
     read_info.revs_requested = revs_requested;
     read_info.revs_effective = g_capture.revolutions_requested;
     read_info.quarter = g_capture.current_quarter;
+    read_info.index_origin = ufi_flux_index_origin();   /* the capture has started: its period is set */
+    read_info.sim_rpm = ufi_index_sim_rpm();
     read_sample(&read_info.start);
 }
 

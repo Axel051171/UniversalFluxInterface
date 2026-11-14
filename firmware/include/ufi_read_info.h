@@ -37,6 +37,16 @@ enum {
     READ_INFO_LOSS_TRUNCATED = 0x40 /* more loss windows than slots */
 };
 
+/* index origin (offset 33): what ended the revolutions of this read.  0 = not reported (block
+ * from firmware before this field).  A flippy side read through the simulator or in time slices
+ * has no physical index: boundaries are then not a position on the disk. */
+enum {
+    UFI_INDEX_ORIGIN_LINE = 1,      /* INDEX line of the drive (also hard-sectored media) */
+    UFI_INDEX_ORIGIN_SYNC = 2,      /* sync sensor on SYNC (Apple, board v1.0) */
+    UFI_INDEX_ORIGIN_SIMULATOR = 3, /* internal index simulator (INDEX_SIM mode bit 1); offset 34 = its rpm */
+    UFI_INDEX_ORIGIN_SLICES = 4     /* time slices (READ flag bit 0, Apple without sync sensor) */
+};
+
 /* One loss window in flux-timer stamps (TIM2, 275 MHz, 32 bit). */
 typedef struct {
     uint8_t kind;                   /* READ_LOSS_* */
@@ -53,6 +63,8 @@ typedef struct {
 
 typedef struct {
     uint8_t revs_requested, revs_effective, quarter;
+    uint8_t index_origin;           /* UFI_INDEX_ORIGIN_* at the start of the read */
+    uint16_t sim_rpm;               /* simulator rate, only with UFI_INDEX_ORIGIN_SIMULATOR */
     ufi_read_sample_t start, end;
     bool tcxo, ppm_valid, climate_valid;
     int32_t ppm;

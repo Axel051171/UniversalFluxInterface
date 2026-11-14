@@ -56,7 +56,15 @@ static void test_pack(void)
     assert(out[8] == 40 && out[9] == 1 && out[10] == 0xA0 && out[11] == 1 && out[12] == 41 && out[13] == 1 && out[14] == 1);
     assert(out[15] == 1 && (int32_t)rd32(out + 16) == -12 && rd32(out + 20) == 60000u);
     assert((int16_t)(out[24] | out[25] << 8) == -150 && (out[26] | out[27] << 8) == 4567 && rd32(out + 28) == 5u);
-    assert(out[32] == 1 && !out[33] && !out[34] && !out[35]);
+    assert(out[32] == 1 && !out[33] && !out[34] && !out[35]);     /* origin not set: reads as "not reported" */
+    in.index_origin = UFI_INDEX_ORIGIN_SIMULATOR;
+    in.sim_rpm = 300;
+    assert(ufi_read_info_pack(&in, idx, 3, 0, out) == UFI_READ_INFO_SIZE);
+    assert(out[33] == 3 && (out[34] | out[35] << 8) == 300 && out[32] == 1 && out[36] == READ_LOSS_RDATA);
+    in.index_origin = UFI_INDEX_ORIGIN_SLICES;                    /* the rate belongs to the simulator only */
+    assert(ufi_read_info_pack(&in, idx, 3, 0, out) == UFI_READ_INFO_SIZE && out[33] == 4 && !out[34] && !out[35]);
+    in.index_origin = UFI_INDEX_ORIGIN_LINE;
+    assert(ufi_read_info_pack(&in, idx, 3, 0, out) == UFI_READ_INFO_SIZE && out[33] == 1 && !out[34] && !out[35]);
     const uint8_t* e = out + 36;
     assert(e[0] == READ_LOSS_RDATA && e[1] == 1 && e[2] == 2 && rd64(e + 4) == 1050u && rd64(e + 12) == 2100u &&
            rd32(e + 20) == 77u);

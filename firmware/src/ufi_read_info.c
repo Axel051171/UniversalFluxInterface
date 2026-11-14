@@ -72,6 +72,8 @@ uint16_t ufi_read_info_pack(const ufi_read_info_t* in, const volatile uint32_t* 
     }
 
     out[32] = n;
+    out[33] = in->index_origin;
+    if (in->index_origin == UFI_INDEX_ORIGIN_SIMULATOR) put16(out + 34, in->sim_rpm);
     for (uint8_t i = 0; i < n; i++) {
         const ufi_loss_raw_t* l = &in->loss[i];
         uint8_t* e = out + 36u + (uint32_t)i * UFI_READ_LOSS_SIZE;

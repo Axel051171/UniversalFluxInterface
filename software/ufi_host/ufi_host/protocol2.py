@@ -1090,6 +1090,9 @@ LOSS_KINDS = {0x01: "RDATA overcapture", 0x02: "INDEX overcapture", 0x04: "DMA e
               0x08: "store full / host too slow", 0x10: "open end", 0x20: "before first index"}
 
 
+INDEX_ORIGINS = {0: "not reported", 1: "index line", 2: "sync sensor", 3: "index simulator", 4: "time slices"}
+
+
 @dataclass
 class LossWindow:
     """Where a READ lost data (4.24): the flux stream is intact before start_ticks (ticks since the
@@ -1135,10 +1138,24 @@ class ReadInfo:
     loss_total: int
     loss_truncated: bool
     losses: list[LossWindow]
+    index_origin: int = 0           # INDEX_ORIGINS key; 0 = firmware before this field
+    sim_rpm: int | None = None      # index simulator rate, only with origin 3
 
     @property
     def position_valid(self) -> bool:
         return bool(self.status_end & 1)
+
+    @property
+    def index_origin_text(self) -> str:
+        text = INDEX_ORIGINS.get(self.index_origin, f"unknown ({self.index_origin})")
+        return f"{text}, {self.sim_rpm} rpm" if self.sim_rpm else text
+
+    @property
+    def index_physical(self) -> bool | None:
+        """True when the revolution boundaries are a position on the disk (INDEX line or sync
+        sensor); False for the simulator and time slices (flippy side, no index hole); None
+        when the firmware did not report it."""
+        return None if not self.index_origin else self.index_origin in (1, 2)
 
 
 def decode_read_info(d: bytes) -> ReadInfo:
@@ -1159,7 +1176,8 @@ def decode_read_info(d: bytes) -> ReadInfo:
                     d[8], d[9], d[10], d[11], d[12], d[13], d[14], bool(f & 4), bool(f & 0x20),
                     ppm if f & 8 else None, ppm_age if f & 8 else None,
                     temp / 100 if f & 0x10 else None, rh / 100 if f & 0x10 else None,
-                    climate_age if f & 0x10 else None, d[15], bool(f & 0x40), losses)
+                    climate_age if f & 0x10 else None, d[15], bool(f & 0x40), losses,
+                    d[33], struct.unpack_from("<H", d, 34)[0] if d[33] == 3 else None)
 
 
 JOB_RETRY_MISSING, JOB_RETRY_ERRORS, JOB_EXPECT_SET, JOB_RAW_INDEX, JOB_TRANSFER_TRACE, JOB_CHECK_PROFILE = 1, 2, 4, 8, 16, 32

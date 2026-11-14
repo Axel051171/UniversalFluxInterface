@@ -812,6 +812,14 @@ void ufi_flux_index_source_sync(bool on)
     TIM2->SR = ~(TIM_SR_CC2IF | TIM_SR_CC2OF);  /* nothing stale from before the switch */
 }
 
+/* Where the revolution boundaries of the capture come from (read context offset 33, 4.24).
+ * Time slices win: with a period the index events do not end revolutions (ufi_flux_index_event). */
+uint8_t ufi_flux_index_origin(void)
+{
+    return period ? UFI_INDEX_ORIGIN_SLICES : index_internal ? UFI_INDEX_ORIGIN_SIMULATOR :
+           index_sync ? UFI_INDEX_ORIGIN_SYNC : UFI_INDEX_ORIGIN_LINE;
+}
+
 bool ufi_flux_index_asserted(void)
 {
     return index_internal ? ufi_index_sim_pulse() : index_sync ? ufi_sync_asserted() : bus_in(&PIN_FDD_INDEX);

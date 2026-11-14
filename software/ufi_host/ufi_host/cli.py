@@ -118,6 +118,9 @@ def _read_info_lines(ri) -> list[str]:
                 if ri.clock_ppm is not None else ", no self-test measurement since reset")
              + (f"; board {ri.temp_c:.2f} degC {ri.rh_percent:.2f} %RH (cached, {ri.climate_age_ms / 1000:.0f} s ago)"
                 if ri.temp_c is not None else "; no cached SHT40 value")]
+    if ri.index_origin:
+        lines.append(f"index: {ri.index_origin_text}"
+                     + ("" if ri.index_physical else " (no physical index: revolution boundaries are not a disk position)"))
     for w in ri.losses:
         at = "before the first index" if w.start_ticks is None else \
             f"intact until {w.start_ticks} ticks (revolution {w.revolution_start}), " + \

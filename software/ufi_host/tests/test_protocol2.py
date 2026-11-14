@@ -2030,11 +2030,11 @@ def test_read_provenance_flag(monkeypatch, capsys):
     assert "provenance: board v0.7, MCU 203236333135511700310028, firmware 1.18 rev abc1234+" in out and "capture id 4660" in out
 
 
-def _read_info_block(flags=0x3F, losses=(), total=None) -> bytes:
+def _read_info_block(flags=0x3F, losses=(), total=None, origin=0, sim_rpm=0) -> bytes:
     """132-byte read context block (4.24) as the firmware packs it."""
     head = bytes([1, P2.READ_INFO_SIZE, flags, 0, 1, 1, 0, 3, 40, 1, 0xA0, 1, 41, 1, 1,
                   len(losses) if total is None else total])
-    head += struct.pack("<iIhHI", -12, 90000, 2345, 4567, 5000) + bytes([len(losses), 0, 0, 0])
+    head += struct.pack("<iIhHI", -12, 90000, 2345, 4567, 5000) + struct.pack("<BBH", len(losses), origin, sim_rpm)
     body = b"".join(struct.pack("<BBBBQQI", *w) for w in losses)
     return (head + body).ljust(P2.READ_INFO_SIZE, b"\0")
 
@@ -2051,6 +2051,15 @@ def test_read_context_flag(monkeypatch, capsys):
     assert [q for q in fake.requests if q.cmd == P2.READ][-1].payload[3] & P2.READ_CONTEXT
     ri = cap.read_info
     assert ri.revs_requested == 0 and ri.revs_effective == 1 and ri.revs_clamped and ri.lines_changed and ri.head_moved
+    # index origin (offset 33): 0 from older firmware = not reported, never "physical"
+    assert ri.index_origin == 0 and ri.index_physical is None and ri.index_origin_text == "not reported"
+    sim = P2.decode_read_info(_read_info_block(origin=3, sim_rpm=300))
+    assert sim.index_physical is False and sim.sim_rpm == 300 and sim.index_origin_text == "index simulator, 300 rpm"
+    assert "no physical index" in cli._read_info_lines(sim)[-2] and "index: index simulator, 300 rpm" in cli._read_info_lines(sim)[-2]
+    line = P2.decode_read_info(_read_info_block(origin=1, sim_rpm=300))        # rate ignored without the simulator
+    assert line.index_physical is True and line.sim_rpm is None and line.index_origin_text == "index line"
+    assert P2.decode_read_info(_read_info_block(origin=4)).index_physical is False
+    assert P2.decode_read_info(_read_info_block(origin=9)).index_origin_text == "unknown (9)"
     assert (ri.density_start, ri.drate_start, ri.density_end, ri.drate_end) == (1, 0, 1, 1)
     assert (ri.track_start, ri.track_end, ri.side_end, ri.quarter, ri.position_valid) == (40, 41, 1, 0xA0, True)
     assert ri.tcxo and ri.clock_ppm == -12 and ri.clock_ppm_age_ms == 90000

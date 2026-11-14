@@ -2922,8 +2922,21 @@ also auch der Provenienzblock – dort abgeschnitten).
 | 26 | u16 | Relative Feuchte in 0,01 % |
 | 28 | u32 | Alter dieses Werts in ms |
 | 32 | u8 | Belegte Verlustplätze (0–4) |
-| 33 | 3 Bytes | 0 |
+| 33 | u8 | Indexquelle dieser Aufnahme (seit 2026-11-14, vorher 0): 0 = nicht gemeldet (ältere Firmware), 1 = INDEX-Leitung des Laufwerks (auch hartsektoriert), 2 = Sync-Sensor (SYNC, Apple ab v1.0), 3 = interner Indexsimulator (INDEX_SIM `mode` Bit1), 4 = Zeitabschnitte (READ-Flag Bit0, Apple ohne Sync-Sensor) |
+| 34 | u16 | Bei Indexquelle 3 die Rate des Simulators in Impulsen je Minute, sonst 0 |
 | 36 | 4 × 24 Bytes | Verlustfenster, unbelegte Plätze 0 |
+
+**Indexquelle und Flippy-Seiten (Vorschlag S7):** Die Rückseite einer Flippy-Diskette hat kein
+Indexloch; gelesen wird sie mit dem Indexsimulator (INDEX_SIM, 3.3) oder in Zeitabschnitten
+(READ-Flag Bit0). Beides gab es bereits, nur stand an der Aufnahme nicht, welche Quelle die
+Umdrehungen begrenzt hat. Bei Quelle 3 und 4 sind die `FD`-Marken und Indexabstände **keine
+Position auf der Diskette** und keine Drehzahlmessung: Spuren sind nicht zueinander ausgerichtet,
+und eine Umdrehung im Strom ist nur so lang wie die eingestellte Rate, nicht wie die echte
+Umdrehung. Die Quelle wird beim Start der Aufnahme festgehalten. Ob die gelesene Seite die
+Rückseite ist, weiß die Firmware nicht; das vermerkt das Werkzeug in seinen eigenen Metadaten.
+Der Flussstrom wird nie umgedreht. Schema und Länge bleiben 1/132; ältere Hosts lasen die Bytes
+als reserviert. Host: `ReadInfo.index_origin`, `index_origin_text`, `index_physical`, `sim_rpm`;
+`ufi read --read-info` zeigt die Zeile `index: …`.
 
 Ein Verlustfenster:
 

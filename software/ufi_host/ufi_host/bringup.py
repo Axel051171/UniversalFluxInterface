@@ -541,7 +541,7 @@ def _read_info_text(ri) -> tuple[list[str], list[str], dict]:
                 position_valid=ri.position_valid, head_moved=ri.head_moved,
                 density=(ri.density_start, ri.density_end), drate=(ri.drate_start, ri.drate_end),
                 lines_changed=ri.lines_changed, tcxo=ri.tcxo, clock_ppm=ri.clock_ppm, temp_c=ri.temp_c,
-                rh_percent=ri.rh_percent, loss_total=ri.loss_total,
+                rh_percent=ri.rh_percent, loss_total=ri.loss_total, index_origin=ri.index_origin_text,
                 losses=[asdict(w) for w in ri.losses])
     return problems, notes, data
 
