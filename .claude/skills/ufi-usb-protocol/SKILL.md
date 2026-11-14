@@ -68,8 +68,13 @@ Frame, both directions, little endian: `55 AA type cmd seq status len16 payload[
 
 ## Dispatcher gates (order in `request()`)
 
-A new command passes these checks before its `case` runs. Each is a hand-maintained list; a command that
-is missing from a list gets the default, which is the strict one except for `readonly`.
+A new command passes these checks before its `case` runs. Since 2026-11-14 the per-command properties
+live in ONE table, `cmd_table` in `ufi_v2.c` (bits `C_QUERY`, `C_NO_DRIVE`, `C_DUMP_OK`, `C_DISK_WR`,
+`C_LAN_WR`, `C_USB_ONLY`, `C_PAYLOAD`); `request_readonly()`, `allowed_during_dump()`, `uses_drive()`,
+`locked_write()` and `lan_refusal()` are views of it through `cmd_props()`. A new command needs exactly
+one row (`firmware/tests/test_command_table.py` fails without it); a code without a row gets the strict
+defaults. Payload-dependent properties are decided in `cmd_props()`, changing ANALYSIS_JOB ops in
+`analysis_changes()`.
 
 | Order | Check | Default for an unlisted command | Refusal |
 |---|---|---|---|

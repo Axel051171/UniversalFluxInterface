@@ -168,10 +168,11 @@ static bool session_lock;
     for name in ('ufi_board_soft_lock','ufi_board_soft_locked','ufi_board_jumper_locked','ufi_board_write_locked'):
         code += function('ufi_board.c', name)
     code += r'''
-enum {UFI_V2_WRITE=0x22,V2_GUARDED_WRITE=0x27,V2_ERASE=0x23,V2_PATTERN=0x24,V2_FORMAT=0x26,
-      V2_COPY_START=0x63,V2_WRITE_START=0x64,V2_IEC_BLOCK=0x35,V2_IEC_MEM=0x33,V2_IEC_TARGET=0x36};
+#include "ufi_lan_session.h"
+enum {UFI_V2_READ=0x20,UFI_V2_WRITE=0x22};      /* the other codes come with the table from ufi_v2.c */
 '''
-    code += function('ufi_v2.c', 'locked_write') + r'''
+    from test_regressions import v2_command_table
+    code += v2_command_table() + function('ufi_v2.c', 'locked_write') + r'''
 int main(void){
     assert(!ufi_board_soft_locked() && !ufi_board_write_locked() && !ufi_board_jumper_locked());
     jumper=1;assert(ufi_board_jumper_locked() && ufi_board_write_locked() && !ufi_board_soft_locked());

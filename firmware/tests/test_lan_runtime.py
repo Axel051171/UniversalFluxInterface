@@ -8,12 +8,7 @@ def lan_rules_tests():
     code = BASE + ERRORS + r'''
 #include "ufi_lan.h"
 #include "ufi_lan_session.h"
-enum {UFI_V2_WRITE=0x22,V2_GUARDED_WRITE=0x27,V2_ERASE=0x23,V2_PATTERN=0x24,V2_FORMAT=0x26,
-      V2_COPY_START=0x63,V2_WRITE_START=0x64,V2_IEC_BLOCK=0x35,V2_IEC_MEM=0x33,V2_IEC_TARGET=0x36,
-      V2_BOOTLOADER=0x04,V2_USB_MODE=0x05,V2_READ_FILE=0x51,V2_WRITE_FILE=0x52,V2_DELETE=0x53,V2_IEC_SEND=0x31};
-enum {V2_PING=0x00,V2_INFO=0x01,V2_STATUS=0x02,V2_EVENTS=0x06,V2_WRITE_LIMITS=0x08,V2_DESCRIBE=0x09,
-      V2_RESOURCE=0x0A,V2_JOB=0x0B,V2_FEATURES=0x0C,V2_DIAGNOSTICS=0x0D,V2_QUALITY=0x0E,V2_ANALYSIS_JOB=0x0F,
-      V2_DUMP_STATUS=0x61,V2_NET=LAN_V2_NET,V2_AUTH=LAN_V2_AUTH};
+enum {UFI_V2_READ=0x20,UFI_V2_WRITE=0x22};      /* the other codes come with the table from ufi_v2.c */
 enum {UFI_USB_FLUX=0,UFI_USB_SD=1,UFI_USB_FLOPPY=2,UFI_USB_GW=3,UFI_USB_COMPOSITE=4};
 enum {UFI_OWNER_NONE,UFI_OWNER_NATIVE,UFI_OWNER_GW};
 #define OWNER_IDLE_MS 30000u
@@ -34,8 +29,10 @@ static uint32_t HAL_GetTick_(void){return now;}
 typedef struct {uint8_t route; volatile uint8_t owner; uint8_t ev_route; uint32_t owner_ms;} v2_link_t;
 static v2_link_t link;
 '''
+    from test_regressions import v2_command_table
+    code += v2_command_table()
     for name in ('locked_write', 'is_lan_cfg', 'lan_refusal', 'owner_busy', 'ufi_v2_claim',
-                 'ufi_v2_owner', 'ufi_v2_route', 'analysis_changes', 'request_readonly'):
+                 'ufi_v2_owner', 'ufi_v2_route', 'request_readonly'):
         code += function('ufi_v2.c', name)
     code += r'''
 static int refusal_of_file(uint8_t cmd,const char* name){

@@ -530,6 +530,56 @@ static void poll_events(void)
  * REQUESTS
  * ============================================================================ */
 
+/* ============================================================================
+ * COMMAND PROPERTIES
+ * ============================================================================
+ * One row per request code: what the dispatcher needs to know before the command runs.
+ * Until 2026-11-14 these were five separate lists (read-only expression, dump list, drive
+ * list, write-lock list, LAN rules); a command missing from one of them silently got that
+ * list's default, which is how changing ops ran without the drive ownership.
+ * A code without a row has no property: it claims the drive, counts as using it, is refused
+ * during a dump and is not a disk write - the strict side everywhere except the write lock,
+ * so a new disk-changing command must get its row (test_command_table.py checks that every
+ * code of the enum and every case of request() has one). */
+enum {
+    C_QUERY    = 0x01,  /* moves nothing and changes no setting: needs no drive ownership */
+    C_NO_DRIVE = 0x02,  /* does not touch the drive: allowed while a READ / WRITE runs */
+    C_DUMP_OK  = 0x04,  /* allowed while a stand-alone dump owns drive and file system */
+    C_DISK_WR  = 0x08,  /* can change a disk or a drive's memory: session write lock (status 22), LAN only with lan_write */
+    C_LAN_WR   = 0x10,  /* other writes the LAN needs lan_write for: SD file write / delete, raw IEC bytes */
+    C_USB_ONLY = 0x20,  /* never over LAN: firmware update, USB re-enumeration */
+    C_PAYLOAD  = 0x40,  /* a property depends on the payload: decided in cmd_props() */
+};
+typedef struct { uint8_t cmd, props; } cmd_row_t;
+#define C_STATUS_QUERY (C_QUERY | C_NO_DRIVE | C_DUMP_OK)
+static const cmd_row_t cmd_table[] = {
+    { V2_PING, C_STATUS_QUERY }, { V2_INFO, C_STATUS_QUERY }, { V2_STATUS, C_STATUS_QUERY },
+    { V2_RESET, 0 }, { V2_BOOTLOADER, C_USB_ONLY }, { V2_USB_MODE, C_USB_ONLY },
+    { V2_EVENTS, C_STATUS_QUERY }, { V2_SELFTEST, 0 }, { V2_WRITE_LIMITS, C_STATUS_QUERY },
+    { V2_DESCRIBE, C_STATUS_QUERY }, { V2_RESOURCE, C_STATUS_QUERY },
+    { V2_JOB, C_NO_DRIVE | C_DUMP_OK | C_PAYLOAD },         /* query only without payload */
+    { V2_FEATURES, C_STATUS_QUERY }, { V2_DIAGNOSTICS, C_STATUS_QUERY },
+    { V2_QUALITY, C_QUERY | C_NO_DRIVE },
+    { V2_ANALYSIS_JOB, C_NO_DRIVE | C_PAYLOAD },            /* query unless analysis_changes() */
+    { V2_SELECT, 0 }, { V2_MOTOR, 0 }, { V2_SEEK, 0 }, { V2_RECAL, 0 }, { V2_SIDE, 0 }, { V2_TIMING, 0 },
+    { V2_LINES, 0 }, { V2_CHECK_DISK, 0 }, { V2_PROBE_TRACKS, 0 }, { V2_SEEK_TEST, 0 }, { V2_AMIGA_ID, 0 },
+    { V2_DIAG_RPM, 0 }, { V2_DRIVE_SCAN, 0 }, { V2_INDEX_SIM, C_DUMP_OK }, { V2_SET_RPM, 0 },
+    { V2_STEP_SCHEDULE, 0 },
+    { UFI_V2_READ, 0 }, { V2_ABORT, C_NO_DRIVE }, { UFI_V2_WRITE, C_DISK_WR }, { V2_ERASE, C_DISK_WR },
+    { V2_PATTERN, C_DISK_WR }, { V2_ANALYZE, 0 }, { V2_FORMAT, C_DISK_WR }, { V2_GUARDED_WRITE, C_DISK_WR },
+    { V2_GUARDED_READ, 0 }, { V2_MAC, 0 },
+    { V2_IEC_RESET, 0 }, { V2_IEC_SEND, C_LAN_WR }, { V2_IEC_RECV, 0 },
+    { V2_IEC_MEM, C_PAYLOAD }, { V2_IEC_NIB, 0 }, { V2_IEC_BLOCK, C_PAYLOAD }, { V2_IEC_TARGET, C_PAYLOAD },
+    { V2_IEC_READ_STATUS, 0 },
+    { V2_POWER, C_DUMP_OK }, { V2_USB_POWER, C_DUMP_OK }, { V2_SD_INFO, C_DUMP_OK },
+    { V2_RTC, C_NO_DRIVE | C_DUMP_OK }, { V2_SENSOR, 0 }, { V2_RAILS, C_NO_DRIVE | C_DUMP_OK },
+    { V2_SYNC, C_NO_DRIVE | C_DUMP_OK }, { V2_FDD_PINS, 0 },
+    { V2_NET, C_STATUS_QUERY }, { V2_AUTH, C_STATUS_QUERY },
+    { V2_DIR, 0 }, { V2_READ_FILE, 0 }, { V2_WRITE_FILE, C_LAN_WR }, { V2_DELETE, C_LAN_WR }, { V2_CFG_RELOAD, 0 },
+    { V2_DUMP_START, 0 }, { V2_DUMP_STATUS, C_STATUS_QUERY }, { V2_DUMP_ABORT, C_NO_DRIVE | C_DUMP_OK },
+    { V2_COPY_START, C_DISK_WR }, { V2_WRITE_START, C_DISK_WR },
+};
+
 /* ANALYSIS_JOB 0x0F sub-operation that changes state: a job or plan start/abort, or the
  * "set" form of an op whose one-byte form only reads.  Everything else of 0x0F is a query.
  * A changing op that is missing here would run without claiming the drive, so the other
@@ -558,49 +608,53 @@ static bool analysis_changes(const uint8_t* p, uint16_t len)
     }
 }
 
+/* Properties of one request: the table row, with the payload-dependent ones decided here */
+static uint8_t cmd_props(uint8_t cmd, const uint8_t* p, uint16_t len)
+{
+    uint8_t props = 0;
+    for (unsigned i = 0; i < sizeof cmd_table / sizeof cmd_table[0]; i++) {
+        if (cmd_table[i].cmd == cmd) {
+            props = cmd_table[i].props;
+            break;
+        }
+    }
+    if (!(props & C_PAYLOAD)) {
+        return props;
+    }
+    props &= (uint8_t)~C_PAYLOAD;
+    switch (cmd) {
+        case V2_JOB:                        /* without payload: status of the integrity job */
+            return len == 0u ? (uint8_t)(props | C_QUERY) : props;
+        case V2_ANALYSIS_JOB:
+            return analysis_changes(p, len) ? props : (uint8_t)(props | C_QUERY);
+        case V2_IEC_BLOCK:                  /* op 1 = U2 block write */
+            return (len >= 1u && p[0] == 1u) ? (uint8_t)(props | C_DISK_WR) : props;
+        case V2_IEC_MEM:                    /* M-W, M-E, DOS command */
+            return (len >= 1u && (p[0] == 0u || p[0] == 2u || p[0] == 3u)) ? (uint8_t)(props | C_DISK_WR) : props;
+        case V2_IEC_TARGET:                 /* schema, device, then the MEM payload */
+            return (len >= 3u && (p[2] == 0u || p[2] == 2u || p[2] == 3u)) ? (uint8_t)(props | C_DISK_WR) : props;
+        default:
+            return props;
+    }
+}
+
 /* Requests that neither move the drive nor change a setting: they need no drive ownership */
 static bool request_readonly(uint8_t cmd, const uint8_t* p, uint16_t len)
 {
-    switch (cmd) {
-        case V2_PING: case V2_INFO: case V2_STATUS: case V2_DESCRIBE: case V2_FEATURES:
-        case V2_DIAGNOSTICS: case V2_WRITE_LIMITS: case V2_EVENTS: case V2_DUMP_STATUS:
-        case V2_RESOURCE: case V2_QUALITY: case V2_NET: case V2_AUTH:
-            return true;
-        case V2_JOB:
-            return len == 0;
-        case V2_ANALYSIS_JOB:
-            return !analysis_changes(p, len);
-        default:
-            return false;
-    }
+    return (cmd_props(cmd, p, len) & C_QUERY) != 0;
 }
+
 
 /* A stand-alone dump owns drive and file system: only these meanwhile */
 static bool allowed_during_dump(uint8_t cmd)
 {
-    switch (cmd) {
-        case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_POWER:
-        case V2_USB_POWER: case V2_SD_INFO: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_RTC: case V2_SYNC:
-        case V2_RAILS:
-        case V2_INDEX_SIM: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
-        case V2_NET: case V2_AUTH:
-            return true;
-        default:
-            return false;
-    }
+    return (cmd_props(cmd, NULL, 0) & C_DUMP_OK) != 0;
 }
 
 /* Commands that move or use the drive: refused while a READ / WRITE runs */
 static bool uses_drive(uint8_t cmd)
 {
-    switch (cmd) {
-        case V2_PING: case V2_INFO: case V2_STATUS: case V2_EVENTS: case V2_WRITE_LIMITS: case V2_DESCRIBE: case V2_RESOURCE: case V2_JOB: case V2_DIAGNOSTICS: case V2_FEATURES:
-        case V2_ABORT: case V2_DUMP_STATUS: case V2_DUMP_ABORT: case V2_QUALITY: case V2_ANALYSIS_JOB:
-        case V2_RTC: case V2_SYNC: case V2_RAILS:   /* A10: board sensing, no drive involved */
-        case V2_NET: case V2_AUTH:                  /* L4/L5: LAN status and challenge */
-            return false;
-        default: return true; /* includes IEC, file I/O and mode/power changes */
-    }
+    return !(cmd_props(cmd, NULL, 0) & C_NO_DRIVE);     /* without a row: yes (IEC, file I/O, mode and power changes) */
 }
 
 /* Last refusal (4.8, op 39): the parsers note the field and a detail while they refuse,
@@ -945,19 +999,7 @@ static void write_data(uint8_t* p, uint16_t len)
  * file writes stay allowed; the SD card is not the evidence disk. */
 static bool locked_write(uint8_t cmd, const uint8_t* p, uint16_t len)
 {
-    switch (cmd) {
-        case UFI_V2_WRITE: case V2_GUARDED_WRITE: case V2_ERASE: case V2_PATTERN:
-        case V2_FORMAT: case V2_COPY_START: case V2_WRITE_START:
-            return true;
-        case V2_IEC_BLOCK:                  /* op 1 = U2 block write */
-            return len >= 1u && p[0] == 1u;
-        case V2_IEC_MEM:                    /* M-W, M-E, DOS command */
-            return len >= 1u && (p[0] == 0u || p[0] == 2u || p[0] == 3u);
-        case V2_IEC_TARGET:                 /* schema, device, then the MEM payload */
-            return len >= 3u && (p[2] == 0u || p[2] == 2u || p[2] == 3u);
-        default:
-            return false;
-    }
+    return (cmd_props(cmd, p, len) & C_DISK_WR) != 0;
 }
 
 /* LAN.CFG holds lan_key: never readable over LAN.  Last path component, trailing dots and
@@ -990,14 +1032,14 @@ static bool is_lan_cfg(const uint8_t* name, uint16_t n)
  * lan_write=1 and the write lock switch open.  0 = allowed. */
 static int lan_refusal(uint8_t cmd, const uint8_t* p, uint16_t len)
 {
-    if (cmd == V2_BOOTLOADER || cmd == V2_USB_MODE) {
+    const uint8_t props = cmd_props(cmd, p, len);
+    if (props & C_USB_ONLY) {
         return UFI_ERR_LAN_DENIED;
     }
     if (cmd == V2_READ_FILE && len > 6u && is_lan_cfg(&p[6], (uint16_t)(len - 6u))) {
         return UFI_ERR_LAN_DENIED;
     }
-    if ((locked_write(cmd, p, len) || cmd == V2_WRITE_FILE || cmd == V2_DELETE || cmd == V2_IEC_SEND) &&
-        !ufi_lan_write_allowed()) {
+    if ((props & (C_DISK_WR | C_LAN_WR)) && !ufi_lan_write_allowed()) {
         return UFI_ERR_WRITE_PROT;
     }
     return 0;

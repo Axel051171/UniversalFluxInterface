@@ -21,6 +21,17 @@ def function(file, name):
     return m.group() + "\n"
 
 
+def v2_command_table():
+    """Request codes, property bits, the command table and cmd_props() of ufi_v2.c, verbatim.
+    Needs LAN_V2_NET / LAN_V2_AUTH (ufi_lan_session.h) and UFI_V2_READ / UFI_V2_WRITE."""
+    source = (FW / "src" / "ufi_v2.c").read_text(encoding="utf-8")
+    codes = re.search(r"^enum \{\n    V2_PING = .*?^\};\n", source, re.M | re.S)
+    table = re.search(r"^enum \{\n    C_QUERY .*?^static const cmd_row_t cmd_table\[\] = \{.*?^\};\n", source, re.M | re.S)
+    if not codes or not table:
+        raise RuntimeError("cannot extract the v2 command table")
+    return codes.group() + table.group() + function("ufi_v2.c", "analysis_changes") + function("ufi_v2.c", "cmd_props")
+
+
 def typedef(file, name):
     source = file.read_text(encoding="utf-8")
     return re.search(r"typedef (?:enum|struct)\s*(?:__packed\s*)?\{[^}]*\}\s*" + name + ";", source).group().replace('__packed','') + "\n"

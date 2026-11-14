@@ -3174,10 +3174,16 @@ Verhalten am Protokoll ändert, steht es hier; die Formate bleiben gleich.
 | STEP_SCHEDULE 0x1F, Fehler beim Schritt | Der Rückgabewert des Schritts wurde ignoriert, der Eintrag galt als erledigt, die Aufnahme lief an der falschen Position weiter | Die laufende Operation endet mit Status 3 (READ: Ende-Rahmen, WRITE: Abschluss), der Rest des Plans entfällt. Ganze Spuren über 83 weist schon das Setzen mit Status 16 ab |
 | Host `read_track(..., quarter=q)` | `Revolution.track` trug den Übertragungswert `Spur·4 + Viertel` (Viertel 1 von Spur 17 → 69) | `Revolution.track` = Spur, neu `Revolution.quarter` = Viertel; die Anfrage ist unverändert |
 
-Nicht umgesetzt aus derselben Durchsicht: der Speicherbedarf des Host-Decoders für lange
-Aufnahmen (rund 13,8 MiB Spitze für 200 000 Flusswechsel) und eine zentrale Befehlstabelle für
-Berechtigungen und Seiteneffekte. Die Einordnung „Abfrage oder ändernd“ steht jetzt immerhin in
-einer Funktion (`request_readonly()` in `ufi_v2.c`) und wird für jede Op-Nummer getestet.
+Nachgezogen am selben Tag: Der Host-Decoder baut die Umdrehungen in einem Durchgang (halber
+Spitzenspeicher), und die Eigenschaften der Befehle stehen in **einer Tabelle** (`cmd_table` in
+`ufi_v2.c`): keine Laufwerksbeanspruchung nötig, benutzt das Laufwerk nicht, während eines Dumps
+erlaubt, Diskettenschreiben (Sitzungssperre, LAN nur mit `lan_write`), sonstiges Schreiben für
+LAN, nur über USB. Vorher waren das fünf getrennte Listen. Am Protokoll ändert sich dadurch
+nichts: `firmware/tests/test_command_table.py` vergleicht die Tabelle für alle 256 Codes mit den
+eingefrorenen früheren Listen und verlangt für jeden Befehlscode genau eine Zeile. Ein Code ohne
+Zeile bekommt die strenge Vorgabe (beansprucht das Laufwerk, während Dump abgewiesen). Welche
+Unter-Ops von 0x0F den Zustand ändern, steht weiter in `analysis_changes()`; die Erhöhung der
+Konfigurationsgeneration liegt in den einzelnen Ops und ist noch nicht tabelliert.
 
 ## 5 Lesen, Schreiben und Prüflesen
 
