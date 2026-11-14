@@ -80,6 +80,8 @@ Das feinere UFI-Timerraster kann für Timinganalysen nützlich sein. Welche Unte
 
 ## Für welche Aufgaben UFI besonders interessant ist
 
+Mit [UnifiedFloppyTool](UnifiedFloppyTool) ist außerdem eine eigene grafische PC-Anbindung im Entwicklungsstand vorhanden: native UFI-Verbindung, Diagnose, Aufnahmen, Schreibprüfung und IEC-Werkzeuge ergänzen die Platine. Das ist ein Vorteil des gemeinsamen Arbeitsablaufs. Die UFT-Geräteabnahme steht noch aus; eine grafische Oberfläche allein ist gegenüber den anderen Systemen keine Alleinstellung.
+
 - **Gemischte Sammlung:** mehrere Laufwerksfamilien mit derselben Grundplatine und dokumentierter Anschlusszuordnung bearbeiten.
 - **Gehäuse und Kopierstation:** Frontbedienung, lokale Speicherung und spätere Abholung der Abbilder kombinieren.
 - **Versuchs- und Diagnoseplatz:** Strom, Spannung, Pufferzustand, Medienwechsel und Aufnahmebefunde gemeinsam auswerten.

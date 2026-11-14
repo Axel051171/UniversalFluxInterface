@@ -24,7 +24,22 @@ Inhaltliche Änderungen in beiden Fassungen nachführen. Neue Seiten paarweise a
 
 Die beiden zusätzlichen Dateien `*-annotated-en.png` enthalten englische Platinenbeschriftungen mit derselben Nummerierung wie die deutsche Legende. Originalbilder werden gemeinsam verwendet.
 
-## Quellmanifest
+## USB-Protokoll für eigene Tools
+
+`USB-Protokoll` und `USB-Protocol` bilden den zweisprachigen Entwicklereinstieg. `USB-Protokoll-Referenz` enthält die **vollständige deutsche** Spezifikation aus `docs/USB_Protokoll.md`; `USB-Protocol-Reference` ist deren englischer Wegweiser, keine vollständige Übersetzung der umfangreichen Detailtabellen. Das ist auf beiden Referenzseiten ausdrücklich angegeben.
+
+Die Kopie hat ein erzeugtes, klickbares Inhaltsverzeichnis und für das Wiki angepasste Repository-Links. Nach einer Änderung der Quelle deren Inhalt prüfen und die Wiki-Kopie erneuern:
+
+```console
+python docs/wiki-tools/wiki.py sync-reference
+python docs/wiki-tools/wiki.py check
+python docs/wiki-tools/test_protocol_examples.py
+python docs/wiki-tools/test_wiki.py
+```
+
+`check` lehnt eine veraltete oder separat bearbeitete Referenzkopie ab. `sync-reference` veröffentlicht nichts. `examples/ufi_v2_probe.py` ist ein kleiner nativer CDC-Client auf Basis des Python-Hosts: nur PING/INFO, keine Laufwerks- oder Medienbefehle; der CLI-Einstieg prüft den Port und setzt seinen Kanal zurück. Die Beispieltests prüfen die veröffentlichten Hex-Vektoren gegen den Referenzcodec und den Probe gegen das vorhandene FakeV2. Dabei wird kein USB-Gerät geöffnet.
+
+## Quellabgleich
 
 `sources.json` speichert SHA256 und Quellrevision für dokumentierte Repository-Dateien. Nach Änderungen die entsprechenden Wiki-Aussagen prüfen, dann das Manifest ausdrücklich neu erfassen:
 
@@ -35,7 +50,13 @@ python docs/wiki-tools/wiki.py check --sources
 
 Ein neu erfasstes Manifest ist kein automatischer Inhaltsnachweis. Die aktuelle Version wurde während laufender Firmwareänderungen vorbereitet; vor Upload deren endgültigen Stand abgleichen.
 
-## Bilder
+## UnifiedFloppyTool als Begleitanwendung
+
+Die Seiten `UnifiedFloppyTool` und `UnifiedFloppyTool-EN` dokumentieren die lokal untersuchte native UFI-Anbindung. `companion-sources.json` hält UFT-Revision, interne Version und SHA256 der gelesenen Dateien fest. Der lokale Ordnername 4.1.0 stimmt nicht mit `VERSION.txt` (4.1.6) überein. Der öffentliche Projektlink bestätigt nicht, dass dessen Downloadpakete dieselben Entwicklungsfunktionen enthalten.
+
+`check --sources` prüft die UFI-Repository-Quellen aus `sources.json`; das UFT-Quellmanifest ist ein separater Prüfbezug und wird dabei nicht automatisch kontrolliert. Vor Veröffentlichung oder späteren UFT-Änderungen die beschriebenen GUI-Funktionen, Transportwege, Sprache und Testnachweise erneut mit diesem Stand abgleichen. Der fremde Arbeitsbaum wird von den Wiki-Werkzeugen nicht bearbeitet oder veröffentlicht.
+
+## Platinenbilder
 
 Die Originale `UFI_Headless-front.png` und `UFI_Headless-back.png` des Nutzers wurden bytegleich in den Wiki-Assetordner kopiert. Das zuerst genannte JPG wurde nach der Korrektur durch den Nutzer nicht als v1.0-Vorderseite verwendet.
 

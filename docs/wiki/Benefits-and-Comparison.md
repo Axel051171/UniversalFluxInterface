@@ -80,6 +80,8 @@ UFI's finer timer grid can help with timing analysis. The differences that can a
 
 ## Particularly useful applications
 
+[UnifiedFloppyTool](UnifiedFloppyTool-EN) additionally provides a graphical PC integration in the development sources: native UFI connectivity, diagnostics, capture, write verification and IEC tools complement the board. This benefits the combined workflow. UFT hardware qualification remains outstanding; a graphical interface alone is not unique among these systems.
+
 - **Mixed collections:** handle several drive families using the same base board and documented connector assignments.
 - **Enclosures and copying stations:** combine front controls, local storage and later image retrieval.
 - **Experiments and diagnostics:** evaluate current, voltage, buffer status, media changes and capture findings together.

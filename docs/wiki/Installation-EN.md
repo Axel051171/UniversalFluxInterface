@@ -4,6 +4,8 @@
 
 The PC tool is called `ufi`. It requires Python 3.10 or later and is installed from `software/ufi_host`. Normal USB operation uses a serial CDC connection. Composite mode requires additional USB libraries.
 
+For graphical operation, see [UnifiedFloppyTool with UFI](UnifiedFloppyTool-EN). That guide covers controller selection, the COM port, UFI tools and differences from the Python host. The installation below is for the command line.
+
 ## Get the source
 
 ```console

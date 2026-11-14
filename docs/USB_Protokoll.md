@@ -1,11 +1,12 @@
 # USB-Protokoll der UFI Flux Engine (UFI Headless)
 
-Stand: Firmware 1.18-dev, Board v0.7; ergänzt am 22.10.2026 (4.18–4.23) und am 26.10.2026 (2.2 Zählregel der Indexmarken, 4.12 Offset 90–95, 4.24).
+Stand: Firmware 1.18-dev, Platine v1.0 mit ausdrücklich bezeichneten historischen v0.x-Unterschieden; Entwicklerdurchsicht vom 14.11.2026. Frühere Ergänzungen: 22.10.2026 (4.18–4.23), 26.10.2026 (2.2, 4.12, 4.24).
 Alle Mehrbyte-Werte **little endian**. Die Kapitel 1–9 beschreiben den implementierten
-Softwarestand des UFI-v2-Protokolls, Kapitel 10 den Greaseweazle-Modus. Hardware-,
-Betriebssystem- und Laufwerksqualifikation stehen aus. Die Abschnitte sind inhaltlich
+Softwarestand des UFI-v2-Protokolls, Kapitel 10 den Greaseweazle-Modus. Der dokumentierte USB-Bring-up einer v1.0-Platine hat bestanden; eine vollständige Betriebssystem-, Composite-, LAN- und Laufwerksqualifikation folgt daraus nicht. Den aktuellen Messstand enthält [Bringup_2026-10-24.md](Bringup_2026-10-24.md). Die Abschnitte sind inhaltlich
 aus der bisherigen, chronologisch gewachsenen Fassung übernommen und nur neu geordnet;
 die Zuordnung der alten Nummern steht in Anhang A.
+
+**Eigenes Hostprogramm entwickeln:** Der zweisprachige Wiki-Einstieg liegt in [docs/wiki/USB-Protokoll.md](wiki/USB-Protokoll.md) und [docs/wiki/USB-Protocol.md](wiki/USB-Protocol.md). Er beschreibt den Sitzungsablauf, Parseranforderungen, geprüfte Hex-Vektoren und ein kleines PING-/INFO-Beispiel. Diese Datei bleibt die ausführliche deutschsprachige Detailreferenz; die Wiki-Kopie wird daraus erzeugt.
 
 ## Inhalt
 
@@ -45,6 +46,7 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.11 Weak-Fenster als Zähler (Op 42, 1.18-dev)
   - 4.12 Provenienzblock (Op 43, 1.18-dev)
   - 4.13 Weak-Positionen fein (Op 44, 1.18-dev)
+  - 4.13a Dieselben Zahlen aus einer READ-Aufnahme (Host-Referenz)
   - 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
   - 4.15 Spurübersicht als Job (Op 46, 1.18-dev)
   - 4.16 Schwache Zellen schreiben (`flags2` Bit3, 1.18-dev)
@@ -57,6 +59,8 @@ die Zuordnung der alten Nummern steht in Anhang A.
   - 4.23 Flaggesteuerte Kopierschutz-Hinweisanalyse (Op55/56)
   - 4.24 Lesekontext im READ-Ende (READ-Flag Bit5, 1.18-dev)
   - 4.25 Vorlauf vor dem ersten Index (READ-Flag Bit6, 1.18-dev)
+  - 4.26 Abdeckung der Flag-Vorschläge vom 12.11.2026
+  - 4.27 Korrekturen aus der Durchsicht vom 14.11.2026
 - 5 Lesen, Schreiben und Prüflesen
   - 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
   - 5.2 Firmware-Detailanalyse: acht Flag-Bits (1.18-dev)
@@ -744,7 +748,7 @@ Annahmen der Firmware und am echten Laufwerk zu bestätigen.
 Offset 0  0x55
        1  0xAA
        2  type     1 = Anfrage (Host)   2 = Antwort   3 = Ereignis   4 = Daten   5 = Ende
-       3  cmd      Befehlscode (Antwort/Daten/Ende tragen den Code der Anfrage)
+       3  cmd      Befehlscode (Zuordnung und Ausnahmen siehe unten)
        4  seq      Laufnummer: Antwort/Daten/Ende wiederholen die seq der Anfrage; Ereignisse zählen selbst
        5  status   Anfrage: 0; sonst Statuscode (3.2)
        6  len      u16, Länge der Nutzdaten (0…4096)
@@ -752,9 +756,12 @@ Offset 0  0x55
    8+len  crc      u16, CRC-16/CCITT-FALSE (Polynom 0x1021, Start 0xFFFF) über Byte 2 … 7+len
 ```
 
+Die CRC wird ohne Bitspiegelung und ohne abschließendes XOR berechnet; ihr u16-Wert steht **little endian** im Rahmen. Prüfeingabe ASCII `123456789` ergibt `0x29B1`. Die Rahmenlänge ist `10 + len`, maximal 4106 Byte. Ein vollständiger PING mit Payload ASCII `UFI2` und seq 1 lautet `55 AA 01 00 01 00 04 00 55 46 49 32 38 08`; die zugehörige Antwort `55 AA 02 00 01 00 04 00 55 46 49 32 F7 B9`.
+
 - Rahmen sind unabhängig von USB-Paketgrenzen. Der Empfänger sucht `55 AA`, liest den Kopf und prüft die CRC; bei Fehler verwirft er bis zum nächsten `55 AA`.
 - Fehlerhafte Anfrage (CRC, Länge): Antwort `type=2, cmd=0xFF, seq=0, status=14`.
 - Pro Anfrage genau **eine Antwort**. Lang laufende Befehle (Lesen, Schreiben) antworten sofort mit dem Annahmestatus und schließen mit einem **Ende-Rahmen** (type 5) ab; dazwischen kommen **Daten-Rahmen** (type 4).
+- Antwort, Daten und Ende verwenden normalerweise den Code der Anfrage und deren seq. **Ausnahme:** GUARDED_READ `0x28` antwortet als `0x28`, seine DATA-/END-Rahmen tragen aber `0x20`; GUARDED_WRITE `0x27` antwortet als `0x27`, seine DATA-/END-Rahmen tragen `0x22`. Die seq bleibt jeweils dieselbe. Ein angenommener Auftrag ist erst mit seinem Ende-Rahmen abgeschlossen.
 - Flusskontrolle: Das Gerät hält den USB-Endpunkt an, wenn sein Empfangspuffer voll ist (NAK) – der Host schreibt einfach weiter.
 - Ereignisse (type 3) kommen nur nach `EVENTS` und nie mitten in einem Rahmen.
 
@@ -788,7 +795,7 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
   Element; danach folgen keine Flusswechsel mehr. N ist der Wert `revs` im Ende-Rahmen, bei
   Status 0 gleich dem angeforderten (geklemmten) Wert, bei Status 10 (Speicher voll / Host zu
   langsam) kleiner – die gesendeten N Umdrehungen sind vollständig.
-- Abweichung im Fehlerfall: Bei Status 6 (DMA/Überlauf), 3 (kein Index) oder 21 (Medium gewechselt)
+- Abweichung im Fehlerfall: Bei Status 6 (DMA/Überlauf), 3 (Positionieren fehlgeschlagen), 4 (kein Index / älterer Abbruchpfad) oder 21 (Medium gewechselt)
   meldet der Ende-Rahmen `revs` = 0, obwohl bereits gesendete Daten-Rahmen schon einzelne `FD`-Marken
   und Flusswechsel enthalten können; die Firmware verwirft dann nur den noch nicht gesendeten Rest.
   Diese Teildaten sind keine gültige Aufnahme; wo sie noch intakt waren, sagt der Lesekontext (4.24).
@@ -816,8 +823,7 @@ jedem Laufwerkswechsel ist nur der Vergleichswert und sendet nichts – das Erei
 „geändert, während dieses Laufwerk gewählt blieb“ (Diskette eingelegt oder entnommen, Schieber
 bewegt); den Ausgangszustand liefert STATUS. Kein 0x86 für die Disk II (deren Leitung gilt nur
 bei laufendem Laufwerk) und für IEC. Beim Mac-Laufwerk meldet eine entnommene Diskette
-`protected` = 1. Ereignisse sind Hinweise, keine Zusage: Bei voller Warteschlange (4 Einträge)
-entfällt eines stillschweigend, vor einem Schreiben gilt weiterhin Status 12.
+`protected` = 1. Ereignisse sind Hinweise, keine Zusage: Die Ringwarteschlange besitzt vier Speicherplätze, davon sind **drei nutzbar**. Bei voller Warteschlange entfällt das neue Ereignis; aktuelle Firmware zählt den Verlust wie unten beschrieben. Vor einem Schreiben gilt weiterhin Status 12.
 
 **Verworfene Ereignisse (seit 2026-11-14):** Die Antwort auf EVENTS (3.1) zählt seit dem Reset,
 wie viele Ereignisse nicht in die Warteschlange passten: `dropped_queue_full` – der Host oder der
@@ -959,7 +965,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x0C | FEATURES (1.18) | leer | 82 Byte; Abschnitt 1.4 |
 | 0x0D | DIAGNOSTICS (1.18) | leer; `01` Prozessmesswerte; `02` Zyklen-/Verlustdiagnose | 64 Byte, Schema 1; Abschnitt 5.1 |
 | 0x0E | QUALITY (1.18) | leer | zuletzt erzeugter Qualitätsbericht (1824 / 3744 / 4048 Byte je nach Flags), Status 1 ohne Bericht; Abschnitt 5.2 |
-| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktion 0–46), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7 |
+| 0x0F | ANALYSIS_JOB (1.18) | `op` u8 (Unterfunktionen derzeit bis 56), danach je Op | je Op; Op-Tabelle in 6.1, Einzelheiten in den Kapiteln 4 bis 7; eine Nummer im Bereich allein ist keine Fähigkeitszusage |
 | 0x07 | SELFTEST (1.14) | – | `n` u8, dann n × (`id` u8, `status` u8: 0 ok, 1 Fehler, 2 nicht prüfbar, 3 Warnung, `value` u32) |
 | 0x07 | SELFTEST `'P'` (2026-11-11) | `50` = PSRAM-Statusblock; `50 01` = vorher PSRAM-Start und beide Schreibtests neu ausführen (hebt die Verriegelung „PSRAM off“ und einen sicheren Start auf, zerstört den Flussspeicher; Status 1 BUSY während Aufnahme/Schreiben) | 32 Byte, Schema 1: `schema` u8 = 1, `state` u8 (0 kein PSRAM, 1 in Benutzung, 2 gescheitert, 3 sicherer Start, 4 verriegelt aus, 5 in Benutzung, DMA-Test lief nicht), `phase` u8 (gescheiterte bzw. letzte bestandene Phase: 1 Controller, 2 QPI-Reset, 3 SPI-Reset, 4 ID, 5 QPI ein, 6 Fenster, 7 erstes Lesen, 8 erstes Schreiben, 9 32-Bit-Schreibzugriffe, 10 Cache-Zeilen, 11 DMA), `latched_phase` u8, `id` 2 Byte (OCTOSPI), `gpio_id` 2 Byte, `flags` u8 (Bit0 Controller-Zeitüberschreitung, Bit1 Cache-Zeilentest gescheitert), `tail` u8, `fill`/`asc`/`desc`/`lone` je u16 (gesättigt), 2 reserviert, `dma` u32 (0 ok, 0xFFFFFFFF nicht gelaufen, sonst Lauf << 8 \| Fehler), `rsr` u32 (RCC_RSR dieses Starts), 4 reserviert. Ältere Firmware beantwortet `50` mit der Postenliste |
 | **Laufwerk** | | | |
@@ -1161,6 +1167,8 @@ ABORT beendet den Flux-Job. Im Composite-Modus kann EP0-CANCEL auch die
 Warteschleifen synchroner IEC-Aufrufe abbrechen; siehe Abschnitt 2.5.
 
 ### 3.5 Beispiel: Spur lesen
+
+Vereinfachtes Ablaufschema mit CRC-Platzhaltern. Der hier gezeigte Einbyte-END ist die Kurzform älterer Firmware; aktuelle 1.18-dev-Firmware ergänzt den Generationsblock (17 Byte, Abschnitt 4.5) und gegebenenfalls angeforderte Zusatzblöcke. Nicht auf genau ein Payloadbyte festlegen. Vollständig berechnete PING-Rahmen stehen in 2.1; der Wiki-Entwicklereinstieg enthält zusätzlich geprüfte SELECT-/READ-Anfragen.
 
 ```
 Host:  55 AA 01 10 01 00 01 00  01               crc   SELECT drive=1 (A)

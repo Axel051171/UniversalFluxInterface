@@ -2,7 +2,7 @@
 
 **Sprache / Language:** [Deutsch](Home) | [English](Home-EN)
 
-UFI liest und schreibt Disketten auf der Ebene ihrer magnetischen Flusswechsel. Die Headless-Platine arbeitet mit einem STM32H723 und benötigt keinen Raspberry Pi. Ein Python-Werkzeug übernimmt Aufnahmen, Analyse und Abbilddateien am PC; weitere Betriebsarten ermöglichen Greaseweazle-Kompatibilität, USB-Massenspeicher und Aufnahmen auf den internen Speicher.
+UFI liest und schreibt Disketten auf der Ebene ihrer magnetischen Flusswechsel. Die Headless-Platine arbeitet mit einem STM32H723 und benötigt keinen Raspberry Pi. [UnifiedFloppyTool](UnifiedFloppyTool) bietet eine grafische PC-Oberfläche mit eigener UFI-Anbindung; das Python-Werkzeug `ufi` übernimmt Befehle, Skripte, Analyse und Abbilddateien. Weitere Betriebsarten ermöglichen Greaseweazle-Kompatibilität, USB-Massenspeicher und Aufnahmen auf den internen Speicher.
 
 **Dokumentationsstand: 14. November 2026, Platine v1.0, Firmware 1.18-dev.** Eine v1.0-Platine hat den USB-Bring-up bestanden. Lesen und Schreiben mit echten Laufwerken sowie LAN mit Kabel sind nach dem dokumentierten Prüfstand noch offen. Die [Statusseite](Projektstatus) erklärt die Nachweise.
 
@@ -12,6 +12,8 @@ UFI liest und schreibt Disketten auf der Ebene ihrer magnetischen Flusswechsel. 
 |---|---|
 | Ein vorhandenes Board zum ersten Mal verbinden | [Schnellstart](Schnellstart) |
 | Das PC-Werkzeug installieren | [Installation](Installation) |
+| Die grafische Oberfläche verwenden | [UnifiedFloppyTool mit UFI](UnifiedFloppyTool) |
+| Ein eigenes Hostprogramm entwickeln | [USB-Protokoll für Entwickler](USB-Protokoll) und [vollständige Referenz](USB-Protokoll-Referenz) |
 | Platine und Anschlüsse kennenlernen | [Hardware](Hardware) und [Anschlüsse](Anschluesse) |
 | Bauteile auf den Platinenbildern finden | [Beschriftete Platinenübersicht](Platinenuebersicht) |
 | Eine neue Platine prüfen | [Inbetriebnahme](Inbetriebnahme) |

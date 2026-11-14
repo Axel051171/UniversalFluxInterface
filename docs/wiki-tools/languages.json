@@ -2,6 +2,9 @@
   "schema": 1,
   "pages": {
     "Home": "Home-EN",
+    "UnifiedFloppyTool": "UnifiedFloppyTool-EN",
+    "USB-Protokoll": "USB-Protocol",
+    "USB-Protokoll-Referenz": "USB-Protocol-Reference",
     "Schnellstart": "Quickstart",
     "Installation": "Installation-EN",
     "Hardware": "Hardware-EN",

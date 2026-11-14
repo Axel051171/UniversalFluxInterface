@@ -25,6 +25,8 @@ Die Prüfung kontrolliert interne Seitenlinks, Navigation, lokale Ziele der Repo
 
 ## Vor Veröffentlichung
 
+Die vollständige USB-Protokollreferenz im Wiki wird aus `docs/USB_Protokoll.md` erzeugt. Dort korrigieren, anschließend `python docs/wiki-tools/wiki.py sync-reference` ausführen. `check` erkennt eine veraltete Kopie. Der englische Entwicklereinstieg ist vollständig englisch; die englische Referenzseite ist ein Wegweiser zur deutschen Gesamtspezifikation.
+
 Die referenzierten Quelldateien müssen im GitHub-Hauptrepository verfügbar sein. Änderungen, die nur lokal vorliegen, zuerst mit dem vorgesehenen Entwicklungsstand abstimmen. Das Quellmanifest unter `docs/wiki-tools/sources.json` hält die beim Abgleich verwendeten Quellen fest.
 
 ```console

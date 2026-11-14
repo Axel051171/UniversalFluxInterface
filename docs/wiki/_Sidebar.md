@@ -8,6 +8,7 @@
 
 **Erste Schritte**
 
+- [UnifiedFloppyTool mit UFI](UnifiedFloppyTool)
 - [Schnellstart](Schnellstart)
 - [Installation](Installation)
 - [Hardware](Hardware)
@@ -36,6 +37,8 @@
 
 **Nachschlagen und Entwickeln**
 
+- [USB-Protokoll für eigene Tools](USB-Protokoll)
+- [USB-Protokoll: vollständige Referenz](USB-Protokoll-Referenz)
 - [Fehlerhilfe](Fehlerhilfe)
 - [Häufige Fragen](FAQ)
 - [Glossar](Glossar)
@@ -53,6 +56,7 @@
 
 **Getting started**
 
+- [UnifiedFloppyTool with UFI](UnifiedFloppyTool-EN)
 - [Quickstart](Quickstart)
 - [Installation](Installation-EN)
 - [Hardware](Hardware-EN)
@@ -81,6 +85,8 @@
 
 **Reference and development**
 
+- [USB protocol for custom tools](USB-Protocol)
+- [USB protocol reference guide](USB-Protocol-Reference)
 - [Troubleshooting](Troubleshooting)
 - [Frequently asked questions](FAQ-EN)
 - [Glossary](Glossary)

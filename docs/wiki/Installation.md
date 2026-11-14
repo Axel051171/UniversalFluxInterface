@@ -4,6 +4,8 @@
 
 Das PC-Werkzeug heißt `ufi`. Es benötigt Python ab Version 3.10 und wird aus `software/ufi_host` installiert. Der normale USB-Modus verwendet eine serielle CDC-Verbindung; Composite benötigt zusätzliche USB-Bibliotheken.
 
+Für die grafische Bedienung gibt es zusätzlich [UnifiedFloppyTool mit UFI](UnifiedFloppyTool). Dort sind Controllerwahl, COM-Port, UFI-Werkzeuge und der Unterschied zum Python-Host beschrieben. Die folgende Installation betrifft die Kommandozeile.
+
 ## Quellcode holen
 
 ```console

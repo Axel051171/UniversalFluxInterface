@@ -4,6 +4,8 @@
 
 Software is checked on the host without a drive and also built for the STM32. Hardware timing and real electrical signals require separate measurements.
 
+For custom host applications, start with the [USB developer guide](USB-Protocol). The [reference guide](USB-Protocol-Reference) indexes the complete German specification included in the wiki. Hex vectors and a PING/INFO example provide a starting point without drive commands.
+
 ## Repository
 
 | Path | Contents |

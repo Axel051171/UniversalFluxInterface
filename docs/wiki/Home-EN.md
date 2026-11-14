@@ -2,7 +2,7 @@
 
 **Sprache / Language:** [Deutsch](Home) | [English](Home-EN)
 
-UFI reads and writes floppy disks at the level of magnetic flux transitions. The Headless board uses an STM32H723 and does not need a Raspberry Pi. A Python host tool handles captures, analysis and disk images on a PC. Other modes provide Greaseweazle compatibility, USB mass storage and captures to internal storage.
+UFI reads and writes floppy disks at the level of magnetic flux transitions. The Headless board uses an STM32H723 and does not need a Raspberry Pi. [UnifiedFloppyTool](UnifiedFloppyTool-EN) provides a graphical PC application with native UFI support; the Python `ufi` tool handles commands, scripts, analysis and disk images. Other modes provide Greaseweazle compatibility, USB mass storage and captures to internal storage.
 
 **Documentation dated 14 November 2026, board v1.0, firmware 1.18-dev.** One v1.0 board has passed USB bring-up. Reading and writing real drives, and LAN operation with a cable, remain open in the documented test record. [Project status](Project-Status) explains the evidence.
 
@@ -12,6 +12,8 @@ UFI reads and writes floppy disks at the level of magnetic flux transitions. The
 |---|---|
 | Connect an existing board for the first time | [Quickstart](Quickstart) |
 | Install the PC tool | [Installation](Installation-EN) |
+| Use the graphical application | [UnifiedFloppyTool with UFI](UnifiedFloppyTool-EN) |
+| Develop a custom host application | [USB protocol for developers](USB-Protocol) and [reference guide](USB-Protocol-Reference) |
 | Identify the board and connectors | [Hardware](Hardware-EN) and [Connections](Connections) |
 | Find components in the board images | [Annotated board overview](Board-Overview) |
 | Test a newly assembled board | [Bring-up](Bring-up) |

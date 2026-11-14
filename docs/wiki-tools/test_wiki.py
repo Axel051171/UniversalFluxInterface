@@ -74,6 +74,38 @@ class WikiChecks(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Quellen geändert'):
                 wiki.check_sources()
 
+    def test_reference_relocates_links_and_builds_heading_links(self):
+        docs = self.root/'docs'
+        docs.mkdir()
+        source = docs/'USB_Protokoll.md'
+        source.write_text('# Protocol\n\n## Inhalt\n\n- Old\n\n## 1 Überblick\n\n'
+                          '[Details](Details.md#part)\n[Guide](../pages/Anleitung.md)\n'
+                          '### 1.1 Rahmen\n\nThe complete payload table.\n', encoding='utf-8')
+        with patch.object(wiki, 'ROOT', self.root), patch.object(wiki, 'PROTOCOL', source):
+            rendered = wiki.render_reference()
+            self.assertIn('[1 Überblick](#1-überblick)', rendered)
+            self.assertIn('[1.1 Rahmen](#11-rahmen)', rendered)
+            self.assertIn(wiki.REPO+'/blob/main/docs/Details.md#part', rendered)
+            self.assertIn('[Guide](Anleitung)', rendered)
+            self.assertIn('The complete payload table.', rendered)
+            self.assertNotIn('- Old', rendered)
+            with contextlib.redirect_stdout(io.StringIO()):
+                wiki.sync_reference()
+            self.assertEqual((self.pages/f'{wiki.REFERENCE}.md').read_text(encoding='utf-8'), rendered)
+
+    def test_reference_rejects_link_outside_repository(self):
+        source = self.root/'USB_Protokoll.md'
+        source.write_text('# Protocol\n\n[Outside](../outside.txt)\n', encoding='utf-8')
+        with patch.object(wiki, 'ROOT', self.root), patch.object(wiki, 'PROTOCOL', source):
+            with self.assertRaisesRegex(ValueError, 'außerhalb des Repositories'):
+                wiki.render_reference()
+
+    def test_check_detects_stale_reference(self):
+        (self.pages/f'{wiki.REFERENCE}.md').write_text('old specification\n', encoding='utf-8')
+        with patch.object(wiki, 'render_reference', return_value='updated specification\n'):
+            with self.assertRaisesRegex(ValueError, 'USB-Referenz veraltet'):
+                wiki.check()
+
     def test_rejects_missing_translation(self):
         (self.pages/'Guide.md').unlink()
         with self.assertRaisesRegex(ValueError, 'Sprachfassung fehlt: Guide'):

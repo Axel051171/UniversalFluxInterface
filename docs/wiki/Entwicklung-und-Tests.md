@@ -4,6 +4,8 @@
 
 Die Software wird ohne Laufwerk auf dem Host geprüft und zusätzlich für den STM32 gebaut. Hardware-Timing und reale elektrische Signale benötigen davon getrennte Messungen.
 
+Für eigene Hostprogramme zuerst [USB-Protokoll für Entwickler](USB-Protokoll) lesen. Die [vollständige Protokollreferenz](USB-Protokoll-Referenz) ist direkt im Wiki enthalten; Hex-Vektoren und PING-/INFO-Beispiel ermöglichen einen Einstieg ohne Laufwerksbefehle.
+
 ## Repository
 
 | Pfad | Inhalt |

@@ -25,6 +25,8 @@ Validation checks internal page links, navigation, local targets of repository r
 
 ## Before publication
 
+The complete wiki USB reference is generated from `docs/USB_Protokoll.md`. Edit that source, then run `python docs/wiki-tools/wiki.py sync-reference`. `check` detects a stale copy. The English developer guide is in English throughout; the English reference page indexes the full German specification.
+
 Referenced sources must be available in the GitHub main repository. Coordinate changes that exist only locally with the intended development revision first. The source manifest at `docs/wiki-tools/sources.json` records the sources used during review.
 
 ```console

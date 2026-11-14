@@ -16,13 +16,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGES = ROOT / 'docs/wiki'
 SOURCES = Path(__file__).with_name('sources.json')
 LANGUAGES = Path(__file__).with_name('languages.json')
+PROTOCOL = ROOT / 'docs/USB_Protokoll.md'
+REFERENCE = 'USB-Protokoll-Referenz'
 REPO = 'https://github.com/Axel051171/UniversalFluxInterface'
 REMOTE = REPO + '.wiki.git'
 LINK = re.compile(r'!?\[[^\]\n]*\]\(([^\s)]+)(?:\s+"[^"]*")?\)')
@@ -87,6 +89,56 @@ def check_sources():
     print(f"Quellabgleich: {len(current)} Dateien unverändert zum Manifest.")
 
 
+def render_reference():
+    source = PROTOCOL.read_text(encoding='utf-8')
+    _, body = source.split('\n', 1)
+    # Relative links were written for docs/, not the separate wiki repository.
+    def relocate(match):
+        target = match[2]
+        parsed = urlsplit(target)
+        if not parsed.scheme and not parsed.netloc and parsed.path:
+            path = (PROTOCOL.parent/unquote(parsed.path)).resolve()
+            if not path.is_relative_to(ROOT.resolve()):
+                raise ValueError(f'Protokoll-Link außerhalb des Repositories: {target}')
+            if path.is_relative_to(PAGES.resolve()) and path.suffix == '.md':
+                target = path.stem
+            else:
+                target = REPO+'/blob/main/'+quote(path.relative_to(ROOT.resolve()).as_posix())
+            if parsed.fragment:
+                target += '#'+parsed.fragment
+        return match[1]+target+match[3]
+    body = re.sub(r'(!?\[[^\]\n]*\]\()([^\s)]+)(\))', relocate, body)
+    # GitHub heading slugs: keep Unicode letters, strip punctuation and count duplicates.
+    toc, seen, fenced = [], {}, False
+    for line in body.splitlines():
+        if line.startswith('```'):
+            fenced = not fenced
+        match = None if fenced else re.match(r'^(#{2,4}) (.+)$', line)
+        if not match or match[2] == 'Inhalt':
+            continue
+        label = match[2].replace('`', '')
+        slug = re.sub(r'[^\w\- ]', '', label.lower()).replace(' ', '-')
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        if count:
+            slug += f'-{count}'
+        toc.append('  '*(len(match[1])-2)+f'- [{label}](#{slug})')
+    body = re.sub(r'(?ms)^## Inhalt\n.*?(?=^## )', '## Inhalt\n\n'+'\n'.join(toc)+'\n\n', body, count=1)
+    header = ('# USB-Protokoll: vollständige Referenz\n\n'
+              '**Sprache / Language:** [Deutsch](USB-Protokoll-Referenz) | [English](USB-Protocol-Reference)\n\n'
+              '> Vollständige deutschsprachige Spezifikation, automatisch aus '
+              f'[docs/USB_Protokoll.md]({REPO}/blob/main/docs/USB_Protokoll.md) erzeugt. '
+              'Hier nicht separat bearbeiten. [Entwicklereinstieg](USB-Protokoll) · '
+              '[English developer guide](USB-Protocol). Die englische Referenzseite ist eine Orientierung, '
+              'keine vollständige Übersetzung dieser Detailtabellen.\n\n')
+    return header+body.lstrip().rstrip()+'\n'
+
+
+def sync_reference():
+    (PAGES/f'{REFERENCE}.md').write_text(render_reference(), encoding='utf-8')
+    print('Vollständige USB-Referenz mit Wiki-Links und Inhaltsverzeichnis aktualisiert.')
+
+
 def check_languages(pages):
     manifest = json.loads(LANGUAGES.read_text(encoding='utf-8'))
     pairs = manifest.get('pages', {})
@@ -133,6 +185,8 @@ def check(sources=False):
             raise ValueError(f'Pflichtseite fehlt: {required}')
     parser = build_cli_parser()
     errors, examples, links = check_languages(pages), 0, 0
+    if REFERENCE in pages and pages[REFERENCE].read_text(encoding='utf-8') != render_reference():
+        errors.append('USB-Referenz veraltet/geändert: Quelle prüfen und sync-reference ausführen')
     navigation = pages['Home'].read_text(encoding='utf-8')+'\n'+pages['_Sidebar'].read_text(encoding='utf-8')
     nav_targets = {unquote(urlsplit(x).path).removesuffix('.md') for x in LINK.findall(navigation)}
     for name, page in sorted(pages.items()):
@@ -244,11 +298,12 @@ def publish():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('check', 'record-sources', 'package', 'publish'), nargs='?', default='check')
+    parser.add_argument('action', choices=('check', 'sync-reference', 'record-sources', 'package', 'publish'), nargs='?', default='check')
     parser.add_argument('--sources', action='store_true', help='check: auch Quellmanifest vergleichen')
     args = parser.parse_args()
     try:
         if args.action == 'check': check(args.sources)
+        elif args.action == 'sync-reference': sync_reference()
         elif args.action == 'record-sources': record_sources()
         elif args.action == 'package': package()
         elif args.action == 'publish': publish()

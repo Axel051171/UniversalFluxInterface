@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "project": "UnifiedFloppyTool",
+  "public_project": "https://github.com/Axel051171/UnifiedFloppyTool",
+  "reviewed_date": "2026-11-14",
+  "local_source_directory": "C:\\Users\\Axel\\Github\\UnifiedFloppyTool-4.1.0",
+  "source_revision": "7e7dd6701c3aff8a84e673002f10200cd18afe1b",
+  "version_txt": "4.1.6",
+  "scope": "Local working-tree sources reviewed for wiki integration; public release equivalence and real-hardware operation are not established.",
+  "files": {
+    "VERSION.txt": "c3d62fdfbf5052f7064fc4e81f572e41ad524a8e761895a0fc891cebe84dda3a",
+    "README.md": "875c3f99bf6beb6757b609b89b38f1333040daab7afe0752bc630563707c5614",
+    "src/main.cpp": "71f643dcb3738554437834002af894d97f6460214c0a28ab1cc4207f60c13477",
+    "src/hardwaretab.cpp": "7efdc7cfa47b0b8a2409b93f52b80103d70d1a6338e3d4b3cae4801ba6546833",
+    "src/gui/ufi_werkzeuge.h": "121b8eb5f0cf8ae25d786b4b4a29955b9a40d1badae1b9564067f8f2b21b5052",
+    "src/gui/ufi_werkzeuge.cpp": "9ddc091c2033b35e6ce55bffb783a0317b9bda10de18e8727e23a842c716fc9c",
+    "forms/ufi_werkzeuge.ui": "77143d333916e91e3f9f320a4033051fb506f70d239f639a2886e60c06ee4274",
+    "src/hardware_providers/CMakeLists.txt": "a64f89b8947839d68e34ac35f096749748ed36ac61632bdd47fdad485e2f0f2f",
+    "src/hardware_providers/qserial_ufi_flux_engine_transport.cpp": "fe055e0713b9ede9627f3a597b06449f86d73c16b4cca0340aaa5f28fcdf8fb0",
+    "src/hardware_providers/ufi_flux_engine_provider_v2.h": "28b6a426a99ad1e2660cbfa3137246222d520c8b1a4cc4574d9278038034df66",
+    "src/fluxcapturejob.cpp": "4983cd93677d8418e836e93ec33ebca2d7741cbbf6f3a29318203206ecaa955e",
+    "docs/UFI_FLUX_ENGINE_BANK.md": "d677786ace95ccd2de997055f76a655fa62c94635faca8fe2d74cf0b1a62a98c",
+    "tests/ufi_fakev2_bridge.py": "1fdd7213485ffb34fab1e1e8bd0ff49d6509c4651a9e64312629a094c7e68a44",
+    "tests/CMakeLists.txt": "2a5706ac1d6fb8cd9b4df5538aa87040be82781984ac15259f86edc43dc7f25d"
+  }
+}
