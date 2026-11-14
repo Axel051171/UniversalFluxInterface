@@ -66,7 +66,7 @@ LAN erreichbar, nichts ist nach dem Einbau steckbar. Quellen: Schaltplan
 | Front-Header | **J12 2×8 Wannenstecker mit Kodierung** | Flachbandkabel zur Frontplatte, einmal bei der Montage gesteckt |
 | LEDs ACT, ERR, USB, FDD, PWR | je eigener Vorwiderstand R34–R37/R100 330 Ω auf der Platine, Anoden an J12 Pin 3/5/7/9/11, Kathoden an GND (gerade Pins) | D22–D26 ESD-Schutz; auf der Platine bleibt nur D4 ACT |
 | Taster A und B | J12 Pin 13/14, R101/R102 470 Ω, D18/D19 ESD | SW3/SW4 sind seit A9a (24.10.) gestrichen; im Service genügt eine Drahtbrücke an J12 Pin 13/14 gegen GND |
-| Modusschalter EIN-AUS-EIN | J12 Pin 15/16 (MODE1/MODE2), Mittelkontakt +3V3 über R105 1 kΩ an Pin 1, R103/R104, D20/D21 | Mitte = Flux, MODE1 = USB-Floppy, MODE2 = SD-Laufwerk; ACT blinkt 1×/2×/3× |
+| Modusschalter EIN-AUS-EIN | J12 Pin 15/16 (MODE1/MODE2), Mittelkontakt +3V3 über R105 1 kΩ an Pin 1, R103/R104, D20/D21 | Mitte = Flux, MODE1 = USB-Floppy, MODE2 = SD-Laufwerk; ACT blinkt 1× Flux, 2× SD-Laufwerk, 3× USB-Floppy |
 | RESET / BOOT | nur auf der Platine | an der Front bewusst nicht vorgesehen (Fehlbedienung), DFU über Taste A beim Einschalten |
 
 ## 6 Test und Diagnose auf der Platine

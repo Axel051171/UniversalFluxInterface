@@ -12,7 +12,8 @@
  * The switch is read at start-up and debounced at run time; a change takes effect as soon
  * as no capture, write or dump is running.  Button B >= 2 s toggles the SD drive only
  * while the switch is in the middle.  After every change the ACT LED blinks the mode:
- * 1 = flux, 2 = USB floppy, 3 = SD drive, 4 = Greaseweazle flux.
+ * 1 = flux, 2 = SD drive, 3 = USB floppy, 4 = Greaseweazle flux, 5 = composite
+ * (mode number + 1, as in docs/USB_Protokoll.md 1.1).
  */
 
 #include "ufi_firmware.h"
