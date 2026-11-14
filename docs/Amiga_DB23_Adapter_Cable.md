@@ -104,7 +104,7 @@ Pin  Signal        Dir*   Beschreibung
 > ⚠ Die J4-Belegung der Modular-Platine führt RDATA doppelt (Pin 3 und 16 „DKRD“) und SEL doppelt (Pin 15 und 18 „/SEL1“).
 > Pin 16 und 18 hier **nicht** verdrahten, bis die J4-Belegung im Modular-Schaltplan geklärt ist.
 >
-> **UFI Headless (J7):** Header-Pin n = DB-23-Pin n (Pin 24 = GND), SEL2B/SEL3B/DRESB sind auf der Platine bereits per 1 kΩ inaktiv – das Kabel ist dort 1:1.
+> **UFI Headless (J7):** Header-Pin n = DB-23-Pin n (Pin 24 = GND), SEL3B/DRESB sind auf der Platine bereits per 1 kΩ inaktiv – das Kabel ist dort 1:1. SEL2B (Pin 9) ist nur bei offener Brücke JP3 unbenutzt: Mit gebrückter JP3 (ab Platine v0.7) steuert die Firmware SEL2B über DRV_SEL_A an und wählt damit das zweite Amiga-Laufwerk DF2 (Laufwerkstyp `amiga2`, `DRIVE_AMIGA2` in `firmware/src/ufi_drive.c`); DF1 bleibt an SEL1B (DRV_SEL_B).
 
 ---
 

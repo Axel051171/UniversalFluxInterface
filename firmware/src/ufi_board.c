@@ -155,8 +155,8 @@ bool ufi_board_jumper_locked(void)
 
 void ufi_board_write_enable(bool on)
 {
-    /* v1.0: WLOCK_FW (PE4) is the third input of the WGATE OR gate U14; low only while a
-     * write runs.  v0.x boards: PE4 is the jumper input, restore it as input once and leave it. */
+    /* v1.0: WLOCK_FW (PE4) is part of LOCK, which the NOR gate U31 combines with WGATE_n
+     * (A11f, see bus_out_inverted() in board.h); low only while a write runs.  v0.x boards: PE4 is the jumper input, restore it as input once and leave it. */
     static bool v0_restored;
     if (ufi_board_rev() >= 10u) {
         HAL_GPIO_WritePin(PIN_WLOCK.port, PIN_WLOCK.pin, on ? GPIO_PIN_RESET : GPIO_PIN_SET);

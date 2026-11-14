@@ -43,7 +43,9 @@ typedef struct __packed {
 } flux_sample_t;
 
 // Flux store, shared by capture and write: the 8 MB QSPI PSRAM (2M samples, memory-mapped)
-// when fitted and working, else a 224 KB AXI SRAM fallback (56k samples, >= 2 HD revs).
+// when fitted and working, else a 224 KB AXI SRAM fallback: 56k words physical, of which
+// 38,224 are usable (2 chunks of 19,112; the third chunk is the DMA overrun target, see
+// configure_store() in ufi_flux.c).
 #define FLUX_STORE_FALLBACK_WORDS   (56 * 1024)
 #define REVOLUTIONS_BUFFER  20          // Max Umdrehungen pro Capture (READ_TRACK_RAW)
 #define REVOLUTIONS_STREAM  200         // READ_TRACK: the store is a ring buffer, more revolutions

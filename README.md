@@ -63,10 +63,12 @@ gebauten Firmware-Module die Tests erreichen (`firmware/tests/build/coverage.txt
 
 ## Status
 
-Platine v1.0 ist zur Fertigung freigegeben (Tag `hw-v1.0`: ERC 0/0, DRC 0/0/0 mit Schaltplan-Parität, Lastpfade geprüft, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Freigabebericht](kicad/UFI_Headless/docs/Freigabe_v1.0.md), [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md). Die LAN-Firmware fehlt noch; bis dahin bleibt der W5500 im Reset.
+Platine v1.0 ist zur Fertigung freigegeben (Tag `hw-v1.0`: ERC 0/0, DRC 0/0/0 mit Schaltplan-Parität, Lastpfade geprüft, JLC-Daten in `kicad/UFI_Headless/fertigung/`) – [Freigabebericht](kicad/UFI_Headless/docs/Freigabe_v1.0.md), [Bestell-Anleitung JLC](kicad/UFI_Headless/docs/Bestellung_JLC.md). Die LAN-Firmware ist vorhanden (`firmware/src/ufi_lan*.c`, Stufen L1–L5: W5500-Treiber, `LAN.CFG`, Adressvergabe, UFI v2 über TCP, Status und Discovery) und nativ getestet; mit LAN-Kabel am Gerät ist sie noch nicht geprüft.
 Firmware 1.18-dev: Umfang und Nachweise in [docs/Implementation_Status.md](docs/Implementation_Status.md) und
 [docs/Firmware_Erweiterungen_2026-10-16.md](docs/Firmware_Erweiterungen_2026-10-16.md), Schnittstelle in [docs/USB_Protokoll.md](docs/USB_Protokoll.md).
-Hardware und Firmware sind noch nicht am echten Gerät getestet – Ablauf für den Prototyp: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md),
-Schreibpfad: [Abnahme](docs/Abnahme_Schreibpfad.md).
+Stand am Gerät: Am 2026-11-11/12 hat eine Platine v1.0 den Bring-up-Skriptlauf nur über USB-C bestanden (PASS, 49 ok, 3 warn, 0 fail, PSRAM in Benutzung);
+Protokoll und Befunde in [docs/Bringup_2026-10-24.md](docs/Bringup_2026-10-24.md) Abschnitt 8. Die zweite Platine ist mit der endgültigen Firmware noch zu wiederholen.
+Nicht geprüft: alles mit Laufwerk, 12 V und LAN-Kabel, also auch Lesen und Schreiben einer Diskette, dazu die Handmessungen des Bring-up-Plans.
+Ablauf für weitere Platinen: [Inbetriebnahme-Checkliste](kicad/UFI_Headless/docs/Inbetriebnahme.md), Schreibpfad: [Abnahme](docs/Abnahme_Schreibpfad.md).
 
 Lizenz: siehe [LICENSE](LICENSE).

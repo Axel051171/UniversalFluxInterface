@@ -119,8 +119,10 @@ extern const gpio_pin_t PIN_MAC_CSTOUT;     /* PB1: J23 pin 20 read back through
 #define ADC_CH_V_FDD12          ADC_CHANNEL_8   /* PC5: FDD_12V through R162/R163 33k/10k (x4.3) */
 extern const gpio_pin_t PIN_WLOCK;          /* v0.5-v0.7: PE4 input, high = WRITE LOCK jumper set (J11/JP4).  v1.0 (A9b): the
                                                same pin PE4 is the OUTPUT WLOCK_FW (high = firmware lock, 100k pull-up R131
-                                               keeps it high through reset) into the 3-input OR U14; the hardware lock state
-                                               comes back on PIN_WREN_SENSE.  ufi_board_jumper_locked() reads the right pin. */
+                                               keeps it high through reset).  A11f: LOCK (WLOCK_HW or WLOCK_FW) is one input
+                                               of the NOR gate U31 behind WGATE_n, see bus_out_inverted() below; the hardware
+                                               lock state comes back on PIN_WREN_SENSE.  ufi_board_jumper_locked() reads the
+                                               right pin. */
 extern const gpio_pin_t PIN_WREN_SENSE;     /* PE6 input (v1.0): WLOCK_HW through R130 470 R; high = front switch open or
                                                cable off = write locked (R33 10k pull-up), low = switch SCHREIBEN closed */
 extern const gpio_pin_t PIN_FDD_INDEX2;     /* PB11, TIM2_CH4 (AF1), v1.0: INDEX also on channel 4 so that CH2 can measure the

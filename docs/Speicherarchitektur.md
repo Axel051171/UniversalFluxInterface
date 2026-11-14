@@ -1,13 +1,17 @@
 # Speicheraufteilung nach der Optimierung (1.18-dev)
 
-Stand: 2026-10-13. Softwareprüfung ohne fertige Platine.
+Stand: Grundtext 2026-10-13, Ergänzungen bis 2026-10-16 als Softwareprüfung ohne fertige Platine.
+Die Bytezahlen dieser Abschnitte sind Stände des jeweiligen Datums und nicht fortgeschrieben.
+Aktueller Stand (PSRAM-Start mit Schreibtests, Startmarke und Verriegelung, DMA-Prüfung, heutige
+Belegung): letzter Abschnitt „Ergänzung: PSRAM-Start, Verriegelung und DMA-Prüfung (2026-11-14)“.
 
 ## U11 ist der externe Flux-Puffer
 
 Die Bestückungsdateien nennen U11 als **APS6404L-3SQR-SN, 8 MiB PSRAM**.
 `ufi_psram.c` initialisiert ihn über OCTOSPI1 und prüft ID, Datenleitungen,
-Adressleitungen und Testmuster. Erst bei erfolgreicher Prüfung verwendet
-`ufi_flux.c` den externen Speicher für Capture und Schreibdaten. Der bestehende
+Adressleitungen und Testmuster, seit November 2026 zusätzlich 32-Bit-Schreibzugriffe,
+Cache-Zeilen und Schreiben über den Aufnahme-DMA (letzter Abschnitt). Erst bei erfolgreicher
+Prüfung verwendet `ufi_flux.c` den externen Speicher für Capture und Schreibdaten. Der bestehende
 Schreib-DMA-Ring bleibt im internen SRAM2; er wird aus dem Flux-Puffer gespeist.
 
 | Betrieb | Physischer Puffer | Nutzbare Flux-Wörter | Nutzdatenbytes |
@@ -178,3 +182,72 @@ die belegten Regionen unverändert: AXI **293080 belegt /34600 frei**, SRAM1
 GUARDED_WRITE und Analyse-Op26 verwenden die bestehenden Zähler, Jobzustände
 und Antwortpuffer. Keine zusätzliche persistente RAM-Belegung. Der finale Build
 belegt FLASH184968 Bytes; AXI293080 belegt /34600 frei, SRAM1 6560 Bytes.
+
+## Ergänzung: PSRAM-Start, Verriegelung und DMA-Prüfung (2026-11-14)
+
+Dieser Abschnitt gibt den Stand des Codes wieder (`firmware/src/ufi_psram.c`,
+`firmware/include/ufi_psram.h`, `firmware/src/ufi_flux.c`, `firmware/src/ufi_main.c`).
+
+**Kapazität.** `configure_store()` teilt den Speicher in DMA-Blöcke und hält einen ganzen Block
+hinter dem nutzbaren Bereich als Auffangziel frei: U11 63 × 32 768 = 2 064 384 Wörter; interner
+Ersatzpuffer (`flux_fallback`, 56 × 1024 Wörter = 224 KiB in `.axi_sram`) 2 × 19 112 = 38 224 Wörter.
+Mit `ufi_flux_reference_reserve(true)` steht nur die untere Hälfte von U11 als Flux-Puffer bereit, die
+obere Hälfte hält die Referenz.
+
+**Reihenfolge im Start.** `ufi_init()` sichert zuerst die Reset-Ursache, liest die Tasten (Taste B =
+sicherer Start: `ufi_psram_skip()`, U11 wird nicht angefasst) und ruft dann `ufi_flux_init()`. Dort
+entscheidet `ufi_psram_init()` über die Speicherwahl; nach dem Einrichten von Timer und DMA folgt
+`store_dma_gate()`.
+
+**Phasen** (`UFI_PSRAM_PH_*`, dieselben Nummern in Startmarke, INFO-Text und Statusblock):
+1 Controller, 2 QPI-Reset, 3 SPI-Reset, 4 ID lesen, 5 QPI einschalten, 6 Speicherfenster einblenden,
+7 erster Lesezugriff, 8 erster Schreibzugriff, 9 32-Bit-Schreibzugriffe, 10 Cache-Zeilen, 11 DMA.
+Reset und READ ID laufen mit Prescaler 16 (275 MHz / 16 ≈ 17,2 MHz), der Arbeitstakt ist Prescaler 8
+(≈ 34,4 MHz). Jeder Controller-Aufruf hat eine Wartezeit von 100 ms. Das Schreibkommando des
+Speicherfensters setzt DQS-Enable (Erratum ES0491 2.8.6), obwohl der Chip keine DQS-Leitung hat.
+
+**Schreibtests im Start.**
+
+1. `psram_narrow_test()`: Fenster als nicht gecachter Speicher, einzelne 32-Bit-Schreibzugriffe an zwei
+   Stellen (Fensteranfang und über eine 1-KB-Seitengrenze). Nur ein exaktes Ergebnis gilt.
+2. Fenster cachebar; `ACTLR.DISRAMODE` wird gesetzt und bleibt gesetzt (alle Schreibzugriffe des
+   Prozessors gehen über den Cache und erreichen den Chip als ganze Zeilen). Danach
+   `psram_line_test()` und `psram_stream_test()` (lange fortlaufende Schreibfolge).
+3. `ufi_flux_dma_selftest()` nach dem Timer-Start: Schreiben über den Aufnahme-DMA selbst. Ergebnis 0:
+   U11 bleibt Flux-Puffer. `UFI_DMA_TEST_NOT_RUN` (keine DMA-Anforderung bedient): U11 bleibt, der
+   Zustand heißt `DMA_NOT_RUN` und INFO meldet „DMA test did not run“. Jeder andere Wert:
+   `select_store(false)`, es gilt der interne Ersatzpuffer.
+
+Schlägt 1 oder 2 fehl, meldet INFO den Befund („PSRAM found, 32-bit writes unsafe …“, „PSRAM cache
+write fault …“ und weitere), und der interne Ersatzpuffer gilt.
+
+**Startmarke und Verriegelung.** Vor jeder Phase schreibt `trial()` die Marke `TRIAL_MAGIC | Phase` in
+`psram_trial` (DTCM, NOLOAD, übersteht einen Reset); am Ende des Starts und bei einem erkannten Fehler
+wird sie gelöscht. Findet ein Start eine stehengebliebene Marke und war der Reset kein Einschalt-Reset
+(`RCC_RSR_PORRSTF`), wird daraus `LATCH_MAGIC | Phase`: U11 bleibt bei diesem und jedem weiteren Start
+aus (Zustand `LATCHED`, INFO „PSRAM off: last start ended in phase N … (watchdog / software reset /
+pin reset); power cycle or retest“). Aufgehoben wird die Verriegelung durch einen Einschalt-Reset oder
+durch den Retest des Hosts (`ufi_flux_store_retest()` → `ufi_psram_unlatch()`); ein sicherer Start lässt
+sie unverändert. Der Retest wird während einer Aufnahme oder eines Schreibvorgangs mit BUSY abgelehnt,
+wählt für die Dauer der Initialisierung den Ersatzpuffer und wiederholt Start und DMA-Prüfung. Im Build
+mit `UFI_FORCE_INTERNAL_FLUX_STORE` gibt es ihn nicht.
+
+**Zustände** (`UFI_PSRAM_STATE_*`, Statusblock SELFTEST `'P'`, 32 Byte, Schema 1): 0 kein PSRAM in
+diesem Build / umgangen, 1 U11 ist Flux-Puffer, 2 fehlgeschlagen (Phase nennt die Stelle), 3 sicherer
+Start, 4 verriegelt, 5 U11 in Benutzung, DMA-Prüfung lief nicht. SELFTEST-Posten 3 `psram` und 22
+`psram_dma` prüfen im Betrieb.
+
+**Grenzen des Linkers und der Prüfung nach dem Link** (`firmware/STM32H723ZGTX_FLASH.ld`,
+`firmware/tools/check_memory.py`), unverändert: Heap 8 KiB, mindestens 32 KiB AXI-Reserve hinter dem
+Heap, mindestens 16 KiB zwischen `_edtcm` und `_estack`, USB-Empfangsringe 16 384 Byte im DTCM,
+`.evidence` höchstens 8192 Byte, `flux_fallback` 224 KiB im AXI-SRAM und `write_ring` 8192 Byte im SRAM2,
+beide auf 32 Byte ausgerichtet.
+
+**Belegung** laut `firmware/build/memory_usage.json` des Builds vom 2026-11-14: AXI 291 264 Byte belegt,
+36 416 Byte frei; statische DTCM-Daten 110 372 Byte, Stackadressraum 20 700 Byte; Heap 8192 Byte.
+Maßgeblich ist jeweils die Datei des aktuellen Builds.
+
+**Am Gerät** (Protokoll in `docs/Bringup_2026-10-24.md` Abschnitt 8): Am 2026-11-12 meldete eine Platine
+v1.0 „PSRAM 8 MB ok“, Statusblock Zustand 1, Phase 11, DMA 0. Nicht ausgelöst wurden die Fehler- und
+Verriegelungswege, der Watchdog und der sichere Start; U11-Stabilität unter DMA- und USB-Last mit
+Laufwerk ist weiter offen.

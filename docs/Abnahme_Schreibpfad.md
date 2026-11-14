@@ -1,4 +1,4 @@
-# Abnahme des Schreibpfads auf der UFI Headless v0.7
+# Abnahme des Schreibpfads auf der UFI Headless v0.7 und v1.0
 
 Stand: Firmware 1.18-dev (Audit F01–F07 behoben, DMA-Streaming, Verify-Stufen; 1.16: TG43, Dump dekodiert, Abbild von SD, IEC-Schreiben, Amiga HD; 1.18: Spurrest löschen, Sitzungs-Schreibsperre, Generationsblock, mediengebundener READ-Start). Noch **nicht ausgeführt** –
 alles unten ist am Gerät zu messen, bevor Schreibfunktionen als verlässlich gelten. Grundlage:
@@ -8,6 +8,15 @@ alles unten ist am Gerät zu messen, bevor Schreibfunktionen als verlässlich ge
 Voraussetzungen: bestückte Platine mit bestandenem `ufi selftest`, Debugzugang, Logikanalysator an
 WDATA (J6 Pin 22), WGATE (Pin 24), INDEX (Pin 8), zunächst **Loopback ohne beschreibbares Medium**
 (WDATA/WGATE nur am Analysator), später Testmedien, die verloren gehen dürfen.
+
+Platinenrevision: Der Plan wurde für v0.7 geschrieben und gilt auch für v1.0; Unterschiede bestehen nur
+bei der Hardware-Schreibsperre und sind in Abschnitt 2 je Zeile mit „v0.x“ oder „v1.0“ markiert.
+v0.x: WRITE-LOCK-Jumper J11, von der Firmware an PE4 gelesen. v1.0 (ECO A9b/A11f): Frontschalter
+SCHREIBEN, von der Firmware als WLOCK_HW an PE6 gelesen (high = gesperrt, auch bei abgezogenem
+Frontkabel); PE4 ist dort der Ausgang WLOCK_FW, den die Firmware nur für die Dauer eines Schreibauftrags
+auf low legt; das NOR-Gatter U31 lässt WGATE nur ohne Sperre auf den Bus. Für alle Tests dieses Plans,
+bei denen WGATE am Analysator erscheinen soll, muss auf v1.0 deshalb der Frontschalter SCHREIBEN
+geschlossen sein; mit offenem Schalter weist die Firmware den Auftrag mit Status 12 ab.
 
 Je Messung festhalten: Boardrevision, Firmware-SHA-256 (`ufi info` Zeile 2 = Git-Revision),
 Laufwerksmodell, Medium, Spur/Seite, Sollintervalle (Datei), gemessene Impulsfolge, Rücklesedaten,
@@ -46,10 +55,13 @@ unabhängigen Controller (Greaseweazle, Kryoflux, Applesauce), wenn vorhanden.
 | Ungültiges Präfix (`00`, `FD`, `FF`), Null-Intervall, Überzahl, zu wenige Daten | Ende-Status 10 sofort, WGATE nie an, nächster Auftrag sauber |
 | USB-Abzug während Empfang / während Ausgabe | definierter Zustand: WGATE spätestens am nächsten Index aus, Motor aus nach Timeout, Neuverbindung ohne Reset |
 | USB-Moduswechsel, Seriennummer | `ufi mode sd`, `ufi mode floppy`, `ufi mode gw`, zurück zu `ufi mode flux`; je Modus USB-Deskriptor auslesen (Windows: Geräte-Manager, Linux: `lsusb -v`) | PID wechselt 4F54 → 4F55 → 4F56 → 4F57 → 4F54, iSerialNumber bleibt in jedem Modus dieselbe MCU-UID; ein Host, der an der Seriennummer zuordnet, findet nach jeder Neu-Enumeration dasselbe Board |
-| WRITE-LOCK-Jumper, WPROT des Laufwerks | Status 12, keine Schreibaktivität |
+| v0.x: WRITE-LOCK-Jumper J11 gesteckt; alle Revisionen: WPROT des Laufwerks | Status 12, keine Schreibaktivität |
+| v1.0: Frontschalter SCHREIBEN offen, danach Frontkabel abgezogen | jeweils Status 12 bei WRITE, keine Schreibaktivität, WGATE (J6 Pin 24) bleibt inaktiv; STATUS-Flagbyte Bit 0 gesetzt |
+| v1.0: Selbsttest der Sperre, `ufi selftest` Posten 20 `wgate_lock`, ohne angewähltes Laufwerk und ohne laufenden Schreibauftrag (sonst `skip`) | `ok` mit `value` 0; `value` 1 = WGATE erreicht den Bus trotz Sperre, `value` 2 = WGATE-Bus schon vor dem Test aktiv; auf v0.x `skip` |
+| v1.0: Firmware-Freigabe WLOCK_FW (PE4) am Analysator, Schalter SCHREIBEN geschlossen, ein WRITE | WLOCK_FW im Ruhezustand high, low ab dem Start des Schreibauftrags, wieder high mit dem Ende (auch nach Abbruch und Fehler); außerhalb dieses Fensters kein WGATE am Bus |
 | Watchdog / Fault während des Schreibens | WGATE aus (Reset), `CRASH.LOG`, INFO meldet Ursache |
 | Schreibschutz während des Schreibens gesetzt | Laufwerk ignoriert WGATE; Verify meldet Fehler statt Erfolg |
-| Sitzungs-Schreibsperre (1.18) | `ufi write-lock engage`, danach WRITE, ERASE, PATTERN, FORMAT, `sd-write`, `iec-write`, `gw write`, USB-Floppy-Modus schreiben, Taster-Schreiben | native Befehle: Status 22 bei der Annahme, WGATE nie an; GW-Modus: GW-Quittung „schreibgeschützt“; Massenspeicher: Schreibfehler am PC; Taster: keine Schreibaktivität. STATUS-Flagbyte Bit 7 gesetzt (`BoardStatus.session_locked`), `ufi write-lock` zeigt die Sperre getrennt vom Jumper |
+| Sitzungs-Schreibsperre (1.18) | `ufi write-lock engage`, danach WRITE, ERASE, PATTERN, FORMAT, `sd-write`, `iec-write`, `gw write`, USB-Floppy-Modus schreiben, Taster-Schreiben | native Befehle: Status 22 bei der Annahme, WGATE nie an; GW-Modus: GW-Quittung „schreibgeschützt“; Massenspeicher: Schreibfehler am PC; Taster: keine Schreibaktivität. STATUS-Flagbyte Bit 7 gesetzt (`BoardStatus.session_locked`), `ufi write-lock` zeigt die Sperre getrennt vom Jumper (v1.0: vom Frontschalter) |
 | Sperre überlebt (1.18) | nach `engage`: `ufi mode gw` und zurück, USB abziehen und neu verbinden, ABORT | Sperre bleibt gesetzt (`[37]` → Bit 0); erst nach Reset-Taster/Spannung aus ist sie weg; Watchdog-Reset löscht sie ebenfalls (`CRASH.LOG` prüfen) |
 | Sperre nach Annahme (1.18) | langen WRITE starten, während die Daten laufen `[37, 1]` setzen | Ende-Rahmen Status 22, WGATE ging nie an |
 | Generationsblock (1.18) | `ufi read` und `ufi write` auf einer Spur, dann Diskette wechseln (oder `[16]`) und wiederholen | Start- und Endgeneration je Ende-Rahmen gleich; nach dem Wechsel andere Mediengeneration, `capture_id` steigt je READ; GUARDED_READ/GUARDED_WRITE mit der alten Generation → Status 21 vor jedem Daten-Rahmen |
@@ -95,7 +107,7 @@ Weg.
 | Zeile, Bit | Messung (Abschnitte oben) | Freigabekriterium |
 |---|---|---|
 | 0 Rohfluss, Bit0 Capture | Abschnitt 3: `ufi read-disk` einer Referenzdiskette, drei Umdrehungen, beide Köpfe, Spur 0 und innerste Spur; Vergleich mit einem zweiten Lesegerät (KryoFlux/Greaseweazle) derselben Diskette | Intervallhistogramme deckungsgleich (Spitzen ± 2 %), Indexdauer ± 0,2 %, kein `transport_dma`/`buffer_full` im Aufnahmekontext (Abschnitt 4 des Jobergebnisses) |
-| 0 Rohfluss, Bit2 Raw-Flux-Schreiben | Abschnitt 1: Loopback N−1/N/N+1, Streaming 65 537/100 000/200 000, Unterlauf-Provokation; Abschnitt 3: Rohspur zurückschreiben und mit Bit0-Aufnahme vergleichen | Loopback impulsgenau (± 1 Takt), Unterlauf endet mit Status 10 ohne WGATE-Rest; zurückgeschriebene Spur liest sich mit identischem Histogramm und Sektorsatz |
+| 0 Rohfluss, Bit2 Raw-Flux-Schreiben | Abschnitt 1: Loopback N−1/N/N+1, Streaming 65 537/100 000/200 000, Unterlauf-Provokation; Abschnitt 3: Rohspur zurückschreiben und mit Bit0-Aufnahme vergleichen | Loopback impulsgenau (± 1 Takt), Unterlauf endet mit Status 6 ohne WGATE-Rest; zurückgeschriebene Spur liest sich mit identischem Histogramm und Sektorsatz |
 | 1–7 Format, Bit0 Capture | wie Zeile 0 Bit0 mit einer Diskette dieses Formats (IBM-MFM DD/HD/ED, Amiga DD/HD, FM, HP-MMFM, CBM-GCR 1541, Mac-GCR 400K/800K, Apple II 5,25″) | Decoder meldet alle Sektoren mit gültigen Prüfsummen in zwei Umdrehungen; `GEOMETRY_UNCONFIRMED` bleibt (Einzelspur), aber keine `INCOMPLETE`-Flags |
 | 1–7 Format, Bit1 Decodierung | ANALYZE DETAIL und Prüflese-Referenz auf derselben Aufnahme gegen Host-Dekodierung (`ufi analyze`, `ufi recognize`, Host-Decoder derselben Rohdatei) | Sektorsatz, CHRN und Daten-CRC-Befunde identisch mit dem Host-Decoder; Apple und Mac zusätzlich Prüfsummen je Sektor |
 | 1–6 Format, Bit2 Raw-Flux-Schreiben | Abschnitt 3: `ufi write-disk --verify` eines Abbilds dieses Formats, Rücklesen auf einem zweiten Laufwerk | Rücklesen byteidentisch; bei Amiga Labels eingeschlossen; Spur 0 und innerste Spur, beide Köpfe |
