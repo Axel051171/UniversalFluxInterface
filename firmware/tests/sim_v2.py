@@ -125,6 +125,20 @@ class SimStream:
         n, = struct.unpack_from('<I', d, 1 + 4 * (revs + 1))
         return idx, list(struct.unpack_from(f'<{n}I', d, 5 + 4 * (revs + 1)))
 
+    def lan_frame(self, ftype, cmd, seq, payload=b''):
+        """One frame from the LAN session; the firmware's answer lands in the same output."""
+        self._take(self._cmd(b'L' + bytes([ftype, cmd, seq]) + struct.pack('<H', len(payload)) + bytes(payload)))
+
+    def lan_closed(self):
+        self._take(self._cmd(b'C'))
+
+    def usb_dropped(self):
+        self._take(self._cmd(b'X'))
+
+    def state(self):
+        owner, route, capture, write_pending, opened = struct.unpack('<BBBBI', self._cmd(b'Z'))
+        return dict(owner=owner, route=route, capture=capture, write_pending=bool(write_pending), write_enables=opened)
+
     def reset_input_buffer(self):
         self.buf.clear()
 

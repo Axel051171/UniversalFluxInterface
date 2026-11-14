@@ -16,6 +16,10 @@
  *   'G'                ground truth of the last capture: u8 revs, (revs+1) u32 index times,
  *                      u32 n, n u32 transition times (flux-timer values)
  *   'B' u8 busy        the transmitter reports "not idle" while busy != 0 (slow host)
+ *   'L' u8 type, u8 cmd, u8 seq, u16 n, bytes   one frame from the LAN session (ufi_v2_lan_frame)
+ *   'C'                the LAN connection is gone (ufi_v2_lan_closed)
+ *   'X'                the USB host dropped the session (ufi_v2_clear_comms)
+ *   'Z'                state: owner, route, capture state, write pending, u32 write-enable openings
  *   'Q'                quit
  */
 #include "ufi_firmware.h"
@@ -64,6 +68,10 @@ static int emit(const uint8_t* d, uint32_t n)
 }
 int ufi_native_tx_blocking(const uint8_t* d, uint32_t n) { return emit(d, n); }
 int ufi_native_tx_start(const uint8_t* d, uint32_t n) { return emit(d, n); }
+static bool lan_up;
+static uint32_t write_enables;
+bool ufi_lan_connected(void) { return lan_up; }
+void ufi_board_write_enable(bool on) { if (on) write_enables++; }   /* must never open in a read-only run */
 /* providers with an (out, capacity) contract: the generated stub would leave the length unset */
 int ufi_file_read(const char* name, uint32_t offset, uint8_t* o, uint16_t len, uint16_t* got)
 {
@@ -190,6 +198,24 @@ int main(void)
             uint8_t v;
             if (!get(&v, 1)) return 2;
             tx_busy = v != 0;
+        } else if (c == 'L') {
+            uint8_t h[5];
+            if (!get(h, 5)) return 2;
+            const uint16_t n = (uint16_t)(h[3] | h[4] << 8);
+            if (n > UFI_V2_MAX_PAYLOAD || !get(in, n)) return 2;
+            lan_up = true;
+            ufi_v2_lan_frame(h[0], h[1], h[2], in, n);
+        } else if (c == 'C') {
+            lan_up = false;
+            ufi_v2_lan_closed();
+        } else if (c == 'X') {
+            ufi_v2_clear_comms();
+        } else if (c == 'Z') {
+            out[out_n++] = ufi_v2_owner();
+            out[out_n++] = ufi_v2_route();
+            out[out_n++] = (uint8_t)g_capture.state;
+            out[out_n++] = ufi_v2_write_pending() ? 1u : 0u;
+            put32(write_enables);
         } else if (c == 'G') {
             out[out_n++] = revs_req;
             for (unsigned k = 0; k < idx_total; k++) put32(idx_t[k]);
