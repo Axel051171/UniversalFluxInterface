@@ -1,12 +1,14 @@
 """Build and drive the firmware simulator sim_v2.c: the production v2 dispatcher, stream
-encoder and READ completion as a native process, for host-in-the-loop tests.
+encoder, write path (ufi_write.c) and the READ / WRITE completions as a native process, for
+host-in-the-loop tests.  sim_v2.c lists what is production code and what it models (time, GPIO,
+write enable, index pulses, TIM3 and the write DMA, the synthetic capture).
 
 build() compiles it like the v2 fuzz target (run_fuzz.build_stubbed) but without libFuzzer
 and sanitizer runtime, and returns the executable.  SimStream is a byte stream for
 ufi_host.protocol2.Device2: what the host writes arrives at the firmware (optionally cut into
 fragments), reading lets simulated time pass and returns what the firmware transmitted.
 
-usage: python sim_v2.py        builds and runs a smoke check (PING, INFO)
+usage: python sim_v2.py        builds and runs a smoke check (PING, INFO, one WRITE)
 """
 from pathlib import Path
 import struct
@@ -17,20 +19,42 @@ from run_tests import BUILD, FW, compiler
 import fuzz_stubs
 from run_fuzz import COMMON, STUB_FLAGS, EXE, LINKER_SYMBOLS, LIBC, LIBC_PREFIXES
 
-UNITS = ('ufi_v2', 'ufi_stream', 'ufi_analysis_job')
-# ufi_usb.c needs the USB device library and is not built natively; the one function of it on
-# the READ path is taken from the source verbatim, so the simulator still runs production code.
+UNITS = ('ufi_v2', 'ufi_stream', 'ufi_analysis_job', 'ufi_write')
+# Units that need the real HAL or the USB device library are not built natively.  What the
+# simulated paths use of them is taken from the source verbatim, so it is still production code:
+# the READ and WRITE completions of ufi_usb.c (reply() is their v1 fallback, not reached while a
+# v2 operation is open), the session write lock of ufi_board.c (session_lock is its one variable),
+# ufi_capture_abort() of ufi_main.c and the pin table of board_headless.c.
 EXTRACT_HEAD = r'''
 #include "ufi_firmware.h"
 #include "ufi_read_info.h"
 #include "ufi_evidence.h"
+#include <string.h>
 static int reply(uint8_t cmd, uint8_t status, const void* p, uint16_t n) { (void)cmd; (void)status; (void)p; (void)n; return UFI_OK; }
 static uint8_t st(int e) { return (uint8_t)(e < 0 ? -e : e); }
+static bool session_lock;
 '''
+EXTRACT = (('ufi_usb.c', ('ufi_usb_send_read_done', 'ufi_usb_send_event')),
+           ('ufi_board.c', ('ufi_board_soft_lock', 'ufi_board_soft_locked', 'ufi_board_write_locked')),
+           ('ufi_main.c', ('ufi_capture_abort',)))
 REAL = ('ufi_job', 'ufi_resources', 'ufi_cancel', 'ufi_capabilities', 'ufi_media', 'ufi_metrics',
-        'ufi_write_codec', 'ufi_quality', 'ufi_protection', 'ufi_lan_status', 'ufi_lan_cfg', 'ufi_read_info')
+        'ufi_write_codec', 'ufi_quality', 'ufi_protection', 'ufi_lan_status', 'ufi_lan_cfg', 'ufi_read_info',
+        'ufi_write_stream', 'ufi_write_wave', 'ufi_verify', 'ufi_raw_verify', 'ufi_mfm')
 EXTRA = {'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'),
          'hUsbDevice': ('usbd_def.h', 'USBD_HandleTypeDef hUsbDevice;'), **LINKER_SYMBOLS}
+# sim_v2.c is told where ufi_write.c writes TIM_EGR_UG (see the HAL stub header)
+SIM_FLAGS = ['-DUFI_STUB_TIM_UG_HOOK=sim_tim_ug']
+
+
+def extracted():
+    """Production text for extract.c: functions of EXTRACT and the pin table."""
+    import re
+    from test_regressions import function
+    pins = re.findall(r'^const gpio_pin_t \w+\s*=\s*\{[^}]*\};', (FW / 'src' / 'board_headless.c').read_text(encoding='utf-8'), re.M)
+    if len(pins) < 20:
+        raise RuntimeError('cannot extract the pin table of board_headless.c')
+    return (EXTRACT_HEAD + ''.join(function(file, name) for file, names in EXTRACT for name in names)
+            + '\n'.join(pins) + '\n')
 
 
 def build():
@@ -38,15 +62,14 @@ def build():
     import os
     objdir = BUILD / f'sim_v2_obj_{os.getpid()}'
     objdir.mkdir(parents=True, exist_ok=True)
-    flags = [*COMMON, *STUB_FLAGS]
+    flags = [*COMMON, *STUB_FLAGS, *SIM_FLAGS]
     objects, harness = [], objdir / 'harness.o'
     for unit in (*UNITS, *REAL):
         o = objdir / (unit + '.o')
         subprocess.run([compiler(), *flags, '-w', '-c', str(FW / 'src' / (unit + '.c')), '-o', str(o)], check=True)
         objects.append(o)
-    from test_regressions import function
     extract = objdir / 'extract.c'
-    extract.write_text(EXTRACT_HEAD + function('ufi_usb.c', 'ufi_usb_send_read_done'), encoding='utf-8')
+    extract.write_text(extracted(), encoding='utf-8')
     o = objdir / 'extract.o'
     subprocess.run([compiler(), *flags, '-w', '-c', str(extract), '-o', str(o)], check=True)
     objects.append(o)
@@ -115,7 +138,28 @@ class SimStream:
         return out
 
     def scenario(self, rev_ticks=5_500_000, cell_ticks=1100, lead_ms=3):
+        """Capture model of the next READ; rev_ticks is also the period of the free-running index
+        that starts a WRITE."""
         self._cmd(b'S' + struct.pack('<III', rev_ticks, cell_ticks, lead_ms))
+
+    def index(self, on):
+        """Index pulses of the free-running index on / off (off: a drive without a disk)."""
+        self._cmd(b'I' + bytes([1 if on else 0]))
+
+    def lan_write(self, on):
+        """Disk writes over LAN allowed (lan_write=1 in LAN.CFG with the lock switch open); off at the start."""
+        self._cmd(b'A' + bytes([1 if on else 0]))
+
+    def written(self):
+        """What reached the disk since WGATE last rose: every write-timer period that ended while
+        WGATE was asserted and the write enable open.  periods: (ticks, CCR1, OC1M mode) with mode
+        6 = PWM1 (classic backend: a pulse ends the period), 7 = PWM2 (extended backend: the
+        transition is CCR1 ticks into the period, none if CCR1 > period - 1), 4 = forced inactive
+        (no pulse).  elapsed counts all periods, the model stores the first 131072."""
+        d = self._cmd(b'R')
+        rises, on, off, elapsed, n = struct.unpack_from('<5I', d)
+        return dict(gate_rises=rises, gate_on=on, gate_off=off, elapsed=elapsed,
+                    periods=[struct.unpack_from('<IHBx', d, 20 + 8 * i)[:3] for i in range(n)])
 
     def busy(self, on):
         self._cmd(b'B' + bytes([1 if on else 0]))
@@ -139,8 +183,14 @@ class SimStream:
         self._take(self._cmd(b'X'))
 
     def state(self):
-        owner, route, capture, write_pending, opened = struct.unpack('<BBBBI', self._cmd(b'Z'))
-        return dict(owner=owner, route=route, capture=capture, write_pending=bool(write_pending), write_enables=opened)
+        """write_enable: firmware write enable (WLOCK_FW) open; wgate: WGATE asserted; write_state:
+        ufi_write_get_state() (0 = idle); enable_violations: WGATE rose while the enable was closed,
+        or the enable closed under an asserted WGATE.  write_safe: enable closed, gate low and no
+        violation so far - what holds whenever no write is running."""
+        owner, route, capture, write_pending, enable, gate, wstate, violations = struct.unpack('<BBBBBBBI', self._cmd(b'Z'))
+        return dict(owner=owner, route=route, capture=capture, write_pending=bool(write_pending),
+                    write_enable=bool(enable), wgate=bool(gate), write_state=wstate, enable_violations=violations,
+                    write_safe=not enable and not gate and violations == 0)
 
     def reset_input_buffer(self):
         self.buf.clear()
@@ -163,5 +213,9 @@ if __name__ == '__main__':
     dev = P2.Device2(s)
     assert dev.ping()
     info = dev.info()
+    deltas = [1000 + 7 * (i % 16) for i in range(64)]
+    dev.write_track(3, 0, deltas, extended=False, integrity=False)
+    assert [p[0] for p in s.written()['periods']] == deltas and s.state()['write_safe']
     s.close()
-    print(f'sim_v2: {stubs} generated stubs behind {", ".join(UNITS)}; PING and INFO answered: {str(info)[:120]}')
+    print(f'sim_v2: {stubs} generated stubs behind {", ".join(UNITS)}; PING and INFO answered, '
+          f'WRITE of {len(deltas)} intervals reached the disk as sent: {str(info)[:120]}')

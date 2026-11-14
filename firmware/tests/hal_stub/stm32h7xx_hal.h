@@ -93,6 +93,123 @@ extern TIM_TypeDef stub_tim[8];
 #define TIM2 (&stub_tim[2])
 #define TIM3 (&stub_tim[3])
 
+/* ---- declarations for the write path (ufi_write.c): register bits with the STM32H7 values,
+ * HAL types reduced to the members the firmware uses.  The registers are plain host memory:
+ * a write has no side effect (no rc_w0 flags, no update generation, no DMA). ---- */
+#define TIM_CR1_CEN   0x0001u
+#define TIM_CR1_DIR   0x0010u
+#define TIM_CR1_ARPE  0x0080u
+#define TIM_DIER_UIE   0x0001u
+#define TIM_DIER_CC2IE 0x0004u
+#define TIM_DIER_CC4IE 0x0010u
+#define TIM_DIER_UDE   0x0100u
+#define TIM_SR_UIF    0x0001u
+#define TIM_SR_CC2IF  0x0004u
+#define TIM_SR_CC4IF  0x0010u
+#define TIM_SR_CC2OF  0x0400u
+/* A harness that has to see the update generation (the shadow registers load from ARR and
+ * CCR1 at that moment, and plain memory keeps no trace of it) compiles with
+ * -DUFI_STUB_TIM_UG_HOOK=<function>: the function is called where the firmware writes
+ * TIM_EGR_UG and returns the bit value, which the firmware then stores in EGR. */
+#ifdef UFI_STUB_TIM_UG_HOOK
+uint32_t UFI_STUB_TIM_UG_HOOK(void);
+#define TIM_EGR_UG    UFI_STUB_TIM_UG_HOOK()
+#else
+#define TIM_EGR_UG    0x0001u
+#endif
+#define TIM_CCMR1_CC2S  0x00000300u
+#define TIM_CCMR1_OC1PE 0x00000008u
+#define TIM_CCMR1_OC1M  0x00010070u
+#define TIM_CCMR1_OC2M  0x01007000u
+#define TIM_CCER_CC1P 0x0002u
+#define TIM_CCER_CC2E 0x0010u
+#define TIM_OCMODE_TOGGLE          0x0030u
+#define TIM_OCMODE_FORCED_INACTIVE 0x0040u
+#define TIM_OCMODE_PWM1            0x0060u
+#define TIM_OCMODE_PWM2            0x0070u
+#define TIM_COUNTERMODE_DOWN           TIM_CR1_DIR
+#define TIM_CLOCKDIVISION_DIV1         0u
+#define TIM_AUTORELOAD_PRELOAD_ENABLE  TIM_CR1_ARPE
+#define TIM_OCPOLARITY_HIGH 0u
+#define TIM_OCPOLARITY_LOW  TIM_CCER_CC1P
+#define TIM_OCFAST_DISABLE  0u
+#define TIM_CCx_ENABLE      1u
+#define TIM_DMABASE_ARR                0x000Bu
+#define TIM_DMABURSTLENGTH_3TRANSFERS  0x0200u
+
+typedef struct {
+    uint32_t Prescaler, CounterMode, Period, ClockDivision, RepetitionCounter, AutoReloadPreload;
+} TIM_Base_InitTypeDef;
+typedef struct { TIM_TypeDef* Instance; TIM_Base_InitTypeDef Init; } TIM_HandleTypeDef;
+typedef struct {
+    uint32_t OCMode, Pulse, OCPolarity, OCNPolarity, OCFastMode, OCIdleState, OCNIdleState;
+} TIM_OC_InitTypeDef;
+#define __HAL_TIM_ENABLE(h)  ((h)->Instance->CR1 |= TIM_CR1_CEN)
+#define __HAL_TIM_DISABLE(h) ((h)->Instance->CR1 &= ~TIM_CR1_CEN)
+
+typedef struct { volatile uint32_t CR, NDTR, PAR, M0AR, M1AR, FCR; } DMA_Stream_TypeDef;
+typedef struct { volatile uint32_t LISR, HISR, LIFCR, HIFCR; } DMA_TypeDef;
+extern DMA_TypeDef stub_dma[2];
+extern DMA_Stream_TypeDef stub_dma_stream[16];
+#define DMA1         (&stub_dma[0])
+#define DMA1_Stream1 (&stub_dma_stream[1])
+#define DMA_SxCR_EN   0x0001u
+#define DMA_SxCR_TEIE 0x0004u
+#define DMA_SxCR_HTIE 0x0008u
+#define DMA_SxCR_TCIE 0x0010u
+#define DMA_LISR_FEIF1   0x0040u
+#define DMA_LISR_DMEIF1  0x0100u
+#define DMA_LISR_TEIF1   0x0200u
+#define DMA_LISR_HTIF1   0x0400u
+#define DMA_LISR_TCIF1   0x0800u
+#define DMA_LIFCR_CFEIF1  0x0040u
+#define DMA_LIFCR_CDMEIF1 0x0100u
+#define DMA_LIFCR_CTEIF1  0x0200u
+#define DMA_LIFCR_CHTIF1  0x0400u
+#define DMA_LIFCR_CTCIF1  0x0800u
+#define DMA_REQUEST_TIM3_UP       27u
+#define DMA_MEMORY_TO_PERIPH      0x00000040u
+#define DMA_PINC_DISABLE          0u
+#define DMA_MINC_ENABLE           0x00000400u
+#define DMA_PDATAALIGN_HALFWORD   0x00000800u
+#define DMA_MDATAALIGN_HALFWORD   0x00002000u
+#define DMA_CIRCULAR              0x00000100u
+#define DMA_PRIORITY_VERY_HIGH    0x00030000u
+#define DMA_FIFOMODE_DISABLE      0u
+typedef struct {
+    uint32_t Request, Direction, PeriphInc, MemInc, PeriphDataAlignment, MemDataAlignment, Mode,
+             Priority, FIFOMode, FIFOThreshold, MemBurst, PeriphBurst;
+} DMA_InitTypeDef;
+typedef enum { HAL_UNLOCKED = 0, HAL_LOCKED = 1 } HAL_LockTypeDef;
+typedef enum { HAL_DMA_STATE_RESET = 0, HAL_DMA_STATE_READY = 1, HAL_DMA_STATE_BUSY = 2 } HAL_DMA_StateTypeDef;
+typedef struct {
+    DMA_Stream_TypeDef* Instance; DMA_InitTypeDef Init; HAL_LockTypeDef Lock; volatile HAL_DMA_StateTypeDef State;
+} DMA_HandleTypeDef;
+#define __HAL_UNLOCK(h) do { (h)->Lock = HAL_UNLOCKED; } while (0)
+
+typedef struct { uint32_t Pin, Mode, Pull, Speed, Alternate; } GPIO_InitTypeDef;
+#define GPIO_MODE_INPUT     0u
+#define GPIO_MODE_OUTPUT_PP 1u
+#define GPIO_MODE_AF_PP     2u
+#define GPIO_NOPULL         0u
+#define GPIO_SPEED_FREQ_LOW       0u
+#define GPIO_SPEED_FREQ_VERY_HIGH 3u
+
+typedef enum { DMA1_Stream1_IRQn = 12, TIM3_IRQn = 29 } IRQn_Type;
+/* peripheral clocks: there is no RCC on the host */
+#define __HAL_RCC_TIM3_CLK_ENABLE()    do { } while (0)
+#define __HAL_RCC_DMA1_CLK_ENABLE()    do { } while (0)
+#define __HAL_RCC_D2SRAM2_CLK_ENABLE() do { } while (0)
+
+HAL_StatusTypeDef HAL_TIM_PWM_Init(TIM_HandleTypeDef* htim);
+HAL_StatusTypeDef HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef* htim, const TIM_OC_InitTypeDef* config, uint32_t channel);
+void TIM_CCxChannelCmd(TIM_TypeDef* tim, uint32_t channel, uint32_t state);
+HAL_StatusTypeDef HAL_DMA_Init(DMA_HandleTypeDef* hdma);
+HAL_StatusTypeDef HAL_DMA_Start_IT(DMA_HandleTypeDef* hdma, uint32_t source, uint32_t destination, uint32_t length);
+void HAL_GPIO_Init(GPIO_TypeDef* port, GPIO_InitTypeDef* init);
+void HAL_NVIC_SetPriority(IRQn_Type irq, uint32_t preempt, uint32_t sub);
+void HAL_NVIC_EnableIRQ(IRQn_Type irq);
+
 void SCB_InvalidateDCache_by_Addr(void* addr, int32_t dsize);
 void SCB_CleanDCache_by_Addr(void* addr, int32_t dsize);
 void NVIC_SystemReset(void);
