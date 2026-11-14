@@ -3209,6 +3209,13 @@ erreichen. Jetzt zählt nur noch der 10-ms-Takt der Platinenüberwachung; die Ab
 den aktuellen Strom für die Antwort. Die eFuse-Fehlerbits (v1.0) werden ebenfalls nur im Takt
 aktualisiert und sind in der Antwort höchstens 10 ms alt.
 
+SELFTEST Posten 2 `usb_sof`: Springt die USB-Rahmennummer während der Messung (Bus-Reset), begann
+die neue Messung bisher am Sprung selbst statt an einer Rahmengrenze. Das Ergebnis konnte dadurch
+um bis zu einen Rahmen von 128 zu kurz ausfallen (etwa −7800 ppm), wurde als Warnung gemeldet und
+als Taktabweichung in den Lesekontext (4.24) und den Herkunftsblock (4.12) übernommen. Jetzt
+beginnt die Messung an der ersten Rahmengrenze nach dem Sprung. Nachweis im nativen Test
+`test_selftest_items.py` mit virtueller Zeit; auf der Platine nicht provoziert.
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen

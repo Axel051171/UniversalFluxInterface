@@ -65,16 +65,20 @@ static void t_usb_sof(st_item_t* it)
     }
     /* A frame number that jumps (asynchronous read during the update, bus reset) used to
      * count as thousands of frames and gave about -1 000 000 ppm on the bench: the
-     * measurement restarts on the next frame edge instead. */
+     * measurement restarts on the next frame edge instead.  The jump itself is not an edge (a
+     * bus reset comes at any time): starting there measured up to one frame short, about
+     * -7800 ppm, so the change after the jump is the new start. */
     uint32_t t0 = TIM2->CNT;
     fn = (dev->DSTS & USB_OTG_DSTS_FNSOF) >> 8;
     uint32_t frames = 0;
+    bool resync = false;
     while (frames < 128u) {
         const uint32_t f = (dev->DSTS & USB_OTG_DSTS_FNSOF) >> 8;
         if (f != fn) {
             const uint32_t step = (f - fn) & 0x3FFFu;
             fn = f;
-            if (step > 4u) {
+            if (step > 4u || resync) {
+                resync = step > 4u;
                 t0 = TIM2->CNT;
                 frames = 0;
             } else {
