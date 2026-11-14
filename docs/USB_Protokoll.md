@@ -3121,6 +3121,43 @@ Folge; mit mehreren Umdrehungen liegt dieselbe Stelle zusätzlich an jedem `FD`,
 der Blick vor den ersten. L aus dem Kopf verwenden, nicht 20 ms annehmen. Auf der Platine noch
 nicht gemessen: Lage des übergangenen Impulses, tatsächliche Wartezeit, Verhalten bei ED.
 
+### 4.26 Abdeckung der Flag-Vorschläge vom 12.11.2026 (Stand 2026-11-14)
+
+Die Vorschlagslisten für zusätzliche Flags wurden einzeln gegen den Code geprüft. Wo eine Funktion
+schon vorhanden war, ist **kein** zweites Flag entstanden; die Tabelle nennt, womit ein Werkzeug den
+Wunsch heute erfüllt. „Offen“ heißt: nicht umgesetzt, mit Grund.
+
+| Wunsch | Stand | Womit |
+|---|---|---|
+| Erweiterungsbyte für READ-Flags | neu | READ-Flag Bit7 + `read_flags2`, Maske in Op 38 Byte 15 (3.1, 4.7) |
+| Doppelschritt je Anfrage (Lesen) | neu | `read_flags2` Bit0 (3.1); `ufi read --double-step` |
+| Genau von Index zu Index lesen | vorhanden | READ ohne Bit0 und ohne Bit6 beginnt am ersten Index und endet am Index N+1 |
+| Ereignisse: Diskette gewechselt, Schreibschutz | vorhanden / neu | 0x80, 0x86 (2.3) |
+| Ereignisse: Index verloren, Drehzahl, Überlauf | bewusst nicht | Ende-Rahmen Status 4, 23, 10 (2.3) |
+| Flippy-Seite lesen (Index simulieren) | vorhanden | INDEX_SIM `mode` Bit1 oder READ-Flag Bit0; Indexquelle der Aufnahme im Lesekontext Offset 33 (4.24) |
+| Schwache Bereiche im Strom markieren | verworfen | Strom bleibt unverändert; Auswertung derselben Aufnahme auf dem Host (4.13a) |
+| Nur abweichende Bereiche melden, ohne Strom | vorhanden | ANALYZE + Op 42, Op 44, Op 51 (4.11, 4.13, 4.21) |
+| Motor läuft schon: Anlaufzeit überspringen | vorhanden | MOTOR EIN kehrt bei laufendem Motor sofort zurück (`ufi_drive_motor()`); Einschwingzeit fällt nur nach einem Schritt an |
+| Nach Zeit statt nach Umdrehungen stoppen | vorhanden | READ-Flag Bit0: `revs` Zeitabschnitte der Länge `period_ms` (0 = 200 ms), ohne Index (2.2) |
+| Daten über den Index hinweg | vorhanden | zwei Umdrehungen enthalten jede Folge über den Index; Vorlauf vor dem ersten Index mit READ-Flag Bit6 (4.25). Ein Start bei Index + Versatz existiert nicht |
+| Rohe Indexzeiten je Umdrehung | vorhanden | Indexperiode je Umdrehung im Strom und im Ereignis 0x85; alle Index-/Sektorlochereignisse mit Jobflag RAW_INDEX (4.1) |
+| Maske der Jobflags abfragen | vorhanden | Analyse-Discovery Offset 4 (6, „Unterstützte Jobflags“) |
+| Laufwerk: Spurzahl, Köpfe, Drehzahl, Wechselanzeige | vorhanden | Laufwerksprofil in Op 13/14 (4.2). Es ist ein **deklariertes** Profil mit Firmware-Vorgabe je Laufwerkstyp, keine Messung am Laufwerk |
+| DENSITY/DRATE-Leitungen, HD/DD | vorhanden | Betriebsprofil Op 18 (4.4), Pegel je Aufnahme im Lesekontext (4.24) |
+| PSRAM bestückt und in Benutzung | vorhanden | SELFTEST mit Nutzlast `'P'` (Statusblock), INFO-Text |
+| Sync-Sensor, SD vorhanden | vorhanden | FEATURES 0x0C Eintrag 13 (1.4), Bit in den `board_status`-Flags von STATUS |
+| Daten trotz falscher Kopf-CRC behalten | vorhanden | Op 34 Flag 0x0001 (5.8) |
+| Gelöschte Datenmarken melden | vorhanden | Sektor-Flagbyte Bit1 (5.2) |
+| Doppelte Sektorkennungen | vorhanden | Op 55 Flag LAYOUT, Inhaltsvarianten Op 49 (4.20, 4.23) |
+| Schutzhinweise: instabile Bereiche, Spurlänge, lange Bereiche ohne Fluss | vorhanden | Op 55 Flags CONTENT, LAYOUT, TIMING (4.23) |
+| Spuren ohne Signal finden | vorhanden | Spurübersicht Op 46 über alle physischen Spuren (4.15); an einem 80-Spur-Laufwerk sind die ungeraden Spuren die Zwischenspuren einer 48-tpi-Diskette |
+| Viertelspuren am Apple-Laufwerk in der Spurübersicht | offen | Op 46 fährt nur ganze Spuren; einzelne Viertelspuren mit READ/ANALYZE (`quarter`) |
+| SHA-256 je Spur über den Rohstrom | offen | Der Host kann ihn über die empfangenen Bytes selbst bilden; die Übertragung sichert der Integritätsjob mit CRC-32. Ein Wert aus der Firmware wäre nur dann mehr, wenn er vor der Übertragung gebildet wird |
+| Bei Fehlern mit mehr Umdrehungen wiederholen | offen | Jobflags RETRY_MISSING/RETRY_ERRORS wiederholen mit derselben Umdrehungszahl (bis 8 Versuche, RESEEK); eine Steigerung macht heute das Werkzeug mit einem neuen Auftrag |
+| Aufnahme nur in den Speicher, später abholen | teilweise | Op 48/52 für Aufnahmen des Analysejobs (4.19), 128 Samples je Seite; ein normaler READ wird nicht aufbewahrt. Größere Blöcke erst nach einer Messung am Gerät |
+| Schreibseite: Doppelschritt, Präkompensation + Rücklesen, Nachbarspur löschen, Teilspur, Abweichungen aus dem Prüflesen | offen | erst nach der Schreibpfad-Abnahme mit Laufwerk (docs/Abnahme_Schreibpfad.md) |
+| Seite B mit Kopf 1 eines Flippy-Laufwerks (negative Spuren) | offen | braucht ein umgebautes Laufwerk |
+
 ## 5 Lesen, Schreiben und Prüflesen
 
 ### 5.1 Laufzeitdiagnose und automatisches Host-Prüflesen
