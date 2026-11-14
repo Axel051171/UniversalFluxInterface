@@ -2107,6 +2107,66 @@ Flusswechselzahlen, keine Bitzuordnung: ein Fenster mit Differenz 1 bei 500 kbit
 umfasst rund 25 Bitzellen. Host: `weak_positions(threshold=2)`, `ufi weak --positions
 [--threshold N]`.
 
+### 4.13a Dieselben Zahlen aus einer READ-Aufnahme (Host-Referenz, 2026-11-14)
+
+Op 42 und Op 44 gehören zum letzten ANALYZE – das liest die Spur **neu**. Ein instabiler Bereich
+liefert bei jedem Durchgang andere Flusswechsel; ein zweites Lesen beschreibt also nicht den Strom,
+den ein READ bereits geliefert hat. Die Zuordnung zur selben Aufnahme entsteht deshalb auf dem
+Host: Er berechnet die Zahlen aus den Umdrehungen genau dieses READ. Das braucht **kein neues
+Kommando, kein Flag und kein Strom-Token**; der Flussstrom bleibt Byte für Byte unverändert, das
+Ergebnis liegt getrennt daneben. (Vorschläge S3/R3: eine Weak-Markierung im Strom ist verworfen.)
+
+Referenz: `software/ufi_host/ufi_host/weak.py`. Eingang je Umdrehung: `T` = Indexperiode in Takten
+(275 MHz) und die Flusswechselzeiten in Takten seit dem Index dieser Umdrehung, wie der READ-Strom
+sie ergibt (`Revolution.index_ticks`, `Revolution.samples`). Alle Divisionen sind ganzzahlig (abrunden), Zwischenwerte 64 Bit.
+
+| Punkt | Festlegung |
+|---|---|
+| Fenster grob (wie Op 42) | Fenster w = 0…63 deckt `[T·w/64, T·(w+1)/64)` |
+| Fenster fein (wie Op 44) | Fenster w = 0…1023 deckt `[T·w/1024, T·(w+1)/1024)`; das letzte endet bei `T` |
+| Ausrichtung der Umdrehungen | Nur über den Index: jede Umdrehung wird mit **ihrem eigenen** `T` in Fenster geteilt (gleicht Drehzahlunterschiede aus). Kein Abgleich über den Inhalt |
+| Flusswechsel bei `t ≥ T` | Zählt nicht |
+| Wert je Fenster | Zahl der Flusswechsel je Umdrehung, dann Maximum − Minimum über die Umdrehungen |
+| Sättigung | Grob: Differenz nach der Subtraktion auf 255 gekappt. Fein: Zähler **vor** der Subtraktion auf 255 gekappt |
+| Schwelle grob | `weak_mask` Bit w und `weak_count` bei Differenz ≥ 3 (fest, wie ANALYZE) |
+| Schwelle fein | 1…255, Vorgabe 2; Eintrag = Fenster, Maximum − Minimum, Minimum; aufsteigend |
+| Weniger als 2 Umdrehungen | Nichts zu vergleichen: `revs` 0, alle Werte 0, keine Einträge |
+| Leere Umdrehung, `T` = 0 | Wird nicht übersprungen, zählt in jedem Fenster 0 |
+| Listenlänge fein | Ein Firmware-Bericht hält 64 Einträge (`truncated`); die Host-Funktion liefert mit `limit=None` alle |
+
+**Unvollständige Daten** ändern die Zahlen nicht, werden aber am Ergebnis vermerkt
+(`capture_instability()`): `complete` = falsch bei Ende-Status ≠ 0, einer Umdrehung mit Überlauf
+oder einem Verlustfenster im Lesekontext (4.24) – die Zahlen beschreiben dann, was ankam, nicht die
+Spur. `index_physical` = falsch, wenn Indexsimulator oder Zeitabschnitte die Umdrehungen begrenzt
+haben (4.24 Offset 33): Die Umdrehungen sind dann nicht zueinander ausgerichtet, die Differenzen
+sagen nichts. Ohne angeforderten Lesekontext ist `index_physical` unbekannt (`None`).
+
+**Bezug auf die Aufnahme:** Das Ergebnis trägt `capture_id` und Mediengeneration aus dem
+Generationsblock des Ende-Rahmens, Spur, Seite und die Indexperioden der verwendeten Umdrehungen.
+`window_ticks(T, w)` rechnet ein Fenster in Takte nach dem Index der jeweiligen Umdrehung zurück.
+
+**Gleichheit mit der Firmware:** `firmware/tests/test_weak_reference.py` (Teil des Offline-Gates)
+übersetzt die Produktionsfunktionen `weak_windows`, `ufi_analyze_weak_report`, `weak_positions` und
+`ufi_analyze_weak_positions` aus `ufi_analyze.c` und gibt ihnen **dieselben** Umdrehungen wie der
+Host-Funktion: stabile Spur bei drei Drehzahlen, instabiler Bereich über fünf Umdrehungen, eine und
+keine Umdrehung, Flusswechsel auf und hinter dem Index, leere Umdrehung und `T` = 0, mehr als 255
+Flusswechsel je Fenster, Längen die kein Vielfaches der Fensterzahl sind, unsortierte Zeiten, mehr
+als 64 Einträge, größte 32-Bit-Werte. Verglichen werden alle 64 Op-42-Bytes, `weak_mask`,
+`weak_count` und der Op-44-Bericht bei den Schwellen 1, 2, 3, 40 und 255. Zwei getrennte
+Laufwerksaufnahmen wären dafür ungeeignet. Nicht nachgewiesen ist damit, dass eine Aufnahme über
+READ und eine über ANALYZE dieselben Zeitwerte speichern – das ist für diese Auswertung auch nicht
+nötig, weil sie nur die READ-Daten benutzt.
+
+**Bedeutung:** Eine Differenz ist ein Hinweis, dass der Fluss dort zwischen den Umdrehungen
+instabil war. Sie ist keine Bitposition (ein feines Fenster umfasst bei 500 kbit/s MFM rund
+25 Bitzellen) und allein **kein Nachweis für Kopierschutz**: Ein schwaches Medium, Schmutz oder
+Drehzahlschwankungen innerhalb einer Umdrehung erzeugen dasselbe Bild. Die Einordnung als
+Schutzmerkmal bleibt Op 55/56 (4.23) und dem Werkzeug überlassen.
+
+Host: `weak.weak_windows(revs)`, `weak.weak_positions(revs, threshold, limit)`,
+`weak.capture_instability(capture)`, `ufi read SPUR SEITE -r N --weak [--weak-threshold N]`
+(ein READ, kein ANALYZE; mit `--read-info` zusätzlich die Prüfung der Indexquelle).
+
 ### 4.14 Präkompensation je Auftrag und Zone (Op 45, `flags2` Bit2, 1.18-dev)
 
 Die Schreib-Präkompensation kam bisher allein aus TIMING `precomp_ns` (0xFFFF = nach

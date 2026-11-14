@@ -9,6 +9,7 @@ pip install -e software/ufi_host[dev]
 ufi info
 ufi select a && ufi motor on && ufi recal
 ufi read 0 0 -r 3                         # Zusammenfassung (Flux-Anzahl, RPM je Umdrehung)
+ufi read 0 0 -r 5 --weak [--weak-threshold 2]  # instabile Bereiche genau dieser Aufnahme, auf dem Host aus ihren Umdrehungen berechnet (Definition wie Op 42/44, kein zweites Lesen; USB_Protokoll 4.13a); Hinweis, kein Kopierschutz-Nachweis
 ufi read-disk -o disk.scp --tracks 80 --sides 2 -r 3 --drive a
 ufi read-disk -o disk.hfe --bitrate 250        # HxC HFE v1 (Umdrehung 0 als MFM-Bitzellen, Bitrate sonst aus den kürzesten Flussabständen); auch bei read -o; write/write-disk nehmen .hfe (eine Umdrehung wird vorab gemessen, Zellen auf 98,5 % skaliert, ±3 %)
 ufi write-disk disk.scp --verify --drive amiga

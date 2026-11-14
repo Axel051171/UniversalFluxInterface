@@ -103,6 +103,33 @@ def _hfe_write_tracks(dev, a, img: HfeImage, only: tuple[int, int] | None = None
               + (f", cells scaled {pm / 1000:.3f}" if pm != 1000 else ""), flush=True)
 
 
+def _weak_lines(cap, threshold: int = 2) -> list[str]:
+    """ufi read --weak: instability of this capture from its own revolutions (USB_Protokoll 4.13a)."""
+    from .weak import COARSE_THRESHOLD, capture_instability
+    r = capture_instability(cap, threshold, limit=None)
+    co, fi = r["coarse"], r["fine"]
+    cid = "unknown" if r["capture_id"] is None else str(r["capture_id"])
+    if not co["revs"]:
+        return [f"instability (capture id {cid}): needs at least 2 revolutions, this capture has {len(r['index_ticks'])}"]
+    strip = "".join(" .:-=+*#%@"[min(c, 9)] for c in co["counts"])
+    lines = [f"instability (capture id {cid}, {co['revs']} revs, same data as the stream): |{strip}|"]
+    if r["index_physical"] is False:
+        lines.append("  no physical index in this read: revolutions are not aligned, the differences below mean nothing")
+    if not r["complete"]:
+        lines.append("  capture incomplete (status, overflow or loss window): the numbers describe what arrived")
+    hits = [(w, c) for w, c in enumerate(co["counts"]) if c >= COARSE_THRESHOLD]
+    lines.append("  1/64 windows at or above 3: " + (", ".join(f"w{w}={c}" for w, c in hits) if hits else "none"))
+    if fi["entries"]:
+        shown = fi["entries"][:64]
+        lines.append(f"  {len(fi['entries'])} fine windows (1/{fi['windows']} revolution) with max-min >= {fi['threshold']}: "
+                     + ", ".join(f"{e['window']}:{e['min']}+{e['diff']}" for e in shown)
+                     + (" ..." if len(fi["entries"]) > len(shown) else ""))
+    else:
+        lines.append(f"  no 1/{fi['windows']} window differs by {fi['threshold']} or more")
+    lines.append("  a hint that flux was unstable there, not a bit position and no proof of copy protection")
+    return lines
+
+
 def _read_info_lines(ri) -> list[str]:
     """ufi read --read-info: the READ END read context block (4.24), None on older firmware."""
     if ri is None:
@@ -872,6 +899,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("read")
     p.add_argument("--provenance", action="store_true",
                    help="READ flag bit 3 (firmware 1.18): the END carries the provenance block of op 43; printed after the summary")
+    p.add_argument("--weak", action="store_true",
+                   help="instability of exactly this capture, computed on the host from its revolutions with the "
+                        "definitions of op 42/44 (no second read; needs at least 2 revolutions); a hint, not proof "
+                        "of copy protection")
+    p.add_argument("--weak-threshold", type=int, default=2, metavar="N",
+                   help="with --weak: list 1/1024-revolution windows whose max-min reaches N (1..255, default 2)")
     p.add_argument("--read-info", action="store_true",
                    help="READ flag bit 5 (firmware 1.18-dev): the END carries the read context (revolution clamp, head position, "
                         "DENSITY/DRATE, cached clock and climate, loss windows); printed after the summary")
@@ -1412,6 +1445,9 @@ def main(argv: list[str] | None = None) -> int:
                                            if li.samples else ""))
             if getattr(a, "read_info", False):
                 for line in _read_info_lines(cap.read_info):
+                    print(line)
+            if getattr(a, "weak", False):
+                for line in _weak_lines(cap, a.weak_threshold):
                     print(line)
             if getattr(a, "provenance", False):
                 pv = cap.provenance
