@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source_revision": "2041437d53ad25d011cd72fac2d6ddcd53ec5bf3",
+  "source_revision": "47c0e075a72aca3427baa4e551680da78395662a",
   "reviewed_date": "2026-11-14",
   "files": {
     ".github/workflows/firmware.yml": "f04b3bec64277c096a9fe95c64b82741103ec31db68adf047ee188770ba8d52b",
@@ -33,7 +33,7 @@
     "kicad/UFI_Headless/UFI_Headless.kicad_pcb": "262d425653c3764eeb90242b5c7484369fd35e475d35389f307b8099a100d794",
     "kicad/UFI_Headless/UFI_Headless.kicad_sch": "860a74945512822f875b3a60af52d77aa78a98f3909731113b7b7a7a65cb0010",
     "LICENSE": "060b55adf70931d88fe725847b9c12874d14bc964446c88ba97db567ffb653d6",
-    "README.md": "c8ec2b93ef65721dd81764f572a262c24309ad702bfc2c266835bf3b9e129584",
+    "README.md": "0e338ebc27ad3ae7a895c31ea772ce68bf78a8f4dda518e32d844e2e911dc403",
     "software/ufi_host/pyproject.toml": "e737773ec406755042a776136d6f26acc89a6e421fdf577753b600b61adc0607",
     "software/ufi_host/README.md": "77585d42ea8d76597efd0661a16116c945a1397cb2d85287b42904278d0104dc",
     "software/ufi_host/ufi_host/apple.py": "076ac62b3756d5e9e9619936d21ccd3af75732ca0e5e13ed1ab6a29bcbc65dab",

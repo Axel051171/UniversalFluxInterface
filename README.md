@@ -8,6 +8,12 @@ Flux-Lese-/Schreibgerät für Disketten: STM32H723 (550 MHz) misst jede Flusswec
 275 MHz (3,6 ns) und streamt sie per USB an den PC. Kein Raspberry Pi, kein Betriebssystem auf
 dem Gerät – das frühere CM5-/Modul-Konzept ist aufgegeben (steht in der Git-Historie).
 
+**Anleitung: [UFI-Wiki](https://github.com/Axel051171/UniversalFluxInterface/wiki)** (Deutsch und
+[English](https://github.com/Axel051171/UniversalFluxInterface/wiki/Home-EN)) – Schnellstart,
+Installation des PC-Werkzeugs, Anschlüsse, Lesen und Schreiben, Fehlerhilfe.
+Fertige Dateien (Firmware, PC-Werkzeug, Wiki zum Offline-Lesen) stehen unter
+[Releases](https://github.com/Axel051171/UniversalFluxInterface/releases).
+
 | | |
 |---|---|
 | MCU | STM32H723ZGT6, 550 MHz |
