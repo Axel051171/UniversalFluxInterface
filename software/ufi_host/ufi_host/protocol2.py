@@ -1412,8 +1412,32 @@ class Device2:
     def usb_mode(self, mode: int | str) -> None:
         self.request(USB_MODE, bytes([USB_MODES[mode] if isinstance(mode, str) else mode]))
 
-    def enable_events(self, mask: int = EVENTS_ALL) -> None:
-        self.request(EVENTS, struct.pack("<I", mask))
+    @staticmethod
+    def _events_status(reply: bytes) -> dict | None:
+        """EVENTS reply (firmware of 2026-11-14): queue size and events dropped since reset, by
+        cause.  None on older firmware, whose reply is empty."""
+        if len(reply) < 16 or reply[0] != 1:
+            return None
+        mask, full, size = struct.unpack_from("<III", reply, 4)
+        return {"queue_events": reply[1], "max_payload": reply[2], "mask": mask,
+                "dropped_queue_full": full, "dropped_too_long": size}
+
+    def enable_events(self, mask: int = EVENTS_ALL) -> dict | None:
+        """Set the event mask; returns events_status() of the firmware (None on older firmware)."""
+        return self._events_status(self.request(EVENTS, struct.pack("<I", mask)))
+
+    def events_status(self) -> dict | None:
+        """Event queue state without changing the mask.  dropped_queue_full: the host or the
+        transmitter was too slow (events are hints, the END frame stays authoritative);
+        dropped_too_long: a firmware defect, an event larger than the queue takes.  Counters run
+        since the board's reset - compare two readings.  Older firmware refuses the empty
+        request with status 16: None."""
+        try:
+            return self._events_status(self.request(EVENTS))
+        except DeviceError as e:
+            if e.status == 16:
+                return None
+            raise
 
     def poll_event(self, timeout: float = 0.0) -> Event | None:
         """Return a queued or newly received event, None after `timeout` seconds."""

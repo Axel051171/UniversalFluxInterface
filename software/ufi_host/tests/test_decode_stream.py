@@ -246,3 +246,18 @@ def test_peak_memory_is_lower():
     assert new == old and sum(len(r.samples) for r in new[1]) == n
     print(f"decode peak: {old_peak / 2**20:.1f} MiB before, {new_peak / 2**20:.1f} MiB now, input {len(data)} bytes")
     assert new_peak < 0.7 * old_peak, (old_peak, new_peak)
+
+    # time budget, relative to the old decoder on this machine (best of five, no wall-clock limit)
+    import time
+
+    def best(fn):
+        t = 9.0
+        for _ in range(5):
+            t0 = time.perf_counter()
+            fn(data)
+            t = min(t, time.perf_counter() - t0)
+        return t
+
+    ratio = best(P.decode_stream_lead) / best(reference)
+    print(f"decode time: {ratio:.2f} x the two-pass decoder")
+    assert ratio < 1.25, ratio

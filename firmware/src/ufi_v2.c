@@ -162,7 +162,8 @@ static uint8_t ev_buf[UFI_V2_HDR + EVQ_PAYLOAD + 2u];   /* event on USB (outlive
 static uint32_t ev_mask, disk_poll_ms;
 static dump_status_t last_dump;
 static bool last_dc;
-static uint8_t wp_drive, wp_seen;       /* write protect baseline: drive id, 0 none / 1 open / 2 protected */
+static uint32_t ev_dropped_full, ev_dropped_size;   /* events lost since reset, by cause (EVENTS reply) */
+static uint8_t wp_drive, wp_seen;      /* write protect baseline: drive id, 0 none / 1 open / 2 protected */
 
 /* ============================================================================
  * HELPERS
@@ -427,13 +428,17 @@ void ufi_v2_event(uint8_t code, const void* payload, uint16_t len)
     /* codes beyond the 32-bit mask are dropped explicitly (a shift by >= 32 is undefined in C) */
     const bool live = (link.ev_route == UFI_ROUTE_LAN) ? ufi_lan_connected() : on;
     if (!live || code < UFI_V2_EVT_DISK || (unsigned)(code - UFI_V2_EVT_DISK) >= 32u ||
-        !(ev_mask & (1u << (code - UFI_V2_EVT_DISK))) ||
-        len > EVQ_PAYLOAD) {
+        !(ev_mask & (1u << (code - UFI_V2_EVT_DISK)))) {
+        return;                         /* nobody asked for it: not a loss */
+    }
+    if (len > EVQ_PAYLOAD) {
+        ev_dropped_size++;              /* counted and reported by EVENTS: this used to vanish silently */
         return;
     }
     const uint8_t next = (uint8_t)((ev_head + 1u) % EVQ_SIZE);
     if (next == ev_tail) {
-        return;                         /* queue full: drop */
+        ev_dropped_full++;              /* queue full: drop, but count */
+        return;
     }
     evq[ev_head].code = code;
     evq[ev_head].len = (uint8_t)len;
@@ -1332,18 +1337,31 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             return;
         }
         case V2_EVENTS:
-            if (len < 4u) {
+            /* empty payload (2026-11-14): query only, the mask stays; 4 bytes set the mask */
+            if (len != 0u && len < 4u) {
                 ret = UFI_ERR_BAD_ARGS;
                 break;
             }
-            ev_mask = get32(p);
-            if (link.ev_route != origin) {
-                ev_head = ev_tail = 0;      /* L4: queued events belonged to the other transport */
+            if (len) {
+                ev_mask = get32(p);
+                if (link.ev_route != origin) {
+                    ev_head = ev_tail = 0;  /* L4: queued events belonged to the other transport */
+                }
+                link.ev_route = origin;
+                last_dump = ufi_dump_status();
+                last_dc = false;
+                wp_seen = 0;                /* next sample is the baseline again */
             }
-            link.ev_route = origin;
-            last_dump = ufi_dump_status();
-            last_dc = false;
-            wp_seen = 0;                    /* next sample is the baseline again */
+            /* Reply (older firmware: none): what the queue can hold and how many events it had to
+             * drop since reset, by cause, so a host can tell "nothing happened" from "lost". */
+            out[0] = 1;                     /* schema */
+            out[1] = (uint8_t)(EVQ_SIZE - 1u);      /* events the queue holds */
+            out[2] = (uint8_t)EVQ_PAYLOAD;
+            out[3] = 0;
+            put32(&out[4], ev_mask);
+            put32(&out[8], ev_dropped_full);        /* queue full: host too slow or transmitter busy */
+            put32(&out[12], ev_dropped_size);       /* payload longer than the queue takes: a firmware defect */
+            n = 16u;
             break;
 
         /* ---- drive ---- */

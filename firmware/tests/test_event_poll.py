@@ -151,7 +151,7 @@ enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_READ_PROGRESS = 0x85, UFI_ROUTE_USB = 
 typedef struct { uint8_t code, len; uint8_t data[EVQ_PAYLOAD]; } v2_event_t;
 static v2_event_t evq[EVQ_SIZE];
 static uint8_t ev_head, ev_tail;
-static uint32_t ev_mask;
+static uint32_t ev_mask, ev_dropped_full, ev_dropped_size;
 static bool on, lan_up;
 static struct { uint8_t ev_route; } link;
 static bool ufi_lan_connected(void) { return lan_up; }
@@ -167,14 +167,16 @@ int main(void)
     ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, p, EVQ_PAYLOAD);         /* the limit itself fits */
     assert(ev_head == 2 && evq[1].len == EVQ_PAYLOAD);
     ufi_v2_event(UFI_V2_EVT_READ_PROGRESS, p, EVQ_PAYLOAD + 1);     /* one more does not, and writes nothing */
-    assert(ev_head == 2);
+    assert(ev_head == 2 && ev_dropped_size == 1 && !ev_dropped_full);   /* ... but is counted with its cause */
     ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(ev_head == 2);      /* mask bit clear */
     ufi_v2_event(0x7F, p, 1); ufi_v2_event(0xA0, p, 1); assert(ev_head == 2);   /* outside the 32-bit mask */
+    assert(ev_dropped_size == 1 && !ev_dropped_full);               /* not asked for: no loss */
     ev_mask = 0xFFFFFFFFu;
     for (unsigned i = 0; i < 2u * EVQ_SIZE; i++) ufi_v2_event(UFI_V2_EVT_DISK, p, 1);
     assert((uint8_t)((ev_head + 1u) % EVQ_SIZE) == ev_tail);        /* full: one slot stays free, the rest dropped */
+    assert(ev_dropped_full == 2u * EVQ_SIZE - (EVQ_SIZE - 3u) && ev_dropped_size == 1);   /* 2 were queued before: one more fit */
     ev_head = ev_tail = 0; on = false;
-    ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(!ev_head);          /* no session */
+    ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(!ev_head && ev_dropped_size == 1);   /* no session: no loss either */
     link.ev_route = UFI_ROUTE_LAN; lan_up = true;
     ufi_v2_event(UFI_V2_EVT_DISK, p, 1); assert(ev_head == 1);      /* LAN session counts by its connection */
     return 0;

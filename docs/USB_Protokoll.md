@@ -819,6 +819,15 @@ bei laufendem Laufwerk) und für IEC. Beim Mac-Laufwerk meldet eine entnommene D
 `protected` = 1. Ereignisse sind Hinweise, keine Zusage: Bei voller Warteschlange (4 Einträge)
 entfällt eines stillschweigend, vor einem Schreiben gilt weiterhin Status 12.
 
+**Verworfene Ereignisse (seit 2026-11-14):** Die Antwort auf EVENTS (3.1) zählt seit dem Reset,
+wie viele Ereignisse nicht in die Warteschlange passten: `dropped_queue_full` – der Host oder der
+Sender war zu langsam (die Warteschlange hält 3 Ereignisse, je Hauptschleifendurchlauf geht eines
+hinaus) – und `dropped_too_long` – ein Ereignis war größer als `max_payload`, das ist ein
+Firmware-Fehler (so blieb 0x85 bis zum 14.11.2026 unbemerkt aus). Ereignisse, die niemand per
+Maske angefordert hat, zählen nicht. Ein Werkzeug liest die Zähler vor und nach einem Auftrag
+und erkennt an der Differenz, ob „kein Ereignis“ auch „nichts passiert“ heißt. Host:
+`enable_events()` gibt den Block zurück, `events_status()` fragt ihn ohne Maskenänderung ab.
+
 Bewusst **keine** Ereignisse gibt es für Index verloren, Drehzahl außerhalb der Toleranz und
 Pufferüberlauf der Aufnahme: Diese Fälle treten nur innerhalb von READ/WRITE auf und stehen dort
 verbindlich im Ende-Rahmen: Status 4 (kein Index), Status 10 (Puffer voll), beim Schreiben
@@ -942,7 +951,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x03 | RESET | – | Antwort, danach Neustart |
 | 0x04 | BOOTLOADER | – | Antwort, danach ROM-DFU |
 | 0x05 | USB_MODE | `mode` u8 (0 Flux, 1 SD-Laufwerk, 2 USB-Floppy, 3 Greaseweazle, 4 Composite) | Antwort, danach Neuanmeldung |
-| 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80) | – |
+| 0x06 | EVENTS | `mask` u32 (Bits = Ereigniscodes − 0x80); seit 2026-11-14 auch leer = nur abfragen, Maske bleibt (ältere Firmware: Status 16) | seit 2026-11-14 16 Byte (vorher leer): Schema 1, `queue_events` u8 (Ereignisse, die die Warteschlange hält: 3), `max_payload` u8 (12), 0, `mask` u32, `dropped_queue_full` u32, `dropped_too_long` u32; Abschnitt 2.3 |
 | 0x08 | WRITE_LIMITS (1.15) | – | `schema` u8 = 1, `flags` u8 (Bit0 Inhaltsprüfung, Bit1 lange Spuren per Streaming, Bit2 Kappen per Flag, Bit3 `flags2`-Byte mit Spurrest löschen, Bit4 Startversatz `flags2` Bit1, Bit5 Quell-Indexdauer Bit6 auch ohne Prüflesen, Bit6 Präkompensation je Auftrag `flags2` Bit2, Bit7 Weak-Marker `flags2` Bit3 (4.16), 1.18), `sample_hz` u32, `max_flux` u32 (Wörter des Flussspeichers), `min_ticks` u32 (440), `max_ticks` u32 (65 536) |
 | 0x09 | DESCRIBE (1.18) | – | 36 Byte, Schema 1; siehe unten |
 | 0x0A | RESOURCE (1.18) | leer, 0 freigeben oder 1 beanspruchen | Besitzer u8; Abschnitt 1.4 |
