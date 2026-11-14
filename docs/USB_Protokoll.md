@@ -806,6 +806,24 @@ Lesen endet nach `revs` Indeximpulsen (bzw. Zeitabschnitten); der Ende-Rahmen me
 | 0x83 | Laufwerksversorgung abgeschaltet (Überstrom) | `board_status` |
 | 0x84 | Betriebsart-Schalter bewegt | neuer `mode` u8 (vor der Neuanmeldung) |
 | 0x85 | Lesefortschritt (1.18-dev; nur mit READ/GUARDED_READ Flags Bit4 und Maskenbit 5) | `revolution` u8 (1 = erste abgeschlossene Umdrehung), `index_ticks` u32 (Dauer dieser Umdrehung in 275-MHz-Takten), `elapsed_ms` u32 seit Beginn der Übertragung; ein Rahmen je Umdrehung zwischen den Daten-Rahmen, der Ende-Rahmen folgt wie bisher |
+| 0x86 | Schreibschutz geändert (1.18-dev, Maskenbit 6) | `drive` u8, `protected` u8 (1 = schreibgeschützt, 0 = beschreibbar) |
+
+Die Ereignisse 0x80 und 0x86 entstehen durch Abfrage der Leitungen des gewählten Laufwerks alle
+200 ms, solange weder READ/WRITE noch ein Dump läuft; ein Wechsel während einer Operation wird
+danach gemeldet, wenn der Zustand dann noch abweicht. 0x86: Die erste Abfrage nach EVENTS und nach
+jedem Laufwerkswechsel ist nur der Vergleichswert und sendet nichts – das Ereignis bedeutet also
+„geändert, während dieses Laufwerk gewählt blieb“ (Diskette eingelegt oder entnommen, Schieber
+bewegt); den Ausgangszustand liefert STATUS. Kein 0x86 für die Disk II (deren Leitung gilt nur
+bei laufendem Laufwerk) und für IEC. Beim Mac-Laufwerk meldet eine entnommene Diskette
+`protected` = 1. Ereignisse sind Hinweise, keine Zusage: Bei voller Warteschlange (4 Einträge)
+entfällt eines stillschweigend, vor einem Schreiben gilt weiterhin Status 12.
+
+Bewusst **keine** Ereignisse gibt es für Index verloren, Drehzahl außerhalb der Toleranz und
+Pufferüberlauf der Aufnahme: Diese Fälle treten nur innerhalb von READ/WRITE auf und stehen dort
+verbindlich im Ende-Rahmen: Status 4 (kein Index), Status 10 (Puffer voll), beim Schreiben
+Status 23 (Drehzahl außerhalb der Toleranz, Op 41). Beim Lesen bewertet die Firmware die Drehzahl
+nicht; die Indexperiode jeder Umdrehung steht im Datenstrom und im Ereignis 0x85. Ein
+zusätzliches Ereignis könnte verloren gehen und brächte keine neue Information.
 
 ### 2.4 Zeitbasis und erweiterter Schreibpfad
 

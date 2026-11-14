@@ -491,7 +491,8 @@ enum { UFI_V2_REQUEST = 1, UFI_V2_REPLY = 2, UFI_V2_EVENT = 3, UFI_V2_DATA = 4, 
 enum { UFI_V2_READ = 0x20, UFI_V2_WRITE = 0x22 };
 enum { UFI_V2_EVT_DISK = 0x80, UFI_V2_EVT_BUTTON = 0x81, UFI_V2_EVT_DUMP = 0x82,
        UFI_V2_EVT_POWER = 0x83, UFI_V2_EVT_MODE = 0x84,
-       UFI_V2_EVT_READ_PROGRESS = 0x85 };    /* 1.18: READ flag bit4, one per completed revolution (2.3) */
+       UFI_V2_EVT_READ_PROGRESS = 0x85,      /* 1.18: READ flag bit4, one per completed revolution (2.3) */
+       UFI_V2_EVT_WPROT = 0x86 };            /* 1.18: write protect line of the selected drive changed (2.3) */
 bool ufi_v2_active(void);
 bool ufi_v2_write_pending(void);                // a v2 WRITE owns the write path
 bool ufi_v2_rx(const uint8_t* buf, uint32_t len);   // USB IRQ; false = pause reception

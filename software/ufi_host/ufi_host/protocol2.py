@@ -187,9 +187,11 @@ CAP_PSRAM, CAP_SD, CAP_IEC, CAP_AMIGA, CAP_AMIGA2, CAP_SHUGART, CAP_APPLE, CAP_S
 # events (3.5); EVENTS mask bit = code - 0x80
 EV_DISK_CHANGED, EV_BUTTON, EV_PROGRESS, EV_POWER_OFF, EV_MODE_SWITCH = 0x80, 0x81, 0x82, 0x83, 0x84
 EV_READ_PROGRESS = 0x85                 # 1.18, READ flag bit4: revolution u8, index period u32 ticks, elapsed ms u32
+EV_WRITE_PROTECT = 0x86                 # 1.18, drive u8, protected u8; line of the selected drive changed
 EVENT_NAMES = {EV_DISK_CHANGED: "disk changed", EV_BUTTON: "button",
                EV_PROGRESS: "dump/copy progress", EV_POWER_OFF: "drive supply off (overcurrent)",
-               EV_MODE_SWITCH: "mode switch moved", EV_READ_PROGRESS: "read progress"}
+               EV_MODE_SWITCH: "mode switch moved", EV_READ_PROGRESS: "read progress",
+               EV_WRITE_PROTECT: "write protect changed"}
 EVENTS_ALL = sum(1 << (c - 0x80) for c in EVENT_NAMES)
 
 USB_MODES = {"flux": 0, "sd": 1, "floppy": 2, "gw": 3, "composite": 4}
@@ -953,6 +955,9 @@ class Event:
         if self.code == EV_DISK_CHANGED and p:
             drive = {v: k for k, v in DRIVES.items()}.get(p[0], str(p[0]))
             return f"{self.name}: drive {drive}"
+        if self.code == EV_WRITE_PROTECT and len(p) >= 2:
+            drive = {v: k for k, v in DRIVES.items()}.get(p[0], str(p[0]))
+            return f"{self.name}: drive {drive} {'protected' if p[1] else 'writable'}"
         if self.code == EV_BUTTON and len(p) >= 2:
             return f"{self.name} {'AB'[p[0] & 1]}" + (" long" if p[1] else " short")
         if self.code == EV_PROGRESS and len(p) >= DUMP.size:

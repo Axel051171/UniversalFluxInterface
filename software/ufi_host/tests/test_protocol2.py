@@ -1199,13 +1199,17 @@ def test_cli_diagnostics(monkeypatch, capsys):
 # -- events ---------------------------------------------------------------------
 def test_events_are_queued_and_decoded():
     fake = FakeV2()
-    fake.pending_events = [(P2.EV_BUTTON, b"\x01\x01"), (P2.EV_DISK_CHANGED, b"\x01")]
+    fake.pending_events = [(P2.EV_BUTTON, b"\x01\x01"), (P2.EV_DISK_CHANGED, b"\x01"),
+                           (P2.EV_WRITE_PROTECT, b"\x01\x01"), (P2.EV_WRITE_PROTECT, b"\x01\x00")]
     dev = P2.Device2(fake)
     dev.enable_events()
-    assert fake.events_mask == P2.EVENTS_ALL == 0x3F
+    assert fake.events_mask == P2.EVENTS_ALL == 0x7F
     assert dev.ping()                                 # events arriving around a response
     e1, e2 = dev.poll_event(0.1), dev.poll_event(0.1)
     assert e1.describe() == "button B long" and e2.describe() == "disk changed: drive a"
+    e3, e4 = dev.poll_event(0.1), dev.poll_event(0.1)
+    assert e3.describe() == "write protect changed: drive a protected"
+    assert e4.describe() == "write protect changed: drive a writable"
     assert dev.poll_event(0.0) is None
 
 

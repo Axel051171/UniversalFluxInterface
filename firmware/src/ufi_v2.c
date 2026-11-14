@@ -160,6 +160,7 @@ static uint8_t ev_buf[UFI_V2_HDR + EVQ_PAYLOAD + 2u];   /* event on USB (outlive
 static uint32_t ev_mask, disk_poll_ms;
 static dump_status_t last_dump;
 static bool last_dc;
+static uint8_t wp_drive, wp_seen;       /* write protect baseline: drive id, 0 none / 1 open / 2 protected */
 
 /* ============================================================================
  * HELPERS
@@ -445,7 +446,38 @@ void ufi_v2_event_now(uint8_t code, const void* payload, uint16_t len)
     }
 }
 
-/* Cheap polled sources: dump progress, disk change */
+/* Disk change and write protect of the selected drive.  Both lines are only driven while the
+ * drive is selected, which holds from SELECT until another drive or none is selected.
+ * Write protect: the first sample of a drive is the baseline and sends nothing, so the event
+ * means "changed while this drive stayed selected" (a disk went in or out, or the tab moved).
+ * Not for the Disk II (its sense line needs the running drive and the Q6 state) and not for IEC. */
+static void poll_media(void)
+{
+    const drive_type_t d = ufi_drive_get_current();
+    if (ev_mask & 1u) {
+        const bool changed = (d != DRIVE_NONE) && ufi_drive_disk_changed();
+        if (changed && !last_dc) {
+            const uint8_t v = (uint8_t)d;
+            ufi_v2_event(UFI_V2_EVT_DISK, &v, 1);
+        }
+        last_dc = changed;
+    }
+    if (ev_mask & (1u << (UFI_V2_EVT_WPROT - UFI_V2_EVT_DISK))) {
+        if (d == DRIVE_NONE || d == DRIVE_IEC || (ufi_drive_is_apple() && !ufi_drive_is_mac())) {
+            wp_seen = 0;
+            return;
+        }
+        const uint8_t now = ufi_drive_write_protected() ? 2u : 1u;
+        if (wp_seen && wp_drive == (uint8_t)d && wp_seen != now) {
+            const uint8_t ev[2] = { (uint8_t)d, (uint8_t)(now - 1u) };
+            ufi_v2_event(UFI_V2_EVT_WPROT, ev, sizeof ev);
+        }
+        wp_drive = (uint8_t)d;
+        wp_seen = now;
+    }
+}
+
+/* Cheap polled sources: dump progress, disk change, write protect */
 static void poll_events(void)
 {
     if (!ev_mask) {
@@ -458,16 +490,10 @@ static void poll_events(void)
             ufi_v2_event(UFI_V2_EVT_DUMP, &d, sizeof(d));
         }
     }
-    if ((ev_mask & 1u) && !op_read && !op_write && !ufi_dump_active() &&
-        HAL_GetTick() - disk_poll_ms >= DISK_POLL_MS) {
+    if ((ev_mask & (1u | 1u << (UFI_V2_EVT_WPROT - UFI_V2_EVT_DISK))) && !op_read && !op_write &&
+        !ufi_dump_active() && HAL_GetTick() - disk_poll_ms >= DISK_POLL_MS) {
         disk_poll_ms = HAL_GetTick();
-        const drive_type_t d = ufi_drive_get_current();
-        const bool changed = (d != DRIVE_NONE) && ufi_drive_disk_changed();
-        if (changed && !last_dc) {
-            const uint8_t v = (uint8_t)d;
-            ufi_v2_event(UFI_V2_EVT_DISK, &v, 1);
-        }
-        last_dc = changed;
+        poll_media();
     }
 }
 
@@ -1205,6 +1231,7 @@ static void request(uint8_t cmd, uint8_t seq, uint8_t* p, uint16_t len)
             link.ev_route = origin;
             last_dump = ufi_dump_status();
             last_dc = false;
+            wp_seen = 0;                    /* next sample is the baseline again */
             break;
 
         /* ---- drive ---- */
