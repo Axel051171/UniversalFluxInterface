@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "pages": {
+    "Home": "Home-EN",
+    "Schnellstart": "Quickstart",
+    "Installation": "Installation-EN",
+    "Hardware": "Hardware-EN",
+    "Platinenuebersicht": "Board-Overview",
+    "Anschluesse": "Connections",
+    "Inbetriebnahme": "Bring-up",
+    "Firmware": "Firmware-EN",
+    "Betriebsarten": "Operating-Modes",
+    "Laufwerke": "Drives",
+    "Lesen-und-Archivieren": "Reading-and-Archiving",
+    "Schreiben-und-Prueflesen": "Writing-and-Verification",
+    "Dateiformate": "File-Formats",
+    "Analyse-und-Datenqualitaet": "Analysis-and-Data-Quality",
+    "SD-und-Standalone": "SD-and-Standalone",
+    "LAN": "LAN-EN",
+    "Greaseweazle": "Greaseweazle-EN",
+    "Amiga": "Amiga-EN",
+    "Apple-und-Macintosh": "Apple-and-Macintosh",
+    "Commodore-IEC": "Commodore-IEC-EN",
+    "Fehlerhilfe": "Troubleshooting",
+    "Entwicklung-und-Tests": "Development-and-Tests",
+    "Projektstatus": "Project-Status",
+    "FAQ": "FAQ-EN",
+    "Glossar": "Glossary",
+    "Wiki-pflegen": "Wiki-Maintenance",
+    "Vorteile-und-Vergleich": "Benefits-and-Comparison"
+  }
+}
