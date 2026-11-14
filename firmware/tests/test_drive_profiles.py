@@ -31,7 +31,8 @@ static bool is_shugart(drive_type_t d){return d>=DRIVE_SHUGART_DS0 && d<=DRIVE_S
 static bool is_apple(drive_type_t d){return d==DRIVE_APPLE_II || d==DRIVE_APPLE2;}
 static void bus_out(const int* p,bool v){writes++;if(*p==1)density_level=v;else drate_level=v;}
 static void delay_us(uint32_t n){(void)n;}
-static void HAL_Delay(uint32_t n){(void)n;}
+static unsigned waited_ms;static bool cancel_wait;
+bool ufi_delay_ms(unsigned ms){if(cancel_wait)return false;waited_ms+=ms;return true;}
 static void apl_release(void){}
 static bool board_v10;                  /* v1.0: drive id 11 is the Mac drive on J23 */
 static bool is_mac(drive_type_t d){return d==DRIVE_APPLE2 && board_v10;}
@@ -71,6 +72,17 @@ int main(void){
     assert(ufi_drive_density_line(true)==UFI_ERR_BAD_ARGS && writes==before);
     assert(!ufi_drive_select_native(DRIVE_SHUGART_A) && rpm_line==2 && rpm_set==360 && !g_timing.double_step);
     assert(!ufi_drive_select_native(DRIVE_SHUGART_B) && rpm_line==1 && rpm_set==300 && g_timing.double_step==1);
+    /* speed change with the motor running waits for the spindle and can be cancelled (P04);
+     * without the motor, or without a change, there is no wait */
+    waited_ms=0;assert(!ufi_drive_set_rpm(360) && rpm_set==360 && !waited_ms);
+    g_drive_status[g_current_drive].motor_on=true;
+    assert(!ufi_drive_set_rpm(360) && !waited_ms);
+    assert(!ufi_drive_set_rpm(300) && rpm_set==300 && waited_ms==g_timing.spinup_ms);
+    cancel_wait=true;waited_ms=0;
+    assert(ufi_drive_set_rpm(360)==UFI_ERR_CANCELLED && rpm_set==360 && !waited_ms);
+    assert(!ufi_drive_set_rpm(360));                    /* line already there: no second wait */
+    cancel_wait=false;assert(!ufi_drive_set_rpm(300) && waited_ms==g_timing.spinup_ms);
+    g_drive_status[g_current_drive].motor_on=false;
     token=ufi_config_generation();
     assert(!ufi_drive_select_native(DRIVE_SHUGART_A));
     assert(!ufi_drive_select_native(DRIVE_SHUGART_B));

@@ -406,9 +406,20 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
 #undef ITEM
 
     /* SELFTEST.LOG: the table as text; its result is the last item */
+    /* One line is at most LOG_LINE bytes (name <= 11, status 4, u32 <= 10 digits, two blanks,
+     * CR LF), the head LOG_HEAD.  The buffer holds every item the table can carry, so the loop
+     * guard below never cuts a line; if it ever does, the log item reports it as a warning
+     * instead of writing a short file silently.  The buffer stays on the stack: 800 bytes are
+     * inside the 2048-byte frame budget of check_stack.py. */
+    enum { LOG_LINE = 11 + 1 + 4 + 1 + 10 + 2, LOG_HEAD = 64, LOG_GUARD = 40 };
     char text[800];
+    _Static_assert(LOG_GUARD >= LOG_LINE + 1, "one line must fit behind the loop guard");
+    _Static_assert(sizeof(text) - LOG_GUARD >= LOG_HEAD + (sizeof(items) / sizeof(items[0]) - 1u) * LOG_LINE,
+                   "SELFTEST.LOG buffer too small for the item table");
+    _Static_assert(sizeof(UFI_FW_VERSION) + sizeof("UFI selftest firmware \r\n") <= LOG_HEAD, "log head");
     int len = snprintf(text, sizeof(text), "UFI selftest firmware %s\r\n", UFI_FW_VERSION);
-    for (uint8_t i = 0; i < n && len > 0 && len < (int)sizeof(text) - 40; i++) {
+    uint8_t logged = 0;
+    for (uint8_t i = 0; i < n && len > 0 && len < (int)sizeof(text) - LOG_GUARD; i++, logged++) {
         len += snprintf(text + len, sizeof(text) - (size_t)len, "%-11s %s %lu\r\n",
                         item_names[items[i].id],
                         items[i].status == ST_OK ? "ok  " : items[i].status == ST_FAIL ? "FAIL" :
@@ -419,7 +430,7 @@ uint8_t ufi_selftest(uint8_t* out, uint8_t max_items)
     const int wr = (len > 0) ? ufi_file_write("SELFTEST.LOG", 0, true, (const uint8_t*)text,
                                                (uint16_t)len, &written) : UFI_ERR_STORAGE;
     items[n].id = 14;
-    items[n].status = (wr == UFI_OK) ? ST_OK : ST_FAIL;
+    items[n].status = (wr != UFI_OK) ? ST_FAIL : (logged < n) ? ST_WARN : ST_OK;    /* warn: lines missing */
     items[n].value = written;
     n++;
 

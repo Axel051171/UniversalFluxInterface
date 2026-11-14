@@ -514,6 +514,7 @@ void ufi_lan_status(lan_status_t* s)
     s->lease_left = net_lease_left(&lan.net, HAL_GetTick());
     fw_version(&s->fw_major, &s->fw_minor);
     s->board_rev = ufi_board_rev();
+    s->spi_errors = lan.spi_errors;
     memcpy(s->host, lan.host, sizeof(s->host));
 }
 

@@ -18,7 +18,7 @@ static lan_status_t sample(void)
     memcpy(s.ip, ip, 4); memcpy(s.mask, mask, 4); memcpy(s.gw, gw, 4); memcpy(s.dns, dns, 4);
     memcpy(s.mac, mac, 6); memcpy(s.peer, peer, 4);
     s.port = 55100; s.peer_port = 50123; s.lease_left = 3600;
-    s.fw_major = 1; s.fw_minor = 18; s.board_rev = 10;
+    s.fw_major = 1; s.fw_minor = 18; s.board_rev = 10; s.spi_errors = 0x01020304u;
     strcpy(s.host, "ufi-02cab3");
     return s;
 }
@@ -28,7 +28,7 @@ int main(void)
     lan_status_t s = sample();
     uint8_t o[LAN_STATUS_MAX];
     const uint16_t n = lan_status_pack(&s, o);
-    CHECK(n == 53 && o[0] == 1 && o[1] == 5 && o[2] == 1 && o[3] == 0x4F && o[4] == 192 && o[7] == 50 &&
+    CHECK(n == 57 && o[53] == 4 && o[54] == 3 && o[55] == 2 && o[56] == 1 && o[0] == 1 && o[1] == 5 && o[2] == 1 && o[3] == 0x4F && o[4] == 192 && o[7] == 50 &&
           o[8] == 255 && o[11] == 0 && o[12] == 192 && o[15] == 1 && o[16] == 9 && o[20] == 2 && o[25] == 0xb3,
           "NET head (%u)", n);
     CHECK(o[26] == 0x3C && o[27] == 0xD7 && o[28] == 0x3C && o[29] == 0xD7 && o[30] == 0x10 && o[31] == 0x0E &&

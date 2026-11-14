@@ -539,7 +539,7 @@ die Leitung; die Rahmen danach sind nicht verschlüsselt (Schutz gegen fremde Be
 nicht gegen Mitlesen).
 
 **NET 0x48 (Stufe L5, USB und LAN):** leere Anfrage (sonst Status 16), reine Abfrage, auch während
-eines Auftrags und eines Dumps. Antwort `43 + n` Byte, Mehrbytefelder little endian, Adressen in
+eines Auftrags und eines Dumps. Antwort `43 + n + 4` Byte (bis 2026-11-13 `43 + n`), Mehrbytefelder little endian, Adressen in
 Netzreihenfolge:
 
 | Offset | Typ | Bedeutung |
@@ -562,6 +562,7 @@ Netzreihenfolge:
 | 41 | u8 | VERSIONR (0 ohne Chip) |
 | 42 | u8 | `n` Länge des Hostnamens (≤ 32) |
 | 43 | n | Hostname (ASCII) |
+| 43 + n | u32 | `spi_errors` (seit 2026-11-14): SPI-Übertragungen zum W5500, die die HAL seit dem Reset als fehlgeschlagen gemeldet hat. Ein Wert über 0 deutet auf ein Problem der SPI-Verbindung zum Chip, nicht auf Netzwerkfehler. Fehlt bei älterer Firmware; der Host erkennt das an der Länge |
 
 Host: `ufi net`. Ältere Firmware antwortet mit Status 15.
 
@@ -998,7 +999,7 @@ Laufwerksnummern (`drive`): 0 keins, 1 A, 2 B (PC-Kabel mit Twist), 3 apple (J14
 | 0x46 | SYNC (A10c, Platine v1.0) | – (Abfrage) oder `on` u8 (1 = Zählung starten, 0 = anhalten; 11 vor v1.0, 1 = busy solange SYNC die Indexquelle ist) | `active` u8, `source` u8 (1 = SYNC ersetzt INDEX), `level` u8, `count` u32, `last_t2` u32 (TIM2-Zeitbasis), `last_t32` u32 (TIM8 mit Überlaufzähler), `period` u32 (19 Byte); Abschnitt 1.5 |
 | 0x45 | RAILS (A10d, Platine v1.0) | – | `v5_mv` u16, `v12_mv` u16 (FDD_5V/FDD_12V am Laufwerksstecker über die Teiler 10 k/10 k und 33 k/10 k), `flags` u8 (Bit0 5 V unter 4,5 V, Bit1 12 V unter 10,8 V – jeweils nur bei eingeschalteter Schiene, Bit2/3 Schiene 5 V/12 V ein, Bit4 Teiler vorhanden; ohne Bit4 (v0.x) sind die Spannungen 0) (5 Byte); Abschnitt 1.5 |
 | 0x47 | FDD_PINS (A10e, Platine v1.0) | – (lesen) oder `pin4` u8, `pin33` u8 (je 0 = aus, 1 = an, 0xFF = unverändert; setzt zuerst die Ausgänge J6 Pin 4 (Q12) und Pin 33 (Flippy-Signal), 11 vor v1.0) | `pins` u8 (Bit0 J6 Pin 2 low, Bit1 Pin 4 low, Bit2 J23 !CSTOUT aktiv, Bit3 WGATE-Bus aktiv, Bit4 WLOCK_HW gesperrt, Bit5 FLT5, Bit6 FLT12, Bit7 SYNC high), `outputs` u8 (Bit0 Pin 4 angezogen, Bit1 Pin 33 high) (2 Byte); Abschnitt 1.5 |
-| 0x48 | NET (L5) | – | 43 + n Byte: Schema, Zustand, Adressquelle, Flags, IP/Maske/Gateway/DNS, MAC, Ports, Lease, Gegenstelle, Laufwerksbesitzer, VERSIONR, Hostname; Abschnitt 1.6 |
+| 0x48 | NET (L5) | – | 43 + n + 4 Byte: Schema, Zustand, Adressquelle, Flags, IP/Maske/Gateway/DNS, MAC, Ports, Lease, Gegenstelle, Laufwerksbesitzer, VERSIONR, Hostname (n Byte); dahinter seit 2026-11-14 `spi_errors` u32 = fehlgeschlagene SPI-Übertragungen zum W5500 seit dem Reset (ältere Firmware endet nach dem Hostnamen); Abschnitt 1.6 |
 | 0x49 | AUTH (L4, nur LAN) | leer (Challenge holen) oder 32 Byte HMAC-SHA256(`lan_key`, Challenge) | leer: `schema` u8 = 1, `flags` u8 (Bit0 Schlüssel gesetzt, Bit1 angemeldet), `challenge` 32 Byte; Antwort: – (Status 0 angemeldet, 26 falsch); über USB Status 11; Abschnitt 1.6 |
 | **Dateien (SD-NAND, FAT32)** | | | |
 | 0x50 | DIR | `start` u16, Pfad (ASCII, leer = Wurzel) | `count` u8, `more` u8, dann je Eintrag `size` u32, `attr` u8 (0x10 = Ordner), `nlen` u8, Name |

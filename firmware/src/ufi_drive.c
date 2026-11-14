@@ -1030,7 +1030,9 @@ int ufi_drive_set_rpm(uint16_t rpm)
     const bool changed = rpm_set != rpm;
     rpm_set = rpm;
     if (changed && g_current_drive != DRIVE_NONE && g_drive_status[g_current_drive].motor_on) {
-        HAL_Delay(MOTOR_SPINUP_MS);         /* let the spindle settle at the new speed */
+        /* let the spindle settle at the new speed; a cancel ends the wait, the line and
+         * rpm_set already describe the new speed, so a repeated request does not wait again */
+        if (!ufi_delay_ms(MOTOR_SPINUP_MS)) return UFI_ERR_CANCELLED;
     }
     return UFI_OK;
 }

@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #define LAN_NET_TXT         "NET.TXT"
-#define LAN_STATUS_MAX      (43u + LAN_HOST_MAX)    /* NET reply */
+#define LAN_STATUS_MAX      (43u + LAN_HOST_MAX + 4u)   /* NET reply: head, host name, spi_errors */
 #define LAN_DISC_REPLY_MAX  (22u + LAN_HOST_MAX)
 #define LAN_DISC_REQ_SIZE   8u                      /* "UFI?", version 1, 3 reserved */
 #define LAN_DISC_VERSION    1u
@@ -34,6 +34,7 @@ typedef struct {
     uint16_t port, peer_port;
     uint32_t lease_left;            /* s; 0xFFFFFFFF infinite or fixed, 0 none */
     uint8_t fw_major, fw_minor, board_rev;
+    uint32_t spi_errors;            /* failed SPI transfers to the W5500 since reset (NET tail) */
     char host[LAN_HOST_MAX + 1];
 } lan_status_t;
 

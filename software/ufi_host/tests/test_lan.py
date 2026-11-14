@@ -75,6 +75,12 @@ def test_net_status_unpack_and_text():
     assert "address in use" in text and "DHCP: 192.168.1.50/255.255.255.0" in text and "lan_key set" in text
     assert "session from 192.168.1.20:50123" in text and "drive owner: LAN" in text
     assert "no link" in str(P2.NetStatus.unpack(net_reply(state=3, flags=0)))
+    # SPI error counter behind the host name (appended 2026-11-14); absent on older firmware
+    assert n.spi_errors is None and "SPI errors" not in text
+    with_tail = P2.NetStatus.unpack(net_reply() + (7).to_bytes(4, "little"))
+    assert with_tail.spi_errors == 7 and with_tail.hostname == "ufi-02cab3" and "W5500 SPI errors since reset: 7" in str(with_tail)
+    assert P2.NetStatus.unpack(net_reply() + bytes(4)).spi_errors == 0
+    assert P2.NetStatus.unpack(net_reply() + bytes(3)).spi_errors is None      # incomplete tail is ignored
     for bad in (b"", net_reply()[:42], bytes([2]) + net_reply()[1:], net_reply()[:-1]):
         with pytest.raises(ValueError):
             P2.NetStatus.unpack(bad)

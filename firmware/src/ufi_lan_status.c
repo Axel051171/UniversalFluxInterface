@@ -40,7 +40,8 @@ uint16_t lan_status_pack(const lan_status_t* s, uint8_t* out)
     n = n > LAN_HOST_MAX ? LAN_HOST_MAX : n;
     out[42] = (uint8_t)n;
     memcpy(&out[43], s->host, n);
-    return (uint16_t)(43u + n);
+    put32(&out[43u + n], s->spi_errors);    /* appended behind the name: older hosts stop at the name */
+    return (uint16_t)(43u + n + 4u);
 }
 
 static size_t add(char* out, size_t at, const char* key, const char* value)

@@ -1640,11 +1640,17 @@ def test_last_refusal(monkeypatch, capsys):
     assert cli.main(["refusal"]) == 0 and "no refusal" in capsys.readouterr().out
 
 
-def test_read_double_step_sends_the_extension_byte():
+def test_read_double_step_sends_the_extension_byte(monkeypatch):
     """READ flags2 (2026-11-12): the extension byte goes out only with a bit set, as the last
     payload byte and announced by flag bit 7; a plain read keeps the old shape."""
     fake = GuardedDevice(revolutions=REVS)
     dev = P2.Device2(fake)
+    monkeypatch.setattr(P2, "open_serial", lambda port=None: fake)
+    assert cli.main(["read", "3", "0", "-r", "2", "--double-step"]) == 0      # ufi read --double-step
+    by_cli = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
+    assert len(by_cli) == 7 and by_cli[3] & P2.READ_FLAGS2 and by_cli[-1] == P2.READ2_DOUBLE_STEP
+    assert cli.main(["read", "3", "0", "-r", "2"]) == 0
+    assert len([q for q in fake.requests if q.cmd == P2.READ][-1].payload) == 6
     dev.read_track(3, 0, 2)
     plain = [q for q in fake.requests if q.cmd == P2.READ][-1].payload
     assert len(plain) == 6 and not plain[3] & P2.READ_FLAGS2

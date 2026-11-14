@@ -899,6 +899,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("read")
     p.add_argument("--provenance", action="store_true",
                    help="READ flag bit 3 (firmware 1.18): the END carries the provenance block of op 43; printed after the summary")
+    p.add_argument("--double-step", action="store_true",
+                   help="READ flags2 bit 0 (firmware 1.18-dev): two steps per track for this request only (40-track disk "
+                        "in an 80-track drive) without changing the drive timing; not for Apple/Mac drives")
     p.add_argument("--weak", action="store_true",
                    help="instability of exactly this capture, computed on the host from its revolutions with the "
                         "definitions of op 42/44 (no second read; needs at least 2 revolutions); a hint, not proof "
@@ -1436,7 +1439,8 @@ def main(argv: list[str] | None = None) -> int:
                 dev.step_schedule(*_parse_steps(a.steps))
             cap = dev.read_track(a.track, a.side, a.revs, hard_sectors=a.hard_sectors, quarter=a.quarter,
                                  provenance=getattr(a, "provenance", False), read_context=getattr(a, "read_info", False),
-                                 **({"lead_in": True} if getattr(a, "lead_in", False) else {}))
+                                 **({"lead_in": True} if getattr(a, "lead_in", False) else {}),
+                                 **({"double_step": True} if getattr(a, "double_step", False) else {}))
             print(f"track {a.track}{'.%d' % a.quarter if a.quarter else ''}.{a.side}:\n{_summary(cap)}")
             if getattr(a, "lead_in", False):
                 li = cap.lead_in

@@ -554,6 +554,7 @@ class NetStatus:
     owner: int
     version: int
     hostname: str
+    spi_errors: int | None = None   # failed SPI transfers to the W5500 since reset; None: older firmware
 
     @classmethod
     def unpack(cls, b: bytes) -> NetStatus:
@@ -561,9 +562,11 @@ class NetStatus:
             raise ValueError("invalid NET reply")
         port, dport, lease = struct.unpack_from("<HHI", b, 26)
         peer_port, = struct.unpack_from("<H", b, 38)
+        tail = 43 + b[42]
+        spi = struct.unpack_from("<I", b, tail)[0] if len(b) >= tail + 4 else None
         return cls(b[1], b[2], b[3], _ip(b[4:8]), _ip(b[8:12]), _ip(b[12:16]), _ip(b[16:20]),
                    ":".join(f"{x:02x}" for x in b[20:26]), port, dport, lease, _ip(b[34:38]), peer_port,
-                   b[40], b[41], b[43:43 + b[42]].decode("ascii", "replace"))
+                   b[40], b[41], b[43:tail].decode("ascii", "replace"), spi)
 
     @property
     def bound(self) -> bool:
@@ -580,6 +583,8 @@ class NetStatus:
         if self.flags & 0x08:
             lines.append(f"  session from {self.peer}:{self.peer_port}")
         lines.append(f"  drive owner: {NET_OWNERS.get(self.owner, self.owner)}")
+        if self.spi_errors:
+            lines.append(f"  W5500 SPI errors since reset: {self.spi_errors}")
         return "\n".join(lines)
 
 
