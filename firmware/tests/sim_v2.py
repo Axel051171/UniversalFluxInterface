@@ -34,7 +34,9 @@ EXTRA = {'g_capture': ('ufi_firmware.h', 'capture_context_t g_capture;'),
 
 
 def build():
-    objdir = BUILD / 'sim_v2_obj'
+    # one directory per process: the gate runs several simulator tests in parallel
+    import os
+    objdir = BUILD / f'sim_v2_obj_{os.getpid()}'
     objdir.mkdir(parents=True, exist_ok=True)
     flags = [*COMMON, *STUB_FLAGS]
     objects, harness = [], objdir / 'harness.o'
@@ -52,11 +54,12 @@ def build():
                     '-o', str(harness)], check=True)
     stubs = objdir / 'stubs.c'
     stubbed, skipped = fuzz_stubs.generate(objects, stubs, harness_objects=[harness], extra=EXTRA)
-    libc = LIBC | {'_fileno', '_setmode', 'fflush', 'fread', 'stdin', 'stdout'}
+    # bcmp: clang on Linux turns memcmp(...) == 0 into it (the first CI run on Linux failed here)
+    libc = LIBC | {'_fileno', '_setmode', 'fileno', 'fflush', 'fread', 'stdin', 'stdout', 'bcmp', 'memchr'}
     unknown = [s for s in skipped if s not in libc and not s.startswith(LIBC_PREFIXES)]
     if unknown:
         raise SystemExit('sim_v2: no prototype found for ' + ', '.join(unknown))
-    exe = BUILD / ('sim_v2' + EXE)
+    exe = objdir / ('sim_v2' + EXE)
     subprocess.run([compiler(), *flags, '-std=c23', '-w', str(stubs), str(harness), *map(str, objects),
                     '-o', str(exe)], check=True)
     return exe, len(stubbed)
